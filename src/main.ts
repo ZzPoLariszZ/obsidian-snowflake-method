@@ -186,6 +186,7 @@ import {
 	sessionClockMs,
 	SnowflakeProjectService,
 	ExportIntoManuscriptError,
+	ExportOverSourceError,
 	projectExportRoot,
 	type ManuscriptExportOptions,
 	type CanvasExportPlan,
@@ -7185,6 +7186,10 @@ export default class SnowflakeMethodPlugin
 		} catch (error) {
 			if (error instanceof ExportIntoManuscriptError) {
 				new Notice(t('errors.exportIntoManuscript', { path: error.path }));
+				return;
+			}
+			if (error instanceof ExportOverSourceError) {
+				new Notice(t('errors.exportOverSource', { path: error.path }));
 				return;
 			}
 			throw error;

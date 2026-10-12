@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   ExportIntoManuscriptError,
+  ExportOverSourceError,
   SnowflakeProjectService,
   projectExportRoot,
   type ManuscriptExportOptions,
@@ -162,6 +163,23 @@ describe("ManuscriptExportService", () => {
     expect(plan.targets.map((target) => [target.path, target.content])).toEqual([
       ["Out/Novel/Alice.txt", "Alice\n\u2003\u2003She keeps the lighthouse.\n"],
     ]);
+  });
+
+  it("refuses to write a note of no project over itself", async () => {
+    await fakeVault.seedFile("Out/Idea.md", "# Idea\n\nA thought.\n");
+    await expect(
+      service.exporter.plan(
+        null,
+        { kind: "segment", path: "Out/Idea.md" },
+        { ...options, format: "md" },
+      ),
+    ).rejects.toBeInstanceOf(ExportOverSourceError);
+    // Another format is another file, and goes ahead.
+    expect(
+      (await service.exporter.plan(null, { kind: "segment", path: "Out/Idea.md" }, options)).targets.map(
+        (target) => target.path,
+      ),
+    ).toEqual(["Out/Idea.txt"]);
   });
 
   it("exports a note whose frontmatter will not read, from past its closing fence", async () => {

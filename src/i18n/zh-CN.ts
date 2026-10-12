@@ -2090,6 +2090,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'messages.copiedNote': '已将本篇笔记复制为纯文本。',
 	'errors.exportIntoManuscript': '导出文件夹 {path} 位于项目之内，请另选一个文件夹。',
 	'errors.exportIntoProject': '导出文件夹 {path} 位于某个项目之内，请另选一个文件夹。',
+	'errors.exportOverSource': '导出文件会覆盖这篇笔记本身（{path}），请另选一个导出文件夹。',
 	'manuscript.copySelection': '复制',
 	'manuscript.revision.create': '新建修订',
 	'manuscript.revision.emptyProposed': '插入修订需要建议文本。',

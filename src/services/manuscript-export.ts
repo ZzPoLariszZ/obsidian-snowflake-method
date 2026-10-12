@@ -65,6 +65,14 @@ export class ExportIntoManuscriptError extends Error {
   }
 }
 
+/** A note's export would land on the note itself, which writing would replace with its own plain text. */
+export class ExportOverSourceError extends Error {
+  constructor(readonly path: string) {
+    super(`The export of "${path}" would be written over the note itself.`);
+    this.name = "ExportOverSourceError";
+  }
+}
+
 /**
  * The manuscript as plain text files in the Vault: one note, the whole book
  * as one file, or the whole book as one file per note in a folder. The text
@@ -121,6 +129,11 @@ export class ManuscriptExportService {
       const note = await this.noteText(project, scope.path, options);
       if (note.content.length === 0) return { targets: [] };
       const path = pathFor(this.noteFileName(project, scope.path, note.title));
+      // A note standing in the export folder itself would be written over by
+      // its own plain text: refused, whatever the case of the two names.
+      if (path.toLowerCase() === normalizePath(scope.path).toLowerCase()) {
+        throw new ExportOverSourceError(path);
+      }
       return { targets: [target(path, note.content)] };
     }
     if (scope.kind === "passage") {

@@ -2250,6 +2250,8 @@ export const en = {
 		'The export folder {path} lies inside the project. Choose another folder.',
 	'errors.exportIntoProject':
 		'The export folder {path} lies inside a project. Choose another folder.',
+	'errors.exportOverSource':
+		'The export would be written over the note itself, at {path}. Choose another export folder.',
 	'manuscript.copySelection': 'Copy',
 	'manuscript.revision.create': 'Create revision',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',
