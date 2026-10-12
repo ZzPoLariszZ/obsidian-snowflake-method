@@ -8,6 +8,56 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0]
+
+### Added
+
+- **Typography beyond the manuscript stream.** A new **Typography scope** setting chooses where the manuscript's typography applies: the manuscript stream alone, your Snowflake projects, or the whole vault. The default is Snowflake projects, so the notes of your projects wear it when you open them in a normal tab. The font, size, line height, column width, paragraph spacing, first-line indent, alignment, hyphenation and background tint all follow, in the editor and in reading view alike. The properties and the section markers keep the app's own size, the grid lines stay in the manuscript stream, and an empty section's placeholder takes the typography. The same toolbar stands above such a note. It has undo and redo, the heading levels, the inline marks, the typography popover and the highlight menu. It also has an export button for that note, typewriter scrolling and focus mode. Enter starts a new paragraph there too when that setting is on, and the background tint covers the note's header. The manuscript stream always wears them.
+- **Marks in your project's notes.** A project note that uses the typography now shows the manuscript stream's marks, in the editor and in reading view. They cover entity mentions, sensitive words, dialogue and your custom highlight rules. The highlight menu above the note sets them, as it does in the stream. Right-click a marked name to turn it into a link, open its note or ignore it. In reading view, a click does the same. A character's own note doesn't mark that character's name. Outside a project, the highlight button is grayed out.
+- **Focus mode in your project's notes.** The toolbar above a project note that uses the typography now has the focus mode button, after typewriter scrolling. It works as in the manuscript stream. Everything but the paragraph you're writing fades, and so do the note's title and properties and the rest of Obsidian. Deep fades the dashboard too, and solo shows only that note, in full screen. The commands that set focus mode work there as well. Outside a project, the button is grayed out.
+- **The background can reach further.** A new **Background scope** setting, just above the two background colors, chooses where the color goes. **Typography scope** is the default and keeps it to the manuscript stream and the notes the typography reaches. **Snowflake interface** also covers the dashboard, the other views and their tabs, and the plugin's dialogs and popovers. **Whole app** covers all of Obsidian, including the sidebars and the settings window. Borders, buttons, code blocks and faint text take matching shades, so everything keeps its contrast on the new color.
+- **Write the synopses in the dashboard.** Step 4 and step 6 now have a text box of their own, like steps 1 and 2, bound to the plot synopsis and the long synopsis notes. The box fills the rest of the window, and **Open** still takes you to the note in the editor.
+- **Hide tooltips.** A new setting under General hides every tooltip in every Obsidian window, and it's on by default. The one on a section marker still shows, because it warns you not to edit or delete the marker. Screen readers still read each label. To bring the tooltips back, turn the setting off or use the new **Toggle tooltips** command.
+- **Turn off the file explorer enhancement.** **Enhancement scope** has a new **Off** choice. It takes away the four buttons at the top of the file explorer and everything they do, so the explorer shows your files just as Obsidian does. The rest of the section's settings and the four commands are hidden while it's off. Your order and your other choices are kept, and they come back when you pick a scope again.
+- **Search and replace in the manuscript stream.** Press Ctrl+F, or Cmd+F on a Mac, in the manuscript stream to search the whole manuscript, including the chapters the stream hasn't loaded yet. The bar looks like Obsidian's own above a note. It counts the matches, tints every one and outlines the one you're on, and Enter and Shift+Enter move between them. Three buttons inside the box turn on Match case, Match whole word and Use regular expression. The arrow at the left, or Ctrl+Alt+F, opens the replace row, to replace one match or all of them. In the note you're writing in, Undo takes a replacement back. Replace all asks first when it reaches other notes, since they're saved straight away. Replacing text a revision or foreshadowing marks asks first too, since the mark would lose its place. While the bar is open, focus mode stops fading the page. Two new commands open the bar from the palette.
+- **More in the right-click menu.** Select words in the manuscript stream, in one of your project's notes, or in a text box of the dashboard or a dialog, then right-click them. **Add as entity** asks which kind of note to make, from characters, scenes and your worldbuilding kinds. That kind's form then opens with the words as its name. **Add as sticky note** makes a sticky note that holds the words. The same menu exports the selected words as plain text, to a new numbered excerpt file each time. In a note it also exports the note, and in the manuscript stream the whole manuscript. In a text box the menu keeps Cut, Copy and Paste at its top.
+
+### Changed
+
+- **Text boxes follow the alignment and the indent.** The multi-line boxes in the dashboard and in the plugin's dialogs follow the typography's alignment. The dashboard's boxes also follow its first-line indent, with every paragraph set in and the placeholder left flush. The text quoted from the earlier step is set the same way, and scrolls once it would take more than a third of the window. The dashboard's boxes and the quote keep a scrollbar's width of room at both edges whether a bar is showing, absent or hidden, so nothing shifts.
+- **Every summary box shows its length.** The running word or character count that step 1 shows now stands under the boxes of steps 2, 4 and 6 too.
+- **One-line fields line up with the text boxes.** The dashboard's one-line fields keep the same room at their edges as its text boxes. The words in every field of a step now start at the same place.
+- **Dialog text boxes fit their words.** The multi-line boxes in the plugin's dialogs grow and shrink with what they hold, instead of scrolling inside a fixed height.
+- **Enhancement scope.** The **Scope** setting in the **File explorer** section is now called **Enhancement scope**, named like **Typography scope** and **Statistics scope**.
+- **Typography has a section of its own.** The typography settings, from **Typography scope** down to the two background colors, used to sit at the end of the **Manuscript stream** section. They now have their own **Typography** section just above it, since they reach notes and the rest of the app as well as the stream.
+- **Hide scrollbars.** The **Hide scrollbar** setting is now called **Hide scrollbars**, to match **Hide tooltips** beside it.
+- **Turning off boundary protection asks first.** Switching off **Protect managed boundaries** now asks you to confirm, in the settings or with the **Toggle managed boundary protection** command. Turning it off leaves the section markers in every note open to edits. Turning it back on doesn't ask.
+- **Clearer section markers.** Hovering a section marker now says plainly what it is and what to avoid, whether it's locked or unlocked. The right-click items that unlock and lock one note's markers now stand under a Snowflake Method heading and say they reach only that note. The unlock dialog says the markers lock again when you close the note, and the setting says it covers every note.
+- **Quieter section markers.** A locked section marker now shows at a quarter of its strength, so it stays out of the way while you write. It comes back to full strength when you point at it, which also shows its warning, or when the caret is on its line. An unlocked marker always shows at full strength.
+- **Open, everywhere.** Every button and menu item that opens a note now says **Open**, one word like **Edit** beside it. The freeform canvas, the sticky notes and the button under the step 4 and step 6 text boxes used to say Open note.
+- **Foreshadowing buttons match the other tables.** On the Foreshadowing tab, **Edit** and **Delete** in the actions column are now the same size as the buttons in the character and scene tables. They used to stretch across the whole cell.
+- **A slimmer foreshadowing table.** On the Foreshadowing tab, the name, related and position columns are narrower, and the description takes the room they gave up. The table now stays a table in a narrower pane before it turns into cards, and long words still fit without breaking.
+- **No more dashes in the Foreshadowing table.** A thread that isn't in the manuscript yet, or has nothing related, used to show a dash in those cells. They're now left blank, as in the other tables.
+- **The rail's scrollbar stands outside it.** When scrollbars are shown, the dashboard rail's scrollbar now sits just past its right edge, in the gap before the main area. The rail keeps the same padding with or without one, and its rows are never narrowed by it.
+- **Matching circles in the rail.** The circle at the end of each rail row, for a step's progress or a count, now matches the number circle at its start. It's the same size and filled the same way, where it used to be a smaller outlined ring. A step's progress tints it green, blue or yellow, and a step that needs repair shows its warning sign on an orange one. The folded rail is a little wider to hold both.
+- **The background color reaches the tabs and the lines.** The tabs above the manuscript stream and above a note that uses the typography now take the background color while their page is in front. Stacked tabs do too. Inside those pages, borders, buttons, fields and faint text take matching shades of the color. The line under the toolbar no longer shows white on a tinted page.
+- **Typewriter scrolling centers the line.** The line you're writing now sits with its middle on the middle of the page, in the manuscript stream and in a note alike. In the stream it used to sit half a line lower.
+- **The file explorer buttons stay together.** The plugin's four buttons still follow the file explorer's own buttons on one line when the sidebar is wide enough. When it isn't, all four move to a line of their own below, instead of splitting across two lines. On a phone or tablet, the one line was too long for the sidebar, so the buttons at each end were cut off. There the four now always have a line of their own, and every button shows.
+- **One word for entities in Chinese.** The Chinese interface now calls them 实体 everywhere. The timeline's bound entity, the related entities in the foreshadowing dialog, and the messages about a name already in use said 对象 or 条目 before.
+
+### Fixed
+
+- **The manuscript stream keeps its place when its tab moves.** Dragging the stream's tab into another pane used to scroll it back to the top, and so did splitting it or moving it to a new window. It now stays where you were reading, and a split copy opens at the same place.
+- **Code follows the background tint.** Code blocks, inline code and file embeds in the manuscript stream used to keep the theme's own background on a tinted page. They now take a slightly darker or lighter shade of the tint, and so do the generated field blocks in dressed notes. Without a tint, nothing changes.
+- **Revision and foreshadowing cards no longer cover the text in a narrow pane.** When the pane is too narrow for a margin, the cards used to lie over the right edge of the prose. They are now held back, as the word milestones are, and come back as soon as the pane is wide enough. A jump from the Revision or Foreshadowing tab still brings the words on screen and flashes them. A proposal you are writing still opens its card over the edge, so you can finish it.
+- **Tooltips show once.** Hovering a section marker in the editor, or a button on a revision or foreshadowing card, used to show two tooltips, the app's and then the browser's. Only the app's shows now, so the new setting hides it too. The full names shown on hover in the project list and the foreshadowing table use the app's tooltip as well.
+- **Open fits its button.** With the actions column shown, the **Open** button on the rows of steps 5, 7 and 9 was too narrow. It cut its word off at both ends. It's now as wide as the word needs.
+- **Tables stay inside their frame.** A table used to turn into cards only once the whole dashboard was narrow. In a pane wider than that but still too narrow for the table, it ran past the edge of its frame and hid its last columns. That happened most with the actions column shown and on the Foreshadowing tab. Now a table turns into cards as soon as its frame is too narrow for it, and back into a table when there's room again.
+- **Card fields line up.** In a narrow pane, the last field of each card used to start a little to the left of the others when the actions column was hidden. On the Foreshadowing tab, the Position field also drew a stray line at its right edge. Every value in a card now starts at the same place.
+- **The rail folds in place.** When you folded the dashboard's rail down to its numbers and icons, what was left shifted. The rows moved up a little, and the frame around the current step started further from its number. The button at the top and the arrow above each group sat a little to the left. Now folding only takes the words away, and everything else stays where it was.
+- **The stream sets its lines as a note does.** With the column width left at Obsidian's, the manuscript stream's text was a little narrower than a note's. In a narrow pane, its side margins were smaller too. Both now match a note's, so a paragraph breaks into the same lines in the stream and in a note beside it.
+- **Reduce animations stills the focus fades.** With **Reduce animations** on, focus mode still faded the page in and out, in the manuscript stream and across the app. The fades now happen at once.
+
 ## [0.24.0]
 
 ### Added
@@ -559,6 +609,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.25.0]
+
+### 新增
+
+- **排版不再只属于正文流。** 排版一节的顶部新增**排版范围**设置，用来选择正文的排版用在哪里：只用于正文流，或者也用于雪花项目或整个 Vault。默认是雪花项目，所以在普通标签页中打开项目里的笔记，也会使用这套排版。字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式、连字符和背景底色都会跟随，编辑视图和阅读视图都一样。属性和区段标记保持 Obsidian 自己的大小，网格线只留在正文流里，空白章节的占位提示则采用这套排版。这样的笔记上方也有同一条工具栏，包括撤销与重做、标题级别、行内标记、排版弹窗、高亮菜单、导出这篇笔记的按钮、打字机滚动和专注模式。开启相应设置后，在这些笔记里按 Enter 也会另起一段，背景底色也会盖住笔记的标题栏。正文流始终使用这套排版。
+- **项目笔记里的标记。** 用上排版的项目笔记，在编辑视图和阅读视图里都会显示正文流的标记：实体提及、敏感词、对话和自定义高亮规则。笔记上方的高亮菜单用来设置它们，和正文流里一样。右键点击标出的名字，可以转成链接、打开它的笔记或忽略它，阅读视图里直接点击也可以。角色自己的笔记不会标出这个角色的名字。不属于任何项目的笔记，高亮按钮显示为灰色。
+- **项目笔记里的专注模式。** 用上排版的项目笔记，上方工具栏在打字机滚动之后新增了专注模式按钮，用法和正文流里一样。正在写的段落以外的一切都会淡化，笔记的标题和属性、Obsidian 的其他部分也一样。「深度」一档还会淡化工作台，「仅正文」一档会全屏只显示这篇笔记。设置专注模式的命令在这里也能用。不属于任何项目的笔记，这个按钮显示为灰色。
+- **背景颜色可以铺得更远。** 两项背景颜色的上方新增**背景范围**设置，用来选择颜色铺到哪里。默认是**排版范围**，颜色只用于正文流和排版用到的笔记。选**雪花界面**，颜色还会铺满工作台、其他视图和它们的标签页，以及插件的对话框和弹窗。选**整个 Obsidian**，颜色会铺满整个应用，包括侧边栏和设置窗口。边框、按钮、代码块和浅色文字都会换成相配的深浅，在新的底色上保持原有的对比。
+- **在工作台里写大纲。** 第四步和第六步现在也有自己的文本框，和第一、二步一样，分别对应情节大纲和长篇大纲两篇笔记。文本框会填满窗口剩余的高度，想在编辑器里写，仍然可以点**打开**。
+- **隐藏工具提示。** “通用”里新增一项设置，默认开启，会隐藏 Obsidian 每个窗口里的所有工具提示。区段标记上的提示仍会显示，因为它提醒你不要编辑或删除这个标记。屏幕阅读器仍能读到每个标签。想让工具提示回来，关掉这一项，或者使用新的**切换工具提示**命令。
+- **可以关闭文件列表增强。** **增强范围**新增了**关闭**选项。选中后，文件列表顶部的四个按钮和它们的所有效果都会消失，文件列表和 Obsidian 原本的样子一样。关闭期间，这一节的其他设置和四个命令都会隐藏。你排好的顺序和其他选择都会保留，重新选择范围后就会回来。
+- **在正文流中查找和替换。** 在正文流里按 Ctrl+F（Mac 上是 Cmd+F），就能在整部正文中查找，正文流还没有载入的章节也包括在内。查找栏的样子和 Obsidian 在笔记上方的查找栏一样，会显示匹配的数量，给每一处匹配着色，并给当前这一处加上外框，按 Enter 和 Shift+Enter 在匹配之间移动。输入框里的三个按钮分别用来区分大小写、全字匹配和使用正则表达式。点左侧的箭头或按 Ctrl+Alt+F 可以打开替换栏，替换一处或全部替换。在正在写的笔记里，替换可以撤销。全部替换涉及其他笔记时会先请你确认，因为那些笔记会立即保存。替换修订或伏笔标记的文字时也会先请你确认，因为标记会因此失效。查找栏打开期间，专注模式不再淡化页面。命令面板里也新增了两条打开查找栏的命令。
+- **右键菜单更丰富了。** 在正文流、项目的笔记，或工作台和对话框的文本框里选中文字，再点击右键。**添加为实体**会先问要建哪一类实体，可以是角色、场景，也可以是你的任一类世界观，然后打开这一类的表单，并把选中的文字填作名称。**添加为便签**会新建一张写着这些文字的便签。同一个菜单还能把选中的文字导出为纯文本，每次都写进一个新的带编号的节选文件。在笔记里还能导出本篇笔记，在正文流里还能导出整部正文。在文本框里，菜单顶部仍有剪切、复制和粘贴。
+
+### 变更
+
+- **文本框跟随对齐方式和首行缩进。** 工作台和插件对话框里的多行文本框会跟随排版的对齐方式。工作台里的文本框还会跟随首行缩进，每个段落的首行都会缩进，占位提示则保持顶格。引用自上一步的文字也这样排，超过窗口三分之一高度时改为滚动显示。在工作台里，无论滚动条显示、不需要还是被隐藏，文本框和引用的两侧都留出同样的滚动条宽度，文字不会跳动。
+- **每个梗概文本框都显示长度。** 第一步显示的字数统计，现在也出现在第二、四、六步的文本框下方。
+- **单行输入框与多行文本框对齐。** 工作台里的单行输入框，两侧也留出和多行文本框一样的空间，同一步骤里每个输入框的文字都从同一处开始。
+- **对话框文本框随内容伸缩。** 插件对话框里的多行文本框会随内容变高或变矮，不再在固定高度里滚动。
+- **增强范围。** 设置里**文件列表**一节的**作用范围**改名为**增强范围**，和**排版范围**、**数据统计范围**的叫法一致。
+- **排版有了自己的一节。** 排版设置，从**排版范围**到两项背景颜色，以前放在**正文流**一节的末尾。现在它们在正文流上方单独的**排版**一节里，因为这些设置除了正文流，也会用到笔记和应用的其他地方。
+- **关闭边界保护前会先确认。** 在设置里关闭**保护托管区段边界**，或者用**切换托管区段边界保护**命令关闭时，现在会先请你确认，因为这会让所有笔记里的区段标记都可能被改动。重新开启则不需要确认。
+- **区段标记的说明更清楚。** 鼠标停在区段标记上时，提示会直接说明它是什么、应该避免什么，锁定和解锁时都一样。右键菜单里解锁和锁定单篇笔记标记的选项，现在放在“雪花写作法”标题下，并写明只作用于这篇笔记。解锁对话框会说明关闭笔记后标记会自动重新锁定，设置项则写明它作用于所有笔记。
+- **更安静的区段标记。** 锁定的区段标记现在只以四分之一的浓度显示，写作时不再显眼。鼠标指向它时会恢复完整显示并出现警告提示，光标移到它所在的行时也会恢复。解锁的标记始终完整显示。
+- **统一叫“打开”。** 所有用来打开笔记的按钮和菜单项现在都叫**打开**，和旁边的**编辑**一样简短。自由画布、便签，以及第四步和第六步文本框下方的按钮，以前写的是“打开笔记”。
+- **伏笔表格的按钮与其他表格一致。** 伏笔标签页操作列里的**编辑**和**删除**按钮，现在和角色、场景表格里的按钮一样大，不再撑满整个单元格。
+- **更紧凑的伏笔表格。** 伏笔标签页的名称、关联与定位三列变窄了，让出的空间留给描述。窗格更窄时，表格也能保持表格的样子，之后才改为卡片，长单词仍能完整显示。
+- **伏笔表格不再显示横线。** 还没有写进正文的伏笔，或者没有关联内容的伏笔，以前会在这些格子里显示一条横线。现在它们和其他表格一样留空。
+- **导航栏的滚动条移到外侧。** 显示滚动条时，工作台导航栏的滚动条现在位于它的右边框外侧，在它和主区域之间的空隙里。无论有没有滚动条，导航栏的内边距都不变，各行也不会因此变窄。
+- **导航栏里的圆圈统一了。** 导航栏每一行末尾表示进度或数量的圆圈，现在和行首的编号圆圈一致：大小相同，也同样是实心的，不再是较小的空心圆环。步骤的进度会把它染成绿色、蓝色或黄色，需要修复的步骤则在橙色的圆圈里显示警告标志。收起后的导航栏略微加宽，以便放下这两个圆圈。
+- **标签页和线条也随背景颜色变化。** 正文流上方的标签页，以及使用这套排版的笔记上方的标签页，在页面位于前台时也会换成背景颜色，堆叠的标签页也一样。在这些页面里，边框、按钮、输入框和浅色文字都会换成相配的深浅，工具栏下方的线条不会再在有底色的页面上显出白色。
+- **打字机滚动让当前行居中。** 正在写的这一行现在以它的中线对齐页面的正中，正文流和笔记里都一样。在正文流里，它以前要低半行。
+- **文件列表的按钮不再拆开。** 侧边栏够宽时，插件的四个按钮仍然接在文件列表自带按钮的后面，排成一行。不够宽时，四个按钮会一起移到下方单独的一行，不再被拆到两行里。在手机和平板上，原来那一行对侧边栏来说太长，两端的按钮会被截掉。现在四个按钮在那里总是单独一行，每个按钮都能完整显示。
+- **「实体」的说法统一了。** 中文界面里，实体现在一律称作「实体」。时间线的绑定实体、伏笔对话框里的关联实体，以及名称已被使用时的提示，以前说的是「对象」或「条目」。
+
+### 修复
+
+- **正文流的标签页移动后不再回到顶部。** 把正文流的标签页拖到另一个窗格、向右或向下拆分，或者移到新窗口，以前都会让它滚回顶部。现在它会停在你正在读的地方，拆分出来的副本也会打开在同一处。
+- **代码跟随背景底色。** 正文流里的代码块、行内代码和文件嵌入，以前在有底色的页面上仍保留主题自己的背景。现在它们改用比底色稍深或稍浅的颜色，使用这套排版的笔记里由插件生成的字段块也一样。没有设置底色时，一切照旧。
+- **修订卡片和伏笔卡片在窄窗格里不再盖住正文。** 窗格窄到放不下页边时，卡片以前会压在正文右侧边缘上。现在它们会像字数里程碑一样先收起来，窗格一够宽就回来。从修订或伏笔标签页跳转时，仍然会把对应的文字带到屏幕上并闪烁提示。正在撰写的修订提案仍会在边缘上打开它的卡片，让你能写完它。
+- **工具提示只出现一次。** 以前把鼠标停在编辑器里的区段标记上，或者修订卡片、伏笔卡片的按钮上，会先后出现两个工具提示，一个是 Obsidian 的，一个是浏览器的。现在只出现 Obsidian 的那个，新设置也能把它隐藏。项目列表和伏笔表格里悬停显示的完整名称，也改用 Obsidian 的工具提示。
+- **“打开”按钮显示完整。** 显示操作列时，第五、七、九步各行的**打开**按钮在英文界面下太窄，单词两端会被截掉。现在按钮会按文字需要的宽度显示。
+- **表格不再超出边框。** 以前只有整个工作台变窄时，表格才会改为卡片显示。窗格比这宽、却仍放不下整张表格时，表格就会超出边框，遮住最后几列。显示操作列时和伏笔标签页里最常这样。现在只要边框放不下表格，表格就会改为卡片显示，空间足够时再变回表格。
+- **卡片里的字段对齐了。** 窗格较窄并隐藏操作列时，每张卡片的最后一个字段以前会比其他字段稍微靠左。伏笔标签页的卡片里，定位一栏右侧还会多出一条竖线。现在卡片里的每个值都从同一处开始。
+- **导航栏收起时不再移位。** 以前把工作台的导航栏收成编号和图标时，剩下的部分会跟着移动：每一行都略微上移，当前步骤的边框离编号更远，顶部的按钮和每组上方的箭头也稍微偏左。现在收起只会去掉文字，其他一切都留在原处。
+- **正文流的版面与笔记一致。** 正文宽度跟随主题时，正文流的文字以前比笔记略窄，窗格较窄时两侧的边距也比笔记小。现在两者都和笔记一样，同一段文字在正文流里和在旁边的笔记里，会在同样的位置换行。
+- **减少动画也会停下专注模式的淡入淡出。** 以前开启**减少动画**后，专注模式在正文流和整个应用里仍会让页面慢慢淡入淡出。现在淡化会立即完成。
 
 ## [0.24.0]
 
