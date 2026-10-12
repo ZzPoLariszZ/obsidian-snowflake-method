@@ -531,8 +531,9 @@ export class NoteMentions {
 				this.redress(project);
 			})
 			.catch((error: unknown) => {
-				// The next ask tries again rather than standing on a failure.
-				if (slot.asked === generation) slot.asked = -1;
+				// Said once, and asked again only after the next change: a feed
+				// that fails now fails again at every pause in the typing.
+				if (this.destroyed || slot.asked !== generation) return;
 				this.deps.showError(error);
 			});
 	}
