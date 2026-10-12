@@ -662,6 +662,20 @@ Every push and pull request runs the test, build, and lint jobs on each supporte
 
 The distributable plugin is exactly three files: `main.js`, `manifest.json`, and `styles.css`. Do not add source files, development dependencies, or a containing folder to the release assets.
 
+## Acknowledgements
+
+Many thanks to the authors of these Obsidian plugins, which inspired much of this one. Each is great at what it does, and well worth a try.
+
+- [Longform](https://github.com/kevboh/longform) by Kevin Barrett, for writing novels, screenplays, and other long projects.
+- [StoryLine](https://github.com/pixerojan/obsidian-storyline) by Jan Sandström, which turns your vault into a book planning tool with a corkboard, a timeline, and plotlines.
+- [Chinese Novel Assistant](https://github.com/pingo8888/chinese-novel-assistant) by pingo8888, a set of handy features for writing Chinese novels, such as a lore library with keyword highlighting.
+- [WebNovel Assistant](https://github.com/hatanochihiro/obsidian-webnovel-assistant) by HatanoChihiro, a writing studio with word count goals, a story timeline, and a foreshadowing manager.
+- [aDHL](https://github.com/tine-schreibt/aDHL) by tine-schreibt, which turns searches and regular expressions into highlighters.
+- [dotpm](https://github.com/dotpm/obsidian-pm), for managing projects over plain Markdown notes in table, Gantt, and Kanban views.
+- [Editing Toolbar](https://github.com/pkm-er/obsidian-editing-toolbar) by Cuman, a toolbar of editing commands that works much like Word's.
+- [Hider](https://github.com/kepano/obsidian-hider) by kepano, which hides parts of the interface such as tooltips, the status bar, and the title bar.
+- [Immersive Folder](https://github.com/iblinkq/immersive-folder) by iBlinkQ, which hides everything but the folder you're working in, and lets you put folders in your own order.
+
 ## License
 
 [MIT License](LICENSE). The Snowflake Method name and source material belong to their respective owners.
@@ -1300,6 +1314,20 @@ npm ci
 7. 确认草稿发布和其中的附件都没问题后，再正式发布。
 
 正式分发的插件只包含 `main.js`、`manifest.json` 和 `styles.css`。不要把源代码、开发依赖或外层目录放进发布附件。
+
+## 致谢
+
+衷心感谢以下 Obsidian 插件的作者，本插件的很多想法都受到了它们的启发。它们各有所长，都很值得一试。
+
+- [Longform](https://github.com/kevboh/longform)（Kevin Barrett）：用来写长篇小说、剧本和其他长篇作品。
+- [StoryLine](https://github.com/pixerojan/obsidian-storyline)（Jan Sandström）：把 Vault 变成写书的规划工具，有看板、时间线和情节线。
+- [Chinese Novel Assistant](https://github.com/pingo8888/chinese-novel-assistant)（pingo8888）：辅助中文小说写作，提供一系列开箱即用的功能，比如设定库和关键字高亮。
+- [WebNovel Assistant](https://github.com/hatanochihiro/obsidian-webnovel-assistant)（HatanoChihiro）：为网络小说作者打造的一站式写作套件，有字数目标、故事时间线和伏笔管理。
+- [aDHL](https://github.com/tine-schreibt/aDHL)（tine-schreibt）：把搜索词和正则表达式变成高亮。
+- [dotpm](https://github.com/dotpm/obsidian-pm)：在普通 Markdown 笔记上做项目管理，有表格、甘特图和看板视图。
+- [Editing Toolbar](https://github.com/pkm-er/obsidian-editing-toolbar)（Cuman）：一条像 Word 那样的编辑工具栏。
+- [Hider](https://github.com/kepano/obsidian-hider)（kepano）：隐藏工具提示、状态栏、标题栏等界面元素。
+- [Immersive Folder](https://github.com/iblinkq/immersive-folder)（iBlinkQ）：只留下你正在用的文件夹，还能按自己的顺序排列文件夹。
 
 ## 许可证
 
