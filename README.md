@@ -58,16 +58,10 @@ Randy Ingermanson wrote two books on the Snowflake Method, [How to Write a Novel
 If the plugin helps your writing, you can also buy me a coffee.
 
 <table align="center">
-  <tr>
-    <td align="center">
-      <a href="https://buymeacoffee.com/zzpolariszz"><img src="assets/sponsor/buy-me-a-coffee-qr.png" width="200" alt="QR code for Buy Me a Coffee" /></a><br />
-      <a href="https://buymeacoffee.com/zzpolariszz"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
-    </td>
-    <td align="center">
-      <a href="https://ko-fi.com/zzpolariszz"><img src="assets/sponsor/ko-fi-qr.png" width="200" alt="QR code for Ko-fi" /></a><br />
-      <a href="https://ko-fi.com/zzpolariszz"><img src="https://img.shields.io/badge/Tip%20Me%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Tip me on Ko-fi" /></a>
-    </td>
-  </tr>
+<tr>
+<td align="center"><a href="https://buymeacoffee.com/zzpolariszz"><img src="assets/sponsor/buy-me-a-coffee-qr.png" width="200" alt="QR code for Buy Me a Coffee" /></a><br /><a href="https://buymeacoffee.com/zzpolariszz"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a></td>
+<td align="center"><a href="https://ko-fi.com/zzpolariszz"><img src="assets/sponsor/ko-fi-qr.png" width="200" alt="QR code for Ko-fi" /></a><br /><a href="https://ko-fi.com/zzpolariszz"><img src="https://img.shields.io/badge/Tip%20Me%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Tip me on Ko-fi" /></a></td>
+</tr>
 </table>
 
 </details>
