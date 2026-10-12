@@ -163,6 +163,50 @@ describe('addClipboardEntries', () => {
 		await vi.waitFor(() => expect(area.value).toBe('the stone bridge road'));
 	});
 
+	it('hands cut and paste to the window, over the selection the menu opened on, so Undo takes them back', () => {
+		const writeText = vi.fn(() => Promise.resolve());
+		const readText = vi.fn(() => Promise.resolve('stone bridge'));
+		Object.defineProperty(window.navigator, 'clipboard', {
+			configurable: true,
+			value: { writeText, readText },
+		});
+		const area = textArea('the old mill road', 4, 12);
+		const box = proseBox('Smoke over the valley', 6, 10);
+		const areaSpan = fieldSpan(area);
+		const boxSpan = fieldSpan(box);
+		if (areaSpan === null || boxSpan === null) throw new Error('nothing selected');
+		// Each command reads the selection standing when the window runs it.
+		const ran: string[] = [];
+		const selected = (): string =>
+			document.activeElement === area
+				? area.value.slice(area.selectionStart ?? 0, area.selectionEnd ?? 0)
+				: (window.getSelection()?.toString() ?? '');
+		const editing = {
+			cut: vi.fn(() => ran.push(`cut ${selected()}`)),
+			paste: vi.fn(() => ran.push(`paste ${selected()}`)),
+		};
+		Object.assign(window, { electron: { remote: { getCurrentWebContents: () => editing } } });
+		try {
+			const areaMenu = fakeMenu();
+			addClipboardEntries(areaMenu.menu as never, { t: (key) => key, field: area, span: areaSpan, showError: vi.fn() });
+			const boxMenu = fakeMenu();
+			addClipboardEntries(boxMenu.menu as never, { t: (key) => key, field: box, span: boxSpan, showError: vi.fn() });
+			// The selection moved on while the menu stood.
+			area.setSelectionRange(0, 0);
+			areaMenu.entries[0]?.press();
+			window.getSelection()?.removeAllRanges();
+			boxMenu.entries[2]?.press();
+			expect(ran).toEqual(['cut old mill', 'paste over']);
+			// The window makes the edit; nothing is written by hand behind its back.
+			expect(area.value).toBe('the old mill road');
+			expect(box.textContent).toBe('Smoke over the valley');
+			expect(writeText).not.toHaveBeenCalled();
+			expect(readText).not.toHaveBeenCalled();
+		} finally {
+			Reflect.deleteProperty(window, 'electron');
+		}
+	});
+
 	it('only copies out of a box that cannot be typed in', () => {
 		const area = textArea('the old mill road', 4, 12);
 		area.readOnly = true;

@@ -134,6 +134,36 @@ export function replaceFieldSpan(field: TextField, span: FieldSpan, words: strin
 	);
 }
 
+/** The window's own cut and paste, which a box keeps in its undo history as it keeps its keys'. */
+interface WindowEditing {
+	cut(): void;
+	paste(): void;
+}
+
+/**
+ * The cut and paste the window's keys run, as the app's own menus run them:
+ * Electron's, on the desktop app. Not in the published API, so read off the
+ * window as it stands, and null where it is not there, as on a phone.
+ */
+function windowEditing(win: Window): WindowEditing | null {
+	const electron = (win as Window & {
+		electron?: { remote?: { getCurrentWebContents?: () => WindowEditing } };
+	}).electron;
+	return electron?.remote?.getCurrentWebContents?.() ?? null;
+}
+
+/** Gives a box the focus and the selection the menu opened on, for the window's own commands to act on. */
+function selectFieldSpan(field: TextField, span: FieldSpan): void {
+	field.focus();
+	if (span.kind === 'offsets') {
+		if (isTextBox(field)) field.setSelectionRange(span.start, span.end);
+		return;
+	}
+	const selection = field.win.getSelection();
+	selection?.removeAllRanges();
+	selection?.addRange(span.range);
+}
+
 export interface ClipboardEntryOptions {
 	t: Translate;
 	field: TextField;
@@ -142,7 +172,12 @@ export interface ClipboardEntryOptions {
 	showError: (error: unknown) => void;
 }
 
-/** Cut, copy and paste over the selection the menu opened on, as a box's own menu has them. */
+/**
+ * Cut, copy and paste over the selection the menu opened on, as a box's own
+ * menu has them. Cut and paste are the window's own where it has them, so
+ * Undo takes them back as it takes back the keys'; an edit made here by hand
+ * would never reach the box's undo history.
+ */
 export function addClipboardEntries(menu: Menu, options: ClipboardEntryOptions): void {
 	const { t, field, span, showError } = options;
 	const clipboard = field.win.navigator.clipboard;
@@ -155,6 +190,12 @@ export function addClipboardEntries(menu: Menu, options: ClipboardEntryOptions):
 			.setIcon('scissors')
 			.setDisabled(!editable)
 			.onClick(() => {
+				const editing = windowEditing(field.win);
+				if (editing !== null) {
+					selectFieldSpan(field, span);
+					editing.cut();
+					return;
+				}
 				void clipboard
 					.writeText(span.text)
 					.then(() => {
@@ -179,6 +220,12 @@ export function addClipboardEntries(menu: Menu, options: ClipboardEntryOptions):
 			.setIcon('clipboard-paste')
 			.setDisabled(!editable)
 			.onClick(() => {
+				const editing = windowEditing(field.win);
+				if (editing !== null) {
+					selectFieldSpan(field, span);
+					editing.paste();
+					return;
+				}
 				void clipboard
 					.readText()
 					.then((words) => {
