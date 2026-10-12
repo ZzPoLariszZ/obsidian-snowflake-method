@@ -254,3 +254,96 @@ describe('a step save holds its boxes still', () => {
 		expect(box(DESCRIPTION).getAttribute('contenteditable')).toBe('plaintext-only');
 	});
 });
+
+describe('two dashboards of one step show one draft', () => {
+	it('puts words typed in one into the other, so a save from either keeps them', async () => {
+		const { host, model } = makeHost();
+		const one = mount(host, 6);
+		await one.view.refresh();
+		const two = mount(host, 6);
+		await two.view.refresh();
+		one.type(SYNOPSIS, ' New unsaved words from the first pane.');
+		expect(two.box(SYNOPSIS).textContent).toBe('Long. New unsaved words from the first pane.');
+		two.save().click();
+		await flush();
+		expect(model.stepFields[6]?.['long-synopsis']).toBe('Long. New unsaved words from the first pane.');
+		for (const view of [one, two]) {
+			expect(view.box(SYNOPSIS).textContent).toBe('Long. New unsaved words from the first pane.');
+		}
+	});
+
+	it('puts the words into the other’s own text node, which its Undo history points at', async () => {
+		const { host } = makeHost();
+		const one = mount(host, 6);
+		await one.view.refresh();
+		const two = mount(host, 6);
+		await two.view.refresh();
+		const node = two.box(SYNOPSIS).firstChild;
+		one.type(SYNOPSIS, ' AB');
+		expect(two.box(SYNOPSIS).textContent).toBe('Long. AB');
+		// Its own node kept, beside one copy of each node the other has.
+		expect(two.box(SYNOPSIS).firstChild).toBe(node);
+		expect(two.box(SYNOPSIS).childNodes.length).toBe(one.box(SYNOPSIS).childNodes.length);
+	});
+
+	it('takes a dashboard opened later into the others’ nodes, so typing there puts none of theirs out', async () => {
+		const { host } = makeHost();
+		const one = mount(host, 6);
+		await one.view.refresh();
+		const two = mount(host, 6);
+		await two.view.refresh();
+		one.type(SYNOPSIS, ' AB');
+		const ones = Array.from(one.box(SYNOPSIS).childNodes);
+		const twos = Array.from(two.box(SYNOPSIS).childNodes);
+		const three = mount(host, 6);
+		await three.view.refresh();
+		three.type(SYNOPSIS, ' CD');
+		expect(one.box(SYNOPSIS).textContent).toBe('Long. AB CD');
+		expect(two.box(SYNOPSIS).textContent).toBe('Long. AB CD');
+		expect(Array.from(one.box(SYNOPSIS).childNodes).slice(0, ones.length)).toEqual(ones);
+		expect(Array.from(two.box(SYNOPSIS).childNodes).slice(0, twos.length)).toEqual(twos);
+	});
+
+	it('lets a closed dashboard’s panel go', async () => {
+		const { host } = makeHost();
+		const one = mount(host, 6);
+		await one.view.refresh();
+		const two = mount(host, 6);
+		await two.view.refresh();
+		await two.view.onClose();
+		one.type(SYNOPSIS, ' Alone.');
+		expect(two.box(SYNOPSIS).textContent).toBe('Long.');
+	});
+
+	it('builds on words typed in the other, in both of step 2’s boxes', async () => {
+		const { host, model } = makeHost();
+		const one = mount(host, 2);
+		await one.view.refresh();
+		const two = mount(host, 2);
+		await two.view.refresh();
+		one.type(PARAGRAPH, ' One.');
+		two.type(PARAGRAPH, ' Two.');
+		two.type(DESCRIPTION, 'Told.');
+		expect(one.box(PARAGRAPH).textContent).toBe('A paragraph. One. Two.');
+		expect(one.box(DESCRIPTION).textContent).toBe('Told.');
+		one.save().click();
+		await flush();
+		expect(model.stepFields[2]).toEqual({ 'one-paragraph-summary': 'A paragraph. One. Two.', description: 'Told.' });
+	});
+
+	it('lets a draft discarded in one go in the other too', async () => {
+		const { host } = makeHost();
+		const one = mount(host, 6);
+		await one.view.refresh();
+		const two = mount(host, 6);
+		await two.view.refresh();
+		one.type(SYNOPSIS, ' Let go.');
+		one.discard().click();
+		await flush();
+		expect(one.box(SYNOPSIS).textContent).toBe('Long.');
+		expect(two.box(SYNOPSIS).textContent).toBe('Long.');
+		// What is typed next starts from the note, not from the words let go.
+		two.type(SYNOPSIS, ' Fresh.');
+		expect(one.box(SYNOPSIS).textContent).toBe('Long. Fresh.');
+	});
+});

@@ -333,23 +333,27 @@ const STEP_SAVES = new WeakMap<DashboardHost, Set<string>>();
 /** A step's boxes and Save as one panel drew them, and the dashboard that drew them. */
 interface StepPanel {
 	view: SnowflakeDashboardView;
-	boxes: readonly (HTMLInputElement | ProseBox)[];
+	/** Each box by the field it holds. */
+	boxes: ReadonlyMap<string, HTMLInputElement | ProseBox>;
 	save: HTMLButtonElement;
 	/** Whether the panel takes no words of itself: a read-only project, or a note not there. */
 	readOnly: boolean;
+	/** Counts its boxes' words again, for words put in from elsewhere. */
+	recount: () => void;
 }
 
 /**
  * The step panels standing, by draft key, kept with the host as the drafts
- * are: two dashboards of one project show one draft, so a save holds every
- * panel showing it and lets each of them go when it is done.
+ * are: two dashboards of one project show one draft, so words typed in one
+ * panel are put into every other showing it, and a save holds them all and
+ * lets each of them go when it is done.
  */
 const STEP_PANELS = new WeakMap<DashboardHost, Map<string, Set<StepPanel>>>();
 
 /** Holds a panel's boxes and Save still, or gives them back to what the panel allows of itself. */
 function holdStepPanel(panel: StepPanel, held: boolean): void {
 	const off = held || panel.readOnly;
-	for (const box of panel.boxes) box.disabled = off;
+	for (const box of panel.boxes.values()) box.disabled = off;
 	panel.save.disabled = off;
 }
 
@@ -686,10 +690,59 @@ export class SnowflakeDashboardView extends ItemView {
 		return [...panels];
 	}
 
-	/** A step panel just drawn, among those a save of its draft holds. */
+	/**
+	 * A step panel just drawn, among those a save of its draft holds. Drawn
+	 * beside another dashboard's panel showing the same words, its prose
+	 * boxes take that panel's nodes as copies at once, leaving the other's
+	 * nodes, and the edits remembered in them, where they are.
+	 */
 	private drewStepPanel(draftKey: string, panel: StepPanel): void {
-		this.stepPanels(draftKey);
+		const shown = this.stepPanels(draftKey).find((other) => other.view !== this);
 		STEP_PANELS.get(this.host)?.get(draftKey)?.add(panel);
+		if (shown === undefined) return;
+		for (const [id, box] of panel.boxes) {
+			const from = shown.boxes.get(id);
+			if (box instanceof ProseBox && from instanceof ProseBox && box.value === from.value) {
+				box.follow(from);
+			}
+		}
+	}
+
+	/** This dashboard's step panels let go of, as it closes. */
+	private forgetStepPanels(): void {
+		for (const panels of STEP_PANELS.get(this.host)?.values() ?? []) {
+			for (const panel of panels) {
+				if (panel.view === this) panels.delete(panel);
+			}
+		}
+	}
+
+	/**
+	 * Puts a draft just typed here into the other dashboards showing it, as
+	 * the app keeps two panes of one note alike. A panel left showing older
+	 * words would save them over the draft, or start the draft again from
+	 * them at its next keystroke, and either way lose what was typed here.
+	 * A prose box follows the one typed in node for node, so Undo still
+	 * reaches the typing done in it before.
+	 */
+	private showStepDraft(draftKey: string, fields: StepFields): void {
+		const panels = this.stepPanels(draftKey);
+		const typedIn = panels.find((panel) => panel.view === this);
+		for (const panel of panels) {
+			if (panel === typedIn) continue;
+			for (const [id, box] of panel.boxes) {
+				const from = typedIn?.boxes.get(id);
+				if (box instanceof ProseBox && from instanceof ProseBox) {
+					box.follow(from);
+					continue;
+				}
+				// A one-line box keeps its text in a node of the browser's own,
+				// out of reach: set whole, its earlier typing leaves Undo's reach.
+				const value = fields[id] ?? '';
+				if (box.value !== value) box.value = value;
+			}
+			panel.recount();
+		}
 	}
 
 	getDisplayText(): string {
@@ -834,6 +887,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.releaseMemberControls();
 		this.disposeStatisticsPanels();
 		this.disposeTaskPanels();
+		this.forgetStepPanels();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -5797,7 +5851,7 @@ export class SnowflakeDashboardView extends ItemView {
 			disabled: fieldReadOnly,
 		});
 		inputs.set('one-sentence-summary', textarea);
-		this.addLengthHint(panel, textarea);
+		const countSummary = this.addLengthHint(panel, textarea);
 		const candidateTitles = this.createDisclosure(
 			panel,
 			'1:candidate-titles',
@@ -5842,14 +5896,16 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 		const rememberDraft = (): void => {
 			const activeDraft = this.stepDrafts.get(draftKey);
+			const typed = collectFields();
 			this.stepDrafts.set(draftKey, {
-				fields: collectFields(),
+				fields: typed,
 				expectedRevision:
 					activeDraft?.expectedRevision ??
 					draft?.expectedRevision ??
 					model.stepRevisions[1] ??
 					'',
 			});
+			this.showStepDraft(draftKey, typed);
 		};
 		for (const input of inputs.values()) {
 			(input instanceof ProseBox ? input.el : input).addEventListener(
@@ -5873,7 +5929,7 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			draftKey,
 		);
-		this.drewStepPanel(draftKey, { view: this, boxes: [...inputs.values()], save, readOnly });
+		this.drewStepPanel(draftKey, { view: this, boxes: inputs, save, readOnly, recount: countSummary });
 	}
 
 	private renderOneParagraphSummary(
@@ -5933,7 +5989,7 @@ export class SnowflakeDashboardView extends ItemView {
 			value: current[paragraphSectionId] ?? '',
 			disabled: fieldReadOnly,
 		});
-		this.addLengthHint(panel, input);
+		const countParagraph = this.addLengthHint(panel, input);
 
 		const description = this.createDisclosure(
 			panel,
@@ -5962,18 +6018,20 @@ export class SnowflakeDashboardView extends ItemView {
 			value: current[descriptionSectionId] ?? '',
 			disabled: fieldReadOnly,
 		});
-		this.addLengthHint(description, descriptionInput);
+		const countDescription = this.addLengthHint(description, descriptionInput);
 
 		const rememberDraft = (): void => {
 			const activeDraft = this.stepDrafts.get(draftKey);
+			const typed = {
+				[paragraphSectionId]: input.value,
+				[descriptionSectionId]: descriptionInput.value,
+			};
 			this.stepDrafts.set(draftKey, {
-				fields: {
-					[paragraphSectionId]: input.value,
-					[descriptionSectionId]: descriptionInput.value,
-				},
+				fields: typed,
 				expectedRevision:
 					activeDraft?.expectedRevision ?? model.stepRevisions[2] ?? '',
 			});
+			this.showStepDraft(draftKey, typed);
 		};
 		input.el.addEventListener('input', rememberDraft);
 		descriptionInput.el.addEventListener('input', rememberDraft);
@@ -5996,7 +6054,19 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			draftKey,
 		);
-		this.drewStepPanel(draftKey, { view: this, boxes: [input, descriptionInput], save, readOnly });
+		this.drewStepPanel(draftKey, {
+			view: this,
+			boxes: new Map([
+				[paragraphSectionId, input],
+				[descriptionSectionId, descriptionInput],
+			]),
+			save,
+			readOnly,
+			recount: () => {
+				countParagraph();
+				countDescription();
+			},
+		});
 	}
 
 	/**
@@ -7394,14 +7464,16 @@ export class SnowflakeDashboardView extends ItemView {
 			value: current[sectionId] ?? '',
 			disabled: fieldReadOnly,
 		});
-		this.addLengthHint(panel, input);
+		const countLength = this.addLengthHint(panel, input);
 		const rememberDraft = (): void => {
 			const activeDraft = this.stepDrafts.get(draftKey);
+			const typed = { [sectionId]: input.value };
 			this.stepDrafts.set(draftKey, {
-				fields: { [sectionId]: input.value },
+				fields: typed,
 				expectedRevision:
 					activeDraft?.expectedRevision ?? model.stepRevisions[id] ?? '',
 			});
+			this.showStepDraft(draftKey, typed);
 		};
 		input.el.addEventListener('input', rememberDraft);
 		const save = this.addSaveAndOpenActions(
@@ -7421,7 +7493,13 @@ export class SnowflakeDashboardView extends ItemView {
 			draftKey,
 			!missing,
 		);
-		this.drewStepPanel(draftKey, { view: this, boxes: [input], save, readOnly: readOnly || missing });
+		this.drewStepPanel(draftKey, {
+			view: this,
+			boxes: new Map([[sectionId, input]]),
+			save,
+			readOnly: readOnly || missing,
+			recount: countLength,
+		});
 	}
 
 	/**
@@ -7431,7 +7509,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 * which length: under a convention that counts characters, calling them
 	 * words puts the target out by a factor of five.
 	 */
-	private addLengthHint(container: HTMLElement, box: ProseBox): void {
+	private addLengthHint(container: HTMLElement, box: ProseBox): () => void {
 		const hint = container.createEl('p', {
 			cls: 'snowflake-method-hint snowflake-method-length-hint',
 		});
@@ -7455,6 +7533,7 @@ export class SnowflakeDashboardView extends ItemView {
 		};
 		box.el.addEventListener('input', update);
 		update();
+		return update;
 	}
 
 	private renderWritingHints(
@@ -7599,6 +7678,11 @@ export class SnowflakeDashboardView extends ItemView {
 			return;
 		}
 		this.stepDrafts.delete(draftKey);
+		// The other dashboards showing the draft let it go too, or the next
+		// keystroke in one of them would start it again from the words let go.
+		for (const panel of this.stepPanels(draftKey)) {
+			if (panel.view !== this) void panel.view.refresh();
+		}
 		await this.refresh();
 	}
 

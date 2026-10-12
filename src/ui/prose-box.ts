@@ -25,6 +25,55 @@ export interface ProseBoxSpec {
 	disabled?: boolean;
 }
 
+/**
+ * Each node of a prose box with its copies in the other boxes showing the
+ * same words, one family per node, by box. A copy is made once and kept, so
+ * the one put back is always the one the box's own edits were made in. The
+ * family holds its boxes weakly: a box closed goes, copies and all, with
+ * nothing here keeping it.
+ */
+const TWINS = new WeakMap<Node, WeakMap<HTMLElement, Node>>();
+
+/** Enters a node in a family, as the one standing for its box. */
+function enterTwin(family: WeakMap<HTMLElement, Node>, box: HTMLElement, node: Node): void {
+	family.set(box, node);
+	TWINS.set(node, family);
+}
+
+/**
+ * The copy in one box of a node of another: the one kept, or the node
+ * standing in its place taken over, or a new one. A node new to the words
+ * -- in a box drawn since the others were copied -- joins the family of the
+ * node standing in its place instead of putting that node out, so the
+ * edits remembered in it still find it.
+ */
+function twinIn(box: HTMLElement, node: Node, from: HTMLElement, at: number): Node {
+	const family = TWINS.get(node);
+	const kept = family?.get(box);
+	if (kept !== undefined) return kept;
+	const here = box.childNodes[at];
+	if (here !== undefined && here.nodeName === node.nodeName) {
+		const hers = TWINS.get(here);
+		if (hers === undefined) {
+			const joined = family ?? new WeakMap<HTMLElement, Node>();
+			if (family === undefined) enterTwin(joined, from, node);
+			enterTwin(joined, box, here);
+			return here;
+		}
+		if (family === undefined && !hers.has(from)) {
+			enterTwin(hers, from, node);
+			return here;
+		}
+	}
+	const own = family ?? new WeakMap<HTMLElement, Node>();
+	if (family === undefined) enterTwin(own, from, node);
+	// A new break is made in the box itself, at its end, and moved into its place by the caller.
+	const twin =
+		node.nodeType === Node.TEXT_NODE ? box.doc.createTextNode(node.nodeValue ?? '') : box.createEl('br');
+	enterTwin(own, box, twin);
+	return twin;
+}
+
 export class ProseBox {
 	readonly el: HTMLElement;
 
@@ -56,6 +105,33 @@ export class ProseBox {
 
 	set value(next: string) {
 		this.el.textContent = next;
+	}
+
+	/**
+	 * Takes the words of another box showing the same draft -- another
+	 * dashboard's -- node for node. The browser keeps one undo history for
+	 * the whole window and remembers each edit by the nodes it was made in,
+	 * putting back the very nodes an edit took out when it is undone. So each
+	 * node of the other box has one copy here, made once and kept, and when
+	 * the other's Undo puts a node back, its copy comes back here too: undone
+	 * in the order they were made, wherever they were made, every edit finds
+	 * the nodes it remembers. Anything but text and breaks, which a
+	 * plain-text box does not hold, has its words set whole.
+	 */
+	follow(other: ProseBox): void {
+		const box = this.el;
+		const from = other.el;
+		const nodes = Array.from(from.childNodes);
+		if (nodes.some((node) => node.nodeType !== Node.TEXT_NODE && node.nodeName !== 'BR')) {
+			this.value = other.value;
+			return;
+		}
+		nodes.forEach((node, at) => {
+			const twin = twinIn(box, node, from, at);
+			if (box.childNodes[at] !== twin) box.insertBefore(twin, box.childNodes[at] ?? null);
+			if (twin.nodeValue !== node.nodeValue) twin.nodeValue = node.nodeValue;
+		});
+		while (box.childNodes.length > nodes.length) box.lastChild?.remove();
 	}
 
 	get disabled(): boolean {

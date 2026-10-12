@@ -60,4 +60,60 @@ describe('ProseBox', () => {
 		expect(box.el.getAttribute('contenteditable')).toBe('plaintext-only');
 		expect(box.el.classList.contains('is-disabled')).toBe(false);
 	});
+
+	it('follows another box node for node, keeping the text node it already has', () => {
+		const typedIn = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p', value: 'orig' });
+		const follower = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p', value: 'orig' });
+		const own = follower.el.firstChild;
+		(typedIn.el.firstChild as Text).appendData('AB');
+		follower.follow(typedIn);
+		expect(follower.value).toBe('origAB');
+		expect(Array.from(follower.el.childNodes)).toEqual([own]);
+	});
+
+	it('puts back its very copies when the other box gets its nodes back, as an Undo does', () => {
+		const typedIn = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p' });
+		const follower = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p' });
+		// Enter splits the words into nodes of their own.
+		const lines = [document.createTextNode('alpha'), document.createTextNode('\n'), document.createTextNode('beta')];
+		typedIn.el.replaceChildren(...lines);
+		follower.follow(typedIn);
+		const copies = Array.from(follower.el.childNodes);
+		expect(follower.value).toBe('alpha\nbeta');
+		// Everything selected and typed over: one new node in their place.
+		typedIn.el.replaceChildren(document.createTextNode('Q'));
+		follower.follow(typedIn);
+		expect(follower.value).toBe('Q');
+		// Undone: the browser puts its own nodes back, and the copies come back with them.
+		typedIn.el.replaceChildren(...lines);
+		follower.follow(typedIn);
+		expect(Array.from(follower.el.childNodes)).toEqual(copies);
+		expect(follower.value).toBe('alpha\nbeta');
+	});
+
+	it('takes a box drawn since into the families its words already have, keeping their nodes', () => {
+		const first = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p', value: 'orig' });
+		const second = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p', value: 'orig' });
+		second.follow(first);
+		const kept = [first.el.firstChild, second.el.firstChild];
+		// A third box, drawn afresh from the same words, typed in before anything copied it.
+		const third = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p', value: 'orig' });
+		(third.el.firstChild as Text).appendData('CD');
+		first.follow(third);
+		second.follow(third);
+		expect([first.el.firstChild, second.el.firstChild]).toEqual(kept);
+		expect([first.value, second.value]).toEqual(['origCD', 'origCD']);
+	});
+
+	it('copies breaks as breaks, and sets words whole past anything else', () => {
+		const typedIn = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p' });
+		const follower = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p' });
+		typedIn.el.append('first', typedIn.el.createEl('br'), 'second');
+		follower.follow(typedIn);
+		expect(Array.from(follower.el.childNodes).map((node) => node.nodeName)).toEqual(['#text', 'BR', '#text']);
+		expect(follower.value).toBe('first\nsecond');
+		typedIn.el.createDiv({ text: 'nested' });
+		follower.follow(typedIn);
+		expect(follower.value).toBe(typedIn.value);
+	});
 });
