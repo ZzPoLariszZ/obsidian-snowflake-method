@@ -153,7 +153,7 @@ export class StreamSearchBar {
 		this.findInput.addEventListener('input', (event) => {
 			// The query is read once the input method has settled on its
 			// characters, not at every keystroke of the spelling.
-			if ((event as InputEvent).isComposing) return;
+			if (event.isComposing) return;
 			this.queueQuery();
 		});
 		this.findInput.addEventListener('compositionend', () => {
