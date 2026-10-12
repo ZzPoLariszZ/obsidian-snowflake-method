@@ -8,11 +8,17 @@ import {
   isDocumentType,
   joinChapters,
   safeFileName,
+  type DocumentType,
   type ExportFormat,
   type ExportLayout,
   type ExportSeparator,
 } from "../domain";
-import { documentTypeOf, type VaultRepository } from "../repository";
+import {
+  ManagedFileNotFoundError,
+  documentTypeOf,
+  frontmatterLength,
+  type VaultRepository,
+} from "../repository";
 import { pluginWrittenRanges } from "../templates";
 import { createOrUpdatePlainFile } from "./json-store";
 import type { ManuscriptService } from "./manuscript-service";
@@ -226,23 +232,38 @@ export class ManuscriptExportService {
     path: string,
     options: Pick<ManuscriptExportOptions, "indent" | "paragraphSpacing">,
   ): Promise<{ title: string; content: string }> {
-    const record = await this.repository.readManaged(path);
-    const declared = documentTypeOf(record.frontmatter);
-    const kind = isDocumentType(declared) ? declared : "draft";
+    const { body, kind } = await this.noteBody(path);
     return {
-      title: fileStem(record.path),
-      content: exportProse(record.body, pluginWrittenRanges(record.body, kind), {
+      title: fileStem(normalizePath(path)),
+      content: exportProse(body, pluginWrittenRanges(body, kind), {
         indent: options.indent,
         paragraphSpacing: options.paragraphSpacing,
         script:
           project === null
-            ? exportScriptOf(record.body)
+            ? exportScriptOf(body)
             : project.locale === "zh-CN"
               ? "cjk"
               : "latin",
       }),
     };
   }
+
+  /**
+   * A note's body and the kind it declares. Frontmatter that will not read
+   * keeps no words from the export: the body begins past its closing fence
+   * all the same, and is read as a chapter, declaring nothing.
+   */
+  private async noteBody(path: string): Promise<{ body: string; kind: DocumentType }> {
+    const record = await this.repository.tryReadManaged(path);
+    if (record !== null) {
+      const declared = documentTypeOf(record.frontmatter);
+      return { body: record.body, kind: isDocumentType(declared) ? declared : "draft" };
+    }
+    const content = await this.repository.readPlainFile(path);
+    if (content === null) throw new ManagedFileNotFoundError(normalizePath(path));
+    return { body: content.slice(frontmatterLength(content)), kind: "draft" };
+  }
+
 }
 
 /** A folder as stored: no leading or trailing slashes, the root as nothing. */

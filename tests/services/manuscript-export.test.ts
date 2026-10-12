@@ -164,6 +164,18 @@ describe("ManuscriptExportService", () => {
     ]);
   });
 
+  it("exports a note whose frontmatter will not read, from past its closing fence", async () => {
+    await fakeVault.seedFile("Loose/Broken.md", "---\ntitle: a: b\n---\nThe words stay.\n");
+    const plan = await service.exporter.plan(
+      null,
+      { kind: "segment", path: "Loose/Broken.md" },
+      { ...options, indent: false, paragraphSpacing: false },
+    );
+    expect(plan.targets.map((target) => [target.path, target.content])).toEqual([
+      ["Out/Broken.txt", "The words stay.\n"],
+    ]);
+  });
+
   it("says which files already stand, and writes over them when told to", async () => {
     const first = await service.exporter.plan(project, { kind: "manuscript" }, options);
     await service.exporter.write(first);
