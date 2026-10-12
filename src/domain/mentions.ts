@@ -355,15 +355,11 @@ export function resolveMentions(
 	candidateIgnores: readonly MentionIgnore[],
 ): EntityOccurrence[] {
 	// Candidate ignores first: a hit that loses its only candidate is not a
-	// mention at all, and a shorter hit it overlapped may now win instead. A
-	// note never mentions itself, so its own candidacy goes the same way: an
-	// entity's page names it throughout, and a link from the page to itself
-	// leads nowhere.
+	// mention at all, and a shorter hit it overlapped may now win instead.
 	const silenced = (
 		candidate: MentionCandidate,
 		matchedText: string,
 	): boolean =>
-		candidate.memberPath === path ||
 		candidateIgnores.some(
 			(rule) =>
 				rule.scope !== 'occurrence' &&
@@ -413,7 +409,18 @@ export function resolveMentions(
 	}
 	winners.sort((left, right) => left.from - right.from);
 
-	return winners.map((hit) => {
+	// A note never mentions itself: an entity's page names it throughout, and
+	// a link from the page to itself leads nowhere. Its own candidacy goes
+	// only now, after the overlaps, because its name still claims its words:
+	// a shorter name inside it is no mention of anyone else.
+	const others = winners
+		.map((hit) => ({
+			...hit,
+			candidates: hit.candidates.filter((candidate) => candidate.memberPath !== path),
+		}))
+		.filter((hit) => hit.candidates.length > 0);
+
+	return others.map((hit) => {
 		if (hit.link !== null) {
 			const target = hit.link.target;
 			const meant = hit.candidates.find((candidate) =>

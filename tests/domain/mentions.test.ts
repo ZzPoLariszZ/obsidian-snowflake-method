@@ -212,6 +212,20 @@ describe('entity mentions', () => {
 			expect(found?.resolvedMemberPath).toBe(bob);
 		});
 
+		it("keeps a shorter name inside the page's own name from being a mention", () => {
+			const own = 'Demo/20_Character/张三丰.md';
+			const roster = [
+				source('张三丰', 'name', own),
+				source('张三', 'name', 'Demo/20_Character/张三.md'),
+			];
+			// The page's own name still claims its words, so 张三 is not found in it.
+			expect(mentions('张三丰下山了。', roster, [], own)).toEqual([]);
+			// Standing on its own, 张三 is still a mention on that page.
+			expect(mentions('张三来了。', roster, [], own).map((entry) => entry.matchedText)).toEqual([
+				'张三',
+			]);
+		});
+
 		it('holds a note-scoped silence to its note', () => {
 			const rule: MentionIgnore = {
 				scope: 'note',
