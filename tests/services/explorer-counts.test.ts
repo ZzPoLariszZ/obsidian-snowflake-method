@@ -16,7 +16,7 @@ function service(files: FakeFiles, totals: Record<string, number | null>, plugin
 	});
 	const landed: [string, number | null][] = [];
 	const ask = (paths: string[]): Promise<void> => {
-		counts.request(paths, (path, total) => landed.push([path, total]));
+		counts.askFor(paths, (path, total) => landed.push([path, total]));
 		return new Promise((resolve) => setTimeout(resolve, 0));
 	};
 	return { counts, countNote, counted, breathe, landed, ask };
@@ -108,7 +108,7 @@ describe("ExplorerCountService", () => {
 		await ask(["a.md", "b.md"]);
 		expect(landed.map(([path]) => path)).toEqual(["a.md", "b.md"]);
 		landed.length = 0;
-		counts.request(["a.md"], (path, total) => landed.push([path, total]));
+		counts.askFor(["a.md"], (path, total) => landed.push([path, total]));
 		counts.clear();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(landed).toEqual([]);

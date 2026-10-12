@@ -1144,7 +1144,7 @@ export class ExplorerEnhancer {
 				const badge = this.ensureBadge(item, settings);
 				if (badge !== null && !this.fillFromMemo(item, badge)) owed.push(path);
 			}
-			if (owed.length > 0) this.counts.request(owed, this.onCounted);
+			if (owed.length > 0) this.counts.askFor(owed, this.onCounted);
 		}
 		if (settings.explorerImmersive && this.immersiveRoot !== null) this.shade(view, attachment.container, this.immersiveRoot);
 		attachment.arrange?.decorate();

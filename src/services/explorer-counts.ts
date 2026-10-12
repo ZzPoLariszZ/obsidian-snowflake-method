@@ -60,7 +60,7 @@ export class ExplorerCountService {
 	}
 
 	/** Asks for the totals of these paths, the first of them first, and tells the listener of each as it lands. */
-	request(paths: readonly string[], listener: ExplorerCountListener): void {
+	askFor(paths: readonly string[], listener: ExplorerCountListener): void {
 		for (const path of [...paths].reverse()) {
 			const listeners = this.waiting.get(path) ?? new Set<ExplorerCountListener>();
 			listeners.add(listener);
