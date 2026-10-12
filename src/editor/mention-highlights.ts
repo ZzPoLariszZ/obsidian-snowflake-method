@@ -76,6 +76,13 @@ export interface MentionHighlightConfig {
 	 * more than one, as a note's does, which asks it which note it shows.
 	 */
 	marks(body: string, view: EditorView): readonly MentionMark[];
+	/**
+	 * Whether an editor wears marks at all, asked before its text is read: a
+	 * planner serving every editor in the vault, as a note's does, passes over
+	 * the ones it never marks without copying their text or re-planning them
+	 * at every pause. Left out, every editor does.
+	 */
+	reaches?(view: EditorView): boolean;
 }
 
 /** How long typing may pause before the marks are re-planned. */
@@ -140,7 +147,8 @@ export function mentionDecorations(
 
 function planDecorations(view: EditorView, state: EditorState): DecorationSet {
 	const config = state.facet(mentionConfig);
-	return mentionDecorations(config?.marks(state.doc.toString(), view) ?? []);
+	if (config === null || config.reaches?.(view) === false) return Decoration.none;
+	return mentionDecorations(config.marks(state.doc.toString(), view));
 }
 
 const mentionPlugin = ViewPlugin.fromClass(
@@ -162,6 +170,9 @@ const mentionPlugin = ViewPlugin.fromClass(
 			}
 			if (!update.docChanged) return;
 			this.decorations = this.decorations.map(update.changes);
+			// An editor the planner never marks needs no re-plan after typing;
+			// the refresh effect asks again once it is reached.
+			if (update.state.facet(mentionConfig)?.reaches?.(update.view) === false) return;
 			this.arm();
 		}
 

@@ -1143,6 +1143,7 @@ export default class SnowflakeMethodPlugin
 			),
 			caretParagraphWhen((view) => this.editorInProject(view)),
 			mentionHighlights({
+				reaches: (view) => this.noteEditorReached(view),
 				marks: (body, view) => this.noteEditorMarks(view, body),
 			}),
 			// Where a right-click landed, for the mention under it: the app
@@ -10995,11 +10996,19 @@ export default class SnowflakeMethodPlugin
 		return path !== undefined && this.dressedNoteProject(path) !== null;
 	}
 
+	/**
+	 * Whether an editor of the app's own wears a project's marks: a note's own
+	 * editor showing a dressed note of a project. A table's cell is an editor
+	 * of its own inside the note's, its text the cell's alone rather than the
+	 * note's, and it wears nothing.
+	 */
+	private noteEditorReached(view: EditorView): boolean {
+		return view.dom.isConnected && !isNestedEditor(view) && this.editorInProject(view);
+	}
+
 	/** The marks an editor of the app's own wears, for the note it shows. */
 	private noteEditorMarks(view: EditorView, body: string): readonly MentionMark[] {
-		// A table's cell is an editor of its own inside the note's, its text
-		// the cell's alone rather than the note's, and it wears nothing.
-		if (!view.dom.isConnected || isNestedEditor(view)) return [];
+		if (!this.noteEditorReached(view)) return [];
 		const path = view.state.field(editorInfoField, false)?.file?.path;
 		if (path === undefined) return [];
 		return this.noteMentions?.editorMarks(path, body) ?? [];

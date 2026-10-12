@@ -256,6 +256,8 @@ export class NoteMentions {
 	private readonly worn = new WeakMap<HTMLElement, { path: string | null; project: string | null }>();
 	/** The mentions wrapped into reading sections, each answering its own menu. */
 	private readonly read = new WeakMap<HTMLElement, ReadMention>();
+	/** Each note view by its content root, as a reading section finds it. */
+	private readonly views = new WeakMap<Element, MentionNote>();
 	private pointed: Pointed | null = null;
 	private destroyed = false;
 
@@ -326,17 +328,14 @@ export class NoteMentions {
 		if (!isElement(container)) return;
 		if (container.closest('.markdown-reading-view') === null) return;
 		if (container.closest('.markdown-embed, .internal-embed, .hover-popover') !== null) return;
-		const root = container.closest('.workspace-leaf-content');
-		let shown: MentionNote | null = null;
-		for (const note of this.deps.notes()) {
-			if (note.containerEl === root) {
-				if (note.path === ctx.sourcePath) shown = note;
-				break;
-			}
-		}
-		if (shown === null) return;
+		// Asked first, being cheap: most notes drawn belong to no project, and
+		// their sections need no walk through the open tabs.
 		const project = this.deps.projectOf(ctx.sourcePath);
 		if (project === null) return;
+		const root = container.closest('.workspace-leaf-content');
+		if (root === null) return;
+		const shown = this.noteAt(root, ctx.sourcePath);
+		if (shown === null) return;
 		const info = ctx.getSectionInfo(el);
 		if (info === null) return;
 		// A view drawn again whole hands its sections their lines and no text:
@@ -484,6 +483,22 @@ export class NoteMentions {
 			},
 			event,
 		});
+	}
+
+	/**
+	 * The note view whose content root this is, when it shows the note at
+	 * the path: found once for the root and kept, since every section of one
+	 * view asks, and looked for again only when the one kept shows another.
+	 */
+	private noteAt(root: Element, path: string): MentionNote | null {
+		const kept = this.views.get(root);
+		if (kept !== undefined && kept.path === path) return kept;
+		for (const note of this.deps.notes()) {
+			if (note.containerEl !== root) continue;
+			this.views.set(root, note);
+			return note.path === path ? note : null;
+		}
+		return null;
 	}
 
 	private guard(work: Promise<void>): void {
