@@ -1,0 +1,42 @@
+name: Feature request / 功能建议
+description: Suggest a new idea / 提出新的想法
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/ZzPoLariszZ/obsidian-snowflake-method#roadmap) and the [existing issues](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/issues?q=is%3Aissue) first. English or Chinese are both fine.
+
+        请先查看[路线图](https://github.com/ZzPoLariszZ/obsidian-snowflake-method#路线图)和[已有的 issue](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/issues?q=is%3Aissue)。中文或英文都可以。
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea / 你的想法
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why you need it / 为什么需要
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area / 相关位置
+      options:
+        - Dashboard / 工作台
+        - Worldbuilding entity / 世界观实体
+        - Manuscript stream / 正文流
+        - Data statistics / 数据统计
+        - Task management / 任务管理
+        - Visualization workspace / 可视化工作区
+        - File explorer / 文件列表
+        - Settings / 设置
+        - Other / 其他
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots or sketches / 截图或草图
