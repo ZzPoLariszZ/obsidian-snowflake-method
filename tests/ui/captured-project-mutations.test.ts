@@ -10,7 +10,7 @@ vi.mock('obsidian', async (importOriginal) => {
 	return {
 		...runtime,
 		Modal: class extends runtime.Modal {
-			modalEl = { addClass: (): void => undefined };
+			modalEl = { addClass: (): void => undefined, dataset: {} as DOMStringMap };
 			contentEl = { empty: (): void => undefined };
 			setTitle(): void {}
 			override open(): void { openedForms.push(this); }

@@ -3899,14 +3899,30 @@ export default class SnowflakeMethodPlugin
 		this.registerDomEvent(doc, 'input', (event) => {
 			const field = this.writingSurfaceField(event.target);
 			if (field === null) return;
-			// A modal is drawn outside the view that opened it, so it carries
-			// no mark of its own: the project it would save into answers
-			// instead, which is the one the plugin calls current.
-			this.sessions.surfaceActivity(
-				field.closest<HTMLElement>('[data-snowflake-project]')?.dataset
-					.snowflakeProject ?? this.settings.recentProjectPath,
-			);
+			this.sessions.surfaceActivity(this.fieldProjectPath(field));
 		});
+	}
+
+	/**
+	 * The project a box of the dashboard or of a dialog belongs to. The
+	 * dashboard marks its root, and a member form its dialog, since a note's
+	 * menu opens the form of the note's project, which need not be the
+	 * current one. A dialog of no mark of its own was opened from the one
+	 * beneath it -- a vocabulary entry's from the form whose record asked for
+	 * it -- and belongs to that one's project. Only a dialog over no marked
+	 * one answers with the project the plugin calls current.
+	 */
+	private fieldProjectPath(field: HTMLElement): string | null {
+		const marked = field.closest<HTMLElement>('[data-snowflake-project]');
+		if (marked !== null) return marked.dataset.snowflakeProject ?? null;
+		let layer = field.closest('.modal-container')?.previousElementSibling ?? null;
+		for (; layer !== null; layer = layer.previousElementSibling) {
+			const owner = layer.matches('.modal-container')
+				? layer.querySelector<HTMLElement>('.modal[data-snowflake-project]')
+				: null;
+			if (owner !== null) return owner.dataset.snowflakeProject ?? null;
+		}
+		return this.settings.recentProjectPath;
 	}
 
 	/**
@@ -3931,11 +3947,7 @@ export default class SnowflakeMethodPlugin
 				const field = this.menuField(event.target);
 				const span = this.fieldPress.release(field);
 				if (field === null || span === null) return;
-				// The dashboard says whose box it is; a dialog is drawn outside
-				// the view that opened it, so the current project answers.
-				const projectPath =
-					field.closest<HTMLElement>('[data-snowflake-project]')?.dataset
-						.snowflakeProject ?? this.settings.recentProjectPath;
+				const projectPath = this.fieldProjectPath(field);
 				if (projectPath === null) return;
 				event.preventDefault();
 				event.stopPropagation();

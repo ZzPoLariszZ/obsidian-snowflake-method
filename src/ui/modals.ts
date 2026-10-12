@@ -213,6 +213,13 @@ export interface EntityGroupOption {
  * per opened form.
  */
 export interface MemberFormContext {
+	/**
+	 * The project the form writes into, marked on its dialog as the dashboard
+	 * marks its own root: a form opened from a note's menu belongs to the
+	 * note's project, which need not be the current one, and the menu over
+	 * the form's boxes makes its entities and sticky notes where the mark says.
+	 */
+	projectPath: string;
 	notice: (message: string) => void;
 	/**
 	 * The groups a record can point into, labelled and in rail order. The
@@ -591,6 +598,11 @@ function isCrossWindowHTMLElement(
 		typeof candidate.instanceOf === 'function' &&
 		candidate.instanceOf(HTMLElement)
 	);
+}
+
+/** Marks a form's dialog with the project its context is for; a form opened without one is the current project's. */
+function markFormProject(modal: Modal, context: MemberFormContext | undefined): void {
+	if (context !== undefined) modal.modalEl.dataset.snowflakeProject = context.projectPath;
 }
 
 export abstract class SnowflakeFormModal<T> extends Modal {
@@ -1776,6 +1788,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			initial === undefined ? 'common.create' : 'common.save',
 		);
 		this.modalEl.addClass('snowflake-method-character-modal');
+		markFormProject(this, formContext);
 		this.name = new UniqueNameField(takenNames, initial?.name ?? null, () =>
 			this.t('modal.character.nameTaken'),
 		);
@@ -2686,6 +2699,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			initial === undefined ? 'common.create' : 'common.save',
 		);
 		this.modalEl.addClass('snowflake-method-scene-modal');
+		markFormProject(this, formContext);
 		this.characters = [...characters];
 		this.title = presetTitle ?? '';
 		this.name = new UniqueNameField(takenTitles, initial?.title ?? null, () =>
@@ -3280,6 +3294,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			initial === undefined ? 'common.create' : 'common.save',
 		);
 		this.modalEl.addClass('snowflake-method-character-modal');
+		markFormProject(this, formContext);
 		this.name = new UniqueNameField(takenNames, initial?.name ?? null, () =>
 			this.t('modal.entity.nameTaken'),
 		);

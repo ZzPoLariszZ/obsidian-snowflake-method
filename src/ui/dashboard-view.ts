@@ -4235,6 +4235,7 @@ export class SnowflakeDashboardView extends ItemView {
 			}));
 		};
 		return {
+			projectPath: model.path,
 			notice: (message) => {
 				new Notice(message);
 			},

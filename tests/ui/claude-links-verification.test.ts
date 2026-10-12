@@ -11,7 +11,7 @@ const { opened, menuClicks } = vi.hoisted(() => ({
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
 	class Modal extends runtime.Modal {
-		modalEl = { addClass: (): void => undefined };
+		modalEl = { addClass: (): void => undefined, dataset: {} as DOMStringMap };
 		setTitle(): void {}
 		setPlaceholder(): void {}
 		open(): void { opened.push(this); }

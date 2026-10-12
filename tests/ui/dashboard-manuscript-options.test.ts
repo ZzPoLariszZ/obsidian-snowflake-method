@@ -90,6 +90,8 @@ describe('manuscript options in dashboards for different projects', () => {
 		const { first, listManuscriptNotes } = dashboards();
 		const context = await first.memberFormContext(model(projectA), 'scene');
 		expect(listManuscriptNotes).toHaveBeenCalledExactlyOnceWith(projectA);
+		// The form's dialog is marked with this project, whichever one is current.
+		expect(context.projectPath).toBe(projectA);
 		expect(context.manuscriptNotes()).toEqual([
 			{ value: '[[Novel A/Manuscript/Part One/Chapter]]', label: 'Chapter' },
 			{ value: '[[Novel A/Manuscript/Part Two/Chapter]]', label: 'Chapter' },
