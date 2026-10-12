@@ -3969,11 +3969,6 @@ export default class SnowflakeMethodPlugin
 		const locale = this.projectLocaleOfPath(projectPath);
 		const t = (key: string, vars?: Record<string, string | number>): string =>
 			this.translateForProject(locale, key, vars);
-		const settled = (work: Promise<void>): void => {
-			void work.catch((error: unknown) => {
-				this.showError(error);
-			});
-		};
 		const menu = new Menu();
 		addClipboardEntries(menu, {
 			t,
@@ -3987,29 +3982,83 @@ export default class SnowflakeMethodPlugin
 		menu.addItem((item) =>
 			item.setSection(section).setIsLabel(true).setTitle(t('plugin.name')),
 		);
-		const ref = this.projectRefAtPath(projectPath);
-		if (ref !== null && !ref.readOnly) {
+		this.addSelectionEntries(menu, {
+			t,
+			section,
+			selection: span.text,
+			projectPath,
+			exportSelection: (text) => this.exportFieldPassage(projectPath, text),
+		});
+		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * The selected words' entries under the plugin's heading, for the menus
+	 * the plugin answers outside the stream: made into an entity or a sticky
+	 * note in the project they belong to, where it may be written, then
+	 * written out. One place, so a project note's menu and a box's menu gate
+	 * and act alike; the stream builds the same entries through its host.
+	 */
+	private addSelectionEntries(
+		menu: Menu,
+		options: {
+			t: Translate;
+			section: string;
+			selection: string;
+			/** A path in the project, which says which project the words are made into. */
+			projectPath: string;
+			exportNote?: () => Promise<void>;
+			exportSelection: (text: string) => Promise<void>;
+		},
+	): void {
+		const { t, section, selection, exportNote } = options;
+		const settled = (work: Promise<void>): void => {
+			void work.catch((error: unknown) => {
+				this.showError(error);
+			});
+		};
+		const root = this.writableProjectRoot(options.projectPath);
+		if (root !== null) {
 			addSelectionMakers(menu, {
 				t,
 				section,
-				selection: span.text,
+				selection,
 				addEntity: (name) => {
-					settled(this.addEntityFromText(ref.projectFile, name));
+					settled(this.addEntityFromText(root, name));
 				},
 				addStickyNote: (text) => {
-					settled(this.addStickyNoteFromText(ref.projectFile, text));
+					settled(this.addStickyNoteFromText(root, text));
 				},
 			});
 		}
 		addExportEntries(menu, {
 			t,
 			section,
-			selection: span.text,
+			selection,
+			...(exportNote === undefined
+				? {}
+				: {
+						exportNote: () => {
+							settled(exportNote());
+						},
+					}),
 			exportSelection: (text) => {
-				settled(this.exportFieldPassage(projectPath, text));
+				settled(options.exportSelection(text));
 			},
 		});
-		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * The folder of the project a path belongs to, where that project may be
+	 * written. Found as `noteStanding` finds it, so a draft outside its
+	 * project's folder and a project just renamed are found too, and refused
+	 * only where the scan knows the project as read-only: the makers ask
+	 * again when pressed.
+	 */
+	private writableProjectRoot(path: string): string | null {
+		const root = this.noteProjectRoot(path);
+		if (root === null) return null;
+		return this.knownProjectRoots.has(root) && !this.knownProjectsByRoot.has(root) ? null : root;
 	}
 
 	/**
@@ -9856,47 +9905,22 @@ export default class SnowflakeMethodPlugin
 		section: string,
 		head: () => void,
 	): void {
-		const root = this.noteProjectRoot(path);
-		if (root === null) return;
+		if (this.noteProjectRoot(path) === null) return;
 		const locale = this.projectLocaleOfPath(path);
 		const t = (key: string, vars?: Record<string, string | number>): string =>
 			this.translateForProject(locale, key, vars);
-		const selection = editor.getSelection();
-		const settled = (work: Promise<void>): void => {
-			void work.catch((error: unknown) => {
-				this.showError(error);
-			});
-		};
 		head();
-		const ref = this.projectRefAtPath(path);
-		if (ref !== null && !ref.readOnly) {
-			addSelectionMakers(menu, {
-				t,
-				section,
-				selection,
-				addEntity: (name) => {
-					settled(this.addEntityFromText(ref.projectFile, name));
-				},
-				addStickyNote: (text) => {
-					settled(this.addStickyNoteFromText(ref.projectFile, text));
-				},
-			});
-		}
-		addExportEntries(menu, {
+		this.addSelectionEntries(menu, {
 			t,
 			section,
-			selection,
+			selection: editor.getSelection(),
+			projectPath: path,
 			// What the editor holds is saved first, as the bar's button saves it.
-			exportNote: () => {
-				settled(
-					(info instanceof MarkdownView ? info.save() : Promise.resolve()).then(() =>
-						this.exportNote(path),
-					),
-				);
-			},
-			exportSelection: (text) => {
-				settled(this.exportPassage(path, text));
-			},
+			exportNote: () =>
+				(info instanceof MarkdownView ? info.save() : Promise.resolve()).then(() =>
+					this.exportNote(path),
+				),
+			exportSelection: (text) => this.exportPassage(path, text),
 		});
 	}
 
