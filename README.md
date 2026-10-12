@@ -40,6 +40,40 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 
 <p align="center"><strong>🎉 Great news! Randy Ingermanson has kindly given his permission! 🎉<br />🎉 This plugin proudly carries the Snowflake Method name! 🎉</strong></p>
 
+<div align="center">
+
+<details>
+<summary><strong>❤️ Support Randy and me ❤️</strong></summary>
+
+<br />
+
+Randy Ingermanson wrote two books on the Snowflake Method, [How to Write a Novel Using the Snowflake Method](https://www.amazon.com/dp/1500574058) and [How to Write a Dynamite Scene Using the Snowflake Method](https://www.amazon.com/dp/1937031187). They teach the method in full, and buying them is a good way to thank him.
+
+<p>
+  <a href="https://www.amazon.com/dp/1500574058"><img src="assets/sponsor/how-to-write-a-novel.jpg" height="240" alt="Cover of How to Write a Novel Using the Snowflake Method by Randy Ingermanson" /></a>
+  &nbsp;&nbsp;
+  <a href="https://www.amazon.com/dp/1937031187"><img src="assets/sponsor/how-to-write-a-dynamite-scene.jpg" height="240" alt="Cover of How to Write a Dynamite Scene Using the Snowflake Method by Randy Ingermanson" /></a>
+</p>
+
+If the plugin helps your writing, you can also buy me a coffee.
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://buymeacoffee.com/zzpolariszz"><img src="assets/sponsor/buy-me-a-coffee-qr.png" width="200" alt="QR code for Buy Me a Coffee" /></a><br />
+      <a href="https://buymeacoffee.com/zzpolariszz"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
+    </td>
+    <td align="center">
+      <a href="https://ko-fi.com/zzpolariszz"><img src="assets/sponsor/ko-fi-qr.png" width="200" alt="QR code for Ko-fi" /></a><br />
+      <a href="https://ko-fi.com/zzpolariszz"><img src="https://img.shields.io/badge/Tip%20Me%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Tip me on Ko-fi" /></a>
+    </td>
+  </tr>
+</table>
+
+</details>
+
+</div>
+
 <br />
 
 ## Features
@@ -675,6 +709,25 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 <br />
 
 <p align="center"><strong>🎉 好消息！Randy Ingermanson 已经点头授权！🎉<br />🎉 本插件可以名正言顺地使用「雪花写作法」这个名字啦！🎉</strong></p>
+
+<div align="center">
+
+<details>
+<summary><strong>❤️ 支持 Randy 和我 ❤️</strong></summary>
+
+<br />
+
+Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10步写出一篇好小说》](https://weread.qq.com/web/bookDetail/80f32130813ab71c2g01812a)，可以在微信读书上读到。书里把这套方法讲得最完整，支持正版也是对他最好的感谢。
+
+<p><a href="https://weread.qq.com/web/bookDetail/80f32130813ab71c2g01812a"><img src="assets/sponsor/how-to-write-a-novel-cn.jpg" height="240" alt="《雪花写作法：10步写出一篇好小说》封面" /></a></p>
+
+如果插件对你的写作有帮助，也欢迎用微信扫码请我喝瓶快乐水。
+
+<p><img src="assets/sponsor/wechat-qr.png" width="200" alt="微信赞赏码" /></p>
+
+</details>
+
+</div>
 
 <br />
 
