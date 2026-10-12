@@ -225,6 +225,18 @@ describe('StreamSearch', () => {
 		expect(search.currentMatch()).toEqual({ path: 'three.md', from: 3, to: 6 });
 	});
 
+	it('counts and asks about only the matches a replacement changes', async () => {
+		const { search, texts, record } = manuscript(book);
+		await search.setQuery('ash', plain);
+		await search.replaceAll('ash');
+		expect(record.asked).toEqual([[{ path: 'one.md', count: 1, lost: nothingLost }]]);
+		expect(texts.get('one.md')).toBe('ash fell. The ash tree stood.');
+		expect(record.summaries).toEqual([{ matches: 1, notes: 1 }]);
+		// Nothing left to change, nothing asked.
+		await search.replaceAll('ash');
+		expect(record.asked).toHaveLength(1);
+	});
+
 	it('expands a regular expression for the match it replaces', async () => {
 		const { search, texts } = manuscript({ 'one.md': 'Smith, Jane and Doe, John' });
 		await search.setQuery('(\\w+), (\\w+)', { ...plain, regex: true });

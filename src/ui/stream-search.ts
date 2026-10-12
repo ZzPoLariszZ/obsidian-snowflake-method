@@ -157,6 +157,16 @@ function marksLost(
 
 const breaksMarks = (lost: MarksLost): boolean => lost.revisions + lost.occurrences > 0;
 
+/**
+ * The replacements in one text that change it: a match already reading as
+ * its replacement would leave it is no change to make, count or ask about.
+ */
+function changesIn(text: string, search: TextSearch, template: string): TextReplacement[] {
+	return replacementsIn(text, search, template).filter(
+		(change) => change.insert !== text.slice(change.from, change.to),
+	);
+}
+
 export class StreamSearch {
 	private search: TextSearch | null = null;
 	private error: string | null = null;
@@ -352,7 +362,7 @@ export class StreamSearch {
 				if (!this.host.writable(path)) continue;
 				const text = this.textOf(path);
 				if (text === null) continue;
-				const replacements = replacementsIn(text, search, template);
+				const replacements = changesIn(text, search, template);
 				if (replacements.length === 0) continue;
 				plan.push({
 					path,
@@ -368,7 +378,7 @@ export class StreamSearch {
 			let notes = 0;
 			for (const { path } of plan) {
 				const done = await this.host.rewrite(path, (text) =>
-					replacementsIn(text, search, template),
+					changesIn(text, search, template),
 				);
 				if (done === null || done.count === 0) continue;
 				matches += done.count;
