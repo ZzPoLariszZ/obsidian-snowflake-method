@@ -120,7 +120,8 @@ export class ManuscriptExportService {
     if (scope.kind === "segment") {
       const note = await this.noteText(project, scope.path, options);
       if (note.content.length === 0) return { targets: [] };
-      return { targets: [target(pathFor(note.title), note.content)] };
+      const path = pathFor(this.noteFileName(project, scope.path, note.title));
+      return { targets: [target(path, note.content)] };
     }
     if (scope.kind === "passage") {
       // The words as selected, read the way a note is: a passage is no note,
@@ -264,6 +265,37 @@ export class ManuscriptExportService {
     return { body: content.slice(frontmatterLength(content)), kind: "draft" };
   }
 
+  /**
+   * The name one note's file goes by: its own, or, where another note of the
+   * project has the same name, its own with the folders it stands in below
+   * the project, so two such notes never write one file. A chapter keeps its
+   * name as long as no other note shares it.
+   */
+  private noteFileName(project: ProjectRef | null, path: string, stem: string): string {
+    if (project === null) return stem;
+    const own = normalizePath(path);
+    const name = stem.toLowerCase();
+    const shared = this.repository
+      .listFilesBelow(project.rootPath)
+      .some(
+        (file) =>
+          file.path !== own &&
+          file.path.endsWith(".md") &&
+          fileStem(file.path).toLowerCase() === name,
+      );
+    if (!shared) return stem;
+    const root = normalizeFolder(project.rootPath);
+    const parent = own.slice(0, Math.max(0, own.lastIndexOf("/")));
+    const below =
+      root.length === 0
+        ? parent
+        : parent === root
+          ? ""
+          : parent.startsWith(`${root}/`)
+            ? parent.slice(root.length + 1)
+            : parent;
+    return below.length === 0 ? stem : `${stem} (${below.split("/").join(" - ")})`;
+  }
 }
 
 /** A folder as stored: no leading or trailing slashes, the root as nothing. */

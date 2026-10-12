@@ -176,6 +176,21 @@ describe("ManuscriptExportService", () => {
     ]);
   });
 
+  it("names a note after its folders when another note of the project shares its name", async () => {
+    const alice = "Snowflake Projects/Novel/20_Character/Alice/Notes.md";
+    const harbor = "Snowflake Projects/Novel/60_Worldbuilding/Harbor/Notes.md";
+    await fakeVault.seedFile(alice, "She keeps the lighthouse.\n");
+    await fakeVault.seedFile(harbor, "Boats come in at dusk.\n");
+    const paths = async (path: string): Promise<string[]> =>
+      (await service.exporter.plan(project, { kind: "segment", path }, options)).targets.map(
+        (target) => target.path,
+      );
+    expect(await paths(alice)).toEqual(["Out/Novel/Notes (20_Character - Alice).txt"]);
+    expect(await paths(harbor)).toEqual(["Out/Novel/Notes (60_Worldbuilding - Harbor).txt"]);
+    // A name no other note shares stays as it is.
+    expect(await paths(DRAFT)).toEqual(["Out/Novel/Draft.txt"]);
+  });
+
   it("says which files already stand, and writes over them when told to", async () => {
     const first = await service.exporter.plan(project, { kind: "manuscript" }, options);
     await service.exporter.write(first);
