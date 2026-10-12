@@ -1,0 +1,124 @@
+name: Bug report / 问题反馈
+description: Something isn't working / 某个功能不正常
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Update to the latest version and search the [existing issues](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/issues?q=is%3Aissue) first. English or Chinese are both fine.
+
+        请先更新到最新版本，并搜索[已有的 issue](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/issues?q=is%3Aissue)。中文或英文都可以。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened / 发生了什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result / 预期结果
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where it happens / 出现位置
+      options:
+        - Dashboard / 工作台
+        - Worldbuilding entity / 世界观实体
+        - Manuscript stream / 正文流
+        - Data statistics / 数据统计
+        - Task management / 任务管理
+        - Visualization workspace / 可视化工作区
+        - File explorer / 文件列表
+        - Settings / 设置
+        - Other / 其他
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version / 插件版本
+      description: |
+        Settings › Community plugins
+        设置 › 第三方插件
+      placeholder: "0.25.1"
+    validations:
+      required: true
+
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version / Obsidian 版本
+      description: |
+        Settings › General
+        设置 › 关于
+      placeholder: "1.14.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform / 平台
+      multiple: true
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Tablet / 平板
+        - Phone / 手机
+    validations:
+      required: true
+
+  - type: dropdown
+    id: writing-language
+    attributes:
+      label: Writing language / 写作语言
+      options:
+        - Chinese / 中文
+        - English / 英文
+        - Mixed / 混合
+        - Other / 其他
+
+  - type: dropdown
+    id: other-plugins
+    attributes:
+      label: With other plugins turned off / 关闭其他插件后
+      options:
+        - Still happens / 仍然出现
+        - Goes away / 不再出现
+        - Not tried / 没试过
+
+  - type: textarea
+    id: debug-info
+    attributes:
+      label: Debug info / 调试信息
+      description: |
+        Command palette › Show debug info › Copy to clipboard
+        命令面板 › 显示调试信息 › 复制到剪贴板
+      render: text
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors / 控制台报错
+      description: Cmd+Option+I (macOS) or Ctrl+Shift+I › Console
+      render: text
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots or files / 截图或文件
