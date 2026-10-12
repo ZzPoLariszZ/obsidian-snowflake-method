@@ -502,9 +502,10 @@ export class SnowflakeManuscriptView extends ItemView {
 		chord('b', 'bold');
 		chord('i', 'italic');
 		// The find bar, at the keys the app searches a note with: Mod+F, and
-		// Mod+Alt+F with the replace row open.
-		scope.register(['Mod'], 'f', () => this.openSearchFromKeys(false));
-		scope.register(['Mod', 'Alt'], 'f', () => this.openSearchFromKeys(true));
+		// Mod+Alt+F with the replace row open. The letter is the key's name, as
+		// the app registers its own: on a Mac, Option types another character.
+		scope.register(['Mod'], 'F', () => this.openSearchFromKeys(false));
+		scope.register(['Mod', 'Alt'], 'F', () => this.openSearchFromKeys(true));
 	}
 
 	/**

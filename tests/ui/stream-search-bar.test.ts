@@ -149,7 +149,8 @@ describe('StreamSearchBar', () => {
 	it('turns an option with its chord or its button, and searches again at once', () => {
 		const { bar, hooks, press } = openBar();
 		bar.open(false, 'ash');
-		press(['Alt'], 'c');
+		// Registered by the key's name, which a Mac's Option leaves alone.
+		press(['Alt'], 'C');
 		expect(bar.searchOptions()).toEqual({ caseSensitive: true, wholeWord: false, regex: false });
 		const word = bar.containerEl.querySelectorAll<HTMLElement>('.snowflake-method-search-option')[1];
 		word?.click();

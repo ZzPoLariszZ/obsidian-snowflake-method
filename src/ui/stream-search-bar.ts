@@ -420,8 +420,11 @@ export class StreamSearchBar {
 		};
 		scope.register([], 'Tab', cross);
 		scope.register(['Shift'], 'Tab', cross);
+		// The letters as the app registers its own, by the key's name: on a Mac
+		// Option turns the letter typed into another character, and only the
+		// key's name still answers to the chord.
 		for (const option of OPTIONS) {
-			scope.register(mac ? ['Mod', 'Alt'] : ['Alt'], option.key.toLowerCase(), (event) => {
+			scope.register(mac ? ['Mod', 'Alt'] : ['Alt'], option.key, (event) => {
 				if (!this.hasFocus() || event.isComposing) return handOn;
 				this.flip(option.name);
 				return answered;
