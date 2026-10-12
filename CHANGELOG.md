@@ -8,6 +8,13 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.1]
+
+### Fixed
+
+- The plugin's page in the Obsidian community directory now shows the whole README. The page leaves out the Buy Me a Coffee and Ko-fi links, and the gap they left broke the folded support section. Everything after it, from the feature list to the Chinese half, was hidden inside that section.
+- Obsidian's automated review no longer reports an unneeded type cast in the find bar's code. The review checks the code with TypeScript 6.0, and the plugin is now built and checked with the same version. Nothing changes in how the plugin works.
+
 ## [0.25.0]
 
 ### Added
@@ -609,6 +616,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.25.1]
+
+### 修复
+
+- 插件在 Obsidian 社区网站上的介绍页，现在会显示完整的 README。这个页面会去掉 Buy Me a Coffee 和 Ko-fi 的链接，留下的空缺打乱了可折叠的支持一节。之后的全部内容，从功能列表到中文部分，都被收进了这一节里。
+- Obsidian 的自动审查不再报告查找栏代码中一处多余的类型断言。审查使用 TypeScript 6.0 检查代码，插件现在也用同一版本构建和检查。插件的功能和用法都没有变化。
 
 ## [0.25.0]
 
