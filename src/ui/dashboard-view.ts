@@ -322,6 +322,37 @@ interface StepDraft {
  */
 const STEP_DRAFTS = new WeakMap<DashboardHost, Map<string, StepDraft>>();
 
+/**
+ * The steps whose words are being written, by draft key, kept with the host
+ * as the drafts are: a panel drawn again before a save is done -- by a
+ * refresh, or in another dashboard of the project -- draws its boxes held,
+ * as the save holds the ones it was pressed for.
+ */
+const STEP_SAVES = new WeakMap<DashboardHost, Set<string>>();
+
+/** A step's boxes and Save as one panel drew them, and the dashboard that drew them. */
+interface StepPanel {
+	view: SnowflakeDashboardView;
+	boxes: readonly (HTMLInputElement | ProseBox)[];
+	save: HTMLButtonElement;
+	/** Whether the panel takes no words of itself: a read-only project, or a note not there. */
+	readOnly: boolean;
+}
+
+/**
+ * The step panels standing, by draft key, kept with the host as the drafts
+ * are: two dashboards of one project show one draft, so a save holds every
+ * panel showing it and lets each of them go when it is done.
+ */
+const STEP_PANELS = new WeakMap<DashboardHost, Map<string, Set<StepPanel>>>();
+
+/** Holds a panel's boxes and Save still, or gives them back to what the panel allows of itself. */
+function holdStepPanel(panel: StepPanel, held: boolean): void {
+	const off = held || panel.readOnly;
+	for (const box of panel.boxes) box.disabled = off;
+	panel.save.disabled = off;
+}
+
 export class SnowflakeDashboardView extends ItemView {
 	private readonly host: DashboardHost;
 	private selectedStep: StepId;
@@ -629,6 +660,36 @@ export class SnowflakeDashboardView extends ItemView {
 			STEP_DRAFTS.set(this.host, drafts);
 		}
 		return drafts;
+	}
+
+	private get stepSaves(): Set<string> {
+		let saves = STEP_SAVES.get(this.host);
+		if (saves === undefined) {
+			saves = new Set();
+			STEP_SAVES.set(this.host, saves);
+		}
+		return saves;
+	}
+
+	/** The panels on screen showing one step's draft, in every dashboard; ones drawn over are let go. */
+	private stepPanels(draftKey: string): StepPanel[] {
+		let byKey = STEP_PANELS.get(this.host);
+		if (byKey === undefined) {
+			byKey = new Map();
+			STEP_PANELS.set(this.host, byKey);
+		}
+		const panels = byKey.get(draftKey) ?? new Set<StepPanel>();
+		byKey.set(draftKey, panels);
+		for (const panel of panels) {
+			if (!panel.save.isConnected) panels.delete(panel);
+		}
+		return [...panels];
+	}
+
+	/** A step panel just drawn, among those a save of its draft holds. */
+	private drewStepPanel(draftKey: string, panel: StepPanel): void {
+		this.stepPanels(draftKey);
+		STEP_PANELS.get(this.host)?.get(draftKey)?.add(panel);
 	}
 
 	getDisplayText(): string {
@@ -5633,7 +5694,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const draftKey = `${model.projectId}:1`;
 		const draft = this.stepDrafts.get(draftKey);
 		const fields = draft?.fields ?? model.stepFields[1] ?? {};
-		const fieldReadOnly = readOnly;
+		const fieldReadOnly = readOnly || this.stepSaves.has(draftKey);
 		const inputs = new Map<
 			StepOneSectionId,
 			HTMLInputElement | ProseBox
@@ -5796,21 +5857,23 @@ export class SnowflakeDashboardView extends ItemView {
 				rememberDraft,
 			);
 		}
-		this.addSaveAndOpenActions(
+		const save = this.addSaveAndOpenActions(
 			panel,
 			1,
 			fieldReadOnly,
 			async () => {
 				const activeDraft = this.stepDrafts.get(draftKey);
-				await this.host.saveStepFields(
-					1,
-					collectFields(),
-					activeDraft?.expectedRevision ?? model.stepRevisions[1] ?? '',
+				await this.saveHeld(draftKey, () =>
+					this.host.saveStepFields(
+						1,
+						collectFields(),
+						activeDraft?.expectedRevision ?? model.stepRevisions[1] ?? '',
+					),
 				);
-				this.stepDrafts.delete(draftKey);
 			},
 			draftKey,
 		);
+		this.drewStepPanel(draftKey, { view: this, boxes: [...inputs.values()], save, readOnly });
 	}
 
 	private renderOneParagraphSummary(
@@ -5821,6 +5884,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const draftKey = `${model.projectId}:2`;
 		const draft = this.stepDrafts.get(draftKey);
 		const current = draft?.fields ?? model.stepFields[2] ?? {};
+		const fieldReadOnly = readOnly || this.stepSaves.has(draftKey);
 		const paragraphSectionId = STEP_TWO_SECTION_IDS[0];
 		const descriptionSectionId = STEP_TWO_SECTION_IDS[1];
 		const writingHints = this.createDisclosure(
@@ -5867,7 +5931,7 @@ export class SnowflakeDashboardView extends ItemView {
 			label: this.t('fields.oneParagraphSummary'),
 			placeholder: this.t('fields.oneParagraphSummaryPlaceholder'),
 			value: current[paragraphSectionId] ?? '',
-			disabled: readOnly,
+			disabled: fieldReadOnly,
 		});
 		this.addLengthHint(panel, input);
 
@@ -5896,7 +5960,7 @@ export class SnowflakeDashboardView extends ItemView {
 			label: this.t('fields.description'),
 			placeholder: this.t('fields.descriptionPlaceholder'),
 			value: current[descriptionSectionId] ?? '',
-			disabled: readOnly,
+			disabled: fieldReadOnly,
 		});
 		this.addLengthHint(description, descriptionInput);
 
@@ -5913,24 +5977,26 @@ export class SnowflakeDashboardView extends ItemView {
 		};
 		input.el.addEventListener('input', rememberDraft);
 		descriptionInput.el.addEventListener('input', rememberDraft);
-		this.addSaveAndOpenActions(
+		const save = this.addSaveAndOpenActions(
 			panel,
 			2,
-			readOnly,
+			fieldReadOnly,
 			async () => {
 				const activeDraft = this.stepDrafts.get(draftKey);
-				await this.host.saveStepFields(
-					2,
-					{
-						[paragraphSectionId]: input.value,
-						[descriptionSectionId]: descriptionInput.value,
-					},
-					activeDraft?.expectedRevision ?? model.stepRevisions[2] ?? '',
+				await this.saveHeld(draftKey, () =>
+					this.host.saveStepFields(
+						2,
+						{
+							[paragraphSectionId]: input.value,
+							[descriptionSectionId]: descriptionInput.value,
+						},
+						activeDraft?.expectedRevision ?? model.stepRevisions[2] ?? '',
+					),
 				);
-				this.stepDrafts.delete(draftKey);
 			},
 			draftKey,
 		);
+		this.drewStepPanel(draftKey, { view: this, boxes: [input, descriptionInput], save, readOnly });
 	}
 
 	/**
@@ -7315,6 +7381,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const draftKey = `${model.projectId}:${String(id)}`;
 		const draft = this.stepDrafts.get(draftKey);
 		const current = draft?.fields ?? model.stepFields[id] ?? {};
+		const fieldReadOnly = readOnly || missing || this.stepSaves.has(draftKey);
 		const field = panel.createDiv({
 			cls: 'snowflake-method-field snowflake-method-synopsis-field',
 		});
@@ -7325,7 +7392,7 @@ export class SnowflakeDashboardView extends ItemView {
 				id === 4 ? 'fields.plotSynopsisPlaceholder' : 'fields.longSynopsisPlaceholder',
 			),
 			value: current[sectionId] ?? '',
-			disabled: readOnly || missing,
+			disabled: fieldReadOnly,
 		});
 		this.addLengthHint(panel, input);
 		const rememberDraft = (): void => {
@@ -7337,32 +7404,24 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 		};
 		input.el.addEventListener('input', rememberDraft);
-		this.addSaveAndOpenActions(
+		const save = this.addSaveAndOpenActions(
 			panel,
 			id,
-			readOnly || missing,
+			fieldReadOnly,
 			async () => {
 				const activeDraft = this.stepDrafts.get(draftKey);
-				// The box holds still while its words are written and the panel
-				// drawn again: a word typed meanwhile would go with the draft the
-				// save lets go, or start one against the revision the save has
-				// just replaced, which every later save would refuse.
-				input.disabled = true;
-				try {
-					await this.host.saveStepFields(
+				await this.saveHeld(draftKey, () =>
+					this.host.saveStepFields(
 						id,
 						{ [sectionId]: input.value },
 						activeDraft?.expectedRevision ?? model.stepRevisions[id] ?? '',
-					);
-				} catch (error) {
-					input.disabled = false;
-					throw error;
-				}
-				this.stepDrafts.delete(draftKey);
+					),
+				);
 			},
 			draftKey,
 			!missing,
 		);
+		this.drewStepPanel(draftKey, { view: this, boxes: [input], save, readOnly: readOnly || missing });
 	}
 
 	/**
@@ -7473,7 +7532,7 @@ export class SnowflakeDashboardView extends ItemView {
 		onSave: () => Promise<void>,
 		draftKey: string,
 		openable = true,
-	): void {
+	): HTMLButtonElement {
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions',
 		});
@@ -7498,6 +7557,36 @@ export class SnowflakeDashboardView extends ItemView {
 		save.addEventListener('click', () => {
 			void this.runAndRefresh(onSave);
 		});
+		return save;
+	}
+
+	/**
+	 * A step's words written with every panel showing its draft held still,
+	 * in this dashboard and any other of the project, until each is drawn
+	 * again: a word typed meanwhile would go with the draft the save lets go,
+	 * or start one against the revision the save has just replaced, which
+	 * every later save would refuse. The hold is kept by the draft's key, so
+	 * a panel drawn before the save is done is drawn held as well.
+	 */
+	private async saveHeld(draftKey: string, save: () => Promise<void>): Promise<void> {
+		for (const panel of this.stepPanels(draftKey)) holdStepPanel(panel, true);
+		this.stepSaves.add(draftKey);
+		try {
+			await save();
+		} catch (error) {
+			this.stepSaves.delete(draftKey);
+			// Nothing was written: every panel showing the draft takes words
+			// again, those drawn while the save ran as well.
+			for (const panel of this.stepPanels(draftKey)) holdStepPanel(panel, false);
+			throw error;
+		}
+		this.stepSaves.delete(draftKey);
+		this.stepDrafts.delete(draftKey);
+		// The other dashboards showing the step are drawn again from the note as
+		// written, held until then; this one is drawn by its Save's own refresh.
+		const others = new Set(this.stepPanels(draftKey).map((panel) => panel.view));
+		others.delete(this);
+		for (const view of others) void view.refresh();
 	}
 
 	/**
