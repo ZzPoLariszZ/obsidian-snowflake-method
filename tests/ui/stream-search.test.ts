@@ -215,6 +215,16 @@ describe('StreamSearch', () => {
 		expect(search.currentMatch()).toEqual({ path: 'three.md', from: 3, to: 6 });
 	});
 
+	it('goes on past a match that already reads as its replacement, writing nothing', async () => {
+		const { search, texts } = manuscript(book);
+		await search.setQuery('ash', plain);
+		// The second match, "ash", is already what "ash" would put there.
+		await search.step(1);
+		await search.replaceCurrent('ash');
+		expect(texts.get('one.md')).toBe(book['one.md']);
+		expect(search.currentMatch()).toEqual({ path: 'three.md', from: 3, to: 6 });
+	});
+
 	it('expands a regular expression for the match it replaces', async () => {
 		const { search, texts } = manuscript({ 'one.md': 'Smith, Jane and Doe, John' });
 		await search.setQuery('(\\w+), (\\w+)', { ...plain, regex: true });

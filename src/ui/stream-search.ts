@@ -282,6 +282,15 @@ export class StreamSearch {
 				else this.dropCurrent();
 				return;
 			}
+			// Words already reading as the replacement would leave them: nothing
+			// to write, and the bar goes on to the next match as if it had.
+			if (insert === text.slice(target.from, target.to)) {
+				const next = this.neighbour(target, 1);
+				if (next !== null && !(next.path === target.path && sameRange(next, target))) {
+					await this.moveTo(next, 'always');
+				}
+				return;
+			}
 			if (!this.host.writable(target.path)) {
 				this.host.refusedReadOnly(target.path);
 				const next = this.neighbour(target, 1);
