@@ -13,6 +13,7 @@ body:
     id: idea
     attributes:
       label: Your idea / 你的想法
+      description: What you'd like the plugin to do / 希望插件做到什么
     validations:
       required: true
 
@@ -20,11 +21,13 @@ body:
     id: why
     attributes:
       label: Why you need it / 为什么需要
+      description: The problem it would solve / 它能解决的问题
 
   - type: dropdown
     id: area
     attributes:
       label: Related area / 相关位置
+      description: Pick the closest one / 选择最接近的一项
       options:
         - Dashboard / 工作台
         - Worldbuilding entity / 世界观实体
@@ -40,3 +43,4 @@ body:
     id: attachments
     attributes:
       label: Screenshots or sketches / 截图或草图
+      description: Anything that shows the idea / 能说明想法的图片

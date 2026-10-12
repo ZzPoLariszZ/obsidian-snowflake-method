@@ -10,6 +10,7 @@ body:
     id: question
     attributes:
       label: Your question / 你的问题
+      description: What you'd like to know / 你想了解什么
     validations:
       required: true
 
@@ -17,6 +18,7 @@ body:
     id: area
     attributes:
       label: Related area / 相关位置
+      description: Pick the closest one / 选择最接近的一项
       options:
         - Dashboard / 工作台
         - Worldbuilding entity / 世界观实体
@@ -32,12 +34,11 @@ body:
     id: plugin-version
     attributes:
       label: Plugin version / 插件版本
-      description: |
-        Settings › Community plugins
-        设置 › 第三方插件
+      description: Settings › Community plugins / 设置 › 第三方插件
       placeholder: "0.25.1"
 
   - type: textarea
     id: attachments
     attributes:
       label: Screenshots / 截图
+      description: Images that help explain / 有助于说明的图片
