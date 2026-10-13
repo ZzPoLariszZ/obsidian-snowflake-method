@@ -6,5 +6,10 @@
 	"description": "Plan fiction with a bilingual ten-step Snowflake Method workspace backed by portable Markdown notes.",
 	"author": "Polaris",
 	"authorUrl": "https://github.com/ZzPoLariszZ",
+	"fundingUrl": {
+		"GitHub Sponsor": "https://github.com/sponsors/ZzPoLariszZ",
+		"Buy Me a Coffee": "https://buymeacoffee.com/zzpolariszz",
+		"Ko-fi": "https://ko-fi.com/zzpolariszz"
+	},
 	"isDesktopOnly": false
 }
