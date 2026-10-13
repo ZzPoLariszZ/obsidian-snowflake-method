@@ -56,12 +56,13 @@ Randy Ingermanson wrote two books on the Snowflake Method, [How to Write a Novel
 </tr>
 </table>
 
-If the plugin helps your writing, you can also buy me a coffee.
+If the plugin helps your writing, you can also buy me a coffee or sponsor me on GitHub.
 
 <table align="center">
 <tr>
 <td align="center"><img src="assets/sponsor/qr-yellow-cup.png" width="200" alt="QR code with a yellow cup" /><br /><a href="https://buymeacoffee.com/zzpolariszz"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a></td>
 <td align="center"><img src="assets/sponsor/qr-heart-cup.png" width="200" alt="QR code with a cup and a heart" /><br /><a href="https://ko-fi.com/zzpolariszz"><img src="https://img.shields.io/badge/Tip%20Me%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Tip me on Ko-fi" /></a></td>
+<td align="center"><img src="assets/sponsor/qr-pink-circle.png" width="200" alt="QR code with a heart in a pink circle" /><br /><a href="https://github.com/sponsors/ZzPoLariszZ"><img src="https://img.shields.io/badge/GitHub%20Sponsor-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsor" /></a></td>
 </tr>
 </table>
 
