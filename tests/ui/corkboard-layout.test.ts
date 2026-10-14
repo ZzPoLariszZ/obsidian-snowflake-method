@@ -325,6 +325,9 @@ describe('the layout', () => {
 	it('keeps full card modes fixed and falls back when compact content cannot be measured', () => {
 		expect(corkboardMetrics(500, 'standard', 16, 76).cardHeight).toBe(240);
 		expect(corkboardMetrics(500, 'extended', 16, 76).cardHeight).toBe(304);
+		// The gallery style stands the picture pane on the measured bare card, and on the compact style's rem without one.
+		expect(corkboardMetrics(500, 'gallery', 16, 76).cardHeight).toBe(332);
+		expect(corkboardMetrics(500, 'gallery', 16).cardHeight).toBe(336);
 		for (const height of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
 			expect(corkboardMetrics(500, 'compact', 16, height).cardHeight).toBe(80);
 		}

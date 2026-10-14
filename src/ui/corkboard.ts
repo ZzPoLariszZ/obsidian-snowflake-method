@@ -24,6 +24,7 @@ import { Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 import type { CorkboardControls, CorkboardFilters, CorkboardHandle, CorkboardVariant } from './corkboard-bridge';
 import type { CorkboardDeal, MemberMoveTarget } from './corkboard-deal';
 import {
+	CORKBOARD_REM,
 	adjacencyAllowed,
 	buildLayout,
 	cardPosition,
@@ -572,9 +573,16 @@ export function renderBoard<
 		}
 		memory.scrollTop = scroller.scrollTop;
 		paintWindow(true);
-		// The first render supplies the themed header/footer measurements.
+		// The first render supplies the themed header/footer measurements; the
+		// gallery style stands the picture pane on them, as the metrics do.
 		const measuredHeight = compactHeight();
-		if (measuredHeight !== undefined && Math.abs(measuredHeight - metrics.cardHeight) > 0.5) {
+		const expectedHeight =
+			measuredHeight === undefined
+				? undefined
+				: memory.mode === 'gallery'
+					? measuredHeight + CORKBOARD_REM.pictureHeight * rem
+					: measuredHeight;
+		if (expectedHeight !== undefined && Math.abs(expectedHeight - metrics.cardHeight) > 0.5) {
 			paintAll({ keepFirst: true });
 		}
 	};

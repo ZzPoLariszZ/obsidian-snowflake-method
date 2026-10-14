@@ -224,6 +224,18 @@ describe('corkboard viewport changes', () => {
 		fixture.handle.dispose();
 	});
 
+	it('stands the gallery style on the measured bare card once, without painting itself again and again', () => {
+		const fixture = board({ mode: 'gallery' });
+		for (let frame = 0; frame < 3 && fixture.dom.frames.size > 0; frame++) fixture.dom.flushFrame();
+		// The themed head and foot measure 76px; the picture pane adds 16rem at the 16px root.
+		expect(fixture.root.styles['--snowflake-method-corkboard-card-height']).toBe('332px');
+		expect(fixture.root.dataset.mode).toBe('gallery');
+		expect(fixture.dom.frames.size).toBe(0);
+		// The first paint and the one the measurement asks for, and no more.
+		expect(vi.mocked(filterScenes).mock.calls.length).toBeLessThanOrEqual(2);
+		fixture.handle.dispose();
+	});
+
 	it('defers hidden geometry and cancels queued work when the tab closes', () => {
 		const fixture = board();
 		fixture.scroll(607);
