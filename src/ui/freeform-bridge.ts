@@ -139,7 +139,7 @@ export interface FreeformHandle {
 	reveal: (id: string) => void;
 	remeasure: () => void;
 	/** Keeps the words of the box holding the focus, for the view's own key scope. */
-	saveFocusedConflict: () => boolean;
+	saveFocusedBody: () => boolean;
 	dispose: () => void;
 }
 

@@ -1328,7 +1328,7 @@ export function renderBoard<
 		},
 		reveal,
 		remeasure,
-		saveFocusedConflict: () => {
+		saveFocusedBody: () => {
 			const active = root.doc.activeElement;
 			for (const entry of cards.values()) {
 				if (entry.body !== active) continue;

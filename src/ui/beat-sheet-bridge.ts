@@ -147,8 +147,8 @@ export interface BeatSheetHandle {
 	/** Scrolls a scene's pool card into view and gives it the focus. */
 	reveal: (id: string) => void;
 	remeasure: () => void;
-	/** Saves the conflict box holding the focus, for the view's own key scope. */
-	saveFocusedConflict: () => boolean;
+	/** Saves the body box holding the focus, for the view's own key scope. */
+	saveFocusedBody: () => boolean;
 	dispose: () => void;
 }
 

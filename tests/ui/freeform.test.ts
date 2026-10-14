@@ -1233,14 +1233,14 @@ describe('text nodes', () => {
 
 	it('keeps the focused node’s words for the view’s own chord, and says so', async () => {
 		const fixture = await laid();
-		expect(fixture.handle.saveFocusedConflict()).toBe(false);
+		expect(fixture.handle.saveFocusedBody()).toBe(false);
 		fixture.port().open({ kind: 'node', id: 't2' }, {} as MouseEvent);
 		fixture.field('t2')!.value = 'By the chord';
-		expect(fixture.handle.saveFocusedConflict()).toBe(true);
+		expect(fixture.handle.saveFocusedBody()).toBe(true);
 		await settle();
 		expect(fixture.viewHeld('a').placements.find((placement) => placement.id === 't2')?.resource).toEqual({ type: 'text', text: 'By the chord' });
 		// The field has gone, so the chord is no longer the node's.
-		expect(fixture.handle.saveFocusedConflict()).toBe(false);
+		expect(fixture.handle.saveFocusedBody()).toBe(false);
 	});
 
 	it('hands back words the project would not take, and shows the node as its file has it', async () => {

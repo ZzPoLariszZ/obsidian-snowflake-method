@@ -63,7 +63,7 @@ function workspaceView() {
 	const board: CorkboardHandle = {
 		refresh: vi.fn(), dispose: vi.fn(), remeasure: vi.fn(),
 		reveal: vi.fn(),
-		saveFocusedConflict: () => false,
+		saveFocusedBody: () => false,
 	};
 	const view = new SnowflakeStoryStructureView({ app: { scope: {}, workspace } } as unknown as WorkspaceLeaf, {
 		host,

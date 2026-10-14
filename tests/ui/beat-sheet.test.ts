@@ -315,7 +315,7 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 	};
 	let handle: ReturnType<typeof renderBeatSheet>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
 	let projectPath: string | null = 'P';
@@ -2338,12 +2338,12 @@ describe('the beat sheet workspace owns its dialogs and the words in it', () => 
 	it('saves the conflict box holding the focus on a placed card, or asks the pool', async () => {
 		const fixture = laid({}, { sheets: [sheet('s', threeActs().acts, { presentation: 'flat' })] });
 		await settle();
-		expect(fixture.handle.saveFocusedConflict()).toBe(false);
-		expect(fixture.poolHandle.saveFocusedConflict).toHaveBeenCalledTimes(1);
+		expect(fixture.handle.saveFocusedBody()).toBe(false);
+		expect(fixture.poolHandle.saveFocusedBody).toHaveBeenCalledTimes(1);
 		const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-body-text')!;
 		conflict.focus();
-		expect(fixture.handle.saveFocusedConflict()).toBe(true);
-		expect(fixture.poolHandle.saveFocusedConflict).toHaveBeenCalledTimes(1);
+		expect(fixture.handle.saveFocusedBody()).toBe(true);
+		expect(fixture.poolHandle.saveFocusedBody).toHaveBeenCalledTimes(1);
 	});
 });
 

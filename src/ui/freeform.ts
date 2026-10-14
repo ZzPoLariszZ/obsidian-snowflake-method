@@ -3012,7 +3012,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		remeasure: () => {
 			canvas.remeasure();
 		},
-		saveFocusedConflict: () => faces.keepFocused() || keepFocusedCard(),
+		saveFocusedBody: () => faces.keepFocused() || keepFocusedCard(),
 		dispose: () => {
 			if (disposed) return;
 			// The order is a rule, as it is the timeline's: the bell, the keys,

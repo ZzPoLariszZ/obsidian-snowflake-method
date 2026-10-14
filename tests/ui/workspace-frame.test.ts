@@ -87,7 +87,7 @@ const modelOf = (ids: string[]): ProjectDashboardModel => ({
 function controlsOf() {
 	const state = { projectPath: 'P' as string | null, unloading: false };
 	const resolved = vi.fn((target: string, _source: string) => ({ path: `Draft/${target}.md` }));
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: vi.fn(() => true), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => true), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const memory: FrameMemory = { pool: corkboardMemory({ mode: 'compact', group: '', reversed: false }), poolCollapsed: false, scroll: { left: 0, top: 0 } };
 	const controls = {
@@ -917,14 +917,14 @@ describe('the scene pool', () => {
 		fixture.pool.reveal('scene-1');
 		fixture.pool.remeasure();
 		fixture.pool.paint(new Set());
-		expect(fixture.pool.saveFocusedConflict()).toBe(false);
+		expect(fixture.pool.saveFocusedBody()).toBe(false);
 		fixture.pool.dispose();
 		fixture.mount();
 		fixture.pool.reveal('scene-2');
 		fixture.pool.remeasure();
 		expect(fixture.poolHandle.reveal).toHaveBeenCalledExactlyOnceWith('scene-2');
 		expect(fixture.poolHandle.remeasure).toHaveBeenCalledOnce();
-		expect(fixture.pool.saveFocusedConflict()).toBe(true);
+		expect(fixture.pool.saveFocusedBody()).toBe(true);
 		fixture.pool.dispose();
 		fixture.pool.dispose();
 		expect(fixture.poolHandle.dispose).toHaveBeenCalledOnce();
@@ -932,7 +932,7 @@ describe('the scene pool', () => {
 		fixture.pool.paint(new Set());
 		expect(fixture.poolHandle.remeasure).toHaveBeenCalledOnce();
 		expect(fixture.poolHandle.refresh).not.toHaveBeenCalled();
-		expect(fixture.pool.saveFocusedConflict()).toBe(false);
+		expect(fixture.pool.saveFocusedBody()).toBe(false);
 	});
 });
 

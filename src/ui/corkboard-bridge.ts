@@ -75,11 +75,12 @@ export interface CorkboardHandle {
 	/** Lays the cards out again for the width the board has now. */
 	remeasure(): void;
 	/**
-	 * Saves the conflict box holding the focus, for the view's own key
-	 * scope: the app's keymap takes Mod+Enter at the window before a
-	 * textarea ever sees it. True when a box was saved.
+	 * Saves the body box holding the focus, a scene's conflict or an
+	 * entity's one sentence, for the view's own key scope: the app's keymap
+	 * takes Mod+Enter at the window before a textarea ever sees it. True
+	 * when a box was saved.
 	 */
-	saveFocusedConflict(): boolean;
+	saveFocusedBody(): boolean;
 	dispose(): void;
 }
 

@@ -136,10 +136,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.filterPanel = new FilterPanel(this.app, this.t);
 		// The app's keymap reads Mod+Enter at the window, ahead of any control
 		// in the leaf; a scope of the view's own is what stands ahead of it
-		// while the leaf is active, so a conflict box can save on the chord.
+		// while the leaf is active, so a card's body box can save on the chord.
 		this.scope = new Scope(this.app.scope);
 		this.scope.register(['Mod'], 'Enter', (event) => {
-			if (this.board?.saveFocusedConflict() !== true) return true;
+			if (this.board?.saveFocusedBody() !== true) return true;
 			event.preventDefault();
 			return false;
 		});

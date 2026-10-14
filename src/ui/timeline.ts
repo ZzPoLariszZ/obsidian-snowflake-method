@@ -1911,7 +1911,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		},
 		reveal: frame.reveal,
 		remeasure: frame.remeasure,
-		saveFocusedConflict: () => focus.saveConflict() || pool.saveFocusedConflict(),
+		saveFocusedBody: () => focus.saveConflict() || pool.saveFocusedBody(),
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;

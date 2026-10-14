@@ -80,7 +80,7 @@ function workspaceView() {
 	const freeformBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
 	const freeform = vi.fn(() => freeformBridge);
 	const freeformHandle = {
-		refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: vi.fn(() => false), dispose: vi.fn(),
+		refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn(),
 	};
 	const freeformCanvas: MountFreeformCanvas = () => { throw new Error('The engine is stubbed in this test.'); };
 	const renderFreeform = vi.fn((_host: HTMLElement, _controls: FreeformControls) => freeformHandle);
@@ -604,7 +604,7 @@ describe('the timeline tab', () => {
 		const { view, timelineBridge } = workspaceView();
 		const dom = new CorkboardDom();
 		const handle = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		const timeline = vi.fn((_host: HTMLElement, _controls: TimelineControls) => handle);
 		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
@@ -634,7 +634,7 @@ describe('the timeline tab', () => {
 		const { view, loadDashboardModel } = workspaceView();
 		const dom = new CorkboardDom();
 		const handle = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		const timeline = vi.fn((_host: HTMLElement, _controls: TimelineControls) => handle);
 		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
@@ -677,7 +677,7 @@ describe('the beat sheet tab', () => {
 		const fixture = workspaceView();
 		const dom = new CorkboardDom();
 		const handle = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		const beatSheet = vi.fn((_host: HTMLElement, _controls: BeatSheetControls) => handle);
 		const deps = (fixture.view as unknown as { deps: { host: Record<string, unknown> } }).deps;
@@ -759,7 +759,7 @@ describe('the freeform tab', () => {
 		const deps = (fixture.view as unknown as { deps: { host: Record<string, unknown> } }).deps;
 		// The tab turned to after the canvas is one that stands, so the turn itself is what is read.
 		const other = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		Object.assign(deps, { timeline: vi.fn(() => other) });
 		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });
@@ -868,7 +868,7 @@ describe('the freeform tab', () => {
 		const { view, freeformHandle } = mounted();
 		await view.setState({ projectPath: firstProject, visualization: 'corkboard-freeform' }, { history: false });
 		await view.onOpen();
-		const board = (view as unknown as { board: { saveFocusedConflict(): boolean } | null }).board;
+		const board = (view as unknown as { board: { saveFocusedBody(): boolean } | null }).board;
 		expect(board).toBe(freeformHandle);
 	});
 });

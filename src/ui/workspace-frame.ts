@@ -867,7 +867,7 @@ export interface ScenePool {
 	paint: (assigned: Set<string>) => void;
 	reveal: (id: string) => void;
 	remeasure: () => void;
-	saveFocusedConflict: () => boolean;
+	saveFocusedBody: () => boolean;
 	dispose: () => void;
 }
 
@@ -953,7 +953,7 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 		remeasure: () => {
 			handle?.remeasure();
 		},
-		saveFocusedConflict: () => handle?.saveFocusedConflict() ?? false,
+		saveFocusedBody: () => handle?.saveFocusedBody() ?? false,
 		dispose: () => {
 			handle?.dispose();
 			handle = null;

@@ -290,7 +290,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	};
 	let handle: ReturnType<typeof renderTimeline>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
 	const translate = vi.fn((key: string, _vars?: Record<string, string | number>): string => key);
@@ -1781,8 +1781,8 @@ describe('the scene pool', () => {
 		expect(fixture.poolHandle.reveal).toHaveBeenCalledWith('scene-2');
 		fixture.handle.remeasure();
 		expect(fixture.poolHandle.remeasure).toHaveBeenCalledOnce();
-		expect(fixture.handle.saveFocusedConflict()).toBe(false);
-		expect(fixture.poolHandle.saveFocusedConflict).toHaveBeenCalledOnce();
+		expect(fixture.handle.saveFocusedBody()).toBe(false);
+		expect(fixture.poolHandle.saveFocusedBody).toHaveBeenCalledOnce();
 		fixture.handle.dispose();
 		expect(fixture.poolHandle.dispose).toHaveBeenCalledOnce();
 	});
