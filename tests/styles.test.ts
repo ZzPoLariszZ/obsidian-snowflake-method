@@ -1160,6 +1160,24 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-corkboard-band.snowflake-method-balanced-toolbar')).toContain('--snowflake-method-toolbar-start: 0px');
 	});
 
+	it('shows an entity card\'s picture in a fixed pane above the words, hidden under the two barer styles', () => {
+		const pane = declarations('.snowflake-method-corkboard-picture');
+		expect(pane).toContain('height: var(--snowflake-method-corkboard-picture-height)');
+		expect(pane).toContain('overflow: hidden');
+		expect(declarations('.snowflake-method-scene-cards')).toContain('--snowflake-method-corkboard-picture-height: 16rem');
+		expect(declarations('.snowflake-method-corkboard-picture > img')).toContain('object-fit: contain');
+		const hidden = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.filter((entry) => (entry.split('{')[1] ?? '').includes('display: none'))
+			.map((entry) => entry.split('{')[0] ?? '')
+			.join('\n');
+		for (const mode of ['compact', 'standard']) {
+			expect(hidden).toContain(`.snowflake-method-scene-cards[data-mode='${mode}'] .snowflake-method-corkboard-picture`);
+		}
+		expect(declarations('.snowflake-method-corkboard-word')).toContain('text-overflow: ellipsis');
+	});
+
 	it('scopes a sheet without touching what its rules say', () => {
 		const scoped = scopeCss(
 			[

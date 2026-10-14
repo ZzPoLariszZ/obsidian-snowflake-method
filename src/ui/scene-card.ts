@@ -182,8 +182,8 @@ function sceneCardKind<Card extends SceneCard>(
 		body: (scene) => scene.conflict,
 		status: (scene) => scene.progressStatus,
 		color: (scene) => scene.color,
-		patch: (id, fields, expectedRevision, projectPath) =>
-			host.patchScene(id, scenePatchOf(fields, expectedRevision), projectPath),
+		patch: (scene, fields, expectedRevision, projectPath) =>
+			host.patchScene(scene.id, scenePatchOf(fields, expectedRevision), projectPath),
 		applied: sceneApplied,
 		membersById: () => deps.scenesById(),
 		taken: (name, ownId) => {
@@ -194,8 +194,8 @@ function sceneCardKind<Card extends SceneCard>(
 		words: {
 			bodyLabel: () => t('table.conflict'),
 			bodyPlaceholder: () => t('modal.scene.conflictPlaceholder'),
-			nameRequired: t('modal.scene.nameRequired'),
-			nameTaken: t('modal.scene.nameTaken'),
+			nameRequired: () => t('modal.scene.nameRequired'),
+			nameTaken: () => t('modal.scene.nameTaken'),
 		},
 		build: (slots) => {
 			// The manuscript chips stand between the body and the foot.

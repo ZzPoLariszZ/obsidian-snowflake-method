@@ -125,7 +125,7 @@ export interface CardKind<Member extends CardMember, Extras extends object, Part
 	status: (member: Member) => ProgressStatus | null;
 	color: (member: Member) => MacaronColor | null;
 	/** Writes the fields under the revision the card holds; answers the note's new revision. */
-	patch: (id: string, fields: MemberCardPatch, expectedRevision: string, projectPath: string) => Promise<string>;
+	patch: (member: Member, fields: MemberCardPatch, expectedRevision: string, projectPath: string) => Promise<string>;
 	/** The note as the fields written leave it, before the model has caught up. */
 	applied: (member: Member, fields: MemberCardPatch, revision: string) => Member;
 	/** Every note of the kind as the model holds it now; a note missing from it has gone. */
@@ -138,8 +138,8 @@ export interface CardKind<Member extends CardMember, Extras extends object, Part
 		bodyLabel: (member: Member) => string;
 		/** Said in an empty body that can be typed into; a body only read shows none. */
 		bodyPlaceholder: (member: Member) => string;
-		nameRequired: string;
-		nameTaken: string;
+		nameRequired: (member: Member) => string;
+		nameTaken: (member: Member) => string;
 	};
 	/** Builds the kind's own parts into the slots and answers them, for the card to carry. */
 	build: (slots: CardSlots, member: Member) => Extras;
@@ -452,7 +452,7 @@ export function createMemberCardDeck<
 		return enqueue(async () => {
 			if (owningProject === null) return;
 			const expectedRevision = base.revision;
-			const revision = await kind.patch(card.id, fields, expectedRevision, owningProject);
+			const revision = await kind.patch(card.member, fields, expectedRevision, owningProject);
 			advanceRevision(card.id, expectedRevision, revision);
 			for (const standing of new Set([card, ...cards.values()])) {
 				if (standing.id === card.id && standing.member.revision === expectedRevision) {
@@ -745,12 +745,12 @@ export function createMemberCardDeck<
 			return;
 		}
 		if (typed.length === 0) {
-			new Notice(kind.words.nameRequired);
+			new Notice(kind.words.nameRequired(card.member));
 			return;
 		}
 		const current = kind.title(card.member);
 		if (typed !== current && kind.taken(typed, card.id)) {
-			new Notice(kind.words.nameTaken);
+			new Notice(kind.words.nameTaken(card.member));
 			return;
 		}
 		endTitleEdit(card, refocus);

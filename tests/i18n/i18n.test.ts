@@ -13,6 +13,7 @@ import {
 	TASK_STATUSES,
 } from '../../src/domain';
 import { TASKS_TABS } from '../../src/ui/dashboard-state';
+import { ENTITY_GROUP_FIELDS } from '../../src/ui/entity-filters';
 import {
 	CORKBOARD_GROUP_FIELDS,
 	CORKBOARD_MODES,
@@ -1560,6 +1561,14 @@ describe('story structure copy', () => {
 		for (const field of CORKBOARD_GROUP_FIELDS) {
 			expect(en[`corkboard.none.${field}`]).toBeTruthy();
 			expect(zhCN[`corkboard.none.${field}`]).toBeTruthy();
+		}
+		for (const field of ENTITY_GROUP_FIELDS) {
+			expect(en[`corkboard.none.${field}`]).toBeTruthy();
+			expect(zhCN[`corkboard.none.${field}`]).toBeTruthy();
+		}
+		for (const key of ['corkboard.group.role', 'table.filterAllRoles', 'table.filterAllTimeKinds'] as const) {
+			expect(en[key]).toBeTruthy();
+			expect(zhCN[key]).toBeTruthy();
 		}
 		for (const key of [
 			'corkboard.display',

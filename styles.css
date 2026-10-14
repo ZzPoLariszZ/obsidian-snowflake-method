@@ -13464,6 +13464,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--snowflake-method-corkboard-link-height: 1.5rem;
 	--snowflake-method-corkboard-card-width: 16rem;
 	--snowflake-method-corkboard-card-height: 15rem;
+	/* The picture an entity's fullest card shows: as tall as the narrowest card is wide, so square there. */
+	--snowflake-method-corkboard-picture-height: 16rem;
 	/* A view field in a toolbar is as wide as a timeline's time column: a
 	   card, its handle, its menu, the gaps and the padding around the words,
 	   so the field stands the same on every workspace that has one. */
@@ -13930,7 +13932,9 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-body,
 .snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-links,
-.snowflake-method-scene-cards[data-mode='standard'] .snowflake-method-corkboard-links {
+.snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-picture,
+.snowflake-method-scene-cards[data-mode='standard'] .snowflake-method-corkboard-links,
+.snowflake-method-scene-cards[data-mode='standard'] .snowflake-method-corkboard-picture {
 	display: none;
 }
 
@@ -13970,6 +13974,50 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-scene-cards textarea.snowflake-method-corkboard-body-text:focus {
 	outline: none;
 	box-shadow: none;
+}
+
+/* The picture an entity's fullest card shows above its words: one pane of a
+   fixed height, square at the narrowest card, the picture fitted whole inside
+   it; a card with no picture shows its kind's symbol in the middle, as the
+   dashboard's rail draws it. */
+.snowflake-method-corkboard-picture {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	justify-content: center;
+	height: var(--snowflake-method-corkboard-picture-height);
+	border-block-end: 1px solid color-mix(in srgb, var(--snowflake-method-sticky-edge) 50%, transparent);
+	background-color: var(--background-secondary);
+	overflow: hidden;
+}
+
+.snowflake-method-corkboard-picture > img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.snowflake-method-corkboard-picture-symbol {
+	display: inline-flex;
+	color: var(--text-faint);
+}
+
+.snowflake-method-corkboard-picture-symbol svg {
+	width: var(--icon-xl);
+	height: var(--icon-xl);
+}
+
+/* What an entity's card says at its foot where a scene names its point of
+   view: a word about the note, read and not pressed. */
+.snowflake-method-corkboard-word {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .snowflake-method-corkboard-links {
