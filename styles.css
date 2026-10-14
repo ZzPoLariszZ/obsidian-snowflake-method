@@ -8116,11 +8116,11 @@ col.snowflake-method-prose-column-dialogue {
 	margin-inline-end: auto;
 }
 
-/* On its own tab the corkboard's band is balanced as the toolbars are, with
-   nothing at its start: the search in the band's middle, the controls at
-   its end. */
+/* On its own tab the corkboard's band is balanced as the toolbars are, the
+   view field at its start as the other workspaces keep theirs: the search in
+   the band's middle, the controls at its end. */
 .snowflake-method-corkboard-band.snowflake-method-balanced-toolbar {
-	--snowflake-method-toolbar-start: 0px;
+	--snowflake-method-toolbar-start: var(--snowflake-method-view-field-width);
 }
 
 .snowflake-method-corkboard .snowflake-method-balanced-toolbar > .snowflake-method-toolbar-search {

@@ -316,7 +316,7 @@ describe('workspace project ownership', () => {
 		};
 		loadDashboardModel.mockImplementation((path) => Promise.resolve({
 			path, projectId: 'stable-project', title: 'Novel', locale: 'en',
-			scenes: [scene], characters: [], manuscriptPaths: [], readOnly: false,
+			scenes: [scene], characters: [], worldbuildingKinds: [], manuscriptPaths: [], readOnly: false,
 		} as unknown as ProjectDashboardModel));
 		const patchScene = vi.fn<DashboardHost['patchScene']>(async (_id, patch, path) => {
 			if (path !== renamedPath) throw new Error('The original project path no longer exists.');
@@ -380,7 +380,7 @@ describe('workspace project ownership', () => {
 				title: 'Novel', locale: 'en',
 				scenes: [scene('match', 'Opening', 'in-progress'), scene('other', 'Finale', 'in-progress'),
 					scene('complete', 'Opening again', 'complete')],
-				characters: [], manuscriptPaths: [], readOnly: false,
+				characters: [], worldbuildingKinds: [], manuscriptPaths: [], readOnly: false,
 			} as unknown as ProjectDashboardModel));
 			const internals = view as unknown as {
 				controls(): CorkboardControls;
@@ -402,7 +402,7 @@ describe('workspace project ownership', () => {
 			});
 			await view.onOpen();
 			await view.setState({ projectPath: originalPath }, { history: false });
-			const input = dom.container.querySelector('input')!;
+			const input = dom.container.querySelector('.snowflake-method-toolbar-search')!.querySelector('input')!;
 			input.value = 'Opening';
 			input.dispatch('input');
 			dom.flushFrame();
@@ -418,7 +418,7 @@ describe('workspace project ownership', () => {
 
 			if (change === 'rename') {
 				expect(renderFrame).toHaveBeenCalledOnce();
-				expect(dom.container.querySelector('input')).toBe(input);
+				expect(dom.container.querySelector('.snowflake-method-toolbar-search')!.querySelector('input')).toBe(input);
 				expect(input.value).toBe('Opening');
 				expect(controls.memory).toMatchObject({ query: 'Opening', filters: { status: 'in-progress' }, scrollTop: 24 });
 				expect(dom.container.querySelectorAll('.snowflake-method-corkboard-card')).toEqual([card]);
@@ -428,7 +428,7 @@ describe('workspace project ownership', () => {
 				expect(renderFrame).toHaveBeenCalledTimes(2);
 				expect(input.isConnected).toBe(false);
 				if (change === 'switch') {
-					expect(dom.container.querySelector('input')?.value).toBe('');
+					expect(dom.container.querySelector('.snowflake-method-toolbar-search')!.querySelector('input')?.value).toBe('');
 					expect(dom.container.querySelector('.snowflake-method-prose-state')?.textContent).toBe('');
 				} else {
 					expect(internals.board).toBeNull();

@@ -24,6 +24,9 @@ import { rowAtOrBefore, rowOffsets, virtualWindow } from './virtual-table';
 
 /** The dashboard's scene drag type, spelled the same so the two never mix. */
 export const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
+/** And the tables' character and worldbuilding types, which the board's other views carry their cards under. */
+export const CHARACTER_DRAG_TYPE = 'application/x-snowflake-character';
+export const ENTITY_DRAG_TYPE = 'application/x-snowflake-entity';
 
 /** The slice of a scene's view model the board's arithmetic reads. */
 export interface CorkboardScene {

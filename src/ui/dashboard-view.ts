@@ -105,6 +105,7 @@ import {
 	type DefinitionPathSource,
 	type EntityGroupId,
 } from './entity-form';
+import { CHARACTER_DRAG_TYPE, ENTITY_DRAG_TYPE, SCENE_DRAG_TYPE } from './corkboard-layout';
 import { kindIcon } from './kind-icon';
 import { RenderStateKeeper } from './render-state';
 import {
@@ -186,9 +187,6 @@ export const DASHBOARD_VIEW_TYPE = 'snowflake-method-dashboard';
  * other drag source in the app also writes, so a row keyed on it accepts a note
  * dragged in from the file explorer, or any selected text, as a reorder.
  */
-const CHARACTER_DRAG_TYPE = 'application/x-snowflake-character';
-const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
-const ENTITY_DRAG_TYPE = 'application/x-snowflake-entity';
 
 /** How the filter panel sits: under its button, and off the window's edge. */
 

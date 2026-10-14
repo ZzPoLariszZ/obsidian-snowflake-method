@@ -18,13 +18,16 @@ import {
 	isStoryStructureVisualization,
 	mergeStoryStructureViewState,
 	visualizationFamily,
+	corkboardViewAvailable,
+	entityCorkboardMemory,
+	isCorkboardView,
 	type StoryStructureViewStateSnapshot,
 } from '../../src/ui/story-structure-state';
 
 const current: StoryStructureViewStateSnapshot = {
 	projectPath: 'Novel/Novel.md',
 	visualization: 'timeline',
-	corkboard: { mode: 'compact', group: 'pov', reversed: true },
+	corkboard: { mode: 'compact', group: 'pov', reversed: true, view: 'scene' },
 	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
 	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false }, poolCollapsed: false, beatsCollapsed: true },
 	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false, snapObjects: false, readOnly: false },
@@ -41,7 +44,7 @@ describe('story structure restored state', () => {
 			state: {
 				projectPath: null,
 				visualization: 'beat-sheet',
-				corkboard: { mode: 'extended', group: 'color', reversed: true },
+				corkboard: { mode: 'extended', group: 'color', reversed: true, view: 'scene' },
 				timeline: defaultTimelineSettings(),
 				beatSheet: defaultBeatSheetSettings(),
 				freeform: defaultFreeformSettings(),
@@ -64,12 +67,44 @@ describe('story structure restored state', () => {
 		expect(update.state).toEqual({
 			projectPath: current.projectPath,
 			visualization: 'timeline',
-			corkboard: { mode: 'compact', group: '', reversed: true },
+			corkboard: { mode: 'compact', group: '', reversed: true, view: 'scene' },
 			timeline: current.timeline,
 			beatSheet: current.beatSheet,
 			freeform: current.freeform,
 		});
 		expect(update.changed).toBe(true);
+	});
+
+	it('restores the corkboard view, keeps the current one when none is named, and takes any kind id', () => {
+		expect(mergeStoryStructureViewState(current, { corkboard: { view: 'character' } }).state.corkboard).toEqual({
+			...current.corkboard, view: 'character',
+		});
+		expect(mergeStoryStructureViewState(current, { corkboard: { view: 'faction' } }).state.corkboard.view).toBe('faction');
+		expect(mergeStoryStructureViewState(current, { corkboard: { view: 7 } }).state.corkboard.view).toBe('scene');
+		expect(mergeStoryStructureViewState(current, { corkboard: { view: '' } }).state.corkboard.view).toBe('scene');
+		expect(mergeStoryStructureViewState(current, { corkboard: { mode: 'extended' } }).state.corkboard.view).toBe('scene');
+		const moved = mergeStoryStructureViewState(current, { corkboard: { view: 'location' } });
+		expect(moved.changed).toBe(true);
+		expect(mergeStoryStructureViewState(current, { corkboard: { view: 'scene' } }).changed).toBe(false);
+	});
+
+	it('offers the scene and character views always and a kind\'s only while the project has it', () => {
+		const kinds = [{ id: 'time' }, { id: 'location' }, { id: 'faction' }];
+		expect(corkboardViewAvailable('scene', [])).toBe(true);
+		expect(corkboardViewAvailable('character', [])).toBe(true);
+		expect(corkboardViewAvailable('faction', kinds)).toBe(true);
+		expect(corkboardViewAvailable('faction', kinds.slice(0, 2))).toBe(false);
+		expect(isCorkboardView('item')).toBe(true);
+		expect(isCorkboardView('')).toBe(false);
+		expect(isCorkboardView(null)).toBe(false);
+	});
+
+	it('makes an entity view its memory from the scene view\'s style and direction, at rest otherwise', () => {
+		const memory = entityCorkboardMemory('character', { mode: 'extended', reversed: true });
+		expect(memory).toEqual({
+			mode: 'extended', group: '', reversed: true, view: 'character', query: '', scrollTop: 0,
+			filters: { status: 'all', category: '', color: '', role: '', timeKind: '' },
+		});
 	});
 
 	it('restores project ownership independently of visualization settings', () => {
@@ -219,7 +254,7 @@ describe('story structure restored state', () => {
 		expect(
 			mergeStoryStructureViewState(current, {
 				visualization: 'timeline',
-				corkboard: { mode: 'compact', group: 'pov', reversed: true },
+				corkboard: { mode: 'compact', group: 'pov', reversed: true, view: 'scene' },
 			}).changed,
 		).toBe(false);
 		expect(
@@ -270,6 +305,7 @@ describe('story structure restored state', () => {
 			mode: 'standard',
 			group: '',
 			reversed: false,
+			view: 'scene',
 			query: '',
 			filters: {
 				sceneMin: null,

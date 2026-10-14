@@ -21,7 +21,7 @@
 
 import { Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
-import type { CorkboardControls, CorkboardHandle, CorkboardVariant } from './corkboard-bridge';
+import type { CorkboardControls, CorkboardFilters, CorkboardHandle, CorkboardVariant } from './corkboard-bridge';
 import type { CorkboardDeal, MemberMoveTarget } from './corkboard-deal';
 import {
 	adjacencyAllowed,
@@ -42,7 +42,10 @@ import {
 	type CorkboardMetrics,
 	type DisplayOrder,
 } from './corkboard-layout';
+import { entityDeal } from './entity-deal';
+import type { EntityFilters } from './entity-filters';
 import type { FilterRow } from './filter-rows';
+import { kindWord } from './kind-word';
 import {
 	CARD_SELECTOR,
 	pressWithin,
@@ -51,6 +54,7 @@ import {
 	type MemberCardDeck,
 	type MemberCardPart,
 } from './member-card';
+import { buildOptionField, type OptionPicker } from './option-picker';
 import { addOrderMenuItems } from './order-menu';
 import { renderEmptyLine } from './pane-parts';
 import { sceneDeal } from './scene-deal';
@@ -83,13 +87,24 @@ interface ViewportMeasure {
 
 const px = (value: number): string => `${String(Math.round(value * 100) / 100)}px`;
 
-/** The corkboard as the view mounts it and the pools reuse it: the scenes in narrative order. */
+/**
+ * The corkboard as the view mounts it and the pools reuse it: the view the
+ * tab's memory names where the tab offers views, the scenes in narrative
+ * order everywhere else. The view built the memory for its view, so its
+ * filters are the view's own.
+ */
 export function renderCorkboard(
 	container: HTMLElement,
-	controls: CorkboardControls<SceneFilters>,
+	controls: CorkboardControls<CorkboardFilters>,
 	variant: CorkboardVariant = {},
 ): CorkboardHandle {
-	return renderBoard(container, controls, sceneDeal(controls), variant);
+	const view = controls.views === undefined ? 'scene' : controls.memory.view;
+	if (view === 'scene') {
+		const sceneControls = controls as CorkboardControls<SceneFilters>;
+		return renderBoard(container, sceneControls, sceneDeal(sceneControls), variant);
+	}
+	const entityControls = controls as CorkboardControls<EntityFilters>;
+	return renderBoard(container, entityControls, entityDeal(entityControls, view), {});
 }
 
 /** The board dealt one view's notes: the scenes, the characters, or one worldbuilding kind. */
@@ -134,6 +149,13 @@ export function renderBoard<
 	// the controls follow it.
 	const standalone = variant.searchLabel !== 'quiet';
 	const band = root.createDiv({ cls: `snowflake-method-prose-controls snowflake-method-corkboard-band${standalone ? ' snowflake-method-balanced-toolbar' : ''}` });
+	// The view is picked at the band's start, as the other workspaces pick
+	// theirs; the pools, which offer none, keep nothing there.
+	const viewHost = standalone && controls.views !== undefined
+		? band.createDiv({ cls: 'snowflake-method-toolbar-start snowflake-method-corkboard-view-select' })
+		: null;
+	let viewField: OptionPicker | null = null;
+	let viewSignature: string | null = null;
 	const searchHost = band.createDiv({ cls: 'snowflake-method-toolbar-search' });
 	const search = new SearchComponent(searchHost);
 	if (variant.searchLabel === 'quiet') {
@@ -234,7 +256,7 @@ export function renderBoard<
 			text: deal.words.add,
 			attr: { type: 'button' },
 		});
-	const stopBalance = standalone ? balanceToolbar(band, { start: null, end }) : (): void => undefined;
+	const stopBalance = standalone ? balanceToolbar(band, { start: viewHost, end }) : (): void => undefined;
 	if (variant.addButton === 'icon') {
 		setIcon(addButton, 'plus');
 		setTooltip(addButton, deal.words.add);
@@ -290,6 +312,34 @@ export function renderBoard<
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
+	};
+
+	/** The view field, remade only when the project's kinds moved; otherwise told the view held now. */
+	const paintViewField = (current: ProjectDashboardModel): void => {
+		if (viewHost === null) return;
+		const kinds = current.worldbuildingKinds;
+		const signature = kinds.map((kind) => kind.id).join('|');
+		if (viewField === null || signature !== viewSignature) {
+			viewSignature = signature;
+			viewField?.destroy();
+			viewHost.empty();
+			viewField = buildOptionField(app, viewHost, {
+				options: () => [
+					{ value: 'scene', label: t('corkboard.view.scene') },
+					{ value: 'character', label: t('corkboard.view.character') },
+					...kinds.map((kind) => ({ value: kind.id, label: t('corkboard.view.kind', { kind: kindWord(t, kind.id) }) })),
+				],
+				label: t('timeline.view'),
+				placeholder: t('timeline.view.placeholder'),
+				emptyPlaceholder: t('timeline.view.placeholder'),
+				value: () => memory.view,
+				choose: (view) => {
+					if (view !== memory.view) controls.views?.choose(view);
+				},
+			});
+			return;
+		}
+		viewField.refresh();
 	};
 
 	const deck: MemberCardDeck<Member, CardEntry, Part> = deal.deck<CardEntry>({
@@ -454,6 +504,7 @@ export function renderBoard<
 		// current path; patch() keeps the owner already captured by queued saves.
 		projectPath = current.path;
 		readOnly = current.readOnly;
+		paintViewField(current);
 		deal.filters.reconcile(memory.filters, current);
 		const members = deal.members(current);
 		pool = variant.include === undefined ? members : members.filter(variant.include);
@@ -1295,6 +1346,7 @@ export function renderBoard<
 			if (searchTimer !== null) searchWindow.clearTimeout(searchTimer);
 			if (frame !== null) animationWindow.cancelAnimationFrame(frame);
 			stopBalance();
+			viewField?.destroy();
 			observer?.disconnect();
 			stopMigration?.();
 			unbindWindow(eventWindow);

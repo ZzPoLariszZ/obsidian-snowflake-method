@@ -6,6 +6,8 @@
  * built yet still has its place in it.
  */
 
+import type { WorldbuildingKindId } from '../domain';
+import { entityFilters, type EntityFilters } from './entity-filters';
 import { sceneFilters, type SceneFilters } from './scene-filters';
 
 export const STORY_STRUCTURE_FAMILIES = [
@@ -89,6 +91,34 @@ export interface CorkboardSettings {
 	reversed: boolean;
 }
 
+/**
+ * The view a corkboard tab shows: `scene` for the scenes, `character` for the
+ * characters, or a worldbuilding kind's id for that kind's notes. A kind id
+ * never spells either built-in name: the registry refuses those names in
+ * both languages.
+ */
+export type CorkboardView = WorldbuildingKindId;
+
+export const CORKBOARD_SCENE_VIEW: CorkboardView = 'scene';
+export const CORKBOARD_CHARACTER_VIEW: CorkboardView = 'character';
+
+export function isCorkboardView(value: unknown): value is CorkboardView {
+	return typeof value === 'string' && value.length > 0;
+}
+
+/** Whether a project can show the view: the two built-in views always, a kind's only while the project has the kind. */
+export function corkboardViewAvailable(
+	view: CorkboardView,
+	kinds: readonly { id: string }[],
+): boolean {
+	return view === CORKBOARD_SCENE_VIEW || view === CORKBOARD_CHARACTER_VIEW || kinds.some((kind) => kind.id === view);
+}
+
+/** The corkboard tab's own settings: the board's three, and which view it shows. */
+export interface CorkboardTabSettings extends CorkboardSettings {
+	view: CorkboardView;
+}
+
 /** Project defaults for newly opened tabs; grouping and filters stay in the tab. */
 export type CorkboardPreferences = Pick<CorkboardSettings, 'mode' | 'reversed'>;
 
@@ -155,7 +185,7 @@ export function defaultFreeformSettings(): FreeformSettings {
 export interface StoryStructureViewStateSnapshot {
 	projectPath: string | null;
 	visualization: StoryStructureVisualization;
-	corkboard: CorkboardSettings;
+	corkboard: CorkboardTabSettings;
 	timeline: TimelineSettings;
 	beatSheet: BeatSheetSettings;
 	freeform: FreeformSettings;
@@ -165,7 +195,7 @@ export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 	return {
 		projectPath: null,
 		visualization: DEFAULT_STORY_STRUCTURE_VISUALIZATION,
-		corkboard: { mode: 'standard', group: '', reversed: false },
+		corkboard: { mode: 'standard', group: '', reversed: false, view: CORKBOARD_SCENE_VIEW },
 		timeline: defaultTimelineSettings(),
 		beatSheet: defaultBeatSheetSettings(),
 		freeform: defaultFreeformSettings(),
@@ -192,6 +222,21 @@ const sameCorkboardSettings = (left: CorkboardSettings, right: CorkboardSettings
 	left.mode === right.mode && left.group === right.group && left.reversed === right.reversed;
 
 /**
+ * The tab's settings over the current ones: the board's three one by one, and
+ * the view where one is named. A layout saved before views existed names none
+ * and stays on the scenes; one naming a kind the project no longer has is
+ * taken here and falls back where the model is known.
+ */
+function mergeCorkboardTabSettings(current: CorkboardTabSettings, value: unknown): CorkboardTabSettings {
+	const board =
+		typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+	return {
+		...mergeCorkboardSettings(current, value),
+		view: isCorkboardView(board.view) ? board.view : current.view,
+	};
+}
+
+/**
  * A restored state over the current one. A visualization this build knows
  * wins, a state naming none keeps the current, and one naming something
  * unknown lands on the corkboard, the family's first face. The
@@ -215,7 +260,7 @@ export function mergeStoryStructureViewState(
 		: candidate.visualization === undefined
 			? current.visualization
 			: DEFAULT_STORY_STRUCTURE_VISUALIZATION;
-	const corkboard = mergeCorkboardSettings(current.corkboard, candidate.corkboard);
+	const corkboard = mergeCorkboardTabSettings(current.corkboard, candidate.corkboard);
 	const timelineCandidate =
 		typeof candidate.timeline === 'object' && candidate.timeline !== null
 			? (candidate.timeline as Record<string, unknown>)
@@ -280,6 +325,7 @@ export function mergeStoryStructureViewState(
 			state.projectPath !== current.projectPath ||
 			state.visualization !== current.visualization ||
 			!sameCorkboardSettings(state.corkboard, current.corkboard) ||
+			state.corkboard.view !== current.corkboard.view ||
 			!sameCorkboardSettings(state.timeline.pool, current.timeline.pool) ||
 			state.timeline.poolCollapsed !== current.timeline.poolCollapsed ||
 			state.timeline.timeCollapsed !== current.timeline.timeCollapsed ||
@@ -306,16 +352,43 @@ export interface CorkboardMemory<Filters = SceneFilters> {
 	/** The field the cards are gathered by, one of the view's own, or '' for none. */
 	group: string;
 	reversed: boolean;
+	/** The view the memory belongs to. */
+	view: CorkboardView;
 	query: string;
 	filters: Filters;
 	scrollTop: number;
 }
 
+/** The scene view's memory: what a tab remembers for the board the pools deal too. */
 export function corkboardMemory(settings?: CorkboardSettings): CorkboardMemory {
+	const { mode, group, reversed } = settings ?? defaultStoryStructureState().corkboard;
 	return {
-		...(settings ?? defaultStoryStructureState().corkboard),
+		mode,
+		group,
+		reversed,
+		view: CORKBOARD_SCENE_VIEW,
 		query: '',
 		filters: sceneFilters(),
+		scrollTop: 0,
+	};
+}
+
+/**
+ * A character or worldbuilding view's memory, lasting the session: the card
+ * style and the direction are the project's own and come from the scene
+ * view's, the grouping, the search, the funnel and the scroll are the view's.
+ */
+export function entityCorkboardMemory(
+	view: CorkboardView,
+	settings: Pick<CorkboardSettings, 'mode' | 'reversed'>,
+): CorkboardMemory<EntityFilters> {
+	return {
+		mode: settings.mode,
+		group: '',
+		reversed: settings.reversed,
+		view,
+		query: '',
+		filters: entityFilters(),
 		scrollTop: 0,
 	};
 }

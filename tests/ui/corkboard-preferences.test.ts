@@ -113,7 +113,7 @@ describe('corkboard preferences across closed tabs', () => {
 		const reopened = await openView(store);
 
 		expect(reopened.controls.memory).toEqual({
-			mode: 'extended', reversed: true, group: '', query: '',
+			mode: 'extended', reversed: true, group: '', view: 'scene', query: '',
 			filters: sceneFilters(), scrollTop: 0,
 		});
 		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'extended', reversed: true });

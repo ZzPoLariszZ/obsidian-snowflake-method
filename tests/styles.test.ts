@@ -1157,7 +1157,7 @@ describe('styles.css', () => {
 			expect(declarations(toolbar), toolbar).toContain('--snowflake-method-toolbar-start:');
 			expect(declarations(toolbar), toolbar).not.toContain('display:');
 		}
-		expect(declarations('.snowflake-method-corkboard-band.snowflake-method-balanced-toolbar')).toContain('--snowflake-method-toolbar-start: 0px');
+		expect(declarations('.snowflake-method-corkboard-band.snowflake-method-balanced-toolbar')).toContain('--snowflake-method-toolbar-start: var(--snowflake-method-view-field-width)');
 	});
 
 	it('shows an entity card\'s picture in a fixed pane above the words, hidden under the two barer styles', () => {

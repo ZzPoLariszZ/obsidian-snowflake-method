@@ -10,8 +10,9 @@ import type { App, Menu } from 'obsidian';
 
 import type { LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
+import type { EntityFilters } from './entity-filters';
 import type { SceneFilters } from './scene-filters';
-import type { CorkboardMemory, CorkboardPreferences } from './story-structure-state';
+import type { CorkboardMemory, CorkboardPreferences, CorkboardView } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from './view-model';
 
 /** The host's own methods the board calls, and no others. */
@@ -21,15 +22,26 @@ export type CorkboardHost = Pick<
 	| 'openManuscriptStream'
 	| 'openSceneForm'
 	| 'openCharacterForm'
+	| 'openCreateCharacterForm'
+	| 'openEntityForm'
 	| 'patchScene'
+	| 'patchCharacter'
+	| 'patchEntity'
 	| 'reorderScene'
+	| 'reorderCharacter'
+	| 'reorderEntity'
 	| 'deleteScene'
+	| 'deleteCharacter'
+	| 'deleteEntity'
 	| 'listDefinitionPaths'
 	| 'listManuscriptNotes'
 	| 'isReduceMotionEnabled'
 >;
 
-export interface CorkboardControls<Filters = SceneFilters> {
+/** The funnel's answers a board may be handed: the scene view's, or an entity view's. */
+export type CorkboardFilters = SceneFilters | EntityFilters;
+
+export interface CorkboardControls<Filters = CorkboardFilters> {
 	app: App;
 	host: CorkboardHost;
 	/** Speaks the loaded project's language; rebuilt with the board when it changes. */
@@ -46,6 +58,13 @@ export interface CorkboardControls<Filters = SceneFilters> {
 	memory: CorkboardMemory<Filters>;
 	/** Save the tab layout and, when provided, the individual project preferences changed. */
 	remember(changes?: Partial<CorkboardPreferences>): void;
+	/**
+	 * The views the board may show, for the field at its band's start; a
+	 * board with none, the pools, shows the scenes with no field.
+	 */
+	views?: {
+		choose(view: CorkboardView): void;
+	};
 }
 
 export interface CorkboardHandle {
