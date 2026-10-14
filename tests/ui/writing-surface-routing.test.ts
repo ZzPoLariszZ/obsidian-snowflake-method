@@ -56,7 +56,7 @@ function surface(kind: 'corkboard' | 'modal' | 'unrelated') {
 	const parent = kind === 'corkboard' ? board
 		: new SurfaceElement(kind === 'modal' ? ['modal', 'snowflake-method-scene-modal'] : ['other-plugin-view'], body);
 	const field = new Textarea(
-		[kind === 'corkboard' ? 'snowflake-method-corkboard-conflict'
+		[kind === 'corkboard' ? 'snowflake-method-corkboard-body-text'
 			: kind === 'modal' ? 'snowflake-method-scene-conflict' : 'other-plugin-editor'],
 		parent,
 	);

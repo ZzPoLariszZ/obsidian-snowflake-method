@@ -576,13 +576,13 @@ function custodyOf() {
 	const outside = dom.container.createEl('button');
 	const cardEl = scroller.createDiv({ cls: 'snowflake-method-corkboard-card', attr: { 'data-key': 'row-1 scene-1' } });
 	const title = cardEl.createEl('button', { cls: 'snowflake-method-corkboard-title' });
-	const conflict = cardEl.createEl('textarea', { cls: 'snowflake-method-corkboard-conflict' });
-	const card = { el: cardEl, conflict } as unknown as SceneCard;
+	const conflict = cardEl.createEl('textarea', { cls: 'snowflake-method-corkboard-body-text' });
+	const card = { el: cardEl, body: conflict } as unknown as SceneCard;
 	const cards = new Map<string, SceneCard>([['row-1 scene-1', card]]);
 	const partOf = vi.fn((_card: SceneCard, part: string): Element => (part === 'title' ? title : cardEl) as unknown as Element);
-	const commitConflict = vi.fn();
-	const custody = createFocusCustody(el(root), el(scroller), { cards, partOf, commitConflict });
-	return { dom, root, scroller, control, outside, cardEl, title, conflict, card, cards, partOf, commitConflict, custody };
+	const commitBody = vi.fn();
+	const custody = createFocusCustody(el(root), el(scroller), { cards, partOf, commitBody });
+	return { dom, root, scroller, control, outside, cardEl, title, conflict, card, cards, partOf, commitBody, custody };
 }
 
 describe('focus custody', () => {
@@ -646,7 +646,7 @@ describe('focus custody', () => {
 		expect(fixture.custody.saveConflict()).toBe(false);
 		fixture.conflict.focus();
 		expect(fixture.custody.saveConflict()).toBe(true);
-		expect(fixture.commitConflict).toHaveBeenCalledExactlyOnceWith(fixture.card);
+		expect(fixture.commitBody).toHaveBeenCalledExactlyOnceWith(fixture.card);
 	});
 });
 

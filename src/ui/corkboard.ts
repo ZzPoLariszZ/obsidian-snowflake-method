@@ -591,7 +591,7 @@ export function renderCorkboard(
 				destinations.find((candidate) => {
 					const standing = cards.get(candidate);
 					return standing !== undefined && !pinned.has(candidate) &&
-						!standing.editingTitle && !standing.conflictDirty;
+						!standing.editingTitle && !standing.bodyDirty;
 				});
 			if (nextKey === undefined) continue;
 			// A clean group copy can give its place to the actual editor, preserving
@@ -791,7 +791,7 @@ export function renderCorkboard(
 	const openMenu = (entry: CardEntry, event: MouseEvent): void => {
 		const current = model;
 		if (current === null) return;
-		const scene = entry.scene;
+		const scene = entry.member;
 		const total = current.scenes.length;
 		const writable = editable(entry);
 		const reorderLocked =
@@ -865,7 +865,7 @@ export function renderCorkboard(
 				.setWarning(true)
 				.setDisabled(readOnly || scene.readOnly)
 				.onClick(() => {
-					void enqueue(() => host.deleteScene(entry.id, entry.scene.revision, current.path), { persist: true });
+					void enqueue(() => host.deleteScene(entry.id, entry.member.revision, current.path), { persist: true });
 				});
 		});
 		menu.showAtMouseEvent(event);
@@ -1316,8 +1316,8 @@ export function renderCorkboard(
 		saveFocusedConflict: () => {
 			const active = root.doc.activeElement;
 			for (const entry of cards.values()) {
-				if (entry.conflict !== active) continue;
-				deck.commitConflict(entry);
+				if (entry.body !== active) continue;
+				deck.commitBody(entry);
 				return true;
 			}
 			return false;

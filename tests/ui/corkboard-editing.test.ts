@@ -102,7 +102,7 @@ function board(group: CorkboardMemory['group'] = '', scene: Partial<SceneViewMod
 	} as unknown as CorkboardControls;
 	handle = renderCorkboard(dom.container as unknown as HTMLElement, controls);
 	const card = dom.container.querySelector('.snowflake-method-corkboard-card')!;
-	const conflict = card.querySelector('.snowflake-method-corkboard-conflict')!;
+	const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
 	const title = card.querySelector('.snowflake-method-corkboard-title')!;
 	const titleInput = card.querySelector('.snowflake-method-corkboard-title-input')!;
 	const status = card.querySelector('.snowflake-method-corkboard-status-select')!;
@@ -303,7 +303,7 @@ describe('corkboard drafts across regrouping', () => {
 
 	it('retains distinct drafts when their group copies collapse and restores them when they return', () => {
 		const fixture = board('category', { categoryPaths: ['A', 'B'] });
-		const other = fixture.dom.container.querySelectorAll('.snowflake-method-corkboard-conflict')[1]!;
+		const other = fixture.dom.container.querySelectorAll('.snowflake-method-corkboard-body-text')[1]!;
 		fixture.typeConflict('Draft from A');
 		other.value = 'Draft from B';
 		other.dispatch('input');

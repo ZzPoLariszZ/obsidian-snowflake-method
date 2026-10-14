@@ -145,7 +145,7 @@ beforeEach(() => { vi.clearAllMocks(); menuEntries.length = 0; opened.length = 0
 describe('corkboard correctness regressions', () => {
 	it('#1 blocking scene damage disables editing and refuses dispatched edits', async () => {
 		const fixture = board([scene('A', { healthIssues: [{ blocking: true, code: 'missing' }] as unknown as SceneViewModel['healthIssues'] })]);
-		const conflict = fixture.button('corkboard-conflict');
+		const conflict = fixture.button('corkboard-body-text');
 		expect(fixture.cards()[0]!.classes.has('has-managed-section-issue')).toBe(true);
 		expect(conflict.readOnly).toBe(true);
 		expect(fixture.button('corkboard-title').disabled).toBe(true);
@@ -158,7 +158,7 @@ describe('corkboard correctness regressions', () => {
 	it('#1 advisory scene health keeps editing available without the damage treatment', () => {
 		const fixture = board([scene('A', { healthIssues: [{ blocking: false, code: 'unknown-section' }] as unknown as SceneViewModel['healthIssues'] })]);
 		expect(fixture.cards()[0]!.classes.has('has-managed-section-issue')).toBe(false);
-		expect(fixture.button('corkboard-conflict').readOnly).toBe(false);
+		expect(fixture.button('corkboard-body-text').readOnly).toBe(false);
 		fixture.handle.dispose();
 	});
 

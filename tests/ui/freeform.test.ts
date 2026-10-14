@@ -797,7 +797,7 @@ describe('the freeform workspace', () => {
 		expect(card.querySelector('.snowflake-method-corkboard-color')).not.toBeNull();
 		expect(card.querySelector('.snowflake-method-corkboard-number')).toBeNull();
 		expect(card.querySelector('.snowflake-method-corkboard-symbol')).not.toBeNull();
-		const conflict = card.querySelector('.snowflake-method-corkboard-conflict')! as unknown as HTMLTextAreaElement;
+		const conflict = card.querySelector('.snowflake-method-corkboard-body-text')! as unknown as HTMLTextAreaElement;
 		expect(conflict.readOnly).toBe(true);
 		expect(conflict.getAttribute('placeholder')).toBeNull();
 		expect(fixture.face('f1').querySelector('.snowflake-method-freeform-frame-title')!.textContent).toBe('Opening');

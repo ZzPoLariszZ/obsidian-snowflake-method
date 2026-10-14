@@ -4,9 +4,12 @@ import type { Translate } from './modals';
 import { DIALOG_CLASS } from './dialog-class';
 
 export interface RecoveredCorkboardDraft {
-	scene: string;
+	/** What the note is called. */
+	name: string;
 	title?: string;
-	conflict?: string;
+	body?: string;
+	/** What the body is called for this kind of note: a scene's conflict, a character's storyline. */
+	bodyLabel: string;
 }
 
 /** Keeps refused card text outside the board that may already be closing. */
@@ -22,11 +25,11 @@ export class CorkboardDraftModal extends Modal {
 		root.empty();
 		root.createEl('p', { text: this.t('corkboard.draftRecovery.description') });
 		for (const draft of this.drafts) {
-			root.createEl('h3', { text: draft.scene });
-			for (const field of ['title', 'conflict'] as const) {
+			root.createEl('h3', { text: draft.name });
+			for (const field of ['title', 'body'] as const) {
 				const value = draft[field];
 				if (value === undefined) continue;
-				const label = this.t(field === 'title' ? 'corkboard.editName' : 'table.conflict');
+				const label = field === 'title' ? this.t('corkboard.editName') : draft.bodyLabel;
 				root.createEl('p', { text: label });
 				const input = root.createEl('textarea', {
 					cls: 'snowflake-method-corkboard-recovered-text',

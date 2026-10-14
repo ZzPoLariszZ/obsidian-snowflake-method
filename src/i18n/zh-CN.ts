@@ -1093,7 +1093,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'corkboard.moreLinked': '还有 {count} 篇关联正文，点击在场景编辑窗口中查看',
 	'corkboard.moreLinkedOne': '还有 1 篇关联正文，点击在场景编辑窗口中查看',
 	'corkboard.colorLabel': '颜色：{color}',
-	'corkboard.draftRecovery.title': '未保存的场景文字',
+	'corkboard.draftRecovery.title': '未保存的卡片文字',
 	'corkboard.draftRecovery.description': '这些修改未能保存。未保存的文字保留在下方。关闭此窗口前，请复制需要保留的内容。',
 	'corkboard.order.normal': '叙事顺序',
 	'corkboard.order.reversed': '倒序',

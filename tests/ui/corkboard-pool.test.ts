@@ -287,7 +287,7 @@ describe('the corkboard as a pool', () => {
 		fixture.host.patchScene.mockRejectedValueOnce(new Error('The scene has moved on'));
 		const card = fixture.cards()[0]!;
 		expect(card.getAttribute('data-id')).toBe('scene-a');
-		const conflict = card.querySelector('.snowflake-method-corkboard-conflict')!;
+		const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
 		conflict.value = 'Unsaved draft';
 		conflict.dispatch('input');
 		conflict.dispatch('blur');
@@ -309,7 +309,7 @@ describe('the corkboard as a pool', () => {
 		const fixture = pool({ include: (candidate) => !(placed && candidate.id === 'scene-a') });
 		fixture.host.patchScene.mockRejectedValueOnce(new Error('The scene has moved on'));
 		const card = fixture.cards()[0]!;
-		const conflict = card.querySelector('.snowflake-method-corkboard-conflict')!;
+		const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
 		conflict.value = 'Unsaved draft';
 		conflict.dispatch('input');
 		conflict.dispatch('blur');
@@ -322,8 +322,8 @@ describe('the corkboard as a pool', () => {
 		await settle();
 		expect(opened).toEqual([]);
 		expect(logged).toHaveBeenCalledWith(
-			'Snowflake: a scene card’s words could not be written',
-			{ scene: 'Scene A', conflict: 'Unsaved draft' },
+			'Snowflake: a card’s words could not be written',
+			{ name: 'Scene A', body: 'Unsaved draft', bodyLabel: 'table.conflict' },
 		);
 		vi.restoreAllMocks();
 	});

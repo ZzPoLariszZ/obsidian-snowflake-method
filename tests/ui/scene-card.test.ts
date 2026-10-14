@@ -74,7 +74,7 @@ function fireOn(element: CorkboardElement, type: string, target: CorkboardElemen
 
 const el = (node: unknown): CorkboardElement => node as CorkboardElement;
 
-function deal(scene: Partial<SceneViewModel> = {}, options: { symbol?: string; conflictReadOnly?: boolean } = {}) {
+function deal(scene: Partial<SceneViewModel> = {}, options: { symbol?: string; bodyReadOnly?: boolean } = {}) {
 	const dom = new CorkboardDom();
 	let stored: SceneViewModel = {
 		id: 'scene', path: 'First/Scenes/Opening.md', title: 'Opening', rank: 0,
@@ -186,28 +186,28 @@ describe('a scene card dealt from the deck', () => {
 		expect(root.getAttribute('aria-posinset')).toBe('1');
 		expect(root.getAttribute('aria-setsize')).toBe('2');
 		expect(root.getAttribute('draggable')).toBe('true');
-		for (const part of ['grip', 'head', 'title', 'title-input', 'status-select', 'body', 'conflict', 'links', 'chips', 'footer', 'pov', 'color', 'more']) {
+		for (const part of ['grip', 'head', 'title', 'title-input', 'status-select', 'body', 'body-text', 'links', 'chips', 'footer', 'pov', 'color', 'more']) {
 			expect(root.querySelector(`.snowflake-method-corkboard-${part}`), part).not.toBeNull();
 		}
 		expect(el(card.number).textContent).toBe('1');
 		expect(el(card.title).textContent).toBe('Opening');
-		expect(el(card.conflict).value).toBe('An obstacle');
+		expect(el(card.body).value).toBe('An obstacle');
 		expect(el(card.status).value).toBe('in-progress');
 		expect(deck.cards.get('scene')).toBe(card);
 	});
 
 	it('wears a symbol in place of its number, and keeps its conflict read-only, where the deck says so', () => {
-		const fixture = deal({}, { symbol: 'clapperboard', conflictReadOnly: true });
+		const fixture = deal({}, { symbol: 'clapperboard', bodyReadOnly: true });
 		const card = fixture.mount();
 		expect(el(card.number).classes.has('snowflake-method-corkboard-symbol')).toBe(true);
 		expect(el(card.number).classes.has('snowflake-method-corkboard-number')).toBe(false);
 		expect(el(card.number).getAttribute('aria-hidden')).toBe('true');
 		expect(el(card.number).getAttribute('aria-label')).toBeNull();
 		// A conflict only read invites no writing: no placeholder, not reached by the Tab key, and read-only however writable the scene is.
-		expect(card.conflict.readOnly).toBe(true);
-		expect(el(card.conflict).getAttribute('placeholder')).toBeNull();
-		expect(el(card.conflict).getAttribute('tabindex')).toBe('-1');
-		expect(el(card.conflict).value).toBe('An obstacle');
+		expect(card.body.readOnly).toBe(true);
+		expect(el(card.body).getAttribute('placeholder')).toBeNull();
+		expect(el(card.body).getAttribute('tabindex')).toBe('-1');
+		expect(el(card.body).value).toBe('An obstacle');
 		// The rest of the card is still the writer's.
 		expect(card.status.disabled).toBe(false);
 		expect(card.title.disabled).toBe(false);
@@ -220,7 +220,7 @@ describe('a scene card dealt from the deck', () => {
 		const before = [el(card.title).textWrites, el(card.pov).textWrites, el(card.moreLinks).textWrites];
 		deck.dress(card, stored(), 0, { position: 1, size: 2 });
 		expect([el(card.title).textWrites, el(card.pov).textWrites, el(card.moreLinks).textWrites]).toEqual(before);
-		expect(el(card.conflict).value).toBe('An obstacle');
+		expect(el(card.body).value).toBe('An obstacle');
 	});
 
 	it('edits the name in place, refusing an empty one and one another scene answers to', async () => {
@@ -259,10 +259,10 @@ describe('a scene card dealt from the deck', () => {
 	it('saves the conflict when its box is left, and on the chord', async () => {
 		const { host, mount, stored, refresh } = deal();
 		const card = mount();
-		const conflict = el(card.conflict);
+		const conflict = el(card.body);
 		conflict.value = 'Changed';
 		conflict.dispatch('input');
-		expect(card.conflictDirty).toBe(true);
+		expect(card.bodyDirty).toBe(true);
 		conflict.dispatch('blur');
 		await settle();
 		expect(host.patchScene).toHaveBeenLastCalledWith('scene', { conflict: 'Changed', expectedRevision: 'initial' }, PROJECT);
@@ -273,7 +273,7 @@ describe('a scene card dealt from the deck', () => {
 		await settle();
 		expect(host.patchScene).toHaveBeenLastCalledWith('scene', { conflict: 'Again', expectedRevision: 'saved-1' }, PROJECT);
 		expect(stored().conflict).toBe('Again');
-		expect(card.conflictDirty).toBe(false);
+		expect(card.bodyDirty).toBe(false);
 	});
 
 	it('paints a pending status on every copy of the scene until the write lands', async () => {
@@ -328,19 +328,19 @@ describe('a scene card dealt from the deck', () => {
 		const opened: CorkboardDraftModal[] = [];
 		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
 		const card = mount();
-		el(card.conflict).value = 'Draft';
-		el(card.conflict).dispatch('input');
+		el(card.body).value = 'Draft';
+		el(card.body).dispatch('input');
 		deck.park(card);
 		expect(el(card.el).isConnected).toBe(false);
 		expect(deck.cards.get('scene')).toBe(card);
-		expect(card.conflictDirty).toBe(true);
+		expect(card.bodyDirty).toBe(true);
 		expect(deck.editingKeys()).toEqual(['scene']);
 		setReadOnly(true);
 		deck.park(card);
 		await settle();
 		expect(opened).toHaveLength(1);
-		expect(card.conflictDirty).toBe(false);
-		expect(el(card.conflict).value).toBe('An obstacle');
+		expect(card.bodyDirty).toBe(false);
+		expect(el(card.body).value).toBe('An obstacle');
 	});
 
 	it('recovers the draft of a scene that went when its card comes down', async () => {
@@ -368,7 +368,7 @@ describe('a scene card dealt from the deck', () => {
 		expect(deck.partOf(card, 'status')).toBe(card.status);
 		expect(deck.partOf(card, 'color')).toBe(card.color);
 		expect(deck.partOf(card, 'more')).toBe(card.more);
-		expect(deck.partOf(card, 'conflict')).toBe(card.conflict);
+		expect(deck.partOf(card, 'body')).toBe(card.body);
 		expect(deck.partOf(card, 'more-links')).toBe(card.moreLinks);
 		expect(deck.partOf(card, 'link')).toBe(card.el);
 		expect(deck.partOf(card, 'card')).toBe(card.el);
@@ -420,8 +420,8 @@ describe('a scene card dealt from the deck', () => {
 	it('drains a dirty conflict into the queue when disposed, without a read', async () => {
 		const { deck, host, mount, refresh } = deal();
 		const card = mount();
-		el(card.conflict).value = 'Late';
-		el(card.conflict).dispatch('input');
+		el(card.body).value = 'Late';
+		el(card.body).dispatch('input');
 		deck.dispose();
 		await settle();
 		expect(host.patchScene).toHaveBeenCalledWith('scene', { conflict: 'Late', expectedRevision: 'initial' }, PROJECT);

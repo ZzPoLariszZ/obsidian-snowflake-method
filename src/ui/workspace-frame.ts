@@ -615,7 +615,7 @@ export interface FocusCustody {
 export function createFocusCustody(
 	root: HTMLElement,
 	scroller: HTMLElement,
-	deck: Pick<SceneCardDeck<SceneCard>, 'cards' | 'partOf' | 'commitConflict'>,
+	deck: Pick<SceneCardDeck<SceneCard>, 'cards' | 'partOf' | 'commitBody'>,
 ): FocusCustody {
 	const hold = (): FocusHold | null => {
 		const active = root.doc.activeElement;
@@ -644,8 +644,8 @@ export function createFocusCustody(
 	const saveConflict = (): boolean => {
 		const active = root.doc.activeElement;
 		for (const card of deck.cards.values()) {
-			if (card.conflict !== active) continue;
-			deck.commitConflict(card);
+			if (card.body !== active) continue;
+			deck.commitBody(card);
 			return true;
 		}
 		return false;
@@ -752,7 +752,7 @@ export interface LaneDeckDeps {
 	/** The symbol every card wears in place of its number, on a surface where the cards stand in no order. */
 	symbol?: string;
 	/** The conflict is read on the card and never typed into there. */
-	conflictReadOnly?: boolean;
+	bodyReadOnly?: boolean;
 	/** The title is read on the card and never typed into there. */
 	titleReadOnly?: boolean;
 }
@@ -819,7 +819,7 @@ export function createLaneDeck(deps: LaneDeckDeps): LaneDeck {
 		},
 		extend: (card) => card,
 		...(deps.symbol === undefined ? {} : { symbol: deps.symbol }),
-		...(deps.conflictReadOnly === undefined ? {} : { conflictReadOnly: deps.conflictReadOnly }),
+		...(deps.bodyReadOnly === undefined ? {} : { bodyReadOnly: deps.bodyReadOnly }),
 		...(deps.titleReadOnly === undefined ? {} : { titleReadOnly: deps.titleReadOnly }),
 	});
 

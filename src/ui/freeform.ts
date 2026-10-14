@@ -1426,7 +1426,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		}),
 		symbol: kindIcon({ worldbuildingKinds: [] }, 'scene'),
 		// A card on the canvas changes only its tint and its standing; the rest is the form's.
-		conflictReadOnly: true,
+		bodyReadOnly: true,
 		titleReadOnly: true,
 	});
 	const { deck } = laneDeck;
@@ -1439,8 +1439,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		const active = root.doc.activeElement;
 		if (active === null) return false;
 		for (const card of deck.cards.values()) {
-			if (active === card.conflict) {
-				deck.commitConflict(card);
+			if (active === card.body) {
+				deck.commitBody(card);
 				return true;
 			}
 			if (active === card.titleInput) {
@@ -1555,7 +1555,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				const card = deck.cards.get(key);
 				if (card === undefined) return;
 				deck.commitTitle(card, false);
-				deck.commitConflict(card);
+				deck.commitBody(card);
 			},
 			retire: (key) => {
 				deck.retire(key);

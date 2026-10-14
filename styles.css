@@ -13950,7 +13950,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-height: 0;
 }
 
-.snowflake-method-scene-cards textarea.snowflake-method-corkboard-conflict {
+.snowflake-method-scene-cards textarea.snowflake-method-corkboard-body-text {
 	flex: 1 1 auto;
 	width: 100%;
 	min-height: 0;
@@ -13967,7 +13967,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	line-height: var(--line-height-normal);
 }
 
-.snowflake-method-scene-cards textarea.snowflake-method-corkboard-conflict:focus {
+.snowflake-method-scene-cards textarea.snowflake-method-corkboard-body-text:focus {
 	outline: none;
 	box-shadow: none;
 }
@@ -16917,7 +16917,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* The conflict is read on the canvas and never typed into there: it takes
    no press, so a press on it takes hold of the node, and a press twice on
    it opens the scene, as one anywhere else on the card does. */
-.snowflake-method-freeform-face.is-scene textarea.snowflake-method-corkboard-conflict {
+.snowflake-method-freeform-face.is-scene textarea.snowflake-method-corkboard-body-text {
 	overflow: hidden;
 	pointer-events: none;
 	cursor: default;

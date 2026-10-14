@@ -1191,7 +1191,7 @@ export const en = {
 	'corkboard.moreLinked': '{count} more linked manuscripts — view in scene editor',
 	'corkboard.moreLinkedOne': '{count} more linked manuscript — view in scene editor',
 	'corkboard.colorLabel': 'Color: {color}',
-	'corkboard.draftRecovery.title': 'Unsaved scene text',
+	'corkboard.draftRecovery.title': 'Unsaved card text',
 	'corkboard.draftRecovery.description': 'These changes could not be saved. Your unsaved text is kept below. Copy anything you want to keep before closing this dialog.',
 	'corkboard.order.normal': 'Narrative order',
 	'corkboard.order.reversed': 'Reversed order',

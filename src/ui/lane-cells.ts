@@ -1585,7 +1585,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 				.setTitle(t('common.open'))
 				.setIcon('file-text')
 				.onClick(() => {
-					void host.openManagedFile(card.scene.path).catch(notice);
+					void host.openManagedFile(card.member.path).catch(notice);
 				});
 		});
 		menu.addSeparator();
@@ -1627,10 +1627,10 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 				.setTitle(t('actions.delete'))
 				.setIcon('trash-2')
 				.setWarning(true)
-				.setDisabled(deps.readOnly() || card.scene.readOnly || path === null)
+				.setDisabled(deps.readOnly() || card.member.readOnly || path === null)
 				.onClick(() => {
 					if (path === null) return;
-					void deck.enqueue(() => host.deleteScene(card.id, card.scene.revision, path), { persist: true });
+					void deck.enqueue(() => host.deleteScene(card.id, card.member.revision, path), { persist: true });
 				});
 		});
 		menu.showAtMouseEvent(event);

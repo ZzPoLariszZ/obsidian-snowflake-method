@@ -2559,7 +2559,7 @@ describe('a row moved while a conflict is being written on one of its cards', ()
 		views: [view('v', ['a'], { presentation })],
 	});
 	const cardsIn = (el: CorkboardElement): CorkboardElement[] => el.querySelectorAll('.snowflake-method-corkboard-card');
-	const conflictOf = (card: CorkboardElement): CorkboardElement => card.querySelector('.snowflake-method-corkboard-conflict')!;
+	const conflictOf = (card: CorkboardElement): CorkboardElement => card.querySelector('.snowflake-method-corkboard-body-text')!;
 
 	it.each([
 		['flat', 'down'], ['stack', 'down'], ['flat', 'up'], ['stack', 'up'],
@@ -2602,7 +2602,7 @@ describe('a placement taken away while a conflict is being written on its card',
 		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1', 'scene-2'])] }] })],
 		views: [view('v', ['a'], { presentation })],
 	});
-	const conflictOf = (card: CorkboardElement): CorkboardElement => card.querySelector('.snowflake-method-corkboard-conflict')!;
+	const conflictOf = (card: CorkboardElement): CorkboardElement => card.querySelector('.snowflake-method-corkboard-body-text')!;
 	const savedConflict = (fixture: ReturnType<typeof workspace>): unknown =>
 		vi.mocked(fixture.host.patchScene).mock.calls[0]!.find((arg) => typeof arg === 'object' && arg !== null && 'conflict' in arg);
 
@@ -2914,7 +2914,7 @@ describe('a draft whose save fails once its card has come down', () => {
 			const fixture = laid(presentation);
 			await settle();
 			const card = fixture.cards()[0]!;
-			const conflict = card.querySelector('.snowflake-method-corkboard-conflict')!;
+			const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
 			conflict.focus();
 			conflict.value = 'Unsaved draft';
 			conflict.dispatch('input');
@@ -3461,7 +3461,7 @@ describe('timeline words during plugin unload', () => {
 		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(() => undefined);
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		try {
-			const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-conflict')!;
+			const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-body-text')!;
 			conflict.focus();
 			conflict.value = 'Unsaved draft';
 			conflict.dispatch('input');
@@ -3471,8 +3471,8 @@ describe('timeline words during plugin unload', () => {
 			expect(fixture.host.patchScene).toHaveBeenCalledOnce();
 			expect(open).not.toHaveBeenCalled();
 			expect(logged).toHaveBeenCalledWith(
-				'Snowflake: a scene card’s words could not be written',
-				expect.objectContaining({ conflict: 'Unsaved draft' }),
+				'Snowflake: a card’s words could not be written',
+				expect.objectContaining({ body: 'Unsaved draft' }),
 			);
 		} finally {
 			open.mockRestore();

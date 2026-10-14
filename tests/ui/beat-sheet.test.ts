@@ -2316,7 +2316,7 @@ describe('the beat sheet workspace owns its dialogs and the words in it', () => 
 		foot.value = 'Words kept at unload';
 		foot.dispatch('input');
 		vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null);
-		const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-conflict')!;
+		const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-body-text')!;
 		conflict.focus();
 		conflict.value = 'Unsaved draft';
 		conflict.dispatch('input');
@@ -2330,8 +2330,8 @@ describe('the beat sheet workspace owns its dialogs and the words in it', () => 
 			{ place: 'Sheet s · beatSheet.act.titleLabelled(number=1,label=Setup) · Catalyst', words: 'Words kept at unload' },
 		);
 		expect(logged).toHaveBeenCalledWith(
-			'Snowflake: a scene card’s words could not be written',
-			expect.objectContaining({ conflict: 'Unsaved draft' }),
+			'Snowflake: a card’s words could not be written',
+			expect.objectContaining({ body: 'Unsaved draft' }),
 		);
 	});
 
@@ -2340,7 +2340,7 @@ describe('the beat sheet workspace owns its dialogs and the words in it', () => 
 		await settle();
 		expect(fixture.handle.saveFocusedConflict()).toBe(false);
 		expect(fixture.poolHandle.saveFocusedConflict).toHaveBeenCalledTimes(1);
-		const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-conflict')!;
+		const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-body-text')!;
 		conflict.focus();
 		expect(fixture.handle.saveFocusedConflict()).toBe(true);
 		expect(fixture.poolHandle.saveFocusedConflict).toHaveBeenCalledTimes(1);
