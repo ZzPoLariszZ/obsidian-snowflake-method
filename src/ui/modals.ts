@@ -4275,6 +4275,8 @@ export class ConfirmMemberDeletionModal extends ConfirmModal {
 		private readonly memberName: string,
 		private readonly usage: MemberUsage,
 		onResolve: (confirmed: boolean) => void,
+		/** Whether the note keeps pictures, whose orphans go to the trash with it. */
+		private readonly pictured = false,
 	) {
 		super(app, t, { label: t('actions.delete'), style: 'mod-warning' }, onResolve);
 		this.setTitle(t('modal.deleteMember.title', { name: memberName }));
@@ -4306,6 +4308,7 @@ export class ConfirmMemberDeletionModal extends ConfirmModal {
 			false,
 		);
 		addNoteList(body, this.t('modal.deleteMember.records'), this.usage.records, true);
+		if (this.pictured) body.createEl('p', { text: this.t('modal.deleteMember.gallery') });
 	}
 }
 

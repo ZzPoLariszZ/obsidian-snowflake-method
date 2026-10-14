@@ -1790,6 +1790,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.deleteMember.needsDecision': '以下笔记需要另选一篇笔记替代：',
 	'modal.deleteMember.listed': '“{name}”将从以下笔记中移除：',
 	'modal.deleteMember.records': '以下笔记的记录中提到了它：',
+	'modal.deleteMember.gallery': '只有这篇笔记用到的图片会随它一起移到回收站。',
 	'modal.deleteDefinition.title': '删除“{name}”？',
 	'modal.deleteDefinition.description': '该条目及其笔记将移至回收站。',
 	'modal.deleteDefinition.subtree':

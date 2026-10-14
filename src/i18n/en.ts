@@ -1917,6 +1917,7 @@ export const en = {
 		'These notes will need another note in its place:',
 	'modal.deleteMember.listed': '“{name}” will be removed from:',
 	'modal.deleteMember.records': 'These notes mention it in their records:',
+	'modal.deleteMember.gallery': 'The pictures only this note uses go to the trash with it.',
 	'modal.deleteDefinition.title': 'Delete “{name}”?',
 	'modal.deleteDefinition.description':
 		'The entry and its note are moved to the trash.',

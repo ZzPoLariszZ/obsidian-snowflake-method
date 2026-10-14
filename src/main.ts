@@ -2482,8 +2482,10 @@ export default class SnowflakeMethodPlugin
 			usage.listed.length === 0 &&
 			usage.records.length === 0
 		) {
+			// Obsidian's own prompt goes on to offer the attachments only this
+			// note linked, the gallery's pictures among them, and the author's
+			// answer there stands: nothing of the gallery is tidied after it.
 			if (!(await this.app.fileManager.promptForDeletion(file))) return;
-			await this.tidyGallery(project, member);
 			new Notice(deleted);
 			return;
 		}
@@ -2495,6 +2497,7 @@ export default class SnowflakeMethodPlugin
 				member.name,
 				usage,
 				resolve,
+				member.gallery.length > 0,
 			).open();
 		});
 		if (!confirmed) return;

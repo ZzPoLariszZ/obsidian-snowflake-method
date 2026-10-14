@@ -413,8 +413,10 @@ describe('gallery saves through the host', () => {
 		character = await reload();
 		expect(character.gallery).toEqual([face]);
 
+		// Obsidian's own deletion prompt offers the note's unused attachments itself, so the host leaves the picture to its answer.
 		Object.setPrototypeOf(env.fakeVault.getFileByPath(character.path), TFile.prototype);
 		await plugin.deleteCharacter(created.id, character.revision, owner.projectFile);
-		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`, `${folder}/extra.png`, character.path, `${folder}/face.png`]);
+		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`, `${folder}/extra.png`, character.path]);
+		expect(env.fakeVault.getFileByPath(`${folder}/face.png`)).not.toBeNull();
 	});
 });
