@@ -7,6 +7,8 @@
  */
 
 import {
+	IMAGE_EXTENSIONS,
+	fileExtensionOf,
 	type FreeformPlacement,
 	type FreeformRecordType,
 	type FreeformResourceType,
@@ -28,14 +30,8 @@ export type FreeformFileKind = 'markdown' | 'image' | 'video' | 'audio' | 'pdf' 
 
 const FILE_KINDS: Readonly<Record<string, FreeformFileKind>> = {
 	md: 'markdown',
-	avif: 'image',
-	bmp: 'image',
-	gif: 'image',
-	jpeg: 'image',
-	jpg: 'image',
-	png: 'image',
-	svg: 'image',
-	webp: 'image',
+	// A picture is whatever the gallery calls one, so the two never disagree.
+	...Object.fromEntries([...IMAGE_EXTENSIONS].map((extension) => [extension, 'image' as const])),
 	mkv: 'video',
 	mov: 'video',
 	mp4: 'video',
@@ -54,9 +50,7 @@ const FILE_KINDS: Readonly<Record<string, FreeformFileKind>> = {
 
 /** The extension a path ends in, lower case and without its dot; none for a name that has none. */
 export function freeformFileExtension(path: string): string {
-	const name = path.slice(path.lastIndexOf('/') + 1);
-	const dot = name.lastIndexOf('.');
-	return dot <= 0 ? '' : name.slice(dot + 1).toLowerCase();
+	return fileExtensionOf(path);
 }
 
 export function freeformFileKind(path: string): FreeformFileKind {

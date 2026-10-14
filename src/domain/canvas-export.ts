@@ -35,6 +35,7 @@ import {
 	type FreeformSide,
 	type FreeformView,
 } from './freeform';
+import { IMAGE_EXTENSIONS, fileExtensionOf } from './gallery';
 import type { MacaronColor } from './macaron';
 import type { SceneRow } from './scene-rows';
 import { resolvedTimeOrder, type Timeline, type TimelineDocument, type TimelineView } from './timeline';
@@ -156,13 +157,12 @@ function canvasRecords(data: CanvasData): { nodes: CanvasRecord[]; edges: Canvas
 
 /** The file extensions Obsidian shows as a picture or a player on a canvas, and fits to their own proportions. */
 const CANVAS_MEDIA_EXTENSIONS = new Set([
-	'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif',
+	...IMAGE_EXTENSIONS,
 	'mp4', 'mov', 'webm', 'mkv', 'ogv', 'm4v',
 ]);
 
 function isCanvasMediaPath(path: string): boolean {
-	const dot = path.lastIndexOf('.');
-	return dot !== -1 && CANVAS_MEDIA_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+	return CANVAS_MEDIA_EXTENSIONS.has(fileExtensionOf(path));
 }
 
 /**
