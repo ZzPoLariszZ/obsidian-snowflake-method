@@ -9,11 +9,9 @@
  * kind. Writes go to the character's or the worldbuilding note's own patch.
  */
 
-import { setIcon, type App } from 'obsidian';
+import type { App } from 'obsidian';
 
-import { galleryCover } from '../domain';
 import type { CharacterPatch, EntityPatch } from '../services';
-import { resolveGalleryPicture } from './gallery-links';
 import {
 	MEMBER_CARD_PART_CLASSES,
 	createMemberCardDeck,
@@ -38,10 +36,6 @@ export const kindOf = (member: EntityMember): string => (isCharacterMember(membe
 export interface EntityCardExtras {
 	/** The word on the foot. */
 	word: HTMLElement;
-	/** The pane the fullest style shows the main picture in. */
-	picture: HTMLElement;
-	/** What the pane was last drawn from: the picture's path and stamp, or the symbol shown in its place. */
-	pictureSignature: string;
 }
 
 export type EntityCard = MemberCard<EntityMember> & EntityCardExtras;
@@ -134,12 +128,14 @@ function entityApplied(member: EntityMember, fields: MemberCardPatch, revision: 
 function entityCardKind<Card extends EntityCard>(
 	deps: EntityCardDeps<Card>,
 ): CardKind<EntityMember, EntityCardExtras, EntityCardPart> {
-	const { app, host, t } = deps;
+	const { host, t } = deps;
 	return {
 		title: (member) => member.name,
 		body: entityBodyOf,
 		status: (member) => member.progressStatus,
 		color: (member) => member.color,
+		picture: (member) => ({ gallery: member.gallery, galleryMain: member.galleryMain, path: member.path, icon: deps.icon(member) }),
+		cardClass: 'is-entity-card',
 		patch: (member, fields, expectedRevision, projectPath) =>
 			isCharacterMember(member)
 				? host.patchCharacter(member.id, characterPatchOf(fields, expectedRevision), projectPath)
@@ -159,41 +155,14 @@ function entityCardKind<Card extends EntityCard>(
 			nameTaken: (member) => (isCharacterMember(member) ? t('modal.character.nameTaken') : t('modal.entity.nameTaken')),
 		},
 		build: (slots) => {
-			// The picture stands between the head and the words.
-			const picture = slots.el.createDiv({ cls: 'snowflake-method-corkboard-picture is-empty' });
-			slots.el.insertBefore(picture, slots.body);
 			// The word leads the foot, where a scene names its point of view.
 			const word = slots.footerRow.createSpan({ cls: 'snowflake-method-corkboard-word' });
 			slots.footerRow.insertBefore(word, slots.actions);
-			return { word, picture, pictureSignature: '' };
+			return { word };
 		},
 		dress: (card, member) => {
 			const word = deps.footWord(member);
 			if (card.word.textContent !== word) card.word.setText(word);
-			const cover = galleryCover(member.gallery, member.galleryMain);
-			const file = cover === null ? null : resolveGalleryPicture(app.metadataCache, cover, member.path);
-			const icon = deps.icon(member);
-			const signature = file === null ? `icon:${icon}` : `${file.path}|${String(file.stat.mtime)}`;
-			if (signature !== card.pictureSignature) {
-				card.pictureSignature = signature;
-				card.picture.empty();
-				card.picture.toggleClass('is-empty', file === null);
-				if (file === null) {
-					const symbol = card.picture.createSpan({
-						cls: 'snowflake-method-corkboard-picture-symbol',
-						attr: { 'aria-hidden': 'true' },
-					});
-					setIcon(symbol, icon);
-				} else {
-					card.picture.createEl('img', {
-						attr: { src: app.vault.getResourcePath(file), alt: member.name, loading: 'lazy' },
-					});
-				}
-			} else if (file !== null) {
-				// A rename moves the words under the picture, not the picture.
-				const shown = card.picture.querySelector('img');
-				if (shown !== null && shown.getAttribute('alt') !== member.name) shown.setAttribute('alt', member.name);
-			}
 		},
 		wire: () => undefined,
 		partClasses: [],

@@ -1175,6 +1175,10 @@ describe('styles.css', () => {
 		for (const mode of ['compact', 'standard']) {
 			expect(hidden).toContain(`.snowflake-method-scene-cards[data-mode='${mode}'] .snowflake-method-corkboard-picture`);
 		}
+		// The gallery style gives the words' room to the pane; a scene's fullest style keeps its links and no pane.
+		expect(hidden).toContain(`.snowflake-method-scene-cards[data-mode='gallery'] .snowflake-method-corkboard-body`);
+		expect(hidden).toContain(`.snowflake-method-scene-cards[data-mode='extended'] .is-scene-card .snowflake-method-corkboard-picture`);
+		expect(declarations(`.snowflake-method-scene-cards[data-mode='gallery']`)).toContain('--snowflake-method-corkboard-card-height: 21rem');
 		expect(declarations('.snowflake-method-corkboard-word')).toContain('text-overflow: ellipsis');
 	});
 

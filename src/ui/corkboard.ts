@@ -396,7 +396,7 @@ export function renderBoard<
 	};
 
 	const compactHeight = (): number | undefined => {
-		if (memory.mode !== 'compact') return undefined;
+		if (memory.mode !== 'compact' && memory.mode !== 'gallery') return undefined;
 		for (const { el } of cards.values()) {
 			if (!el.isConnected) continue;
 			const head = el.querySelector<HTMLElement>('.snowflake-method-corkboard-head');

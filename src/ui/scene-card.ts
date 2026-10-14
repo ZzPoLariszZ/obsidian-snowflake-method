@@ -182,6 +182,9 @@ function sceneCardKind<Card extends SceneCard>(
 		body: (scene) => scene.conflict,
 		status: (scene) => scene.progressStatus,
 		color: (scene) => scene.color,
+		// The pane shows a scene's main picture in the gallery style; the rail's scene symbol stands in without one.
+		picture: (scene) => ({ gallery: scene.gallery, galleryMain: scene.galleryMain, path: scene.path, icon: 'clapperboard' }),
+		cardClass: 'is-scene-card',
 		patch: (scene, fields, expectedRevision, projectPath) =>
 			host.patchScene(scene.id, scenePatchOf(fields, expectedRevision), projectPath),
 		applied: sceneApplied,

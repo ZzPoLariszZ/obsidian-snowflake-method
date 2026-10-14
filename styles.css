@@ -13519,6 +13519,10 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--snowflake-method-corkboard-card-height: 19rem;
 }
 
+.snowflake-method-scene-cards[data-mode='gallery'] {
+	--snowflake-method-corkboard-card-height: 21rem;
+}
+
 /* The board's own measures; each card receives its width directly to avoid
    inherited resize work. */
 .snowflake-method-corkboard {
@@ -13970,11 +13974,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	cursor: default;
 }
 
+/* The gallery style is the head, the picture and the foot: the words give
+   way to the pane. A scene's fullest style keeps its links and no pane. */
 .snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-body,
 .snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-links,
 .snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-picture,
 .snowflake-method-scene-cards[data-mode='standard'] .snowflake-method-corkboard-links,
-.snowflake-method-scene-cards[data-mode='standard'] .snowflake-method-corkboard-picture {
+.snowflake-method-scene-cards[data-mode='standard'] .snowflake-method-corkboard-picture,
+.snowflake-method-scene-cards[data-mode='gallery'] .snowflake-method-corkboard-body,
+.snowflake-method-scene-cards[data-mode='gallery'] .snowflake-method-corkboard-links,
+.snowflake-method-scene-cards[data-mode='extended'] .is-scene-card .snowflake-method-corkboard-picture {
 	display: none;
 }
 
@@ -17015,7 +17024,10 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-links,
 .snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-picture,
 .snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='standard'] .snowflake-method-corkboard-links,
-.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='standard'] .snowflake-method-corkboard-picture {
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='standard'] .snowflake-method-corkboard-picture,
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='gallery'] .snowflake-method-corkboard-body,
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='gallery'] .snowflake-method-corkboard-links,
+.snowflake-method-freeform-face.is-scene[data-mode='extended'] .snowflake-method-corkboard-picture {
 	display: none;
 }
 

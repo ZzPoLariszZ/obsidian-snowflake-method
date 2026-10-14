@@ -16,10 +16,11 @@
 
 import { Keymap, Notice, setIcon, setTooltip, type App } from 'obsidian';
 
-import { PROGRESS_STATUSES, isProgressStatus, type MacaronColor, type ProgressStatus } from '../domain';
+import { PROGRESS_STATUSES, galleryCover, isProgressStatus, type MacaronColor, type ProgressStatus } from '../domain';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import { CorkboardDraftModal, type RecoveredCorkboardDraft } from './corkboard-draft-modal';
 import { statusOptions, type CardSelectOption } from './corkboard-layout';
+import { resolveGalleryPicture } from './gallery-links';
 import type { Translate } from './modals';
 import { paintCount } from './pane-parts';
 import { renderStickySwatches } from './sticky-note-card';
@@ -86,6 +87,18 @@ export interface MemberCard<Member extends CardMember> {
 	bodyDirty: boolean;
 	bodyOriginal: string;
 	bodyRevision: EditRevision;
+	/** The pane the gallery style, and an entity card's fullest style, show the main picture in. */
+	picture: HTMLElement;
+	/** What the pane was last drawn from: the picture's path and stamp, or the symbol shown in its place. */
+	pictureSignature: string;
+}
+
+/** What a card's picture pane draws from: the note's gallery, where its links resolve from, and the symbol shown without one. */
+export interface CardPicture {
+	gallery: readonly string[];
+	galleryMain: string | null;
+	path: string;
+	icon: string;
 }
 
 /** The fields a card writes in place, in the card's own words; the kind maps them onto the note's. */
@@ -124,6 +137,10 @@ export interface CardKind<Member extends CardMember, Extras extends object, Part
 	body: (member: Member) => string;
 	status: (member: Member) => ProgressStatus | null;
 	color: (member: Member) => MacaronColor | null;
+	/** The note's gallery, for the pane, and the symbol shown while it has no picture. */
+	picture: (member: Member) => CardPicture;
+	/** The class every card of the kind wears, for the styles that tell one kind's card from another's. */
+	cardClass: string;
 	/** Writes the fields under the revision the card holds; answers the note's new revision. */
 	patch: (member: Member, fields: MemberCardPatch, expectedRevision: string, projectPath: string) => Promise<string>;
 	/** The note as the fields written leave it, before the model has caught up. */
@@ -502,6 +519,8 @@ export function createMemberCardDeck<
 			cls: 'dropdown snowflake-method-entity-status snowflake-method-corkboard-status-select',
 			attr: { 'aria-label': t('table.progressStatus') },
 		});
+		// The picture stands between the head and the words.
+		const picture = el.createDiv({ cls: 'snowflake-method-corkboard-picture is-empty' });
 		const body = el.createDiv({ cls: 'snowflake-method-corkboard-body' });
 		// A body only read invites no writing: it shows no placeholder, and is not reached by the Tab key.
 		const text = body.createEl('textarea', {
@@ -532,6 +551,7 @@ export function createMemberCardDeck<
 		});
 		setIcon(more, 'ellipsis');
 		setTooltip(more, t('table.actions'));
+		el.addClass(kind.cardClass);
 		const extras = kind.build({ el, head, body, footer, footerRow, actions }, member);
 		const core: MemberCard<Member> = {
 			key,
@@ -555,6 +575,8 @@ export function createMemberCardDeck<
 			bodyDirty: false,
 			bodyOriginal: kind.body(member),
 			bodyRevision: editRevision(member),
+			picture,
+			pictureSignature: '',
 		};
 		return Object.assign(core, extras);
 	};
@@ -650,7 +672,37 @@ export function createMemberCardDeck<
 		card.body.readOnly = !writable || deps.bodyReadOnly === true;
 		const bodyLabel = kind.words.bodyLabel(member);
 		if (card.body.getAttribute('aria-label') !== bodyLabel) card.body.setAttribute('aria-label', bodyLabel);
+		paintPicture(card, member);
 		kind.dress(card, member);
+	};
+
+	/** The pane shows the gallery's main picture, else its first, else the kind's symbol; redrawn only when that moves. */
+	const paintPicture = (card: Card, member: Member): void => {
+		const { gallery, galleryMain, path, icon } = kind.picture(member);
+		const cover = galleryCover(gallery, galleryMain);
+		const file = cover === null ? null : resolveGalleryPicture(deps.app.metadataCache, cover, path);
+		const name = kind.title(member);
+		const signature = file === null ? `icon:${icon}` : `${file.path}|${String(file.stat.mtime)}`;
+		if (signature !== card.pictureSignature) {
+			card.pictureSignature = signature;
+			card.picture.empty();
+			card.picture.toggleClass('is-empty', file === null);
+			if (file === null) {
+				const symbol = card.picture.createSpan({
+					cls: 'snowflake-method-corkboard-picture-symbol',
+					attr: { 'aria-hidden': 'true' },
+				});
+				setIcon(symbol, icon);
+			} else {
+				card.picture.createEl('img', {
+					attr: { src: deps.app.vault.getResourcePath(file), alt: name, loading: 'lazy' },
+				});
+			}
+		} else if (file !== null) {
+			// A rename moves the words under the picture, not the picture.
+			const shown = card.picture.querySelector('img');
+			if (shown !== null && shown.getAttribute('alt') !== name) shown.setAttribute('alt', name);
+		}
 	};
 
 	// -- Editing in place ----------------------------------------------------

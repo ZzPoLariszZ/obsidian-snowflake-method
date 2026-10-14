@@ -292,7 +292,7 @@ describe('story structure restored state', () => {
 		expect(isStoryStructureVisualization('beat-sheet')).toBe(true);
 		expect(isStoryStructureVisualization('plotline')).toBe(false);
 		expect(isStoryStructureVisualization('corkboard')).toBe(false);
-		expect([...CORKBOARD_MODES]).toEqual(['compact', 'standard', 'extended']);
+		expect([...CORKBOARD_MODES]).toEqual(['compact', 'standard', 'gallery', 'extended']);
 		expect(isCorkboardMode('standard')).toBe(true);
 		expect(isCorkboardMode('wide')).toBe(false);
 		expect(CORKBOARD_GROUP_FIELDS).toHaveLength(8);

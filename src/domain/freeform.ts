@@ -90,7 +90,7 @@ export type FreeformResource =
 	| FreeformTextResource;
 
 /** Auto lets the zoom choose among the three card styles. */
-export const FREEFORM_DISPLAY_MODES = ['auto', 'compact', 'standard', 'extended'] as const;
+export const FREEFORM_DISPLAY_MODES = ['auto', 'compact', 'standard', 'gallery', 'extended'] as const;
 export type FreeformDisplayMode = (typeof FREEFORM_DISPLAY_MODES)[number];
 
 export function isFreeformDisplayMode(value: unknown): value is FreeformDisplayMode {

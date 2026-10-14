@@ -260,7 +260,9 @@ export const CORKBOARD_REM = {
 	/** A 1.25rem insertion button has 0.625rem of room on each side. */
 	gap: 2.5,
 	headHeight: 2.25,
-	cardHeight: { compact: 5, standard: 15, extended: 19 },
+	/** The picture pane a card's gallery style and an entity card's fullest style show. */
+	pictureHeight: 16,
+	cardHeight: { compact: 5, standard: 15, gallery: 21, extended: 19 },
 } as const;
 
 export interface CorkboardMetrics {
@@ -288,17 +290,23 @@ export function corkboardMetrics(
 	cardHeights: Readonly<Record<CorkboardMode, number>> = CORKBOARD_REM.cardHeight,
 ): CorkboardMetrics {
 	const measuredCompactHeight =
-		mode === 'compact' &&
-		compactHeightPx !== undefined &&
-		Number.isFinite(compactHeightPx) &&
-		compactHeightPx > 0
+		compactHeightPx !== undefined && Number.isFinite(compactHeightPx) && compactHeightPx > 0
 			? compactHeightPx
 			: null;
+	// The gallery style is the compact card with the picture pane between its head and its foot.
+	const measuredHeight =
+		measuredCompactHeight === null
+			? null
+			: mode === 'compact'
+				? measuredCompactHeight
+				: mode === 'gallery'
+					? measuredCompactHeight + CORKBOARD_REM.pictureHeight * remPx
+					: null;
 	return {
 		width,
 		gap: (gapRem ?? CORKBOARD_REM.gap) * remPx,
 		minCardWidth: CORKBOARD_REM.minCardWidth * remPx,
-		cardHeight: measuredCompactHeight ?? cardHeights[mode] * remPx,
+		cardHeight: measuredHeight ?? cardHeights[mode] * remPx,
 		headHeight: CORKBOARD_REM.headHeight * remPx,
 		...(columns === undefined ? {} : { columns: Math.max(1, Math.floor(columns)) }),
 	};

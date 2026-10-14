@@ -2160,7 +2160,7 @@ describe('how a node is shown and where it stands', () => {
 		// Two are chosen, so the menu opens on the faces, with no one scene to open.
 		const shown = (): { title: string; click: () => void }[] => fixture.menuAt({ kind: 'node', id: 's1' })!;
 		// Each display mode wears its own symbol, so the DOM menu shows no gap before the word and no check standing alone.
-		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.slice(0, DISPLAY_ITEMS.length).map((item) => item.icon)).toEqual(['sparkles', 'rows-2', 'rows-3', 'rows-4']);
+		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.slice(0, DISPLAY_ITEMS.length).map((item) => item.icon)).toEqual(['sparkles', 'rows-2', 'rows-3', 'image', 'rows-4']);
 		shown()[DISPLAY_ITEMS.indexOf('corkboard.cards.extended')]!.click();
 		await settle();
 		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([
@@ -3063,8 +3063,8 @@ describe('copies, the clipboard and the order nodes stand in', () => {
 });
 
 /** The faces a scene's card offers; every other card offers two, and a text, a file, a link and a stand-in offer none to choose. */
-const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
-const CARD_DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
+const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.gallery', 'corkboard.cards.extended'];
+const CARD_DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.gallery', 'corkboard.cards.extended'];
 /** What a menu offers one node alone. */
 const SINGLE_ITEMS = ['freeformCanvas.node.connect', 'freeformCanvas.node.geometry'];
 /** What a menu offers whatever is chosen: a copy of it, and its place among its neighbours. */
@@ -3278,7 +3278,7 @@ describe('searching a view', () => {
 describe('the menus', () => {
 	it('offers each kind of node what opens it, its face, its measures and its removal', async () => {
 		const fixture = await laid();
-		// A text has one face, so none to choose; a scene's card has three.
+		// A text has one face, so none to choose; a scene's card has four.
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.title)).toEqual([
 			'freeformCanvas.text.edit', ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
@@ -3294,7 +3294,7 @@ describe('the menus', () => {
 		]);
 		// The face the node shows is the one checked.
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.checked)).toEqual([
-			null, null, true, false, false, false, null, null, null, null, null, null, null, null, null, null,
+			null, null, true, false, false, false, false, null, null, null, null, null, null, null, null, null, null,
 		]);
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.title)).toEqual(EDGE_ITEMS);
 		expect(fixture.menuAt({ kind: 'edge', id: 'gone' })).toBeUndefined();

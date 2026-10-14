@@ -59,7 +59,7 @@ export function familyVisualization(
 	return family;
 }
 
-export const CORKBOARD_MODES = ['compact', 'standard', 'extended'] as const;
+export const CORKBOARD_MODES = ['compact', 'standard', 'gallery', 'extended'] as const;
 export type CorkboardMode = (typeof CORKBOARD_MODES)[number];
 
 export function isCorkboardMode(value: unknown): value is CorkboardMode {

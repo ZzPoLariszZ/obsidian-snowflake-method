@@ -35,9 +35,9 @@ import type { ResolvedNode } from './freeform-resources';
 // -- The face a node shows -----------------------------------------------------
 
 /** The three faces a node has, which the stylesheet dresses by name. */
-export type FreeformFaceMode = 'compact' | 'standard' | 'extended';
+export type FreeformFaceMode = 'compact' | 'standard' | 'gallery' | 'extended';
 
-export const FREEFORM_FACE_MODES: readonly FreeformFaceMode[] = ['compact', 'standard', 'extended'];
+export const FREEFORM_FACE_MODES: readonly FreeformFaceMode[] = ['compact', 'standard', 'gallery', 'extended'];
 
 /**
  * The kinds of face there are, by how much room each of their modes needs:
@@ -60,16 +60,17 @@ export type FreeformFaceKind = 'scene' | 'card' | 'task' | 'thread' | 'revision'
  * drawn, with a few units to spare.
  */
 export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<Record<FreeformFaceMode, number>>>> = {
-	scene: { compact: 80, standard: 240, extended: 304 },
-	// The card's fullest face adds the picture pane, 16rem at the 16px root the table is in.
-	card: { compact: 80, standard: 176, extended: 432 },
-	task: { compact: 56, standard: 88, extended: 88 },
-	thread: { compact: 72, standard: 200, extended: 200 },
-	revision: { compact: 108, standard: 220, extended: 220 },
-	sticky: { compact: 84, standard: 160, extended: 160 },
-	record: { compact: 56, standard: 56, extended: 56 },
-	text: { compact: 56, standard: 56, extended: 56 },
-	plain: { compact: 48, standard: 48, extended: 48 },
+	// The gallery face is the barest with the picture pane, 16rem at the 16px root the table is in.
+	scene: { compact: 80, standard: 240, gallery: 336, extended: 304 },
+	// The card's fullest face adds the picture pane to its standard one.
+	card: { compact: 80, standard: 176, gallery: 336, extended: 432 },
+	task: { compact: 56, standard: 88, gallery: 88, extended: 88 },
+	thread: { compact: 72, standard: 200, gallery: 200, extended: 200 },
+	revision: { compact: 108, standard: 220, gallery: 220, extended: 220 },
+	sticky: { compact: 84, standard: 160, gallery: 160, extended: 160 },
+	record: { compact: 56, standard: 56, gallery: 56, extended: 56 },
+	text: { compact: 56, standard: 56, gallery: 56, extended: 56 },
+	plain: { compact: 48, standard: 48, gallery: 48, extended: 48 },
 };
 
 /**
@@ -81,8 +82,8 @@ export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<R
  * has, so it is never asked for.
  */
 export const FREEFORM_FACE_MODES_OF: Readonly<Record<FreeformFaceKind, readonly FreeformFaceMode[]>> = {
-	scene: ['compact', 'standard', 'extended'],
-	card: ['compact', 'standard', 'extended'],
+	scene: ['compact', 'standard', 'gallery', 'extended'],
+	card: ['compact', 'standard', 'gallery', 'extended'],
 	task: ['compact', 'standard'],
 	thread: ['compact', 'standard'],
 	revision: ['compact', 'standard'],

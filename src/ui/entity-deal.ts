@@ -41,7 +41,7 @@ import type { CorkboardMode } from './story-structure-state';
 import { kindEntities, type ProjectDashboardModel } from './view-model';
 
 /** An entity card's height per style in rem: the scene card's, its fullest style grown by the picture pane. */
-export const ENTITY_CARD_REM: Readonly<Record<CorkboardMode, number>> = { compact: 5, standard: 15, extended: 31 };
+export const ENTITY_CARD_REM: Readonly<Record<CorkboardMode, number>> = { compact: 5, standard: 15, gallery: 21, extended: 31 };
 
 /** What the funnel of an entity view needs beyond the model: the kind's category tree. */
 export interface EntityFilterExtra {

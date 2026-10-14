@@ -87,8 +87,8 @@ const words = (extra: Partial<FreeformSceneWords> = {}): FreeformSceneWords => (
 
 describe('the face a node shows', () => {
 	it('gives a scene’s card and an entity’s three faces, every other card two, and a file, a link, a text and a stand-in one', () => {
-		expect(FREEFORM_FACE_MODES_OF.scene).toEqual(['compact', 'standard', 'extended']);
-		expect(FREEFORM_FACE_MODES_OF.card).toEqual(['compact', 'standard', 'extended']);
+		expect(FREEFORM_FACE_MODES_OF.scene).toEqual(['compact', 'standard', 'gallery', 'extended']);
+		expect(FREEFORM_FACE_MODES_OF.card).toEqual(['compact', 'standard', 'gallery', 'extended']);
 		for (const kind of ['task', 'thread', 'revision', 'sticky'] as const) {
 			expect(FREEFORM_FACE_MODES_OF[kind], kind).toEqual(['compact', 'standard']);
 		}

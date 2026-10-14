@@ -187,6 +187,7 @@ const DISPLAY_MODE_ICONS: Readonly<Record<'auto' | FreeformFaceMode, string>> = 
 	auto: 'sparkles',
 	compact: 'rows-2',
 	standard: 'rows-3',
+	gallery: 'image',
 	extended: 'rows-4',
 };
 const entityTypeOf = (kind: string): string => `${ENTITY_TYPE}${kind}`;
