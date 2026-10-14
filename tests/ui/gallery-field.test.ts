@@ -3,10 +3,12 @@ import type { App } from 'obsidian';
 
 import { galleryDraftOf } from '../../src/domain';
 import {
+	GALLERY_REACH,
 	GalleryField,
 	galleryFieldState,
 	type GalleryFieldContext,
 	type GalleryFieldState,
+	type GallerySource,
 } from '../../src/ui/gallery-field';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
@@ -22,9 +24,11 @@ interface FakeFile {
 
 const portrait = '[[Demo/20_Character/25_Gallery/portrait.png]]';
 const map = '[[Demo/20_Character/25_Gallery/map.png]]';
+const seal = '[[Demo/20_Character/25_Gallery/seal.png]]';
 const files = new Map<string, FakeFile>([
 	['Demo/20_Character/25_Gallery/portrait.png', { path: 'Demo/20_Character/25_Gallery/portrait.png', name: 'portrait.png', stat: { mtime: 3 } }],
 	['Demo/20_Character/25_Gallery/map.png', { path: 'Demo/20_Character/25_Gallery/map.png', name: 'map.png', stat: { mtime: 4 } }],
+	['Demo/20_Character/25_Gallery/seal.png', { path: 'Demo/20_Character/25_Gallery/seal.png', name: 'seal.png', stat: { mtime: 6 } }],
 	['Demo/80_Material/sketch.jpg', { path: 'Demo/80_Material/sketch.jpg', name: 'sketch.jpg', stat: { mtime: 5 } }],
 ]);
 const app = {
@@ -37,47 +41,71 @@ const app = {
 	},
 } as unknown as Pick<App, 'vault' | 'metadataCache'>;
 
-function mount(state: GalleryFieldState, options: { readOnly?: boolean; pick?: (exclude: ReadonlySet<string>) => Promise<FakeFile[]> } = {}) {
+type Listener = (event: Record<string, unknown>) => void;
+
+function mount(
+	state: GalleryFieldState,
+	options: {
+		readOnly?: boolean;
+		pick?: (exclude: ReadonlySet<string>) => Promise<FakeFile[]>;
+		source?: GallerySource | null;
+	} = {},
+) {
 	const dom = new CorkboardDom();
 	const pickFromVault = vi.fn(options.pick ?? (() => Promise.resolve([])));
+	const pickSource = vi.fn(() => Promise.resolve(options.source ?? null));
 	const field = new GalleryField(
 		{
 			app,
 			t,
 			sourcePath: 'Demo/20_Character/Alice.md',
 			pickFromVault: pickFromVault as unknown as GalleryFieldContext['pickFromVault'],
+			pickSource,
 			...(options.readOnly === undefined ? {} : { readOnly: options.readOnly }),
 		},
 		state,
 	);
 	field.attach(dom.container as unknown as HTMLElement);
-	const one = (cls: string): CorkboardElement => {
-		const found = dom.container.querySelector(`.${cls}`);
+	const one = (cls: string, within: CorkboardElement = dom.container): CorkboardElement => {
+		const found = within.querySelector(`.${cls}`);
 		if (found === null) throw new Error(`no .${cls}`);
 		return found;
+	};
+	const items = (): CorkboardElement[] => dom.container.querySelectorAll('.snowflake-method-gallery-item');
+	const current = (): CorkboardElement => {
+		const found = items().find((item) => item.classes.has('is-current'));
+		if (found === undefined) throw new Error('no picture at the front');
+		return found;
+	};
+	const fire = (element: CorkboardElement, type: string, event: Record<string, unknown>): void => {
+		for (const listener of element.listeners.get(type) ?? []) (listener as unknown as Listener)(event);
 	};
 	return {
 		dom,
 		field,
 		pickFromVault,
+		pickSource,
 		root: () => one('snowflake-method-gallery'),
-		picture: () => one('snowflake-method-gallery-picture'),
+		stage: () => one('snowflake-method-gallery-stage'),
 		empty: () => one('snowflake-method-gallery-empty'),
-		missing: () => one('snowflake-method-gallery-missing'),
-		star: () => one('snowflake-method-gallery-star'),
-		prev: () => one('snowflake-method-gallery-prev'),
-		next: () => one('snowflake-method-gallery-next'),
+		items,
+		current,
+		picture: () => one('snowflake-method-gallery-picture', current()),
+		missing: () => one('snowflake-method-gallery-missing', current()),
+		star: () => one('snowflake-method-gallery-star', current()),
+		remove: () => one('snowflake-method-gallery-remove', current()),
 		counter: () => one('snowflake-method-gallery-counter'),
 		name: () => one('snowflake-method-gallery-name'),
-		remove: () => one('snowflake-method-gallery-remove'),
 		input: () => one('snowflake-method-gallery-file-input'),
+		offsets: () => items().map((item) => item.getAttribute('data-offset')),
 		key: (key: string) => {
 			const root = one('snowflake-method-gallery');
-			for (const listener of root.listeners.get('keydown') ?? []) {
-				(listener as unknown as (event: { key: string; target: CorkboardElement; preventDefault(): void }) => void)({
-					key, target: root, preventDefault: () => undefined,
-				});
-			}
+			fire(root, 'keydown', { key, target: root, preventDefault: () => undefined });
+		},
+		swipe: (from: number, to: number) => {
+			const stage = one('snowflake-method-gallery-stage');
+			fire(stage, 'pointerdown', { button: 0, clientX: from, pointerId: 7 });
+			fire(stage, 'pointerup', { clientX: to, pointerId: 7 });
 		},
 	};
 }
@@ -87,50 +115,78 @@ afterEach(() => {
 });
 
 describe('GalleryField', () => {
-	it('shows the empty state with nothing to step or star', () => {
+	it('shows the empty state with nothing fanned out', () => {
 		const shown = mount(galleryFieldState(galleryDraftOf([], null)));
 		expect(shown.root().classes.has('is-empty')).toBe(true);
+		expect(shown.root().getAttribute('aria-roledescription')).toBe('carousel');
 		expect(shown.empty().classes.has('is-hidden')).toBe(false);
-		expect(shown.picture().classes.has('is-hidden')).toBe(true);
-		expect(shown.star().classes.has('is-hidden')).toBe(true);
-		expect(shown.prev().classes.has('is-hidden')).toBe(true);
-		expect(shown.remove().disabled).toBe(true);
+		expect(shown.items()).toHaveLength(0);
+		expect(shown.counter().textContent).toBe('');
 		expect(shown.field.value()).toEqual({ entries: [], removed: [], mainIndex: null });
 	});
 
-	it('shows the stored pictures one at a time and steps with the arrows and the keys', () => {
+	it('fans the stored pictures out around the front one and steps with the keys and a click', () => {
 		const shown = mount(galleryFieldState(galleryDraftOf([portrait, map], map)));
-		expect(shown.root().classes.has('has-stack')).toBe(true);
+		expect(shown.root().classes.has('has-many')).toBe(true);
+		expect(shown.offsets()).toEqual(['0', '1']);
+		expect(shown.current().styles['--snowflake-method-gallery-offset']).toBe('0');
+		expect(shown.items()[1]?.styles['--snowflake-method-gallery-distance']).toBe('1');
+		expect(shown.items()[1]?.getAttribute('aria-hidden')).toBe('true');
 		expect(shown.picture().getAttribute('src')).toBe('app://fake/Demo/20_Character/25_Gallery/portrait.png');
 		expect(shown.picture().getAttribute('alt')).toBe('portrait.png');
 		expect(shown.name().textContent).toBe('portrait.png');
 		expect(shown.counter().textContent).toBe('form.gallery.counter:1/2');
-		expect(shown.prev().disabled).toBe(true);
-		expect(shown.next().disabled).toBe(false);
 		expect(shown.star().getAttribute('aria-pressed')).toBe('false');
 
-		shown.next().dispatch('click');
+		shown.key('ArrowRight');
+		expect(shown.offsets()).toEqual(['-1', '0']);
 		expect(shown.picture().getAttribute('src')).toBe('app://fake/Demo/20_Character/25_Gallery/map.png');
 		expect(shown.counter().textContent).toBe('form.gallery.counter:2/2');
-		expect(shown.next().disabled).toBe(true);
 		expect(shown.star().getAttribute('aria-pressed')).toBe('true');
 		expect(shown.star().classes.has('is-main')).toBe(true);
+		expect(shown.current().classes.has('is-main')).toBe(true);
 		expect(shown.star().getAttribute('aria-label')).toBe('form.gallery.unsetMain');
+		shown.key('ArrowRight');
+		expect(shown.counter().textContent).toBe('form.gallery.counter:2/2');
 
 		shown.key('ArrowLeft');
 		expect(shown.counter().textContent).toBe('form.gallery.counter:1/2');
-		shown.key('ArrowLeft');
-		expect(shown.counter().textContent).toBe('form.gallery.counter:1/2');
-		shown.key('ArrowRight');
+		// A neighbour clicked comes to the front; the front one clicked stays.
+		shown.items()[1]?.dispatch('click');
+		expect(shown.counter().textContent).toBe('form.gallery.counter:2/2');
+		shown.items()[1]?.dispatch('click');
 		expect(shown.counter().textContent).toBe('form.gallery.counter:2/2');
 	});
 
-	it('stars the shown picture as the main one and lets it go again', () => {
+	it('steps with a swipe across the stage and lets the lift of the swipe pass as no click', () => {
+		const shown = mount(galleryFieldState(galleryDraftOf([portrait, map], null)));
+		shown.swipe(200, 100);
+		expect(shown.counter().textContent).toBe('form.gallery.counter:2/2');
+		shown.items()[0]?.dispatch('click');
+		expect(shown.counter().textContent).toBe('form.gallery.counter:2/2');
+		shown.swipe(100, 200);
+		expect(shown.counter().textContent).toBe('form.gallery.counter:1/2');
+		// A short pull is no swipe.
+		shown.swipe(100, 110);
+		expect(shown.counter().textContent).toBe('form.gallery.counter:1/2');
+	});
+
+	it('keeps far pictures out of sight and brings them in as the front moves', () => {
+		const links = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `[[Demo/20_Character/25_Gallery/${name}.png]]`);
+		const shown = mount(galleryFieldState(galleryDraftOf(links, null)));
+		const hidden = (): boolean[] => shown.items().map((item) => item.classes.has('is-hidden'));
+		expect(hidden()).toEqual([false, false, false, true, true, true]);
+		expect(GALLERY_REACH).toBe(2);
+		for (let step = 0; step < 3; step += 1) shown.key('ArrowRight');
+		expect(hidden()).toEqual([true, false, false, false, false, false]);
+	});
+
+	it('stars the front picture as the main one and lets it go again', () => {
 		const shown = mount(galleryFieldState(galleryDraftOf([portrait, map], null)));
 		shown.star().dispatch('click');
 		expect(shown.field.value().mainIndex).toBe(0);
 		expect(shown.star().getAttribute('aria-pressed')).toBe('true');
-		shown.next().dispatch('click');
+		shown.key('ArrowRight');
 		expect(shown.star().getAttribute('aria-pressed')).toBe('false');
 		shown.star().dispatch('click');
 		expect(shown.field.value().mainIndex).toBe(1);
@@ -138,21 +194,23 @@ describe('GalleryField', () => {
 		expect(shown.field.value().mainIndex).toBeNull();
 	});
 
-	it('removes the shown picture, remembers a stored link taken off, and keeps the main pointed right', () => {
+	it('removes the front picture, remembers a stored link taken off, and keeps the main pointed right', () => {
 		const shown = mount(galleryFieldState(galleryDraftOf([portrait, map], map)));
+		expect(shown.remove().getAttribute('aria-label')).toBe('form.gallery.removePicture:portrait.png');
 		shown.remove().dispatch('click');
 		expect(shown.field.value()).toMatchObject({
 			entries: [{ kind: 'kept', link: map }],
 			removed: [portrait],
 			mainIndex: 0,
 		});
+		expect(shown.items()).toHaveLength(1);
 		expect(shown.picture().getAttribute('src')).toBe('app://fake/Demo/20_Character/25_Gallery/map.png');
 		expect(shown.star().getAttribute('aria-pressed')).toBe('true');
-		expect(shown.root().classes.has('has-stack')).toBe(false);
+		expect(shown.root().classes.has('has-many')).toBe(false);
 		shown.remove().dispatch('click');
 		expect(shown.field.value()).toEqual({ entries: [], removed: [portrait, map], mainIndex: null });
 		expect(shown.root().classes.has('is-empty')).toBe(true);
-		expect(shown.remove().disabled).toBe(true);
+		expect(shown.items()).toHaveLength(0);
 	});
 
 	it('takes pictures from the device, refuses what is no picture, and hands their bytes to the save', async () => {
@@ -182,7 +240,7 @@ describe('GalleryField', () => {
 		const input = shown.input();
 		Object.assign(input, { files: [new File([new Uint8Array([1])], 'one.png'), new File([new Uint8Array([2])], 'two.png')] });
 		input.dispatch('change');
-		shown.next().dispatch('click');
+		shown.key('ArrowRight');
 		shown.remove().dispatch('click');
 		expect(revoke).toHaveBeenCalledTimes(1);
 		shown.field.destroy();
@@ -191,36 +249,59 @@ describe('GalleryField', () => {
 		expect(revoke).toHaveBeenCalledTimes(2);
 	});
 
-	it('offers the vault its pictures but the ones held, and shows the first picked', async () => {
+	it('asks where a picture comes from, offers the vault its pictures but the ones held, and shows the first picked', async () => {
 		const sketch = files.get('Demo/80_Material/sketch.jpg')!;
 		const shown = mount(galleryFieldState(galleryDraftOf([portrait], null)), {
+			source: 'vault',
 			pick: () => Promise.resolve([sketch, files.get('Demo/20_Character/25_Gallery/portrait.png')!]),
 		});
-		shown.root().querySelector('.snowflake-method-gallery-add-vault')!.dispatch('click');
-		await vi.waitFor(() => expect(shown.field.value().entries).toHaveLength(2));
+		await shown.field.add();
+		expect(shown.pickSource).toHaveBeenCalledOnce();
 		expect(shown.pickFromVault).toHaveBeenCalledWith(new Set(['Demo/20_Character/25_Gallery/portrait.png']));
 		expect(shown.field.value().entries[1]).toEqual({ kind: 'vault', path: 'Demo/80_Material/sketch.jpg' });
 		expect(shown.picture().getAttribute('src')).toBe('app://fake/Demo/80_Material/sketch.jpg');
 		expect(shown.name().textContent).toBe('sketch.jpg');
 	});
 
+	it('opens the device chooser when the device is chosen, and nothing when the asking is left', async () => {
+		const shown = mount(galleryFieldState(galleryDraftOf([portrait], null)), { source: 'device' });
+		const opened = vi.fn();
+		Object.assign(shown.input(), { click: opened });
+		await shown.field.add();
+		expect(opened).toHaveBeenCalledOnce();
+		expect(shown.pickFromVault).not.toHaveBeenCalled();
+		const left = mount(galleryFieldState(galleryDraftOf([portrait], null)), { source: null });
+		const untouched = vi.fn();
+		Object.assign(left.input(), { click: untouched });
+		await left.field.add();
+		expect(untouched).not.toHaveBeenCalled();
+		expect(left.pickFromVault).not.toHaveBeenCalled();
+	});
+
 	it('says when a stored picture has gone and still lets it be taken off', () => {
-		const shown = mount(galleryFieldState(galleryDraftOf(['[[Demo/20_Character/25_Gallery/lost.png]]'], null)));
+		const shown = mount(galleryFieldState(galleryDraftOf(['[[Demo/20_Character/25_Gallery/lost.png]]', seal], null)));
 		expect(shown.missing().classes.has('is-hidden')).toBe(false);
 		expect(shown.missing().querySelectorAll('span')[1]?.textContent).toBe('form.gallery.missing:lost.png');
 		expect(shown.picture().classes.has('is-hidden')).toBe(true);
 		expect(shown.picture().getAttribute('src')).toBeNull();
+		shown.key('ArrowRight');
+		expect(shown.missing().classes.has('is-hidden')).toBe(true);
+		shown.key('ArrowLeft');
 		shown.remove().dispatch('click');
 		expect(shown.field.value().removed).toEqual(['[[Demo/20_Character/25_Gallery/lost.png]]']);
 	});
 
-	it('shows a read-only note its pictures and offers no change', () => {
-		const shown = mount(galleryFieldState(galleryDraftOf([portrait, map], portrait)), { readOnly: true });
+	it('shows a read-only note its pictures and offers no change', async () => {
+		const shown = mount(galleryFieldState(galleryDraftOf([portrait, map], portrait)), { readOnly: true, source: 'vault' });
 		expect(shown.root().classes.has('is-readonly')).toBe(true);
 		expect(shown.dom.container.querySelector('.snowflake-method-gallery-star')).toBeNull();
-		expect(shown.dom.container.querySelector('.snowflake-method-gallery-actions')).toBeNull();
+		expect(shown.dom.container.querySelector('.snowflake-method-gallery-remove')).toBeNull();
+		expect(shown.dom.container.querySelector('.snowflake-method-gallery-file-input')).toBeNull();
+		expect(shown.current().classes.has('is-main')).toBe(true);
 		expect(shown.counter().textContent).toBe('form.gallery.counter:1/2');
-		shown.next().dispatch('click');
+		shown.items()[1]?.dispatch('click');
 		expect(shown.counter().textContent).toBe('form.gallery.counter:2/2');
+		await shown.field.add();
+		expect(shown.pickSource).not.toHaveBeenCalled();
 	});
 });

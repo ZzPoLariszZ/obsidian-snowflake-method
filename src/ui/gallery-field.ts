@@ -1,11 +1,15 @@
 /**
  * The gallery row of a character's, a scene's or a worldbuilding note's
- * form: the pictures the note keeps, one at a time in a square frame, stepped
- * through with the arrows at its sides, the star at its corner saying which
- * is the main one, and under it the ways to bring a picture in, from the
- * vault or from the device, and to take the shown one off. The row holds
- * what the author picked and nothing more: no file is read or written until
- * the form saves, when the draft it hands back is landed beside the note.
+ * form: the pictures the note keeps, fanned out as a coverflow with the
+ * chosen one facing front and its neighbours turned away on either side. A
+ * neighbour comes to the front when clicked, the arrow keys and a swipe
+ * step through the row, and the front picture carries two buttons that show
+ * under the pointer: the star at its left corner saying it is the main one,
+ * the bin at its right corner taking it off. Pictures come in through the
+ * Add button beside the row's name, from the vault or from the device. The
+ * row holds what the author picked and nothing more: no file is read or
+ * written until the form saves, when the draft it hands back is landed
+ * beside the note.
  */
 
 import { Notice, setIcon, setTooltip, type App, type TFile } from 'obsidian';
@@ -27,6 +31,15 @@ export interface GalleryFieldState {
 	mainIndex: number | null;
 }
 
+/** Where a picture is brought in from. */
+export type GallerySource = 'vault' | 'device';
+
+/** How far from the front a picture still stands in the fan; the rest wait out of sight. */
+export const GALLERY_REACH = 2;
+
+/** How far a pointer travels across the fan before the move counts as a swipe, in px. */
+const SWIPE_PX = 32;
+
 /** The row's first state from a note's draft: every link kept; a device file, having no form yet, cannot be carried in. */
 export function galleryFieldState(draft: GalleryDraft): GalleryFieldState {
 	const entries: GalleryFieldEntry[] = [];
@@ -44,8 +57,20 @@ export interface GalleryFieldContext {
 	sourcePath: string;
 	/** Offers the vault's pictures but the ones given; answers those picked, none for a dialog left. */
 	pickFromVault: (exclude: ReadonlySet<string>) => Promise<TFile[]>;
+	/** Asks where a picture comes from; null for a dialog left. */
+	pickSource: () => Promise<GallerySource | null>;
 	/** A note that cannot be written shows its pictures and offers no change. */
 	readOnly?: boolean;
+}
+
+/** One picture's element and the parts a paint rewrites rather than remakes. */
+interface GalleryItem {
+	el: HTMLElement;
+	picture: HTMLImageElement;
+	missing: HTMLElement;
+	missingWords: HTMLElement;
+	star: HTMLButtonElement | null;
+	remove: HTMLButtonElement | null;
 }
 
 const nameOfPath = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
@@ -57,18 +82,17 @@ export class GalleryField {
 	private at = 0;
 	/** The address each device file is shown from, made once and let go of when the file leaves or the row is taken down. */
 	private readonly urls = new Map<File, string>();
+	private readonly items = new Map<GalleryFieldEntry, GalleryItem>();
 	private root: HTMLElement | null = null;
-	private picture: HTMLImageElement | null = null;
+	private stage: HTMLElement | null = null;
 	private empty: HTMLElement | null = null;
-	private missing: HTMLElement | null = null;
-	private missingWords: HTMLElement | null = null;
-	private star: HTMLButtonElement | null = null;
-	private prev: HTMLButtonElement | null = null;
-	private next: HTMLButtonElement | null = null;
 	private counter: HTMLElement | null = null;
 	private name: HTMLElement | null = null;
-	private remove: HTMLButtonElement | null = null;
 	private input: HTMLInputElement | null = null;
+	/** Where a press on the fan began, until it lifts. */
+	private swipeFrom: { x: number; pointerId: number } | null = null;
+	/** When a swipe last stepped the fan, so the click that follows the lift does not step it again. */
+	private swipedAt = 0;
 
 	constructor(
 		private readonly context: GalleryFieldContext,
@@ -84,91 +108,24 @@ export class GalleryField {
 		const readOnly = this.context.readOnly === true;
 		const root = container.createDiv({
 			cls: 'snowflake-method-gallery',
-			attr: { role: 'group', 'aria-label': t('form.gallery'), tabindex: '0' },
+			attr: { role: 'group', 'aria-roledescription': 'carousel', 'aria-label': t('form.gallery'), tabindex: '0' },
 		});
 		root.toggleClass('is-readonly', readOnly);
-		const stack = root.createDiv({ cls: 'snowflake-method-gallery-stack' });
-		const frame = stack.createDiv({ cls: 'snowflake-method-gallery-frame' });
-		this.picture = frame.createEl('img', {
-			cls: 'snowflake-method-gallery-picture',
-			attr: { alt: '', loading: 'lazy' },
-		});
-		this.empty = frame.createDiv({ cls: 'snowflake-method-gallery-empty' });
+		const stage = root.createDiv({ cls: 'snowflake-method-gallery-stage' });
+		this.empty = stage.createDiv({ cls: 'snowflake-method-gallery-empty' });
 		const emptyIcon = this.empty.createSpan({ attr: { 'aria-hidden': 'true' } });
 		setIcon(emptyIcon, 'image');
 		this.empty.createSpan({ text: t('form.gallery.empty') });
-		this.missing = frame.createDiv({ cls: 'snowflake-method-gallery-missing' });
-		const missingIcon = this.missing.createSpan({ attr: { 'aria-hidden': 'true' } });
-		setIcon(missingIcon, 'image-off');
-		this.missingWords = this.missing.createSpan();
+		const caption = root.createDiv({ cls: 'snowflake-method-gallery-caption' });
+		this.name = caption.createSpan({ cls: 'snowflake-method-gallery-name' });
+		this.counter = caption.createSpan({ cls: 'snowflake-method-gallery-counter' });
 		if (!readOnly) {
-			this.star = frame.createEl('button', {
-				cls: 'clickable-icon snowflake-method-gallery-star',
-				attr: { type: 'button', 'aria-pressed': 'false' },
-			});
-			setIcon(this.star, 'star');
-			this.star.addEventListener('click', (event) => {
-				event.preventDefault();
-				this.toggleMain();
-			});
-		}
-		this.prev = frame.createEl('button', {
-			cls: 'clickable-icon snowflake-method-gallery-prev',
-			attr: { type: 'button', 'aria-label': t('form.gallery.previous') },
-		});
-		setIcon(this.prev, 'chevron-left');
-		setTooltip(this.prev, t('form.gallery.previous'));
-		this.prev.addEventListener('click', (event) => {
-			event.preventDefault();
-			this.step(-1);
-		});
-		this.next = frame.createEl('button', {
-			cls: 'clickable-icon snowflake-method-gallery-next',
-			attr: { type: 'button', 'aria-label': t('form.gallery.next') },
-		});
-		setIcon(this.next, 'chevron-right');
-		setTooltip(this.next, t('form.gallery.next'));
-		this.next.addEventListener('click', (event) => {
-			event.preventDefault();
-			this.step(1);
-		});
-		this.counter = frame.createSpan({ cls: 'snowflake-method-gallery-counter' });
-		this.name = root.createDiv({ cls: 'snowflake-method-gallery-name' });
-		if (!readOnly) {
-			const actions = root.createDiv({ cls: 'snowflake-method-gallery-actions' });
-			const fromVault = actions.createEl('button', {
-				cls: 'snowflake-method-gallery-add-vault',
-				text: t('form.gallery.addFromVault'),
-				attr: { type: 'button' },
-			});
-			fromVault.addEventListener('click', (event) => {
-				event.preventDefault();
-				void this.pickVault();
-			});
-			const fromDevice = actions.createEl('button', {
-				cls: 'snowflake-method-gallery-add-device',
-				text: t('form.gallery.addFromDevice'),
-				attr: { type: 'button' },
-			});
-			this.input = actions.createEl('input', {
+			this.input = root.createEl('input', {
 				cls: 'snowflake-method-gallery-file-input',
 				attr: { type: 'file', accept: 'image/*', multiple: '', tabindex: '-1', 'aria-hidden': 'true' },
 			});
 			this.input.addEventListener('change', () => {
 				this.takeFiles();
-			});
-			fromDevice.addEventListener('click', (event) => {
-				event.preventDefault();
-				this.input?.click();
-			});
-			this.remove = actions.createEl('button', {
-				cls: 'snowflake-method-gallery-remove',
-				text: t('common.remove'),
-				attr: { type: 'button' },
-			});
-			this.remove.addEventListener('click', (event) => {
-				event.preventDefault();
-				this.removeShown();
 			});
 		}
 		root.addEventListener('keydown', (event) => {
@@ -178,7 +135,25 @@ export class GalleryField {
 			event.preventDefault();
 			this.step(event.key === 'ArrowLeft' ? -1 : 1);
 		});
+		// A pull across the fan steps it, the way a finger turns a row of cards.
+		stage.addEventListener('pointerdown', (event) => {
+			if (event.button !== 0) return;
+			this.swipeFrom = { x: event.clientX, pointerId: event.pointerId };
+		});
+		stage.addEventListener('pointerup', (event) => {
+			const from = this.swipeFrom;
+			this.swipeFrom = null;
+			if (from === null || from.pointerId !== event.pointerId) return;
+			const travelled = event.clientX - from.x;
+			if (Math.abs(travelled) < SWIPE_PX) return;
+			this.swipedAt = Date.now();
+			this.step(travelled < 0 ? 1 : -1);
+		});
+		stage.addEventListener('pointercancel', () => {
+			this.swipeFrom = null;
+		});
 		this.root = root;
+		this.stage = stage;
 		this.paint();
 	}
 
@@ -202,28 +177,42 @@ export class GalleryField {
 		};
 	}
 
+	/** Asks where a picture comes from, then brings it in: from the vault's pictures, or from the device's file chooser. */
+	async add(): Promise<void> {
+		if (this.context.readOnly === true) return;
+		const source = await this.context.pickSource();
+		if (source === 'vault') await this.pickVault();
+		else if (source === 'device') this.input?.click();
+	}
+
 	/** Lets go of every address a device file was shown from; the row's elements go with their form. */
 	destroy(): void {
 		for (const url of this.urls.values()) this.revoke(url);
 		this.urls.clear();
+		this.items.clear();
 	}
 
 	private step(by: number): void {
+		this.show(this.at + by);
+	}
+
+	/** Brings the picture at the index to the front. */
+	private show(index: number): void {
 		if (this.entries.length === 0) return;
-		const next = Math.min(this.entries.length - 1, Math.max(0, this.at + by));
+		const next = Math.min(this.entries.length - 1, Math.max(0, index));
 		if (next === this.at) return;
 		this.at = next;
 		this.paint();
 	}
 
-	private toggleMain(): void {
-		if (this.entries.length === 0) return;
-		this.mainIndex = this.mainIndex === this.at ? null : this.at;
+	private toggleMain(index: number): void {
+		if (this.entries[index] === undefined) return;
+		this.mainIndex = this.mainIndex === index ? null : index;
 		this.paint();
 	}
 
-	private removeShown(): void {
-		const entry = this.entries[this.at];
+	private removeAt(index: number): void {
+		const entry = this.entries[index];
 		if (entry === undefined) return;
 		if (entry.kind === 'kept') this.removed.push(entry.link);
 		if (entry.kind === 'file') {
@@ -233,10 +222,15 @@ export class GalleryField {
 				this.urls.delete(entry.file);
 			}
 		}
-		this.entries.splice(this.at, 1);
+		this.entries.splice(index, 1);
+		const item = this.items.get(entry);
+		if (item !== undefined) {
+			item.el.remove();
+			this.items.delete(entry);
+		}
 		if (this.mainIndex !== null) {
-			if (this.mainIndex === this.at) this.mainIndex = null;
-			else if (this.mainIndex > this.at) this.mainIndex -= 1;
+			if (this.mainIndex === index) this.mainIndex = null;
+			else if (this.mainIndex > index) this.mainIndex -= 1;
 		}
 		this.at = Math.max(0, Math.min(this.at, this.entries.length - 1));
 		this.paint();
@@ -298,7 +292,7 @@ export class GalleryField {
 		if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
 	}
 
-	/** What the shown entry is called and where it is drawn from; no address for a picture that has gone. */
+	/** What an entry is called and where it is drawn from; no address for a picture that has gone. */
 	private shown(entry: GalleryFieldEntry): { name: string; source: string | null } {
 		const { app, sourcePath } = this.context;
 		if (entry.kind === 'kept') {
@@ -315,51 +309,107 @@ export class GalleryField {
 		return { name: entry.file.name, source: this.urlOf(entry.file) };
 	}
 
+	/** The element a picture stands in, built once and kept while the picture is held. */
+	private itemOf(entry: GalleryFieldEntry): GalleryItem {
+		const held = this.items.get(entry);
+		if (held !== undefined) return held;
+		const stage = this.stage;
+		if (stage === null) throw new Error('The gallery row has no stage to stand a picture in.');
+		const { t } = this.context;
+		const el = stage.createDiv({ cls: 'snowflake-method-gallery-item' });
+		const picture = el.createEl('img', {
+			cls: 'snowflake-method-gallery-picture',
+			attr: { alt: '', loading: 'lazy', decoding: 'async' },
+		});
+		const missing = el.createDiv({ cls: 'snowflake-method-gallery-missing' });
+		const missingIcon = missing.createSpan({ attr: { 'aria-hidden': 'true' } });
+		setIcon(missingIcon, 'image-off');
+		const missingWords = missing.createSpan();
+		let star: HTMLButtonElement | null = null;
+		let remove: HTMLButtonElement | null = null;
+		if (this.context.readOnly !== true) {
+			star = el.createEl('button', {
+				cls: 'clickable-icon snowflake-method-gallery-star',
+				attr: { type: 'button', 'aria-pressed': 'false' },
+			});
+			setIcon(star, 'star');
+			star.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				this.toggleMain(this.entries.indexOf(entry));
+			});
+			remove = el.createEl('button', {
+				cls: 'clickable-icon snowflake-method-gallery-remove',
+				attr: { type: 'button', 'aria-label': t('common.remove') },
+			});
+			setIcon(remove, 'trash-2');
+			remove.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				this.removeAt(this.entries.indexOf(entry));
+			});
+		}
+		// A neighbour comes to the front when clicked; the lift of a swipe is no click.
+		el.addEventListener('click', () => {
+			if (Date.now() - this.swipedAt < 400) return;
+			this.show(this.entries.indexOf(entry));
+		});
+		const item: GalleryItem = { el, picture, missing, missingWords, star, remove };
+		this.items.set(entry, item);
+		return item;
+	}
+
 	private paint(): void {
 		const { t } = this.context;
 		const root = this.root;
 		if (root === null) return;
 		const count = this.entries.length;
-		const entry = this.entries[this.at];
 		root.toggleClass('is-empty', count === 0);
-		root.toggleClass('has-stack', count > 1);
-		const { name, source } = entry === undefined ? { name: '', source: null } : this.shown(entry);
-		if (this.picture !== null) {
-			if (source === null) this.picture.removeAttribute('src');
-			else if (this.picture.getAttribute('src') !== source) this.picture.setAttribute('src', source);
-			this.picture.setAttribute('alt', name);
-			this.picture.toggleClass('is-hidden', source === null);
-		}
+		root.toggleClass('has-many', count > 1);
 		this.empty?.toggleClass('is-hidden', count > 0);
-		this.missing?.toggleClass('is-hidden', entry === undefined || source !== null);
-		if (entry !== undefined && source === null && this.missingWords !== null) {
-			this.missingWords.setText(t('form.gallery.missing', { name }));
-		}
-		if (this.star !== null) {
-			const main = entry !== undefined && this.mainIndex === this.at;
-			this.star.toggleClass('is-main', main);
-			this.star.setAttribute('aria-pressed', main ? 'true' : 'false');
-			const label = t(main ? 'form.gallery.unsetMain' : 'form.gallery.setMain');
-			this.star.setAttribute('aria-label', label);
-			setTooltip(this.star, label);
-			this.star.toggleClass('is-hidden', count === 0);
-		}
-		if (this.prev !== null) {
-			this.prev.disabled = this.at <= 0;
-			this.prev.toggleClass('is-hidden', count < 2);
-		}
-		if (this.next !== null) {
-			this.next.disabled = this.at >= count - 1;
-			this.next.toggleClass('is-hidden', count < 2);
-		}
+		let frontName = '';
+		this.entries.forEach((entry, index) => {
+			const item = this.itemOf(entry);
+			const offset = index - this.at;
+			const distance = Math.abs(offset);
+			const current = index === this.at;
+			const main = this.mainIndex === index;
+			const { name, source } = this.shown(entry);
+			if (current) frontName = name;
+			item.el.toggleClass('is-current', current);
+			item.el.toggleClass('is-main', main);
+			item.el.toggleClass('is-hidden', distance > GALLERY_REACH);
+			item.el.setAttribute('data-offset', String(offset));
+			item.el.setAttribute('aria-hidden', current ? 'false' : 'true');
+			item.el.setCssProps({
+				'--snowflake-method-gallery-offset': String(offset),
+				'--snowflake-method-gallery-distance': String(distance),
+			});
+			if (source === null) item.picture.removeAttribute('src');
+			else if (item.picture.getAttribute('src') !== source) item.picture.setAttribute('src', source);
+			if (item.picture.getAttribute('alt') !== name) item.picture.setAttribute('alt', name);
+			item.picture.toggleClass('is-hidden', source === null);
+			item.missing.toggleClass('is-hidden', source !== null);
+			if (source === null) item.missingWords.setText(t('form.gallery.missing', { name }));
+			if (item.star !== null) {
+				item.star.toggleClass('is-main', main);
+				item.star.setAttribute('aria-pressed', main ? 'true' : 'false');
+				const label = t(main ? 'form.gallery.unsetMain' : 'form.gallery.setMain');
+				item.star.setAttribute('aria-label', label);
+				setTooltip(item.star, label);
+				item.star.tabIndex = current ? 0 : -1;
+			}
+			if (item.remove !== null) {
+				const label = t('form.gallery.removePicture', { name });
+				item.remove.setAttribute('aria-label', label);
+				setTooltip(item.remove, label);
+				item.remove.tabIndex = current ? 0 : -1;
+			}
+		});
+		this.name?.setText(frontName);
 		if (this.counter !== null) {
 			this.counter.setText(count === 0 ? '' : t('form.gallery.counter', { at: this.at + 1, count }));
 			this.counter.toggleClass('is-hidden', count < 2);
-		}
-		this.name?.setText(name);
-		if (this.remove !== null) {
-			this.remove.disabled = entry === undefined;
-			this.remove.setAttribute('aria-label', entry === undefined ? t('common.remove') : t('form.gallery.removePicture', { name }));
 		}
 	}
 }

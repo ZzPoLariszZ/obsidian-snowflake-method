@@ -4564,47 +4564,68 @@ textarea.snowflake-method-corkboard-recovered-text {
    bring one in and take the shown one off stand under the frame as words.
    A frame holding more than one picture shows two edges behind it, so the
    stack reads as a stack. */
+/* The pictures a note keeps, fanned out as a coverflow: the one at the
+   front faces the author, its neighbours turn away on either side and
+   shrink with their distance, and the rest wait out of sight. Each picture's
+   place is two numbers the row writes on it, its offset from the front and
+   that offset's size, which the transform, the fade and the layering read.
+   The size of the front picture, and how far each step moves, are the row's
+   two measures. */
 .snowflake-method-gallery {
+	--snowflake-method-gallery-size: 14rem;
+	--snowflake-method-gallery-shift: 8rem;
 	display: flex;
+	align-items: center;
 	flex-direction: column;
 	gap: var(--size-4-2);
 	width: 100%;
-	max-width: 24rem;
-	text-align: start;
+	text-align: center;
 }
 
-/* The stack's two edges stand behind the frame: the stack is a stacking
-   context of its own, so the negative layer stays inside it. */
-.snowflake-method-gallery-stack {
+.snowflake-method-gallery-stage {
 	position: relative;
-	isolation: isolate;
+	width: 100%;
+	height: calc(var(--snowflake-method-gallery-size) + var(--size-4-4));
+	overflow: hidden;
+	perspective: 60rem;
 }
 
-.snowflake-method-gallery.has-stack .snowflake-method-gallery-stack::before,
-.snowflake-method-gallery.has-stack .snowflake-method-gallery-stack::after {
-	content: '';
+.snowflake-method-gallery-item {
 	position: absolute;
-	z-index: -1;
-	border: var(--border-width) solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	background: var(--background-secondary);
-}
-
-.snowflake-method-gallery.has-stack .snowflake-method-gallery-stack::before {
-	inset: 8px -8px -8px 8px;
-}
-
-.snowflake-method-gallery.has-stack .snowflake-method-gallery-stack::after {
-	inset: 4px -4px -4px 4px;
-}
-
-.snowflake-method-gallery-frame {
-	position: relative;
-	aspect-ratio: 1;
+	inset-block-start: var(--size-4-2);
+	inset-inline-start: 50%;
+	z-index: calc(10 - var(--snowflake-method-gallery-distance, 0));
+	width: var(--snowflake-method-gallery-size);
+	height: var(--snowflake-method-gallery-size);
+	margin-inline-start: calc(var(--snowflake-method-gallery-size) / -2);
 	border: var(--border-width) solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background: var(--background-secondary);
 	overflow: hidden;
+	cursor: pointer;
+	opacity: calc(1 - var(--snowflake-method-gallery-distance, 0) * 0.3);
+	transform:
+		translateX(calc(var(--snowflake-method-gallery-offset, 0) * var(--snowflake-method-gallery-shift)))
+		rotateY(calc(var(--snowflake-method-gallery-offset, 0) * -35deg))
+		scale(calc(1 - var(--snowflake-method-gallery-distance, 0) * 0.14));
+	transition:
+		transform var(--anim-duration-moderate) var(--anim-motion-smooth),
+		opacity var(--anim-duration-moderate) var(--anim-motion-smooth);
+}
+
+.snowflake-method-gallery-item.is-current {
+	box-shadow: var(--shadow-s);
+	cursor: default;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-gallery-item {
+	transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.snowflake-method-gallery-item {
+		transition: none;
+	}
 }
 
 .snowflake-method-gallery-picture {
@@ -4630,6 +4651,18 @@ textarea.snowflake-method-corkboard-recovered-text {
 	overflow-wrap: anywhere;
 }
 
+/* With nothing to fan out, the stage says so in a frame of its own. */
+.snowflake-method-gallery-empty {
+	inset-block-start: var(--size-4-2);
+	inset-inline-start: 50%;
+	width: var(--snowflake-method-gallery-size);
+	height: var(--snowflake-method-gallery-size);
+	margin-inline-start: calc(var(--snowflake-method-gallery-size) / -2);
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
 .snowflake-method-gallery-empty svg,
 .snowflake-method-gallery-missing svg {
 	width: var(--icon-xl);
@@ -4642,16 +4675,29 @@ textarea.snowflake-method-corkboard-recovered-text {
 	color: var(--color-orange, var(--text-warning));
 }
 
-/* The controls stand over the picture on a faint ground of their own, so
-   they read over a light picture and a dark one alike. */
-.snowflake-method-gallery-frame > .clickable-icon {
+/* The front picture's two buttons stand at its top corners, the star at the
+   start and the bin at the end, on a faint ground of their own, and show
+   only under the pointer, under the keyboard's focus, or on a touch screen,
+   which has no pointer to hover. */
+.snowflake-method-gallery-item > .clickable-icon {
 	position: absolute;
+	inset-block-start: var(--size-4-2);
 	background-color: color-mix(in srgb, var(--background-primary) 75%, transparent);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--anim-duration-fast) var(--anim-motion-smooth);
+}
+
+.snowflake-method-gallery-item.is-current:hover > .clickable-icon,
+.snowflake-method-gallery-item.is-current:focus-within > .clickable-icon,
+.snowflake-method-gallery:focus-visible .snowflake-method-gallery-item.is-current > .clickable-icon,
+body.is-mobile .snowflake-method-gallery-item.is-current > .clickable-icon {
+	opacity: 1;
+	pointer-events: auto;
 }
 
 .snowflake-method-gallery-star {
-	inset-block-start: var(--size-4-2);
-	inset-inline-end: var(--size-4-2);
+	inset-inline-start: var(--size-4-2);
 }
 
 .snowflake-method-gallery-star.is-main,
@@ -4663,43 +4709,33 @@ textarea.snowflake-method-corkboard-recovered-text {
 	fill: var(--color-yellow);
 }
 
-.snowflake-method-gallery-prev,
-.snowflake-method-gallery-next {
-	inset-block-start: 50%;
-	transform: translateY(-50%);
-}
-
-.snowflake-method-gallery-prev {
-	inset-inline-start: var(--size-4-2);
-}
-
-.snowflake-method-gallery-next {
+.snowflake-method-gallery-remove {
 	inset-inline-end: var(--size-4-2);
 }
 
-.snowflake-method-gallery-counter {
-	position: absolute;
-	inset-block-end: var(--size-4-2);
-	inset-inline-start: 50%;
-	padding: 0 var(--size-4-2);
-	border-radius: var(--radius-s);
-	background-color: color-mix(in srgb, var(--background-primary) 75%, transparent);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	font-variant-numeric: tabular-nums;
-	transform: translateX(-50%);
+.snowflake-method-gallery-remove:hover {
+	color: var(--text-error);
 }
 
-.snowflake-method-gallery-name {
+.snowflake-method-gallery-caption {
+	display: flex;
+	align-items: center;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	max-width: 100%;
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	overflow-wrap: anywhere;
 }
 
-.snowflake-method-gallery-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--size-4-2);
+.snowflake-method-gallery-counter {
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+
+/* The way in stands at the end of the row's name. */
+.snowflake-method-gallery-add {
+	margin-inline-start: auto;
 }
 
 .snowflake-method-gallery-file-input,

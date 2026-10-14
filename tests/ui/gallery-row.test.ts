@@ -9,11 +9,15 @@ vi.mock('obsidian', async (importOriginal) => {
 		...runtime,
 		Setting: class extends runtime.Setting {
 			settingEl: CorkboardElement;
+			infoEl: CorkboardElement;
+			nameEl: CorkboardElement;
 			controlEl: CorkboardElement;
 			constructor(container: CorkboardElement) {
 				super();
 				this.settingEl = container.createDiv();
-				this.controlEl = this.settingEl.createDiv();
+				this.infoEl = this.settingEl.createDiv({ cls: 'setting-item-info' });
+				this.nameEl = this.infoEl.createDiv({ cls: 'setting-item-name' });
+				this.controlEl = this.settingEl.createDiv({ cls: 'setting-item-control' });
 			}
 		},
 	};
@@ -63,12 +67,16 @@ function build(prototype: object, fields: Record<string, unknown>) {
 const context = { projectPath: 'Demo/00_System/001_Project_Metadata.md' } as unknown as MemberFormContext;
 
 describe('the gallery row of the member forms', () => {
-	it('stands in the character form as a full-width setting named Gallery, showing the stored pictures', () => {
+	it('stands in the character form as a full-width setting named Gallery, with the way in beside the name', () => {
 		const { dom, instance } = build(CreateCharacterModal.prototype, { formContext: context });
 		const row = dom.container.querySelector('.snowflake-method-character-gallery-setting');
 		expect(row?.classes.has('snowflake-method-character-setting')).toBe(true);
 		const picture = row?.querySelector('.snowflake-method-gallery-picture');
 		expect(picture?.getAttribute('src')).toBe('app://fake/Demo/20_Character/25_Gallery/portrait.png');
+		const add = row?.querySelector('.snowflake-method-gallery-add');
+		expect(add?.textContent).toBe('common.add');
+		expect(add?.parent?.classes.has('setting-item-info')).toBe(true);
+		expect(row?.querySelector('.setting-item-control')?.querySelector('.snowflake-method-gallery')).not.toBeNull();
 		expect(instance.galleryField).not.toBeNull();
 		instance.syncEditors();
 		expect(instance.value.gallery).toEqual(galleryDraftOf([link], link));
@@ -96,6 +104,7 @@ describe('the gallery row of the member forms', () => {
 		const { dom } = build(EntityFormModal.prototype, { formContext: context });
 		const row = dom.container.querySelector('.snowflake-method-character-gallery-setting');
 		expect(row).not.toBeNull();
-		expect(row?.querySelector('.snowflake-method-gallery-add-device')).not.toBeNull();
+		expect(row?.querySelector('.snowflake-method-gallery-add')).not.toBeNull();
+		expect(row?.querySelector('.snowflake-method-gallery-remove')).not.toBeNull();
 	});
 });

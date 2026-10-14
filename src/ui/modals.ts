@@ -55,7 +55,7 @@ import {
 } from '../domain';
 import type { MemberUsage } from '../services';
 import { FieldSuggest } from './field-suggest';
-import { GalleryField, galleryFieldState, type GalleryFieldState } from './gallery-field';
+import { GalleryField, galleryFieldState, type GalleryFieldState, type GallerySource } from './gallery-field';
 import { submitOnModEnter } from './modal-keys';
 import { addColorChip } from './presentation-controls';
 import {
@@ -366,11 +366,78 @@ function buildGalleryRow(
 			t,
 			sourcePath: context.projectPath,
 			pickFromVault: (exclude) => promptForGalleryPicture(app, t, exclude),
+			pickSource: () => promptForGallerySource(app, t),
 		},
 		state,
 	);
+	// The way in stands at the end of the row's name, and asks where from.
+	const add = setting.infoEl.createEl('button', {
+		cls: 'snowflake-method-gallery-add',
+		text: t('common.add'),
+		attr: { type: 'button' },
+	});
+	add.addEventListener('click', (event) => {
+		event.preventDefault();
+		void field.add();
+	});
 	field.attach(setting.controlEl);
 	return field;
+}
+
+/** One way a picture comes in, as the picker lists it. */
+interface GallerySourceChoice {
+	source: GallerySource;
+	label: string;
+}
+
+/** Asks where a picture comes from: the vault's pictures, or the device's file chooser. */
+class GallerySourceModal extends SuggestModal<GallerySourceChoice> {
+	private answered: GallerySource | null = null;
+	private readonly choices: readonly GallerySourceChoice[];
+
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly done: (source: GallerySource | null) => void,
+	) {
+		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
+		this.setPlaceholder(t('form.gallery.sourcePlaceholder'));
+		this.choices = [
+			{ source: 'vault', label: t('form.gallery.addFromVault') },
+			{ source: 'device', label: t('form.gallery.addFromDevice') },
+		];
+	}
+
+	getSuggestions(query: string): GallerySourceChoice[] {
+		const wanted = query.trim().toLowerCase();
+		return wanted.length === 0
+			? [...this.choices]
+			: this.choices.filter((choice) => choice.label.toLowerCase().includes(wanted));
+	}
+
+	renderSuggestion(choice: GallerySourceChoice, el: HTMLElement): void {
+		el.setText(choice.label);
+	}
+
+	onChooseSuggestion(choice: GallerySourceChoice): void {
+		this.answered = choice.source;
+	}
+
+	/** Settled after the dialog is gone, however it closed, as the kind picker is. */
+	onClose(): void {
+		super.onClose();
+		void Promise.resolve().then(() => {
+			this.done(this.answered);
+		});
+	}
+}
+
+/** Asks where a picture comes from, or null when nobody answered. */
+export function promptForGallerySource(app: App, t: Translate): Promise<GallerySource | null> {
+	return new Promise((resolve) => {
+		new GallerySourceModal(app, t, resolve).open();
+	});
 }
 
 /**
