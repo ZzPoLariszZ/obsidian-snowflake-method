@@ -43,7 +43,7 @@ const entity = (fields: Partial<WorldbuildingEntityViewModel> = {}): Worldbuildi
 	customFields: '',
 	revision: 'before-edit',
 	readOnly: false,
-	healthIssues: [],
+	healthIssues: [], gallery: [], galleryMain: null,
 	...fields,
 });
 

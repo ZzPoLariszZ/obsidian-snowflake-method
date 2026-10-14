@@ -46,7 +46,7 @@ const scene = (fields: Partial<SceneViewModel> = {}): SceneViewModel => ({
 	customFields: '',
 	revision: 'before-card-edit',
 	readOnly: false,
-	healthIssues: [],
+	healthIssues: [], gallery: [], galleryMain: null,
 	...fields,
 });
 

@@ -238,18 +238,18 @@ const view = (id: string, extra: Partial<FreeformView> = {}): FreeformView => ({
 const scene = (id: string, title: string): SceneViewModel => ({
 	id, path: `Scenes/${title}.md`, title, rank: 0, progressStatus: 'in-progress', aliases: [], categoryPaths: [],
 	povPath: '', povName: '', povMissing: false, times: [], locations: [], characterPaths: [], conflict: '', color: null,
-	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision: 'r', readOnly: false, healthIssues: [],
+	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision: 'r', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 });
 
 const character = (id: string, name: string): CharacterViewModel => ({
 	id, path: `Characters/${name}.md`, name, rank: 0, type: null, progressStatus: 'complete', aliases: ['Nan'], categoryPaths: [],
 	oneSentenceStoryline: 'Wants out', oneParagraphStoryline: '', motivation: 'Fear', goal: '', conflict: '', growth: '',
-	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'c1', readOnly: false, healthIssues: [],
+	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'c1', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 });
 const place = (id: string, name: string): WorldbuildingEntityViewModel => ({
 	id, path: `World/${name}.md`, name, kind: 'location', rank: 0, progressStatus: null, aliases: [], categoryPaths: [],
 	description: 'A harbour', timeKind: null, timeStart: '', timeEnd: '', timeStartMissing: false, timeEndMissing: false,
-	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'w1', readOnly: false, healthIssues: [],
+	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'w1', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 });
 
 const submit = (form: unknown, value: unknown): Promise<void> =>

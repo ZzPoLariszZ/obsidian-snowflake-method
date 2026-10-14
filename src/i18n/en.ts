@@ -1663,6 +1663,21 @@ export const en = {
 	'form.customFields.templatePlaceholder': 'Choose a template note…',
 	'form.customFields.templateNone': 'No template',
 	'form.referenceMissing': 'No longer in this project: {name}',
+	'form.gallery': 'Gallery',
+	'form.gallery.empty': 'No pictures',
+	'form.gallery.counter': '{at} / {count}',
+	'form.gallery.previous': 'Previous picture',
+	'form.gallery.next': 'Next picture',
+	'form.gallery.setMain': 'Set as main picture',
+	'form.gallery.unsetMain': 'Unset main picture',
+	'form.gallery.addFromVault': 'Add from vault',
+	'form.gallery.addFromDevice': 'Add from device',
+	'form.gallery.removePicture': 'Remove {name}',
+	'form.gallery.missing': 'Missing picture: {name}',
+	'form.gallery.notPicture': 'Not a picture: {name}',
+	'form.gallery.pickPlaceholder': 'Choose a picture…',
+	'form.gallery.pickEmpty': 'No pictures in the vault.',
+	'form.gallery.trashFailed': 'A picture could not be moved to the trash: {name}',
 	// One set per vocabulary: the dialog that adds an entry is the same for
 	// all three, and only its wording says which one is being added to. The
 	// examples stay in lower case because Obsidian asks every string it shows

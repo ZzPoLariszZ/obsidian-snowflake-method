@@ -331,3 +331,49 @@ describe('captured project mutation ownership', () => {
 		fixture.assertOwnership(before);
 	});
 });
+
+describe('gallery saves through the host', () => {
+	const picture = (name: string, byte: number) => ({
+		kind: 'data' as const, name, read: () => Promise.resolve(new Uint8Array([byte]).buffer),
+	});
+
+	it('lands a form\'s pictures around the note write, tidies what it took off, and takes a refused write back', async () => {
+		const fixture = await setup();
+		const { plugin, service, owner, env } = fixture;
+		const folder = `${owner.rootPath}/20_Character/25_Gallery`;
+		const face = `[[${folder}/face.png]]`;
+		const back = `[[${folder}/back.png]]`;
+		const created = await plugin.createCharacter(characterRequest({
+			name: 'Pictured',
+			gallery: { entries: [picture('face.png', 1), picture('back.png', 2)], removed: [], mainIndex: 1 },
+		}), owner.projectFile);
+		const reload = async () => (await service.loadProject(owner)).characters.find((candidate) => candidate.characterId === created.id)!;
+		let character = await reload();
+		expect(character.gallery).toEqual([face, back]);
+		expect(character.galleryMain).toBe(back);
+		expect(env.fakeVault.binaryContents.has(`${folder}/back.png`)).toBe(true);
+
+		await plugin.updateCharacter(created.id, characterRequest({
+			name: 'Pictured', expectedRevision: character.revision,
+			gallery: { entries: [{ kind: 'kept', link: face }], removed: [back], mainIndex: null },
+		}), owner.projectFile);
+		character = await reload();
+		expect(character.gallery).toEqual([face]);
+		expect(character.galleryMain).toBeNull();
+		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`]);
+
+		env.fakeFileManager.failNextFrontmatterPath = character.path;
+		await expect(plugin.updateCharacter(created.id, characterRequest({
+			name: 'Pictured', expectedRevision: character.revision,
+			gallery: { entries: [{ kind: 'kept', link: face }, picture('extra.png', 3)], removed: [], mainIndex: 1 },
+		}), owner.projectFile)).rejects.toThrow();
+		expect(env.fakeVault.getFileByPath(`${folder}/extra.png`)).toBeNull();
+		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`, `${folder}/extra.png`]);
+		character = await reload();
+		expect(character.gallery).toEqual([face]);
+
+		Object.setPrototypeOf(env.fakeVault.getFileByPath(character.path), TFile.prototype);
+		await plugin.deleteCharacter(created.id, character.revision, owner.projectFile);
+		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`, `${folder}/extra.png`, character.path, `${folder}/face.png`]);
+	});
+});

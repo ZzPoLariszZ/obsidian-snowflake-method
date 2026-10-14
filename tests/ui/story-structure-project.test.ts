@@ -312,7 +312,7 @@ describe('workspace project ownership', () => {
 			povPath: '', povName: '', povMissing: false,
 			times: [], locations: [], characterPaths: [], conflict: 'An obstacle', color: null,
 			linkedManuscript: [], worldStatus: [], relationships: [], events: '',
-			customFields: '', revision: 'initial', healthIssues: [], readOnly: false,
+			customFields: '', revision: 'initial', healthIssues: [], gallery: [], galleryMain: null, readOnly: false,
 		};
 		loadDashboardModel.mockImplementation((path) => Promise.resolve({
 			path, projectId: 'stable-project', title: 'Novel', locale: 'en',
@@ -372,7 +372,7 @@ describe('workspace project ownership', () => {
 				progressStatus: status, aliases: [], categoryPaths: [], povPath: '', povName: '', povMissing: false,
 				times: [], locations: [], characterPaths: [], conflict: '', color: null, linkedManuscript: [],
 				worldStatus: [], relationships: [], events: '', customFields: '', revision: 'initial',
-				healthIssues: [], readOnly: false,
+				healthIssues: [], gallery: [], galleryMain: null, readOnly: false,
 			});
 			loadDashboardModel.mockImplementation((path) => Promise.resolve({
 				path,

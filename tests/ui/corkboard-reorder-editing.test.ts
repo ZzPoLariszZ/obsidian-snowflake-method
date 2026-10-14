@@ -83,7 +83,7 @@ function sceneModel(scene: SceneRecord): SceneViewModel {
 		conflict: scene.conflict, color: scene.color, linkedManuscript: [],
 		worldStatus: scene.worldStatus, relationships: scene.relationships,
 		events: scene.events, customFields: scene.customFields,
-		revision: scene.revision, healthIssues: [], readOnly: scene.readOnly,
+		revision: scene.revision, healthIssues: [], gallery: [], galleryMain: null, readOnly: scene.readOnly,
 	};
 }
 

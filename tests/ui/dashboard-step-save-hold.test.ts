@@ -51,7 +51,7 @@ function makeModel(): ProjectDashboardModel {
 			optional: false,
 			artifactPath: `Novel/step-${String(id)}.md`,
 			contentReadOnly: false,
-			healthIssues: [],
+			healthIssues: [], gallery: [], galleryMain: null,
 		})),
 		stepFields: {
 			2: { 'one-paragraph-summary': 'A paragraph.', description: '' },

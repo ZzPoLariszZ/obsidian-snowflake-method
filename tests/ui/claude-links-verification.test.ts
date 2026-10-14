@@ -78,7 +78,7 @@ function scene(fields: Partial<SceneViewModel> = {}): SceneViewModel {
 		progressStatus: 'not-started', aliases: [], categoryPaths: [], povPath: '', povName: '',
 		povMissing: false, times: [], locations: [], characterPaths: [], conflict: '', color: null,
 		linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '',
-		revision: 'initial', readOnly: false, healthIssues: [], ...fields,
+		revision: 'initial', readOnly: false, healthIssues: [], gallery: [], galleryMain: null, ...fields,
 	};
 }
 

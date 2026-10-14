@@ -144,6 +144,11 @@ export const FRONTMATTER_KEYS = {
 	// list of wikilinks kept exactly as typed, headings and aliases included.
 	sceneColor: 'snowflake-color',
 	linkedManuscript: 'snowflake-linked-manuscript',
+	// The pictures a note keeps: a list of links to image files in the kind's
+	// gallery folder, kept exactly as written, and the one of them shown
+	// first. Both absent while the note has none.
+	gallery: 'snowflake-gallery',
+	galleryMain: 'snowflake-gallery-main',
 	category: 'snowflake-category',
 	worldbuildingKind: 'snowflake-worldbuilding-kind',
 	timeKind: 'snowflake-time-kind',

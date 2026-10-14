@@ -314,7 +314,7 @@ describe('dashboard health indicator', () => {
 	const healthyModel = {
 		readOnly: false,
 		structureIssues: [],
-		steps: [{ healthIssues: [] }],
+		steps: [{ healthIssues: [], gallery: [], galleryMain: null }],
 		characters: [],
 		scenes: [],
 		worldbuilding: { time: [], location: [], item: [] },

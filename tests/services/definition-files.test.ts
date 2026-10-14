@@ -7,6 +7,7 @@ import {
   checkDefinitionPath,
   customFieldRootNameForFolder,
   definitionRootFromValue,
+  galleryRootNameForFolder,
   definitionRootName,
   isValidDefinitionSegment,
   MAX_DEFINITION_DEPTH,
@@ -176,6 +177,19 @@ describe("root names", () => {
     );
     // A folder wearing no number offers none to carry down.
     expect(customFieldRootNameForFolder("Faction", "en")).toBe("Custom_Field");
+  });
+
+  it("numbers the gallery folder as the position after the template folder", () => {
+    expect(galleryRootNameForFolder("20_Character", "en")).toBe("25_Gallery");
+    expect(galleryRootNameForFolder("40_Scene", "en")).toBe("45_Gallery");
+    expect(galleryRootNameForFolder("61_Time", "en")).toBe("615_Gallery");
+    expect(galleryRootNameForFolder("62_Location", "en")).toBe("625_Gallery");
+    expect(galleryRootNameForFolder("63_Item", "en")).toBe("635_Gallery");
+    expect(galleryRootNameForFolder("64_Faction", "en")).toBe("645_Gallery");
+    expect(galleryRootNameForFolder("6A_Faction", "en")).toBe("6A5_Gallery");
+    expect(galleryRootNameForFolder("20_角色", "zh-CN")).toBe("25_图库");
+    expect(galleryRootNameForFolder("62_地点", "zh-CN")).toBe("625_图库");
+    expect(galleryRootNameForFolder("Faction", "en")).toBe("Gallery");
   });
 });
 

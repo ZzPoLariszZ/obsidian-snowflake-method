@@ -196,12 +196,12 @@ const row = (id: string, text: string, scenes: string[] = []): TimelineRow => ({
 const time = (id: string, name: string, description = ''): WorldbuildingEntityViewModel => ({
 	id, path: `World/${name}.md`, name, kind: 'time', rank: 0, progressStatus: null, aliases: [], categoryPaths: [],
 	description, timeKind: 'point', timeStart: '', timeEnd: '', timeStartMissing: false, timeEndMissing: false,
-	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'r', readOnly: false, healthIssues: [],
+	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'r', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 });
 const scene = (id: string, title: string): SceneViewModel => ({
 	id, path: `Scenes/${title}.md`, title, rank: 0, progressStatus: 'in-progress', aliases: [], categoryPaths: [],
 	povPath: '', povName: '', povMissing: false, times: [], locations: [], characterPaths: [], conflict: '', color: null,
-	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision: 'r', readOnly: false, healthIssues: [],
+	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision: 'r', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 });
 
 function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
@@ -270,7 +270,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 		path: 'P', projectId: 'p', locale: 'en', readOnly,
 		scenes: [scene('scene-1', 'Arrival'), scene('scene-2', 'Departure'), scene('scene-3', 'Return')],
 		manuscriptPaths: [],
-		characters: [{ id: 'character-alice', name: 'Alice', path: 'Cast/Alice.md', readOnly: false, healthIssues: [] }],
+		characters: [{ id: 'character-alice', name: 'Alice', path: 'Cast/Alice.md', readOnly: false, healthIssues: [], gallery: [], galleryMain: null }],
 		worldbuildingKinds: [{ id: 'time' }, { id: 'location' }],
 		worldbuilding: { time: times, location: [{ id: 'entity-london', name: 'London', path: 'World/London.md' }] },
 	} as unknown as ProjectDashboardModel;

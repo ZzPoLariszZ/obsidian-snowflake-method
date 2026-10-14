@@ -170,6 +170,10 @@ export interface CharacterViewModel {
 	relationships: RecordLine[];
 	/** The custom-fields block as stored; empty while the note carries none. */
 	customFields: string;
+	/** Picture links exactly as stored; empty while the note has none. */
+	gallery: string[];
+	/** The stored link chosen as the main picture, always one of `gallery`; null for none. */
+	galleryMain: string | null;
 	revision: string;
 	readOnly: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
@@ -208,6 +212,10 @@ export interface SceneViewModel {
 	events: string;
 	/** The custom-fields block as stored; empty while the note carries none. */
 	customFields: string;
+	/** Picture links exactly as stored; empty while the note has none. */
+	gallery: string[];
+	/** The stored link chosen as the main picture, always one of `gallery`; null for none. */
+	galleryMain: string | null;
 	revision: string;
 	readOnly: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
@@ -237,6 +245,10 @@ export interface WorldbuildingEntityViewModel {
 	relationships: RecordLine[];
 	/** The custom-fields block as stored; empty while the note carries none. */
 	customFields: string;
+	/** Picture links exactly as stored; empty while the note has none. */
+	gallery: string[];
+	/** The stored link chosen as the main picture, always one of `gallery`; null for none. */
+	galleryMain: string | null;
 	revision: string;
 	readOnly: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];

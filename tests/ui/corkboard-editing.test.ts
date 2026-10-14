@@ -56,12 +56,12 @@ function board(group: CorkboardMemory['group'] = '', scene: Partial<SceneViewMod
 		povPath: 'First/Cast/Hero.md', povName: 'Hero', povMissing: false,
 		times: [], locations: [], characterPaths: [], conflict: 'An obstacle', color: null,
 		linkedManuscript: [], worldStatus: [], relationships: [], events: '',
-		customFields: '', revision: 'initial', healthIssues: [], readOnly: false,
+		customFields: '', revision: 'initial', healthIssues: [], gallery: [], galleryMain: null, readOnly: false,
 		...scene,
 	};
 	let model = {
 		path: PROJECT, projectId: 'first', locale: 'en', scenes: [stored],
-		characters: [{ id: 'hero', path: stored.povPath, name: 'Hero', readOnly: false, healthIssues: [] }],
+		characters: [{ id: 'hero', path: stored.povPath, name: 'Hero', readOnly: false, healthIssues: [], gallery: [], galleryMain: null }],
 		manuscriptPaths: [], readOnly: false,
 	} as unknown as ProjectDashboardModel;
 	let serial = 0;

@@ -60,7 +60,7 @@ function scene(index: number): SceneViewModel {
 		povPath: 'First/Cast/Hero.md', povName: 'Hero', povMissing: false,
 		times: [], locations: [], characterPaths: [], conflict: '', color: null,
 		linkedManuscript: [], worldStatus: [], relationships: [], events: '',
-		customFields: '', revision: 'initial', healthIssues: [], readOnly: false,
+		customFields: '', revision: 'initial', healthIssues: [], gallery: [], galleryMain: null, readOnly: false,
 	};
 }
 
@@ -68,7 +68,7 @@ function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene), re
 	const dom = new CorkboardDom();
 	let model = {
 		path: PROJECT, projectId: 'first', locale: 'en', scenes,
-		characters: [{ id: 'hero', path: 'First/Cast/Hero.md', name: 'Hero', readOnly: false, healthIssues: [] }],
+		characters: [{ id: 'hero', path: 'First/Cast/Hero.md', name: 'Hero', readOnly: false, healthIssues: [], gallery: [], galleryMain: null }],
 		manuscriptPaths: [], readOnly,
 	} as unknown as ProjectDashboardModel;
 	const host = {

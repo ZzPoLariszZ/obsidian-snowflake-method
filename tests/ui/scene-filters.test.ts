@@ -46,7 +46,7 @@ const scene = (
 	customFields: '',
 	revision: 'r1',
 	readOnly: false,
-	healthIssues: [],
+	healthIssues: [], gallery: [], galleryMain: null,
 	...overrides,
 });
 

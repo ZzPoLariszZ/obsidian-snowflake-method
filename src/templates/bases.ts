@@ -89,6 +89,8 @@ interface Copy {
   category: string;
   progressStatus: string;
   description: string;
+  gallery: string;
+  galleryMain: string;
   statusNotStarted: string;
   statusInProgress: string;
   statusInRevision: string;
@@ -121,6 +123,8 @@ const COPY: Record<TemplateLanguage, Copy> = {
     category: "Category",
     progressStatus: "Progress status",
     description: "Description",
+    gallery: "Gallery",
+    galleryMain: "Main picture",
     statusNotStarted: "Not started",
     statusInProgress: "In progress",
     statusInRevision: "In revision",
@@ -172,6 +176,8 @@ const COPY: Record<TemplateLanguage, Copy> = {
     category: "类别",
     progressStatus: "进度",
     description: "描述",
+    gallery: "图库",
+    galleryMain: "主图",
     statusNotStarted: "未开始",
     statusInProgress: "进行中",
     statusInRevision: "修订中",
@@ -761,6 +767,8 @@ export function baseColumnDisplayNames(
     [FRONTMATTER_KEYS.category, copy.category],
     [FRONTMATTER_KEYS.progressStatus, copy.progressStatus],
     [FRONTMATTER_KEYS.description, copy.description],
+    [FRONTMATTER_KEYS.gallery, copy.gallery],
+    [FRONTMATTER_KEYS.galleryMain, copy.galleryMain],
     [FRONTMATTER_KEYS.timeKind, copy.timeKind],
     [FRONTMATTER_KEYS.timeStart, copy.timeStart],
     [FRONTMATTER_KEYS.timeEnd, copy.timeEnd],

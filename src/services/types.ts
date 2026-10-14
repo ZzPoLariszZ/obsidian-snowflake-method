@@ -534,6 +534,10 @@ export interface CharacterInput {
   characterSynopsis?: string;
   characterProfile?: string;
   customFields?: string;
+  /** Picture links as raw wikilinks, kept exactly as given. */
+  gallery?: string[];
+  /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
+  galleryMain?: string | null;
 }
 
 export interface CharacterPatch {
@@ -557,6 +561,10 @@ export interface CharacterPatch {
   characterSynopsis?: string;
   characterProfile?: string;
   customFields?: string;
+  /** Picture links as raw wikilinks, kept exactly as given. */
+  gallery?: string[];
+  /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
+  galleryMain?: string | null;
 }
 
 export interface CharacterRecord {
@@ -586,6 +594,10 @@ export interface CharacterRecord {
   growth: string;
   /** Null while the note wears no colour, or names one this build does not know. */
   color: MacaronColor | null;
+  /** Picture links exactly as stored, `[[…/25_Gallery/portrait.png]]`; empty while the note has none. */
+  gallery: string[];
+  /** The list entry shown first, or null while none is chosen. */
+  galleryMain: string | null;
   /** Record lines from the note's body sections. */
   worldStatus: RecordLine[];
   relationships: RecordLine[];
@@ -623,6 +635,10 @@ export interface SceneInput {
   color?: MacaronColor | null;
   /** Manuscript links as raw wikilinks, kept exactly as given. */
   linkedManuscript?: string[];
+  /** Picture links as raw wikilinks, kept exactly as given. */
+  gallery?: string[];
+  /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
+  galleryMain?: string | null;
 }
 
 /** A position, or a relative destination resolved against the latest persisted order. */
@@ -656,6 +672,10 @@ export interface ScenePatch {
   color?: MacaronColor | null;
   /** Manuscript links as raw wikilinks, kept exactly as given. */
   linkedManuscript?: string[];
+  /** Picture links as raw wikilinks, kept exactly as given. */
+  gallery?: string[];
+  /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
+  galleryMain?: string | null;
 }
 
 export interface SceneRecord {
@@ -683,6 +703,10 @@ export interface SceneRecord {
   color: MacaronColor | null;
   /** Manuscript links exactly as stored, subpaths and aliases kept. */
   linkedManuscript: string[];
+  /** Picture links exactly as stored, `[[…/25_Gallery/portrait.png]]`; empty while the note has none. */
+  gallery: string[];
+  /** The list entry shown first, or null while none is chosen. */
+  galleryMain: string | null;
   worldStatus: RecordLine[];
   relationships: RecordLine[];
   worldStatusUnrecognized: string[];
@@ -726,6 +750,10 @@ export interface WorldbuildingRecord {
   timeEnd: string;
   /** Null while the note wears no colour, or names one this build does not know. */
   color: MacaronColor | null;
+  /** Picture links exactly as stored, `[[…/25_Gallery/portrait.png]]`; empty while the note has none. */
+  gallery: string[];
+  /** The list entry shown first, or null while none is chosen. */
+  galleryMain: string | null;
   worldStatus: RecordLine[];
   relationships: RecordLine[];
   /**
@@ -760,6 +788,10 @@ export interface EntityInput {
   relationships?: RecordLine[];
   notes?: string;
   customFields?: string;
+  /** Picture links as raw wikilinks, kept exactly as given. */
+  gallery?: string[];
+  /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
+  galleryMain?: string | null;
 }
 
 export interface EntityPatch {
@@ -779,6 +811,10 @@ export interface EntityPatch {
   relationships?: RecordLine[];
   notes?: string;
   customFields?: string;
+  /** Picture links as raw wikilinks, kept exactly as given. */
+  gallery?: string[];
+  /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
+  galleryMain?: string | null;
 }
 
 export interface ArtifactSnapshot {

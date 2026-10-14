@@ -8,6 +8,7 @@ import {
 	SuggestModal,
 	TFolder,
 	ToggleComponent,
+	type TFile,
 	getIconIds,
 	setIcon,
 	setTooltip,
@@ -28,12 +29,15 @@ import {
 	addSceneCastMember,
 	clampSessionValue,
 	foldName,
+	galleryDraftOf,
 	isChoosableScenePov,
+	isImagePath,
 	isNameTaken,
 	isTimeKind,
 	normalizeSceneCast,
 	safeFileName,
 	type EntityKindId,
+	type GalleryDraft,
 	type ProgressStatus,
 	type SessionLimit,
 	type TimeKind,
@@ -51,6 +55,7 @@ import {
 } from '../domain';
 import type { MemberUsage } from '../services';
 import { FieldSuggest } from './field-suggest';
+import { GalleryField, galleryFieldState, type GalleryFieldState } from './gallery-field';
 import { submitOnModEnter } from './modal-keys';
 import { addColorChip } from './presentation-controls';
 import {
@@ -155,6 +160,8 @@ export interface CreateCharacterRequest {
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	customFields: string;
+	/** The pictures as the form holds them; absent from a form that offered no gallery. */
+	gallery?: GalleryDraft;
 	expectedRevision?: string;
 }
 
@@ -182,6 +189,8 @@ export interface CreateSceneRequest {
 	color: MacaronColor | null;
 	/** Manuscript links as raw wikilinks, kept exactly as typed. */
 	linkedManuscript: string[];
+	/** The pictures as the form holds them; absent from a form that offered no gallery. */
+	gallery?: GalleryDraft;
 	expectedRevision?: string;
 }
 
@@ -198,6 +207,8 @@ export interface EntityFormRequest {
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	customFields: string;
+	/** The pictures as the form holds them; absent from a form that offered no gallery. */
+	gallery?: GalleryDraft;
 	expectedRevision?: string;
 }
 
@@ -328,6 +339,38 @@ function attachCustomFields(
 	});
 	editor.attach(block);
 	return editor;
+}
+
+/**
+ * The gallery row every member form carries before its record editors: the
+ * note's pictures, held by the form until its save lands them. The vault's
+ * pictures are offered through the chooser below; the device's through the
+ * row's own file input.
+ */
+function buildGalleryRow(
+	app: App,
+	t: Translate,
+	container: HTMLElement,
+	context: MemberFormContext,
+	form: 'character' | 'scene',
+	state: GalleryFieldState,
+): GalleryField {
+	const setting = new Setting(container).setName(t('form.gallery'));
+	setting.settingEl.addClass(
+		`snowflake-method-${form}-setting`,
+		`snowflake-method-${form}-gallery-setting`,
+	);
+	const field = new GalleryField(
+		{
+			app,
+			t,
+			sourcePath: context.projectPath,
+			pickFromVault: (exclude) => promptForGalleryPicture(app, t, exclude),
+		},
+		state,
+	);
+	field.attach(setting.controlEl);
+	return field;
 }
 
 /**
@@ -1751,6 +1794,8 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
 	private customFieldsEditor: CustomFieldsEditor | null = null;
+	private galleryField: GalleryField | null = null;
+	private galleryState: GalleryFieldState;
 	private readonly customFieldState: { rows: CustomField[]; touched: boolean };
 	private readonly initialCustomFields: string;
 	private readonly isCreateForm: boolean;
@@ -1815,6 +1860,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			rows: parseCustomFields(this.initialCustomFields).fields,
 			touched: false,
 		};
+		this.galleryState = galleryFieldState(initial?.gallery ?? galleryDraftOf([], null));
 	}
 
 	protected buildForm(): void {
@@ -1828,7 +1874,15 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		this.addText('conflict', 'modal.character.conflict');
 		this.addText('growth', 'modal.character.growth');
 		this.addText('oneParagraphStoryline', 'modal.character.oneParagraphStoryline');
+		this.buildGallery();
 		this.buildRecordEditors();
+	}
+
+	/** The pictures the character keeps, standing before the record editors. */
+	private buildGallery(): void {
+		const context = this.formContext;
+		if (context === undefined) return;
+		this.galleryField = buildGalleryRow(this.app, this.t, this.contentEl, context, 'character', this.galleryState);
 	}
 
 	/** The status rides in the title row, the way a step's status does. */
@@ -1911,6 +1965,16 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		if (this.relationshipsEditor !== null) {
 			this.value.relationships = this.relationshipsEditor.records();
 		}
+		if (this.galleryField !== null) {
+			this.galleryState = this.galleryField.state();
+			this.value.gallery = this.galleryField.value();
+		}
+	}
+
+	onClose(): void {
+		this.galleryField?.destroy();
+		this.galleryField = null;
+		super.onClose();
 	}
 
 	protected collectValue(): CreateCharacterRequest | null {
@@ -1955,6 +2019,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			| 'age'
 			| 'worldStatus'
 			| 'relationships'
+			| 'gallery'
 		>,
 		label: string,
 		required = false,
@@ -2619,6 +2684,70 @@ class SceneManuscriptReferenceModal extends FuzzySuggestModal<PickerOption> {
 	}
 }
 
+/** The chooser under a gallery's Add from vault: every picture of the vault but the ones the gallery holds. */
+class GalleryPictureModal extends FuzzySuggestModal<TFile> {
+	private chosen = false;
+
+	constructor(
+		app: App,
+		placeholder: string,
+		private readonly files: TFile[],
+		private readonly pick: (file: TFile | null) => void,
+	) {
+		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
+		this.setPlaceholder(placeholder);
+		this.limit = 50;
+	}
+
+	getItems(): TFile[] {
+		return this.files;
+	}
+
+	getItemText(file: TFile): string {
+		return file.path;
+	}
+
+	onChooseItem(file: TFile): void {
+		this.chosen = true;
+		this.pick(file);
+	}
+
+	onClose(): void {
+		super.onClose();
+		// A choice closes the dialog before it is reported, so a dialog left
+		// without one is told apart only once the report has had its turn.
+		void Promise.resolve().then(() => {
+			if (!this.chosen) this.pick(null);
+		});
+	}
+}
+
+/**
+ * Offers the vault's pictures but the ones given and answers the one
+ * chosen, or none for a dialog left; a vault with none to offer says so
+ * instead of opening.
+ */
+export function promptForGalleryPicture(
+	app: App,
+	t: Translate,
+	exclude: ReadonlySet<string>,
+): Promise<TFile[]> {
+	const files = app.vault
+		.getFiles()
+		.filter((file) => isImagePath(file.path) && !exclude.has(file.path))
+		.sort((left, right) => left.path.localeCompare(right.path));
+	if (files.length === 0) {
+		new Notice(t('form.gallery.pickEmpty'));
+		return Promise.resolve([]);
+	}
+	return new Promise((resolve) => {
+		new GalleryPictureModal(app, t('form.gallery.pickPlaceholder'), files, (file) => {
+			resolve(file === null ? [] : [file]);
+		}).open();
+	});
+}
+
 export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private readonly characters: CharacterOption[];
 	private title = '';
@@ -2649,6 +2778,8 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
 	private customFieldsEditor: CustomFieldsEditor | null = null;
+	private galleryField: GalleryField | null = null;
+	private galleryState: GalleryFieldState = galleryFieldState(galleryDraftOf([], null));
 	private customFieldState: { rows: CustomField[]; touched: boolean } = {
 		rows: [],
 		touched: false,
@@ -2720,6 +2851,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			this.relationships = [...initial.relationships];
 			this.color = initial.color;
 			this.linkedManuscript = [...initial.linkedManuscript];
+			this.galleryState = galleryFieldState(initial.gallery ?? galleryDraftOf([], null));
 			this.expectedRevision = initial.expectedRevision;
 		}
 		this.isCreateForm = initial === undefined;
@@ -2826,8 +2958,16 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-events-setting',
 		);
+		this.buildGallery();
 		this.buildRecordEditors();
 		this.buildLinkedManuscript();
+	}
+
+	/** The pictures the scene keeps, standing before the record editors. */
+	private buildGallery(): void {
+		const context = this.formContext;
+		if (context === undefined) return;
+		this.galleryField = buildGalleryRow(this.app, this.t, this.contentEl, context, 'scene', this.galleryState);
 	}
 
 	/** Opens the manuscript section requested by the card's overflow control. */
@@ -3020,6 +3160,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 
 	/** Pulls the live editors back into the fields, for collect and re-render. */
 	private syncEditors(): void {
+		if (this.galleryField !== null) this.galleryState = this.galleryField.state();
 		if (this.aliasesField !== null) this.aliases = this.aliasesField.get();
 		if (this.categoryField !== null) {
 			this.categoryPaths = this.categoryField.get();
@@ -3036,6 +3177,8 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		// The form re-renders when a character is created from one of its own
 		// fields; whatever the editors hold has to survive the rebuild.
 		this.syncEditors();
+		this.galleryField?.destroy();
+		this.galleryField = null;
 		super.renderForm();
 	}
 
@@ -3045,6 +3188,8 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			this.linkedManuscriptRevealFrame = null;
 		}
 		this.linkedManuscriptSection = null;
+		this.galleryField?.destroy();
+		this.galleryField = null;
 		for (const picker of this.pickers.splice(0)) picker.destroy();
 		super.onClose();
 	}
@@ -3227,6 +3372,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			customFields,
 			color: this.color,
 			linkedManuscript: [...this.linkedManuscript],
+			...(this.galleryField === null ? {} : { gallery: this.galleryField.value() }),
 			expectedRevision: this.expectedRevision,
 		};
 	}
@@ -3246,6 +3392,8 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
 	private customFieldsEditor: CustomFieldsEditor | null = null;
+	private galleryField: GalleryField | null = null;
+	private galleryState: GalleryFieldState;
 	// Rows live on the modal and are edited in place, so the redraw the
 	// time-kind dropdown triggers rebuilds the editor without losing a key.
 	private readonly customFieldState: { rows: CustomField[]; touched: boolean };
@@ -3320,6 +3468,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			rows: parseCustomFields(this.initialCustomFields).fields,
 			touched: false,
 		};
+		this.galleryState = galleryFieldState(initial?.gallery ?? galleryDraftOf([], null));
 	}
 
 	protected buildForm(): void {
@@ -3401,7 +3550,20 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		description.settingEl.addClass('snowflake-method-character-setting');
 		this.descriptionSetting = description;
 
+		this.buildGallery();
 		this.buildRecordEditors();
+	}
+
+	/** The pictures the note keeps, standing before the record editors. */
+	private buildGallery(): void {
+		this.galleryField = buildGalleryRow(
+			this.app,
+			this.t,
+			this.contentEl,
+			this.formContext,
+			'character',
+			this.galleryState,
+		);
 	}
 
 	/** Opens on the description, the way the scene form opens on its linked manuscript. */
@@ -3538,6 +3700,10 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	}
 
 	private syncEditors(): void {
+		if (this.galleryField !== null) {
+			this.galleryState = this.galleryField.state();
+			this.value.gallery = this.galleryField.value();
+		}
 		if (this.aliasesField !== null) this.value.aliases = this.aliasesField.get();
 		if (this.categoryField !== null) {
 			this.value.categoryPaths = this.categoryField.get();
@@ -3556,6 +3722,8 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		// The form redraws when the time kind changes, which is one field
 		// answering for another: whatever the editors hold has to survive it.
 		this.syncEditors();
+		this.galleryField?.destroy();
+		this.galleryField = null;
 		for (const picker of this.pickers.splice(0)) picker.destroy();
 		super.renderForm();
 	}
@@ -3566,6 +3734,8 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			this.descriptionRevealFrame = null;
 		}
 		this.descriptionSetting = null;
+		this.galleryField?.destroy();
+		this.galleryField = null;
 		for (const picker of this.pickers.splice(0)) picker.destroy();
 		super.onClose();
 	}

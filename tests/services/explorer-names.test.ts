@@ -46,6 +46,17 @@ const treeOf = (paths: readonly string[]): ((folderPath: string) => ExplorerEntr
 		);
 };
 
+describe("gallery folders", () => {
+	it("are the author's pictures, not scaffolding: never hidden, shown without their prefix", () => {
+		expect(builtinRuleFor(entry("Novel/20_Character/25_Gallery", true), "Novel")).toBeNull();
+		expect(builtinRuleFor(entry("Novel/20_Character/25_Gallery/portrait.png"), "Novel")).toBeNull();
+		expect(builtinRuleFor(entry("Novel/60_Worldbuilding/62_Location/625_Gallery", true), "Novel")).toBeNull();
+		expect(builtinRuleFor(entry("小说/20_角色/25_图库", true), "小说")).toBeNull();
+		expect(displayNameOf("25_Gallery", true)).toBe("Gallery");
+		expect(displayNameOf("625_图库", true)).toBe("图库");
+	});
+});
+
 describe("display names", () => {
 	it("takes the ordering prefix off and nothing more", () => {
 		expect(displayNameOf("50_Manuscript", true)).toBe("Manuscript");

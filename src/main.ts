@@ -100,6 +100,7 @@ import {
 	type WritingSessionScope,
 	type WritingSessionType,
 	type EntityKindId,
+	type GalleryDraft,
 	type StepId,
 	type StepStatus,
 	type WorldbuildingKindId,
@@ -218,6 +219,7 @@ import {
 	type ProjectRef,
 	type ProjectSnapshot,
 	type FreeformTransacted,
+	type GalleryWrite,
 	type SaveCustomFieldTemplateResult,
 	type SceneRecord,
 	type TaskWrite,
@@ -2344,6 +2346,30 @@ export default class SnowflakeMethodPlugin
 		};
 	}
 
+	/**
+	 * Writes a note with its gallery: the form's pictures are landed around the
+	 * note's own write, and a removed picture that would not go to the trash
+	 * is said by name, since the save itself has landed.
+	 */
+	private async saveWithGallery<T>(
+		project: ProjectSnapshot,
+		kind: EntityKindId,
+		draft: GalleryDraft | undefined,
+		write: (gallery: GalleryWrite) => Promise<T>,
+		notePathOf: (result: T) => string,
+	): Promise<T> {
+		const { result, trashFailed } = await this.projects.gallery.commit(project, kind, draft, write, notePathOf);
+		for (const name of trashFailed) new Notice(this.t('form.gallery.trashFailed', { name }));
+		return result;
+	}
+
+	/** Tidies a deleted note's pictures: those no other note names go to the trash with it. */
+	private async tidyGallery(project: ProjectSnapshot, member: { path: string; gallery: string[] }): Promise<void> {
+		if (member.gallery.length === 0) return;
+		const { failed } = await this.projects.gallery.trashOrphans(project, member.gallery, member.path, [member.path]);
+		for (const name of failed) new Notice(this.t('form.gallery.trashFailed', { name }));
+	}
+
 	async createCharacter(
 		request: CreateCharacterRequest,
 		projectPath?: string,
@@ -2351,7 +2377,23 @@ export default class SnowflakeMethodPlugin
 		const project = await this.requireProject(projectPath);
 		let character;
 		try {
-			character = await this.projects.createCharacter(project, request);
+			character = await this.saveWithGallery(project, 'character', request.gallery, (gallery) =>
+				this.projects.createCharacter(project, {
+					name: request.name,
+					aliases: request.aliases,
+					categoryPaths: request.categoryPaths,
+					progressStatus: request.progressStatus,
+					oneSentenceStoryline: request.oneSentenceStoryline,
+					oneParagraphStoryline: request.oneParagraphStoryline,
+					motivation: request.motivation,
+					goal: request.goal,
+					conflict: request.conflict,
+					growth: request.growth,
+					worldStatus: request.worldStatus,
+					relationships: request.relationships,
+					customFields: request.customFields,
+					...gallery,
+				}), (created) => created.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2369,22 +2411,24 @@ export default class SnowflakeMethodPlugin
 			request.expectedRevision,
 		);
 		try {
-			await this.projects.updateCharacter(project, id, {
-				expectedRevision,
-				name: request.name,
-				aliases: request.aliases,
-				categoryPaths: request.categoryPaths,
-				progressStatus: request.progressStatus,
-				oneSentenceStoryline: request.oneSentenceStoryline,
-				oneParagraphStoryline: request.oneParagraphStoryline,
-				motivation: request.motivation,
-				goal: request.goal,
-				conflict: request.conflict,
-				growth: request.growth,
-				worldStatus: request.worldStatus,
-				relationships: request.relationships,
-				customFields: request.customFields,
-			});
+			await this.saveWithGallery(project, 'character', request.gallery, (gallery) =>
+				this.projects.updateCharacter(project, id, {
+					expectedRevision,
+					name: request.name,
+					aliases: request.aliases,
+					categoryPaths: request.categoryPaths,
+					progressStatus: request.progressStatus,
+					oneSentenceStoryline: request.oneSentenceStoryline,
+					oneParagraphStoryline: request.oneParagraphStoryline,
+					motivation: request.motivation,
+					goal: request.goal,
+					conflict: request.conflict,
+					growth: request.growth,
+					worldStatus: request.worldStatus,
+					relationships: request.relationships,
+					customFields: request.customFields,
+					...gallery,
+				}), (updated) => updated.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2415,7 +2459,7 @@ export default class SnowflakeMethodPlugin
 	 */
 	private async deleteMember(
 		project: ProjectSnapshot,
-		member: { path: string; name: string; revision: string },
+		member: { path: string; name: string; revision: string; gallery: string[] },
 		expectedRevision: string,
 		deleted: string,
 	): Promise<void> {
@@ -2439,6 +2483,7 @@ export default class SnowflakeMethodPlugin
 			usage.records.length === 0
 		) {
 			if (!(await this.app.fileManager.promptForDeletion(file))) return;
+			await this.tidyGallery(project, member);
 			new Notice(deleted);
 			return;
 		}
@@ -2459,6 +2504,7 @@ export default class SnowflakeMethodPlugin
 		// After the delete, so a failure here leaves links the health check can
 		// still report rather than lists edited for a deletion that never landed.
 		await this.projects.removeMemberReferences(project, member.path);
+		await this.tidyGallery(project, member);
 		new Notice(deleted);
 	}
 
@@ -2469,23 +2515,25 @@ export default class SnowflakeMethodPlugin
 		const project = await this.requireProject(projectPath);
 		let scene;
 		try {
-			scene = await this.projects.createScene(project, {
-				title: request.title,
-				povPath: request.povPath || null,
-				aliases: request.aliases,
-				categoryPaths: request.categoryPaths,
-				progressStatus: request.progressStatus,
-				times: request.times,
-				locations: request.locations,
-				characters: request.characterPaths,
-				conflict: request.conflict,
-				worldStatus: request.worldStatus,
-				relationships: request.relationships,
-				customFields: request.customFields,
-				events: request.events,
-				color: request.color,
-				linkedManuscript: request.linkedManuscript,
-			});
+			scene = await this.saveWithGallery(project, 'scene', request.gallery, (gallery) =>
+				this.projects.createScene(project, {
+					title: request.title,
+					povPath: request.povPath || null,
+					aliases: request.aliases,
+					categoryPaths: request.categoryPaths,
+					progressStatus: request.progressStatus,
+					times: request.times,
+					locations: request.locations,
+					characters: request.characterPaths,
+					conflict: request.conflict,
+					worldStatus: request.worldStatus,
+					relationships: request.relationships,
+					customFields: request.customFields,
+					events: request.events,
+					color: request.color,
+					linkedManuscript: request.linkedManuscript,
+					...gallery,
+				}), (created) => created.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2512,20 +2560,22 @@ export default class SnowflakeMethodPlugin
 		const project = await this.requireProject(projectPath);
 		let entity;
 		try {
-			entity = await this.projects.createEntity(project, {
-				kind: request.kind,
-				name: request.name,
-				aliases: request.aliases,
-				categoryPaths: request.categoryPaths,
-				progressStatus: request.progressStatus,
-				description: request.description,
-				timeKind: request.timeKind,
-				timeStart: request.timeStart,
-				timeEnd: request.timeEnd,
-				worldStatus: request.worldStatus,
-				relationships: request.relationships,
-				customFields: request.customFields,
-			});
+			entity = await this.saveWithGallery(project, request.kind, request.gallery, (gallery) =>
+				this.projects.createEntity(project, {
+					kind: request.kind,
+					name: request.name,
+					aliases: request.aliases,
+					categoryPaths: request.categoryPaths,
+					progressStatus: request.progressStatus,
+					description: request.description,
+					timeKind: request.timeKind,
+					timeStart: request.timeStart,
+					timeEnd: request.timeEnd,
+					worldStatus: request.worldStatus,
+					relationships: request.relationships,
+					customFields: request.customFields,
+					...gallery,
+				}), (created) => created.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2539,20 +2589,22 @@ export default class SnowflakeMethodPlugin
 			request.expectedRevision,
 		);
 		try {
-			await this.projects.updateEntity(project, id, {
-				expectedRevision,
-				name: request.name,
-				aliases: request.aliases,
-				categoryPaths: request.categoryPaths,
-				progressStatus: request.progressStatus,
-				description: request.description,
-				timeKind: request.timeKind,
-				timeStart: request.timeStart,
-				timeEnd: request.timeEnd,
-				worldStatus: request.worldStatus,
-				relationships: request.relationships,
-				customFields: request.customFields,
-			});
+			await this.saveWithGallery(project, request.kind, request.gallery, (gallery) =>
+				this.projects.updateEntity(project, id, {
+					expectedRevision,
+					name: request.name,
+					aliases: request.aliases,
+					categoryPaths: request.categoryPaths,
+					progressStatus: request.progressStatus,
+					description: request.description,
+					timeKind: request.timeKind,
+					timeStart: request.timeStart,
+					timeEnd: request.timeEnd,
+					worldStatus: request.worldStatus,
+					relationships: request.relationships,
+					customFields: request.customFields,
+					...gallery,
+				}), (updated) => updated.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2826,24 +2878,26 @@ export default class SnowflakeMethodPlugin
 			request.expectedRevision,
 		);
 		try {
-			await this.projects.updateScene(project, id, {
-				expectedRevision,
-				title: request.title,
-				povPath: request.povPath || null,
-				aliases: request.aliases,
-				categoryPaths: request.categoryPaths,
-				progressStatus: request.progressStatus,
-				times: request.times,
-				locations: request.locations,
-				characters: request.characterPaths,
-				conflict: request.conflict,
-				worldStatus: request.worldStatus,
-				relationships: request.relationships,
-				customFields: request.customFields,
-				events: request.events,
-				color: request.color,
-				linkedManuscript: request.linkedManuscript,
-			});
+			await this.saveWithGallery(project, 'scene', request.gallery, (gallery) =>
+				this.projects.updateScene(project, id, {
+					expectedRevision,
+					title: request.title,
+					povPath: request.povPath || null,
+					aliases: request.aliases,
+					categoryPaths: request.categoryPaths,
+					progressStatus: request.progressStatus,
+					times: request.times,
+					locations: request.locations,
+					characters: request.characterPaths,
+					conflict: request.conflict,
+					worldStatus: request.worldStatus,
+					relationships: request.relationships,
+					customFields: request.customFields,
+					events: request.events,
+					color: request.color,
+					linkedManuscript: request.linkedManuscript,
+					...gallery,
+				}), (updated) => updated.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2894,7 +2948,7 @@ export default class SnowflakeMethodPlugin
 		}
 		await this.deleteMember(
 			project,
-			{ path: scene.path, name: scene.title, revision: scene.revision },
+			{ path: scene.path, name: scene.title, revision: scene.revision, gallery: scene.gallery },
 			expectedRevision,
 			this.t('messages.sceneDeleted'),
 		);
@@ -11366,6 +11420,8 @@ export default class SnowflakeMethodPlugin
 			conflict: character.conflict,
 			growth: character.growth,
 			color: character.color,
+			gallery: character.gallery,
+			galleryMain: character.galleryMain,
 			worldStatus: character.worldStatus,
 			customFields: character.customFields,
 			relationships: character.relationships,
@@ -11415,6 +11471,8 @@ export default class SnowflakeMethodPlugin
 			characterPaths: scene.characters,
 			conflict: scene.conflict,
 			color: scene.color,
+			gallery: scene.gallery,
+			galleryMain: scene.galleryMain,
 			linkedManuscript: scene.linkedManuscript.map((raw) => {
 				const link = parseWikiLink(raw);
 				return {
@@ -11464,6 +11522,8 @@ export default class SnowflakeMethodPlugin
 			timeStart: entity.timeStart,
 			timeEnd: entity.timeEnd,
 			color: entity.color,
+			gallery: entity.gallery,
+			galleryMain: entity.galleryMain,
 			timeStartMissing: this.termMissing(entity.timeStart, entity.path),
 			timeEndMissing: this.termMissing(entity.timeEnd, entity.path),
 			worldStatus: entity.worldStatus,

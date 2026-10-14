@@ -14,6 +14,7 @@ import {
   STICKY_NOTE_DOCUMENT,
   STICKY_NOTE_FRONTMATTER_ORDER,
   formatStickyNoteCreated,
+  galleryMainOf,
   isMacaronColor,
   isStickyNoteColor,
   isWritableSchemaVersion,
@@ -88,6 +89,7 @@ import {
   type AppendPathResult,
   type RenamePathResult,
 } from "./definition-files";
+import { GalleryService } from "./gallery-service";
 import {
   ConcurrentChangeError,
   InvalidManagedDocumentError,
@@ -260,6 +262,8 @@ const ENTITY_FRONTMATTER_ORDER: readonly string[] = [
   FRONTMATTER_KEYS.description,
   FRONTMATTER_KEYS.progressStatus,
   FRONTMATTER_KEYS.sceneColor,
+  FRONTMATTER_KEYS.gallery,
+  FRONTMATTER_KEYS.galleryMain,
 ];
 
 /** The same sequence for a scene: what it is, then the story, then progress. */
@@ -280,6 +284,8 @@ const SCENE_FRONTMATTER_ORDER: readonly string[] = [
   FRONTMATTER_KEYS.progressStatus,
   FRONTMATTER_KEYS.linkedManuscript,
   FRONTMATTER_KEYS.sceneColor,
+  FRONTMATTER_KEYS.gallery,
+  FRONTMATTER_KEYS.galleryMain,
 ];
 
 const CHARACTER_FRONTMATTER_ORDER: readonly string[] = [
@@ -298,6 +304,8 @@ const CHARACTER_FRONTMATTER_ORDER: readonly string[] = [
   FRONTMATTER_KEYS.growth,
   FRONTMATTER_KEYS.progressStatus,
   FRONTMATTER_KEYS.sceneColor,
+  FRONTMATTER_KEYS.gallery,
+  FRONTMATTER_KEYS.galleryMain,
 ];
 
 export class ProjectCreationInterruptedError extends Error {
@@ -391,6 +399,8 @@ export class SnowflakeProjectService {
   readonly repository: VaultRepository;
   /** The manuscript of whichever project is being asked about. See its class. */
   readonly manuscript: ManuscriptService;
+  /** The pictures a note keeps, landed and tidied beside the note's own writes. */
+  readonly gallery: GalleryService;
   /** The writing counted in notes, one at a time or a scope at a time. */
   readonly writingCount: WritingCountService;
   /** The mention analysis files: the reader's ignores, this device's index. */
@@ -475,6 +485,7 @@ export class SnowflakeProjectService {
   ) {
     this.repository = new VaultRepository(vault, fileManager, metadataCache);
     this.manuscript = new ManuscriptService(this.repository);
+    this.gallery = new GalleryService(this.repository);
     this.writingCount = new WritingCountService(this.repository, this.manuscript);
     this.mentionStore = new MentionStore({
       repository: this.repository,
@@ -2239,6 +2250,7 @@ export class SnowflakeProjectService {
         ...(input.progressStatus
           ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
           : {}),
+        ...galleryFrontmatterOf(input),
       },
     });
     // Record sections are deferred out of the template; the first records a
@@ -2417,6 +2429,7 @@ export class SnowflakeProjectService {
     if (patch.color !== undefined) {
       frontmatterPatch[FRONTMATTER_KEYS.sceneColor] = patch.color ?? undefined;
     }
+    galleryFrontmatterPatch(frontmatterPatch, character, patch);
 
     const nextRecords = {
       worldStatus: patch.worldStatus ?? character.worldStatus,
@@ -3090,6 +3103,7 @@ export class SnowflakeProjectService {
           ? { [FRONTMATTER_KEYS.linkedManuscript]: linkedManuscript }
           : {}),
         ...(input.color ? { [FRONTMATTER_KEYS.sceneColor]: input.color } : {}),
+        ...galleryFrontmatterOf(input),
       },
     });
     const createdRecords = entityRecordSectionValues(
@@ -3336,6 +3350,7 @@ export class SnowflakeProjectService {
     if (patch.color !== undefined) {
       frontmatterPatch[FRONTMATTER_KEYS.sceneColor] = patch.color ?? undefined;
     }
+    galleryFrontmatterPatch(frontmatterPatch, scene, patch);
     const nextFields = {
       progressStatus: nextProgressStatus,
       aliases: nextAliases,
@@ -5252,6 +5267,7 @@ export class SnowflakeProjectService {
         ...(input.progressStatus
           ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
           : {}),
+        ...galleryFrontmatterOf(input),
       },
     });
     // Record sections are deferred out of the template; the first records a
@@ -5370,6 +5386,7 @@ export class SnowflakeProjectService {
     if (patch.color !== undefined) {
       frontmatterPatch[FRONTMATTER_KEYS.sceneColor] = patch.color ?? undefined;
     }
+    galleryFrontmatterPatch(frontmatterPatch, entity, patch);
 
     const nextRecords = {
       worldStatus: patch.worldStatus ?? entity.worldStatus,
@@ -6315,6 +6332,7 @@ export class SnowflakeProjectService {
       timeStart: asString(record.frontmatter[FRONTMATTER_KEYS.timeStart]),
       timeEnd: asString(record.frontmatter[FRONTMATTER_KEYS.timeEnd]),
       color: isMacaronColor(storedColor) ? storedColor : null,
+      ...galleryOf(record.frontmatter),
       ...reading,
       // Entities change nothing but the stamp between schemas, so the stamp
       // is the whole test of whether the migration has reached the note.
@@ -7897,6 +7915,7 @@ export class SnowflakeProjectService {
       conflict: asString(record.frontmatter[FRONTMATTER_KEYS.conflict]),
       growth: asString(record.frontmatter[FRONTMATTER_KEYS.growth]),
       color: isMacaronColor(storedColor) ? storedColor : null,
+      ...galleryOf(record.frontmatter),
       ...reading,
       readOnly: record.readOnly,
     };
@@ -7952,6 +7971,7 @@ export class SnowflakeProjectService {
         (target) => this.projectLinkedPath(target, record.path, root) ?? target,
       ),
       color: isMacaronColor(storedColor) ? storedColor : null,
+      ...galleryOf(record.frontmatter),
       // Kept as written, links and all: a heading or an alias in one of them
       // is the author's, and the board opens the link as Obsidian would.
       linkedManuscript: readStringList(
@@ -8838,6 +8858,41 @@ function isProjectPatch(value: ProjectFrontmatterPatch | ManagedFrontmatter): va
 
 function copyDefined(target: ManagedFrontmatter, key: string, value: unknown): void {
   if (value !== undefined) target[key] = value;
+}
+
+/** A note's gallery as stored: the links, and the main among them or none. */
+function galleryOf(frontmatter: ManagedFrontmatter): { gallery: string[]; galleryMain: string | null } {
+  const gallery = readStringList(frontmatter[FRONTMATTER_KEYS.gallery]);
+  return { gallery, galleryMain: galleryMainOf(gallery, frontmatter[FRONTMATTER_KEYS.galleryMain]) };
+}
+
+/** The gallery keys a new note is made with: both left out while it has no pictures. */
+function galleryFrontmatterOf(input: { gallery?: string[]; galleryMain?: string | null }): ManagedFrontmatter {
+  const gallery = readStringList(input.gallery ?? []);
+  const main = galleryMainOf(gallery, input.galleryMain ?? null);
+  return {
+    ...(gallery.length > 0 ? { [FRONTMATTER_KEYS.gallery]: gallery } : {}),
+    ...(main === null ? {} : { [FRONTMATTER_KEYS.galleryMain]: main }),
+  };
+}
+
+/**
+ * The gallery keys a patch writes: nothing when the patch names neither;
+ * else the list as given, or as it stands, with the main taken from the
+ * patch or kept, and held to the list -- clearing the list clears the main,
+ * and a main naming no entry is never written. Both keys go the way aliases
+ * go, absent rather than empty.
+ */
+function galleryFrontmatterPatch(
+  target: ManagedFrontmatter,
+  current: { gallery: string[]; galleryMain: string | null },
+  patch: { gallery?: string[]; galleryMain?: string | null },
+): void {
+  if (patch.gallery === undefined && patch.galleryMain === undefined) return;
+  const gallery = patch.gallery === undefined ? current.gallery : readStringList(patch.gallery);
+  const main = galleryMainOf(gallery, patch.galleryMain === undefined ? current.galleryMain : patch.galleryMain);
+  target[FRONTMATTER_KEYS.gallery] = gallery.length > 0 ? gallery : undefined;
+  target[FRONTMATTER_KEYS.galleryMain] = main ?? undefined;
 }
 
 function assertUniqueStableIds<T>(

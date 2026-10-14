@@ -60,7 +60,7 @@ function board(settings: Partial<CorkboardMemory> = {}, locks: { project?: boole
 		povPath: '', povName: '', povMissing: false,
 		times: [], locations: [], characterPaths: [], conflict: '', color: null,
 		linkedManuscript: [], worldStatus: [], relationships: [], events: '',
-		customFields: '', revision: 'revision', healthIssues: [],
+		customFields: '', revision: 'revision', healthIssues: [], gallery: [], galleryMain: null,
 		readOnly: locks.scene === true && index === 0,
 	}));
 	const model = {

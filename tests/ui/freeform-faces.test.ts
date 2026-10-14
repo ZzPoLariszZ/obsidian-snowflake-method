@@ -704,7 +704,7 @@ describe('the face of a kind that has none of its own yet', () => {
 const sceneModel = (id: string, title: string, revision = 'r1'): SceneViewModel => ({
 	id, path: `Scenes/${title}.md`, title, rank: 0, progressStatus: 'in-progress', aliases: [], categoryPaths: [],
 	povPath: '', povName: '', povMissing: false, times: [], locations: [], characterPaths: [], conflict: '', color: null,
-	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision, readOnly: false, healthIssues: [],
+	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision, readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 });
 
 describe('a scene’s face', () => {
@@ -752,14 +752,14 @@ describe('a scene’s face', () => {
 const characterModel = (extra: Partial<CharacterViewModel> = {}): CharacterViewModel => ({
 	id: 'char-1', path: 'Characters/Anna.md', name: 'Anna', rank: 0, type: null, progressStatus: 'complete', aliases: ['Nan', 'Annie'],
 	categoryPaths: ['Cast/Leads'], oneSentenceStoryline: 'Wants out', oneParagraphStoryline: '', motivation: 'Fear', goal: '',
-	conflict: 'Her brother', growth: '', color: null, worldStatus: [], relationships: [], customFields: '', revision: 'c1', readOnly: false, healthIssues: [],
+	conflict: 'Her brother', growth: '', color: null, worldStatus: [], relationships: [], customFields: '', revision: 'c1', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 	...extra,
 });
 
 const entityModel = (extra: Partial<WorldbuildingEntityViewModel> = {}): WorldbuildingEntityViewModel => ({
 	id: 'loc-1', path: 'World/Harbour.md', name: 'Harbour', kind: 'location', rank: 0, progressStatus: null, aliases: [], categoryPaths: [],
 	description: 'A harbour', timeKind: null, timeStart: '', timeEnd: '', timeStartMissing: false, timeEndMissing: false,
-	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'w1', readOnly: false, healthIssues: [],
+	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'w1', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 	...extra,
 });
 

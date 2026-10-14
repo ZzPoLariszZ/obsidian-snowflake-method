@@ -223,6 +223,8 @@ interface DefinitionCopy {
   fileStems: Record<DefinitionFileId, string>;
   /** The custom-field template folder's name, numbered like a fourth tree. */
   customFieldStem: string;
+  /** The gallery folder's name, numbered after the template folder. */
+  galleryStem: string;
   roles: Record<CharacterType, string>;
   worldStatusStarters: string[];
   relationshipStarters: string[];
@@ -236,6 +238,7 @@ const COPY: Record<ProjectLanguage, DefinitionCopy> = {
       relationship: "Relationship",
     },
     customFieldStem: "Custom_Field",
+    galleryStem: "Gallery",
     roles: { major: "Major", supporting: "Supporting", minor: "Minor" },
     worldStatusStarters: ["Injured", "Missing", "Deceased"],
     relationshipStarters: ["Ally", "Enemy", "Friend", "Family", "Member"],
@@ -247,6 +250,7 @@ const COPY: Record<ProjectLanguage, DefinitionCopy> = {
       relationship: "关系",
     },
     customFieldStem: "自定义字段",
+    galleryStem: "图库",
     roles: { major: "主角", supporting: "配角", minor: "次要角色" },
     worldStatusStarters: ["受伤", "失踪", "已故"],
     relationshipStarters: ["盟友", "敌人", "朋友", "家人", "成员"],
@@ -292,6 +296,24 @@ export function customFieldRootNameForFolder(
 ): string {
   const stem = COPY[language].customFieldStem;
   const number = kindFileNumber(kindFolder, CUSTOM_FIELD_POSITION);
+  return number.length === 0 ? stem : `${number}_${stem}`;
+}
+
+/** Where a kind's pictures sit inside its folder: after the template folder. */
+const GALLERY_POSITION = CUSTOM_FIELD_POSITION + 1;
+
+/**
+ * The gallery folder any kind folder implies, numbered as the position after
+ * the template folder: `25_Gallery` inside `20_Character`, `625_图库` inside
+ * `62_地点`, `6A5_Gallery` inside `6A_Faction`. Made the first time a picture
+ * lands there, never by the scaffold.
+ */
+export function galleryRootNameForFolder(
+  kindFolder: string,
+  language: ProjectLanguage,
+): string {
+  const stem = COPY[language].galleryStem;
+  const number = kindFileNumber(kindFolder, GALLERY_POSITION);
   return number.length === 0 ? stem : `${number}_${stem}`;
 }
 

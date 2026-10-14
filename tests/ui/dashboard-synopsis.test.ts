@@ -50,7 +50,7 @@ function makeModel(): ProjectDashboardModel {
 			optional: false,
 			artifactPath: `Novel/step-${String(id)}.md`,
 			contentReadOnly: false,
-			healthIssues: [],
+			healthIssues: [], gallery: [], galleryMain: null,
 		})),
 		stepFields: { 4: { 'plot-synopsis': 'Plot.' }, 6: { 'long-synopsis': LONG } },
 		stepRevisions: { 4: 'r4', 6: 'r6' },

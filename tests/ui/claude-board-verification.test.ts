@@ -69,7 +69,7 @@ const scene = (id: string, overrides: Partial<SceneViewModel> = {}): SceneViewMo
 	povPath: CHARACTER, povName: 'Hero', povMissing: false,
 	times: [], locations: [], characterPaths: [], conflict: '', color: null,
 	linkedManuscript: [], worldStatus: [], relationships: [], events: '',
-	customFields: '', revision: 'initial', healthIssues: [], readOnly: false, ...overrides,
+	customFields: '', revision: 'initial', healthIssues: [], gallery: [], galleryMain: null, readOnly: false, ...overrides,
 });
 const link = (target: string, label = target.split('/').pop()!, alias = false) => ({
 	raw: `[[${target}${alias ? `|${label}` : ''}]]`, target, linktext: target, label,
@@ -87,7 +87,7 @@ function board(scenes = [scene('A'), scene('B')], settings: Partial<CorkboardMem
 	const memory = Object.assign(corkboardMemory(), settings);
 	let model = {
 		path: PROJECT, projectId: 'first', locale: 'en', scenes,
-		characters: [{ id: 'hero', path: CHARACTER, name: 'Hero', readOnly: false, healthIssues: [] }],
+		characters: [{ id: 'hero', path: CHARACTER, name: 'Hero', readOnly: false, healthIssues: [], gallery: [], galleryMain: null }],
 		worldbuilding: {}, manuscriptPaths: [], readOnly: false,
 	} as unknown as ProjectDashboardModel;
 	let handle: CorkboardHandle;
@@ -458,7 +458,7 @@ describe('corkboard correctness regressions', () => {
 		const before = await service.loadProject(project);
 		const recorded = before.scenes[0]!;
 		const fixture = board([scene('A', { povPath: recorded.povPath!, characterPaths: recorded.characters })]);
-		fixture.external({ characters: [{ id: character.id, path: character.path, name: character.name, healthIssues: [], readOnly: false }] as unknown as ProjectDashboardModel['characters'] });
+		fixture.external({ characters: [{ id: character.id, path: character.path, name: character.name, healthIssues: [], gallery: [], galleryMain: null, readOnly: false }] as unknown as ProjectDashboardModel['characters'] });
 		fixture.memory.filters.character = character.path; fixture.handle.refresh();
 		expect(fixture.cards()).toHaveLength(1);
 		environment.fakeVault.delete(character.path);

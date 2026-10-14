@@ -52,7 +52,7 @@ function board(settings: Partial<CorkboardMemory> = {}) {
 		povPath: '', povName: '', povMissing: false,
 		times: [], locations: [], characterPaths: [], conflict: 'An obstacle', color: null,
 		linkedManuscript: [], worldStatus: [], relationships: [], events: '',
-		customFields: '', revision: 'revision', readOnly: false, healthIssues: [],
+		customFields: '', revision: 'revision', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 	}));
 	let model = {
 		path: 'Pressure/Pressure.md', projectId: 'pressure', locale: 'en',

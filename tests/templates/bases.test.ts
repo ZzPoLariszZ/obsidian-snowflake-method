@@ -225,6 +225,15 @@ describe('project base templates', () => {
 		}
 	});
 
+	it('names the gallery columns in both languages and excludes neither', () => {
+		expect(baseColumnDisplayNames('en').get('snowflake-gallery')).toBe('Gallery');
+		expect(baseColumnDisplayNames('en').get('snowflake-gallery-main')).toBe('Main picture');
+		expect(baseColumnDisplayNames('zh-CN').get('snowflake-gallery')).toBe('图库');
+		expect(baseColumnDisplayNames('zh-CN').get('snowflake-gallery-main')).toBe('主图');
+		expect(BASE_EXCLUDED_COLUMN_KEYS.has('snowflake-gallery')).toBe(false);
+		expect(BASE_EXCLUDED_COLUMN_KEYS.has('snowflake-gallery-main')).toBe(false);
+	});
+
 	it('never grows a column for the character type it replaced', () => {
 		// A note the migration has not reached still carries the legacy key, and
 		// the category column is where its role reads now.

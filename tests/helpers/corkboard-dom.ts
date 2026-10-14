@@ -201,8 +201,8 @@ export class CorkboardElement {
 	}
 	getAttribute(key: string): string | null { return this.attributes.get(key) ?? null; }
 	removeAttribute(key: string): void { this.attributeWrites++; this.attributes.delete(key); }
-	addClass(name: string): void { this.classes.add(name); }
-	removeClass(name: string): void { this.classes.delete(name); }
+	addClass(...names: string[]): void { for (const name of names) this.classes.add(name); }
+	removeClass(...names: string[]): void { for (const name of names) this.classes.delete(name); }
 	toggleClass(name: string, on: boolean): void { if (on) this.classes.add(name); else this.classes.delete(name); }
 	setCssStyles(styles: Record<string, string>): void {
 		this.styleWrites++;

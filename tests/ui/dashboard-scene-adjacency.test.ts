@@ -82,7 +82,7 @@ function scene(id: string, index: number): SceneViewModel {
 		characterPaths: ['Characters/Ada.md'], conflict: 'Shared conflict', color: 'macaron-1',
 		linkedManuscript: [{ raw: '[[Chapter]]', linktext: 'Chapter', target: 'Chapter', label: 'Chapter' }],
 		worldStatus: [], relationships: [], events: '', customFields: '', revision: id,
-		readOnly: false, healthIssues: [],
+		readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 	};
 }
 

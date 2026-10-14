@@ -61,7 +61,7 @@ function scene(index: number, changes: Partial<SceneViewModel> = {}): SceneViewM
 		rank: index, progressStatus: 'in-progress', aliases: [], categoryPaths: [],
 		povPath: '', povName: '', povMissing: false, times: [], locations: [], characterPaths: [],
 		conflict: '', color: null, linkedManuscript: [], worldStatus: [], relationships: [], events: '',
-		customFields: '', revision: 'initial', healthIssues: [], readOnly: false, ...changes,
+		customFields: '', revision: 'initial', healthIssues: [], gallery: [], galleryMain: null, readOnly: false, ...changes,
 	};
 }
 
@@ -162,7 +162,7 @@ describe('corkboard window and repaint ownership', () => {
 	it('looks up POVs without scanning the cast once per card', () => {
 		const characters = Array.from({ length: 300 }, (_, index) => ({
 			id: `character-${String(index)}`, path: `Characters/${String(index)}.md`, name: `Character ${String(index)}`,
-			readOnly: false, healthIssues: [],
+			readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 		})) as unknown as ProjectDashboardModel['characters'];
 		const find = vi.spyOn(characters, 'find');
 		const f = board(Array.from({ length: 15 }, (_, index) => scene(index, {

@@ -206,7 +206,7 @@ const template = (id: string, name: string): BeatSheetTemplate => ({
 const scene = (id: string, title: string): SceneViewModel => ({
 	id, path: `Scenes/${title}.md`, title, rank: 0, progressStatus: 'in-progress', aliases: [], categoryPaths: [],
 	povPath: '', povName: '', povMissing: false, times: [], locations: [], characterPaths: [], conflict: '', color: null,
-	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision: 'r', readOnly: false, healthIssues: [],
+	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision: 'r', readOnly: false, healthIssues: [], gallery: [], galleryMain: null,
 });
 
 const submit = (form: unknown, value: unknown): Promise<void> =>

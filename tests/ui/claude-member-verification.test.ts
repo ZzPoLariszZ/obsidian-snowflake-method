@@ -81,7 +81,7 @@ describe('Claude finding 5: filtered member menus', () => {
     const members = ['Keep A', 'Hidden', 'Keep C'].map((name, rank) => ({
       id: name, path: `${name}.md`, name, rank, kind: 'location',
       aliases: [], categoryPaths: [], progressStatus: null,
-      healthIssues: [], readOnly: false, oneSentenceStoryline: '', description: '',
+      healthIssues: [], gallery: [], galleryMain: null, readOnly: false, oneSentenceStoryline: '', description: '',
     }));
     const model = { readOnly: false, structureIssues: [], characters: members,
       worldbuilding: { location: members },
