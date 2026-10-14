@@ -611,7 +611,7 @@ describe('translation resources', () => {
 		);
 		expect(zhCN['step8.hints.workspaceAction']).toBe('可视化工作区');
 		expect(zhCN['step8.hints.workspaceAfter']).toBe(
-			'，试试场景看板、自由画布、时间线和节拍表。',
+			'，试试卡片看板、自由画布、时间线和节拍表。',
 		);
 		expect(zhCN['step8.hints.revision']).toBe(
 			'随时回到第一至七步修改也完全没问题。场景的展现往往会让你更深入地了解故事和人物。',
@@ -1536,10 +1536,10 @@ describe('story structure copy', () => {
 		}
 		expect(en['storyStructure.family.corkboard']).toBe('Corkboard');
 		expect(en['storyStructure.family.freeform']).toBe('Freeform');
-		expect(zhCN['storyStructure.family.corkboard']).toBe('场景看板');
+		expect(zhCN['storyStructure.family.corkboard']).toBe('卡片看板');
 		expect(zhCN['storyStructure.family.freeform']).toBe('自由画布');
 		expect(zhCN['storyStructure.titleFor.corkboard-ordered']).toBe(
-			'{project} · 场景看板',
+			'{project} · 卡片看板',
 		);
 		expect(en['storyStructure.title']).toBe('Visualization workspace');
 		expect(zhCN['storyStructure.title']).toBe('可视化工作区');
@@ -1550,7 +1550,7 @@ describe('story structure copy', () => {
 		expect(en['commands.openStoryStructure']).toBe('Open visualization workspace');
 		expect(zhCN['commands.openStoryStructure']).toBe('打开可视化工作区');
 		expect(en['commands.openCorkboard']).toBe('Open corkboard workspace');
-		expect(zhCN['commands.openCorkboard']).toBe('打开场景看板工作区');
+		expect(zhCN['commands.openCorkboard']).toBe('打开卡片看板工作区');
 	});
 
 	it('names every card mode, grouping field and none group of the corkboard', () => {

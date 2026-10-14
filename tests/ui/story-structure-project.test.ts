@@ -137,7 +137,7 @@ describe('workspace header localization', () => {
 		const model = { path: firstProject, projectId: 'first', title, locale } as ProjectDashboardModel;
 		finishRead(model);
 		await opening;
-		const expected = locale === 'zh-CN' ? '中文小说 · 场景看板' : 'Novel · corkboard';
+		const expected = locale === 'zh-CN' ? '中文小说 · 卡片看板' : 'Novel · corkboard';
 		expect(header.textContent).toBe(expected);
 		expect(tab.textContent).toBe(expected);
 
