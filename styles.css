@@ -4573,14 +4573,18 @@ textarea.snowflake-method-corkboard-recovered-text {
 	text-align: start;
 }
 
+/* The stack's two edges stand behind the frame: the stack is a stacking
+   context of its own, so the negative layer stays inside it. */
 .snowflake-method-gallery-stack {
 	position: relative;
+	isolation: isolate;
 }
 
 .snowflake-method-gallery.has-stack .snowflake-method-gallery-stack::before,
 .snowflake-method-gallery.has-stack .snowflake-method-gallery-stack::after {
 	content: '';
 	position: absolute;
+	z-index: -1;
 	border: var(--border-width) solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background: var(--background-secondary);
