@@ -1,15 +1,18 @@
 /**
- * The corkboard: the scenes as cards in narrative order, on one
- * scrolling canvas of fixed-size cards, edited in place, dragged into a new
- * order, gathered by a field or run backwards. What the board computes is in
+ * The corkboard: the notes of one view as cards on one scrolling canvas of
+ * fixed-size cards, edited in place, dragged into a new order, gathered by a
+ * field or run backwards. The board knows cards and places; which notes it
+ * shows, how they are searched, gathered and filtered, and what the host is
+ * asked to do with one, it is dealt by a `CorkboardDeal`: the scenes in
+ * narrative order unless asked otherwise. What the board computes is in
  * `corkboard-layout.ts`; this is the drawing, and the rules of the drawing:
  *
  * - The canvas is windowed. Only the cards the scroller shows stand in the
- *   DOM, each placed by a transform, keyed by scene so a paint dresses a
+ *   DOM, each placed by a transform, keyed by note so a paint dresses a
  *   standing card rather than remaking it. A card that is being dragged,
  *   edited or focused is pinned: it stays mounted wherever the window is.
  * - Every write goes through one queue, one after another, each followed by
- *   a read of the project. A quick edit reads its scene's revision when its
+ *   a read of the project. A quick edit reads its note's revision when its
  *   turn comes, and adopts the fresh one the write answers with, so two
  *   edits in quick succession never carry the revision a card was drawn
  *   under. A change from elsewhere still refuses the write, as a notice.
@@ -18,15 +21,14 @@
 
 import { Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
-import type { SceneMoveTarget } from '../services';
 import type { CorkboardControls, CorkboardHandle, CorkboardVariant } from './corkboard-bridge';
+import type { CorkboardDeal, MemberMoveTarget } from './corkboard-deal';
 import {
-	SCENE_DRAG_TYPE,
 	adjacencyAllowed,
 	buildLayout,
 	cardPosition,
 	corkboardMetrics,
-	displayOrder,
+	displayOrderOf,
 	dropTargetAt,
 	firstCardInView,
 	insertBesideIndex,
@@ -39,46 +41,29 @@ import {
 	type CorkboardLayout,
 	type CorkboardMetrics,
 	type DisplayOrder,
-	type ShownScene,
 } from './corkboard-layout';
 import type { FilterRow } from './filter-rows';
+import {
+	CARD_SELECTOR,
+	pressWithin,
+	type CardMember,
+	type MemberCard,
+	type MemberCardDeck,
+	type MemberCardPart,
+} from './member-card';
 import { addOrderMenuItems } from './order-menu';
 import { renderEmptyLine } from './pane-parts';
-import { clearSceneFilters, filterScenes, reconcileSceneFilters, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
-import {
-	SCENE_CARD_PART_CLASSES,
-	SCENE_CARD_SELECTOR,
-	createSceneCardDeck,
-	pressWithin,
-	type SceneCard,
-	type SceneCardDeck,
-	type SceneCardPart,
-} from './scene-card';
+import { sceneDeal } from './scene-deal';
+import type { SceneFilters } from './scene-filters';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
-import {
-	CORKBOARD_GROUP_FIELDS,
-	CORKBOARD_MODES,
-	isCorkboardGroupField,
-	isCorkboardMode,
-} from './story-structure-state';
-import type { ProjectDashboardModel, SceneViewModel } from './view-model';
+import { CORKBOARD_MODES, isCorkboardMode } from './story-structure-state';
+import type { ProjectDashboardModel } from './view-model';
 import { balanceToolbar, toolbarEnd } from './workspace-frame';
 
 const SEARCH_DEBOUNCE_MS = 150;
 const OVERSCAN_LINES = 2;
 
-const GROUP_LABEL_KEYS = {
-	pov: 'table.scenePov',
-	status: 'table.progressStatus',
-	category: 'table.category',
-	time: 'table.sceneTime',
-	location: 'table.sceneLocation',
-	character: 'table.sceneCharacters',
-	color: 'stickyNotes.color',
-	linked: 'table.sceneLinked',
-} as const;
-
-/** What a corkboard card carries beyond the scene card: its place on the canvas, and the two insertion buttons. */
+/** What a corkboard card carries beyond the deck's card: its place on the canvas, and the two insertion buttons. */
 interface CorkboardCardExtras {
 	/** The card's place on the canvas, or -1 while pinned off the window. */
 	display: number;
@@ -89,10 +74,6 @@ interface CorkboardCardExtras {
 	insertAfter: HTMLButtonElement;
 }
 
-type CardEntry = SceneCard & CorkboardCardExtras;
-
-type FocusPart = SceneCardPart | 'insert-before' | 'insert-after';
-
 interface ViewportMeasure {
 	top: number;
 	height: number;
@@ -100,27 +81,46 @@ interface ViewportMeasure {
 	scrollTo?: number;
 }
 
-interface FocusHold {
-	key: string;
-	part: FocusPart;
-	el: Element;
-	display: number;
-}
-
-const PART_CLASSES: readonly [FocusPart, string][] = [
-	...SCENE_CARD_PART_CLASSES,
-	['insert-before', 'snowflake-method-corkboard-insert-before'],
-	['insert-after', 'snowflake-method-corkboard-insert-after'],
-];
-
 const px = (value: number): string => `${String(Math.round(value * 100) / 100)}px`;
 
+/** The corkboard as the view mounts it and the pools reuse it: the scenes in narrative order. */
 export function renderCorkboard(
 	container: HTMLElement,
-	controls: CorkboardControls,
+	controls: CorkboardControls<SceneFilters>,
 	variant: CorkboardVariant = {},
 ): CorkboardHandle {
-	const { app, host, t, memory } = controls;
+	return renderBoard(container, controls, sceneDeal(controls), variant);
+}
+
+/** The board dealt one view's notes: the scenes, the characters, or one worldbuilding kind. */
+export function renderBoard<
+	Member extends CardMember,
+	Extras extends object,
+	Part extends string,
+	Filters,
+	Extra,
+>(
+	container: HTMLElement,
+	controls: CorkboardControls<Filters>,
+	deal: CorkboardDeal<Member, Extras, Part, Filters, Extra>,
+	variant: CorkboardVariant<Member> = {},
+): CorkboardHandle {
+	type BaseCard = MemberCard<Member> & Extras;
+	type CardEntry = BaseCard & CorkboardCardExtras;
+	type FocusPart = Part | MemberCardPart | 'insert-before' | 'insert-after';
+	interface FocusHold {
+		key: string;
+		part: FocusPart;
+		el: Element;
+		display: number;
+	}
+	const PART_CLASSES: readonly [FocusPart, string][] = [
+		...deal.partClasses,
+		['insert-before', 'snowflake-method-corkboard-insert-before'],
+		['insert-after', 'snowflake-method-corkboard-insert-after'],
+	];
+
+	const { app, t, memory } = controls;
 	const root = container.createDiv({
 		cls: 'snowflake-method-prose-panel snowflake-method-corkboard snowflake-method-scene-cards',
 	});
@@ -143,10 +143,10 @@ export function renderCorkboard(
 		// an empty field. The name the field no longer writes goes where a screen
 		// reader reads it and where the pointer rests.
 		search.setPlaceholder(' ');
-		search.inputEl.setAttribute('aria-label', t('table.searchScenes'));
-		setTooltip(search.inputEl, t('table.searchScenes'));
+		search.inputEl.setAttribute('aria-label', deal.words.search);
+		setTooltip(search.inputEl, deal.words.search);
 	} else {
-		search.setPlaceholder(t('table.searchScenes'));
+		search.setPlaceholder(deal.words.search);
 	}
 	search.setValue(memory.query);
 	let searchTimer: number | null = null;
@@ -209,7 +209,7 @@ export function renderCorkboard(
 	setIcon(filterButton, 'funnel');
 	setTooltip(filterButton, t('table.filter'));
 	const markFilterButton = (): void => {
-		filterButton.toggleClass('is-active', sceneFiltered(memory.filters));
+		filterButton.toggleClass('is-active', deal.filters.active(memory.filters));
 	};
 	filterButton.addEventListener('click', () => {
 		void openFunnel();
@@ -227,24 +227,24 @@ export function renderCorkboard(
 	const addButton = variant.addButton === 'icon'
 		? end.createEl('button', {
 			cls: 'clickable-icon snowflake-method-corkboard-add',
-			attr: { type: 'button', 'aria-label': t('actions.addScene') },
+			attr: { type: 'button', 'aria-label': deal.words.add },
 		})
 		: end.createEl('button', {
 			cls: 'mod-cta snowflake-method-corkboard-add',
-			text: t('actions.addScene'),
+			text: deal.words.add,
 			attr: { type: 'button' },
 		});
 	const stopBalance = standalone ? balanceToolbar(band, { start: null, end }) : (): void => undefined;
 	if (variant.addButton === 'icon') {
 		setIcon(addButton, 'plus');
-		setTooltip(addButton, t('actions.addScene'));
+		setTooltip(addButton, deal.words.add);
 	}
 	addButton.disabled = true;
 	addButton.addEventListener('click', () => {
 		insertAt(null);
 	});
 
-	const empty = renderEmptyLine(root, variant.emptyText ?? t('scenes.empty'));
+	const empty = renderEmptyLine(root, variant.emptyText ?? deal.words.empty);
 	empty.line.addClass('is-hidden');
 	const scroller = root.createDiv({
 		cls: 'snowflake-method-corkboard-scroll',
@@ -260,15 +260,11 @@ export function renderCorkboard(
 	let model: ProjectDashboardModel | null = null;
 	let projectPath: string | null = null;
 	let projectId: string | null = null;
-	let manuscriptPositions = new Map<string, number>();
-	let resolvedManuscriptPaths = new Map<string, Map<string, string | null>>();
-	let charactersByPath = new Map<string, ProjectDashboardModel['characters'][number]>();
-	let scenesById = new Map<string, SceneViewModel>();
-	/** The scenes the board may show at all: every scene, or the variant's subset. */
-	let pool: SceneViewModel[] = [];
+	/** The notes the board may show at all: every note of the view, or the variant's subset. */
+	let pool: readonly Member[] = [];
 	let order: DisplayOrder = { groups: [], shown: 0 };
 	let layout: CorkboardLayout | null = null;
-	/** Every scene's id in narrative order. */
+	/** Every note's id in the view's order. */
 	let orderIds: string[] = [];
 	/** Each card's key by display index, and each head's line by key. */
 	let displayKeys: string[] = [];
@@ -291,35 +287,19 @@ export function renderCorkboard(
 	let disposed = false;
 	let popoverRequest = 0;
 	let popoverKind: 'funnel' | 'display' | null = null;
-	/** One resolution per target/source during a full paint, also shared with grouping. */
-	const resolveManuscriptPath = (target: string, sourcePath: string): string | null => {
-		let paths = resolvedManuscriptPaths.get(sourcePath);
-		if (paths === undefined) {
-			paths = new Map();
-			resolvedManuscriptPaths.set(sourcePath, paths);
-		}
-		if (!paths.has(target)) paths.set(target, app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null);
-		return paths.get(target) ?? null;
-	};
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
 	};
 
-	const deck: SceneCardDeck<CardEntry> = createSceneCardDeck<CardEntry>({
+	const deck: MemberCardDeck<Member, CardEntry, Part> = deal.deck<CardEntry>({
 		app,
-		host,
 		t,
 		notice,
 		refresh: () => controls.refresh(),
-		model: () => model,
 		projectPath: () => projectPath,
 		readOnly: () => readOnly,
 		unloading: () => controls.unloading?.() === true,
-		charactersByPath: () => charactersByPath,
-		scenesById: () => scenesById,
-		manuscriptPositions: () => manuscriptPositions,
-		resolveManuscriptPath,
 		dragAllowed: (card) => mayDrag(card),
 		menu: (card, event) => {
 			openMenu(card, event);
@@ -342,7 +322,7 @@ export function renderCorkboard(
 	 * Whether a card may be taken hold of at all. A pool's card leaves the board
 	 * rather than moving within it, so it drags where adjacency alone would not
 	 * let it -- and what that drag changes is the timeline's own file, not the
-	 * scene's note, so the project's word is the whole of the question. A card
+	 * note, so the project's word is the whole of the question. A card
 	 * moved within a board writes the note itself, and asks the note's leave
 	 * as well as the project's.
 	 */
@@ -351,8 +331,8 @@ export function renderCorkboard(
 	const pruneRevisions = deck.prune;
 
 	/** Carry queued edits through our rank writes without adopting external revisions. */
-	const reorderScene = (id: string, target: SceneMoveTarget, owningProject: string): Promise<void> =>
-		host.reorderScene(id, target, owningProject, (change) => {
+	const reorderMember = (id: string, target: MemberMoveTarget, owningProject: string): Promise<void> =>
+		deal.reorder(id, target, owningProject, (change) => {
 			deck.adoptRevision(change);
 		});
 
@@ -383,22 +363,23 @@ export function renderCorkboard(
 		return undefined;
 	};
 
-	const keyOf = (groupKey: string, sceneId: string): string =>
-		groupKey === '' ? sceneId : `${groupKey}|${sceneId}`;
+	const keyOf = (groupKey: string, memberId: string): string =>
+		groupKey === '' ? memberId : `${groupKey}|${memberId}`;
 
 	const displayOf = (key: string): number => displayKeys.indexOf(key);
 
-	const displayOfScene = (id: string): number =>
+	const displayOfMember = (id: string): number =>
 		displayKeys.findIndex((key) => key === id || key.endsWith(`|${id}`));
 
-	const sceneAt = (display: number): SceneViewModel | null => {
+	const memberAt = (display: number): Member | null => {
 		const item = layout?.items[display];
-		return item === undefined ? null : (model?.scenes[item.sceneIndex] ?? null);
+		if (item === undefined || model === null) return null;
+		return deal.members(model)[item.sceneIndex] ?? null;
 	};
 
 	// -- Painting ------------------------------------------------------------
 
-	/** Geometry changes do not change the scenes admitted by the filter or their order. */
+	/** Geometry changes do not change the notes admitted by the filter or their order. */
 	const arrange = (metrics: CorkboardMetrics, reuseRows = false): boolean => {
 		const previous = layout;
 		const sameRows = reuseRows && previous !== null &&
@@ -445,21 +426,16 @@ export function renderCorkboard(
 			return;
 		}
 		dragRect = null;
-		// A refresh can follow metadata resolution even with the same model object.
-		resolvedManuscriptPaths = new Map();
+		deal.beginPaint();
 		deck.beginPaint();
 		const keepId =
 			options.keepFirst === true && layout !== null
-				? (sceneAt(firstCardInView(layout, scroller.scrollTop) ?? -1)?.id ?? null)
+				? (memberAt(firstCardInView(layout, scroller.scrollTop) ?? -1)?.id ?? null)
 				: null;
 		const nextModel = controls.model();
-		if (nextModel !== model) {
-			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
-		}
+		deal.index(nextModel);
 		model = nextModel;
 		if (model === null) {
-			charactersByPath.clear();
-			scenesById.clear();
 			clearCanvas();
 			stateText.setText('');
 			empty.line.addClass('is-hidden');
@@ -470,7 +446,7 @@ export function renderCorkboard(
 		if (projectId !== null && projectId !== current.projectId) {
 			memory.query = '';
 			search.setValue('');
-			clearSceneFilters(memory.filters);
+			deal.filters.clear(memory.filters);
 			memory.scrollTop = 0;
 		}
 		projectId = current.projectId;
@@ -478,42 +454,36 @@ export function renderCorkboard(
 		// current path; patch() keeps the owner already captured by queued saves.
 		projectPath = current.path;
 		readOnly = current.readOnly;
-		charactersByPath = new Map(current.characters.map((character) => [character.path, character]));
-		scenesById = new Map(current.scenes.map((scene) => [scene.id, scene]));
-		const characterNames = new Map(
-			current.characters.map((character) => [character.path, character.name]),
-		);
-		reconcileSceneFilters(memory.filters, current);
-		pool = variant.include === undefined ? current.scenes : current.scenes.filter(variant.include);
-		// The subset is taken after the funnel, which numbers the scenes by
+		deal.filters.reconcile(memory.filters, current);
+		const members = deal.members(current);
+		pool = variant.include === undefined ? members : members.filter(variant.include);
+		// The subset is taken after the funnel, which numbers the notes by
 		// their place in the list it is given: a card keeps its narrative number.
-		const shown: ShownScene[] = filterScenes(
-			current.scenes,
-			memory.query,
-			memory.filters,
-			{ t, characterNames, resolveLink: resolveManuscriptPath },
-		).filter((entry) => variant.include?.(entry.scene) ?? true);
-		order = displayOrder(shown, memory.reversed, memory.group, {
-			t,
-			characters: current.characters,
-			locale: current.locale,
-			resolveLink: resolveManuscriptPath,
-		});
-		orderIds = current.scenes.map((scene) => scene.id);
+		const shown = deal.shown(members, memory.query, memory.filters)
+			.filter((entry) => variant.include?.(entry.member) ?? true);
+		order = displayOrderOf(
+			shown,
+			memory.reversed,
+			memory.group,
+			(entry) => deal.groupValues(entry.member, memory.group, current),
+			memory.group === '' ? '' : deal.noneLabel(memory.group),
+			current.locale,
+		);
+		orderIds = members.map((member) => member.id);
 		// A subset is never contiguous, and a card that leaves under another
 		// surface's drag is not one the board reorders.
 		adjacency = variant.include === undefined && variant.dragOut === undefined && adjacencyAllowed({
-			filtered: sceneHasNonRangeFilters(memory.filters),
+			filtered: deal.filters.gapping(memory.filters),
 			query: memory.query,
 			group: memory.group,
 			readOnly,
-			anySceneReadOnly: current.scenes.some((scene) => scene.readOnly),
+			anySceneReadOnly: members.some((member) => member.readOnly),
 		});
 		root.dataset.mode = memory.mode;
 		const rem = remPx();
 		// The scroller extends past the frame for its scrollbar; the canvas
 		// keeps the same content edges as the toolbar above it.
-		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight(), variant.columns, variant.gap);
+		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight(), variant.columns, variant.gap, deal.cardHeight);
 		arrange(metrics);
 		displayKeys = [];
 		for (const group of order.groups) {
@@ -522,7 +492,7 @@ export function renderCorkboard(
 			}
 		}
 		const narrowed =
-			memory.query.trim().length > 0 || sceneFiltered(memory.filters);
+			memory.query.trim().length > 0 || deal.filters.active(memory.filters);
 		stateText.setText(
 			narrowed
 				? t('table.filteredCount', {
@@ -544,7 +514,7 @@ export function renderCorkboard(
 		if (options.resetScroll === true) {
 			scroller.scrollTop = 0;
 		} else if (keepId !== null) {
-			const display = displayOfScene(keepId);
+			const display = displayOfMember(keepId);
 			if (display !== -1 && layout !== null) scroller.scrollTop = cardPosition(layout, display).y;
 		} else if (scroller.scrollTop !== memory.scrollTop) {
 			scroller.scrollTop = memory.scrollTop;
@@ -573,20 +543,20 @@ export function renderCorkboard(
 		const pinned: string[] = [];
 		if (drag !== null) pinned.push(drag.key);
 		const active = root.doc.activeElement;
-		const focused = active === null || !root.contains(active) ? null : active.closest(SCENE_CARD_SELECTOR);
+		const focused = active === null || !root.contains(active) ? null : active.closest(CARD_SELECTOR);
 		const focusedKey = focused?.getAttribute('data-key');
 		if (focusedKey != null) pinned.push(focusedKey);
 		pinned.push(...deck.editingKeys());
 		return pinned;
 	};
 
-	/** Move an editor with its scene when a refresh gives its group a different key. */
+	/** Move an editor with its note when a refresh gives its group a different key. */
 	const rekeyPinnedCards = (pinned: Set<string>, hold: FocusHold | null): void => {
 		for (const key of [...pinned]) {
 			if (displayOf(key) !== -1) continue;
 			const entry = cards.get(key);
 			if (entry === undefined) continue;
-			const destinations = displayKeys.filter((_, display) => sceneAt(display)?.id === entry.id);
+			const destinations = displayKeys.filter((_, display) => memberAt(display)?.id === entry.id);
 			const nextKey = destinations.find((candidate) => !cards.has(candidate)) ??
 				destinations.find((candidate) => {
 					const standing = cards.get(candidate);
@@ -609,6 +579,7 @@ export function renderCorkboard(
 		if (disposed || layout === null || model === null) return;
 		const lay = layout;
 		const current = model;
+		const members = deal.members(current);
 		const measured = viewport ?? { top: scroller.scrollTop, height: scroller.clientHeight };
 		lastViewportHeight = measured.height;
 		const lines = visibleLines(
@@ -631,7 +602,7 @@ export function renderCorkboard(
 			if (display !== -1) wanted.set(key, display);
 		}
 		const retained = [...pinned].filter((key) =>
-			!wanted.has(key) && current.scenes.some((scene) => scene.id === cards.get(key)?.id),
+			!wanted.has(key) && members.some((member) => member.id === cards.get(key)?.id),
 		);
 		const plan = planCardRepaint([...cards.keys()], [...wanted.keys()], retained);
 		for (const key of plan.remove) deck.unmount(key);
@@ -717,10 +688,10 @@ export function renderCorkboard(
 		current: ProjectDashboardModel,
 	): void => {
 		const item = layout?.items[display];
-		const scene = item === undefined ? undefined : current.scenes[item.sceneIndex];
-		if (item === undefined || scene === undefined) return;
+		const member = item === undefined ? undefined : deal.members(current)[item.sceneIndex];
+		if (item === undefined || member === undefined) return;
 		entry.display = display;
-		deck.dress(entry, scene, item.sceneIndex, {
+		deck.dress(entry, member, item.sceneIndex, {
 			position: display + 1,
 			size: layout?.items.length ?? order.shown,
 		});
@@ -756,9 +727,9 @@ export function renderCorkboard(
 		current: ProjectDashboardModel,
 	): CardEntry | null => {
 		const item = layout?.items[display];
-		const scene = item === undefined ? undefined : current.scenes[item.sceneIndex];
-		if (item === undefined || scene === undefined) return null;
-		const entry = deck.mount(canvas, key, scene, item.sceneIndex);
+		const member = item === undefined ? undefined : deal.members(current)[item.sceneIndex];
+		if (item === undefined || member === undefined) return null;
+		const entry = deck.mount(canvas, key, member, item.sceneIndex);
 		wireInsert(entry, entry.insertBefore, 'before');
 		wireInsert(entry, entry.insertAfter, 'after');
 		wireDrag(entry);
@@ -773,16 +744,16 @@ export function renderCorkboard(
 	): Pick<CorkboardCardExtras, 'insertBefore' | 'insertAfter'> => {
 		const insertBefore = el.createEl('button', {
 			cls: 'clickable-icon snowflake-method-corkboard-insert snowflake-method-corkboard-insert-before is-hidden',
-			attr: { type: 'button', 'aria-label': t('table.insertSceneBefore') },
+			attr: { type: 'button', 'aria-label': deal.words.insertBefore },
 		});
 		setIcon(insertBefore, 'plus');
-		setTooltip(insertBefore, t('table.insertSceneBefore'));
+		setTooltip(insertBefore, deal.words.insertBefore);
 		const insertAfter = el.createEl('button', {
 			cls: 'clickable-icon snowflake-method-corkboard-insert snowflake-method-corkboard-insert-after is-hidden',
-			attr: { type: 'button', 'aria-label': t('table.insertSceneAfter') },
+			attr: { type: 'button', 'aria-label': deal.words.insertAfter },
 		});
 		setIcon(insertAfter, 'plus');
-		setTooltip(insertAfter, t('table.insertSceneAfter'));
+		setTooltip(insertAfter, deal.words.insertAfter);
 		return { insertBefore, insertAfter };
 	};
 
@@ -791,11 +762,11 @@ export function renderCorkboard(
 	const openMenu = (entry: CardEntry, event: MouseEvent): void => {
 		const current = model;
 		if (current === null) return;
-		const scene = entry.member;
-		const total = current.scenes.length;
+		const members = deal.members(current);
+		const total = members.length;
 		const writable = editable(entry);
 		const reorderLocked =
-			readOnly || current.scenes.some((candidate) => candidate.readOnly);
+			readOnly || members.some((candidate) => candidate.readOnly);
 		const menu = new Menu();
 		menu.addItem((item) => {
 			item
@@ -803,7 +774,7 @@ export function renderCorkboard(
 				.setIcon('pencil')
 				.setDisabled(!writable)
 				.onClick(() => {
-					openForm((onSaved) => host.openSceneForm({ mode: 'edit', id: entry.id }, current.path, onSaved));
+					openForm((onSaved) => deal.openEdit(entry.member, current.path, onSaved));
 				});
 		});
 		menu.addItem((item) => {
@@ -811,7 +782,7 @@ export function renderCorkboard(
 				.setTitle(t('common.open'))
 				.setIcon('file-text')
 				.onClick(() => {
-					void host.openManagedFile(scene.path).catch(notice);
+					void deal.open(entry.member).catch(notice);
 				});
 		});
 		addOrderMenuItems(
@@ -827,7 +798,7 @@ export function renderCorkboard(
 				total,
 				locked: reorderLocked,
 				readOnly,
-				insertTitle: t('table.insertSceneAfter'),
+				insertTitle: deal.words.insertAfter,
 				...(adjacency
 					? {
 						up: layout?.items[entry.display - 1]?.sceneIndex ?? null,
@@ -835,15 +806,15 @@ export function renderCorkboard(
 					}
 					: { up: null, down: null }),
 				options: () =>
-					current.scenes
+					members
 						.map((candidate, at) => ({
 							id: candidate.id,
 							index: at,
-							label: `${String(at + 1)}. ${candidate.title}`,
+							label: `${String(at + 1)}. ${deal.name(candidate)}`,
 						}))
 						.filter((candidate) => candidate.id !== entry.id),
-				move: (toIndex) => reorderScene(entry.id, toIndex, current.path),
-				moveBeside: (id, side) => reorderScene(
+				move: (toIndex) => reorderMember(entry.id, toIndex, current.path),
+				moveBeside: (id, side) => reorderMember(
 					entry.id,
 					(ids) => moveTargetIndex(ids, entry.id, id, side === 'after'),
 					current.path,
@@ -863,15 +834,17 @@ export function renderCorkboard(
 				.setTitle(t('actions.delete'))
 				.setIcon('trash-2')
 				.setWarning(true)
-				.setDisabled(readOnly || scene.readOnly)
+				.setDisabled(readOnly || entry.member.readOnly)
 				.onClick(() => {
-					void enqueue(() => host.deleteScene(entry.id, entry.member.revision, current.path), { persist: true });
+					// The note as the card holds it when the item is pressed: a save
+					// queued before may have moved its revision on since the menu opened.
+					void enqueue(() => deal.delete(entry.member, current.path), { persist: true });
 				});
 		});
 		menu.showAtMouseEvent(event);
 	};
 
-	/** A scene made beside the clicked card, or at the narrative end for null, then shown. */
+	/** A note made beside the clicked card, or at the order's end for null, then shown. */
 	const insertAt = (anchor: { id: string; side: 'before' | 'after' } | null): void => {
 		const owningProject = projectPath;
 		if (readOnly || owningProject === null) return;
@@ -884,16 +857,16 @@ export function renderCorkboard(
 			// Earlier queued reorders may have moved the anchor. Resolve its
 			// position now, keeping the direction the author clicked in.
 			const afterIndex = anchor === null ? null : insertBesideIndex(
-				current.scenes.map((scene) => scene.id), anchor.id, anchor.side, reversed,
+				deal.members(current).map((member) => member.id), anchor.id, anchor.side, reversed,
 			);
 			if (anchor !== null && afterIndex === null) return;
-			created = await host.openSceneForm({ mode: 'create', afterIndex }, owningProject, () => { saved = true; });
+			created = await deal.openCreate(afterIndex, owningProject, () => { saved = true; });
 		}, { shouldRefresh: () => saved || created !== null }).then(() => {
 			if (created === null || disposed || projectPath !== owningProject) return;
-			if (displayOfScene(created) === -1) {
+			if (displayOfMember(created) === -1) {
 				memory.query = '';
 				search.setValue('');
-				clearSceneFilters(memory.filters);
+				deal.filters.clear(memory.filters);
 				paintAll();
 			}
 			reveal(created);
@@ -901,7 +874,6 @@ export function renderCorkboard(
 	};
 
 	// -- Wiring --------------------------------------------------------------
-
 
 	const wireInsert = (entry: CardEntry, button: HTMLButtonElement, side: 'before' | 'after'): void => {
 		button.addEventListener('click', (event) => {
@@ -924,7 +896,7 @@ export function renderCorkboard(
 			el.addClass('is-dragging');
 			event.dataTransfer.effectAllowed = 'move';
 			if (out === undefined) {
-				event.dataTransfer.setData(SCENE_DRAG_TYPE, entry.id);
+				event.dataTransfer.setData(deal.dragType, entry.id);
 			} else {
 				event.dataTransfer.setData(out.type, entry.id);
 				out.onStart(entry.id, event.dataTransfer);
@@ -1017,7 +989,7 @@ export function renderCorkboard(
 			variant.dragOut !== undefined ||
 			drag === null ||
 			layout === null ||
-			event.dataTransfer?.types.includes(SCENE_DRAG_TYPE) !== true
+			event.dataTransfer?.types.includes(deal.dragType) !== true
 		) {
 			return;
 		}
@@ -1032,24 +1004,26 @@ export function renderCorkboard(
 	});
 	canvas.addEventListener('drop', (event) => {
 		if (variant.dragOut !== undefined) return;
-		const dragged = event.dataTransfer?.getData(SCENE_DRAG_TYPE) ?? '';
-		if (dragged.length === 0 || drag?.id !== dragged || layout === null) return;
+		const dragged = event.dataTransfer?.getData(deal.dragType) ?? '';
+		// The type is a kind's own, and the id must be one of this board's: a card
+		// of another board of the kind, in another leaf, lands on nothing here.
+		if (dragged.length === 0 || drag?.id !== dragged || layout === null || !deal.membersById().has(dragged)) return;
 		event.preventDefault();
 		const before = mark;
 		clearMark();
 		if (before === null) return;
 		const beforeId =
-			before >= layout.items.length ? null : (sceneAt(before)?.id ?? null);
-		const lastShownId = sceneAt(layout.items.length - 1)?.id ?? null;
+			before >= layout.items.length ? null : (memberAt(before)?.id ?? null);
+		const lastShownId = memberAt(layout.items.length - 1)?.id ?? null;
 		if (beforeId === dragged || (beforeId === null && lastShownId === dragged)) return;
 		const reversed = memory.reversed;
-		// Keep the scene the author dropped beside, not its old position.
+		// Keep the note the author dropped beside, not its old position.
 		// The service resolves it after earlier queued writes have landed,
 		// even when this board has closed and can no longer refresh.
 		const target = (ids: readonly string[]): number | null =>
 			moveTargetIndex(ids, dragged, beforeId, reversed, lastShownId);
 		const owningProject = projectPath;
-		if (owningProject !== null) void enqueue(() => reorderScene(dragged, target, owningProject), { persist: true });
+		if (owningProject !== null) void enqueue(() => reorderMember(dragged, target, owningProject), { persist: true });
 	});
 
 	// -- Focus custody -------------------------------------------------------
@@ -1057,10 +1031,10 @@ export function renderCorkboard(
 	const holdFocus = (): FocusHold | null => {
 		const active = root.doc.activeElement;
 		if (active === null || !root.contains(active)) return null;
-		const card = active.closest(SCENE_CARD_SELECTOR);
+		const card = active.closest(CARD_SELECTOR);
 		if (card === null) return null;
 		const key = card.getAttribute('data-key') ?? '';
-		const part =
+		const part: FocusPart =
 			PART_CLASSES.find(([, cls]) => active.classList.contains(cls))?.[0] ?? 'card';
 		return { key, part, el: active, display: cards.get(key)?.display ?? -1 };
 	};
@@ -1110,26 +1084,16 @@ export function renderCorkboard(
 			popoverKind = null;
 			return;
 		}
-		const owningProject = model?.path;
-		if (owningProject === undefined) return;
+		const current = model;
+		if (current === null) return;
+		const owningProject = current.path;
 		controls.popover.closeFilter();
 		popoverKind = 'funnel';
-		const [categories, manuscripts] = await Promise.allSettled([
-			host.listDefinitionPaths('scene', 'category', owningProject),
-			host.listManuscriptNotes(owningProject),
-		]);
+		const extra = await deal.filters.extra(current);
 		if (disposed || request !== popoverRequest || !filterButton.isConnected || model?.path !== owningProject) return;
-		const current = model;
-		// Parent definitions remain useful filters even when scenes are filed
-		// only under their descendants. Keep the known assignments if the tree
-		// cannot be read, without losing the other filter options.
-		const categoryPaths = categories.status === 'fulfilled' ? categories.value : [
-			...new Set(pool.flatMap((scene) => scene.categoryPaths)),
-		].sort((a, b) => a.localeCompare(b, current.locale));
-		const manuscriptNotes = manuscripts.status === 'fulfilled' ? manuscripts.value : [];
 		controls.popover.openFilter(
 			filterButton,
-			sceneFilterRows(t, current, memory.filters, { categoryPaths, manuscriptNotes }),
+			deal.filters.rows(model, memory.filters, extra),
 			() => {
 				markFilterButton();
 				paintAll({ resetScroll: true });
@@ -1157,13 +1121,13 @@ export function renderCorkboard(
 			placeholder: t('common.none'),
 			empty: '',
 			options: () =>
-				CORKBOARD_GROUP_FIELDS.map((field) => ({
+				deal.groupFields.map((field) => ({
 					value: field,
-					label: t(GROUP_LABEL_KEYS[field]),
+					label: deal.groupLabel(field),
 				})),
 			value: memory.group,
 			apply: (value) => {
-				memory.group = isCorkboardGroupField(value) ? value : '';
+				memory.group = deal.groupFields.includes(value) ? value : '';
 			},
 		},
 	];
@@ -1224,7 +1188,7 @@ export function renderCorkboard(
 
 	const reveal = (id: string): void => {
 		if (disposed || layout === null) return;
-		const display = displayOfScene(id);
+		const display = displayOfMember(id);
 		if (display === -1) return;
 		scroller.scrollTop = revealScrollTop(layout, display, scroller.clientHeight);
 		memory.scrollTop = scroller.scrollTop;
@@ -1234,14 +1198,14 @@ export function renderCorkboard(
 		entry?.el.focus({ preventScroll: true });
 	};
 
-	/** Reuse the ordered scenes and card contents while only the available space changes. */
+	/** Reuse the ordered notes and card contents while only the available space changes. */
 	const reflow = (repaint: boolean): ViewportMeasure | null => {
 		if (disposed || layout === null) return null;
 		const width = canvas.clientWidth;
 		// Hidden workspace tabs have no useful geometry; their next reveal measures again.
 		if (width <= 0) return null;
 		const viewport: ViewportMeasure = { top: scroller.scrollTop, height: scroller.clientHeight };
-		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight(), variant.columns, variant.gap);
+		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight(), variant.columns, variant.gap, deal.cardHeight);
 		if (Math.abs(metrics.cardHeight - layout.cardHeight) <= 0.5) {
 			metrics.cardHeight = layout.cardHeight;
 		}

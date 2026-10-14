@@ -45,11 +45,13 @@ import {
 	defaultStoryStructureState,
 	familyVisualization,
 	freeformMemory,
+	isCorkboardGroupField,
 	mergeStoryStructureViewState,
 	readCorkboardPreferences,
 	timelineMemory,
 	visualizationFamily,
 	type BeatSheetMemory,
+	type CorkboardGroupField,
 	type CorkboardMemory,
 	type CorkboardPreferences,
 	type FreeformMemory,
@@ -210,18 +212,20 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	private snapshot(): StoryStructureViewStateSnapshot {
+		// A board's memory gathers by any field of its view; the layout keeps only the scene view's.
+		const groupSetting = (group: string): CorkboardGroupField | '' => (isCorkboardGroupField(group) ? group : '');
 		return {
 			projectPath: this.state.projectPath,
 			visualization: this.state.visualization,
 			corkboard: {
 				mode: this.memory.mode,
-				group: this.memory.group,
+				group: groupSetting(this.memory.group),
 				reversed: this.memory.reversed,
 			},
 			timeline: {
 				pool: {
 					mode: this.timelineMemory.pool.mode,
-					group: this.timelineMemory.pool.group,
+					group: groupSetting(this.timelineMemory.pool.group),
 					reversed: this.timelineMemory.pool.reversed,
 				},
 				poolCollapsed: this.timelineMemory.poolCollapsed,
@@ -230,7 +234,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			beatSheet: {
 				pool: {
 					mode: this.beatSheetMemory.pool.mode,
-					group: this.beatSheetMemory.pool.group,
+					group: groupSetting(this.beatSheetMemory.pool.group),
 					reversed: this.beatSheetMemory.pool.reversed,
 				},
 				poolCollapsed: this.beatSheetMemory.poolCollapsed,

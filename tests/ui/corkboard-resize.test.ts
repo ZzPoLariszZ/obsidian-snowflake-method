@@ -24,7 +24,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 vi.mock('../../src/ui/corkboard-layout', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../src/ui/corkboard-layout')>();
-	return { ...actual, displayOrder: vi.fn(actual.displayOrder), buildLayout: vi.fn(actual.buildLayout) };
+	return { ...actual, displayOrderOf: vi.fn(actual.displayOrderOf), buildLayout: vi.fn(actual.buildLayout) };
 });
 vi.mock('../../src/ui/scene-filters', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../src/ui/scene-filters')>();
@@ -33,7 +33,7 @@ vi.mock('../../src/ui/scene-filters', async (importOriginal) => {
 
 import { renderCorkboard } from '../../src/ui/corkboard';
 import type { CorkboardControls } from '../../src/ui/corkboard-bridge';
-import { buildLayout, displayOrder } from '../../src/ui/corkboard-layout';
+import { buildLayout, displayOrderOf } from '../../src/ui/corkboard-layout';
 import { filterScenes } from '../../src/ui/scene-filters';
 import { corkboardMemory, type CorkboardMemory } from '../../src/ui/story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
@@ -107,7 +107,7 @@ describe('corkboard viewport changes', () => {
 		expect(fixture.dom.frames.size).toBe(1);
 		fixture.dom.flushFrame();
 		expect(vi.mocked(filterScenes)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(displayOrder)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(displayOrderOf)).toHaveBeenCalledTimes(1);
 		// Three columns still fit. Their width changes without rebuilding
 		// the rows for all 3,000 scenes or rewriting mounted card contents.
 		expect(vi.mocked(buildLayout)).toHaveBeenCalledTimes(layouts);
@@ -146,7 +146,7 @@ describe('corkboard viewport changes', () => {
 		expect(fixture.cards()).toContain(card);
 		expect(number.textWrites).toBe(writes);
 		expect(vi.mocked(filterScenes)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(displayOrder)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(displayOrderOf)).toHaveBeenCalledTimes(1);
 		fixture.handle.dispose();
 	});
 
@@ -171,7 +171,7 @@ describe('corkboard viewport changes', () => {
 		expect(fixture.cards()).toContain(anchored);
 		expect(anchored.styles.transform).toBe('translate(0px, 4200px)');
 		expect(vi.mocked(filterScenes)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(displayOrder)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(displayOrderOf)).toHaveBeenCalledTimes(1);
 		fixture.handle.dispose();
 	});
 
@@ -215,12 +215,12 @@ describe('corkboard viewport changes', () => {
 		expect(fixture.root.styles['--snowflake-method-corkboard-card-height']).toBe('76px');
 		expect(fixture.dom.frames.size).toBe(0);
 		const filtering = vi.mocked(filterScenes).mock.calls.length;
-		const ordering = vi.mocked(displayOrder).mock.calls.length;
+		const ordering = vi.mocked(displayOrderOf).mock.calls.length;
 		fixture.dom.resize(700);
 		for (let frame = 0; frame < 3 && fixture.dom.frames.size > 0; frame++) fixture.dom.flushFrame();
 		expect(fixture.dom.frames.size).toBe(0);
 		expect(vi.mocked(filterScenes)).toHaveBeenCalledTimes(filtering);
-		expect(vi.mocked(displayOrder)).toHaveBeenCalledTimes(ordering);
+		expect(vi.mocked(displayOrderOf)).toHaveBeenCalledTimes(ordering);
 		fixture.handle.dispose();
 	});
 
@@ -258,7 +258,7 @@ describe('corkboard viewport changes', () => {
 		expect(fixture.cards()).toHaveLength(1);
 		expect(fixture.cards()[0]!.dataset.id).toBe('scene-0');
 		expect(vi.mocked(filterScenes)).toHaveBeenCalledTimes(3);
-		expect(vi.mocked(displayOrder)).toHaveBeenCalledTimes(3);
+		expect(vi.mocked(displayOrderOf)).toHaveBeenCalledTimes(3);
 		fixture.handle.dispose();
 	});
 });

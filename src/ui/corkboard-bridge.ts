@@ -10,6 +10,7 @@ import type { App, Menu } from 'obsidian';
 
 import type { LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
+import type { SceneFilters } from './scene-filters';
 import type { CorkboardMemory, CorkboardPreferences } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from './view-model';
 
@@ -28,7 +29,7 @@ export type CorkboardHost = Pick<
 	| 'isReduceMotionEnabled'
 >;
 
-export interface CorkboardControls {
+export interface CorkboardControls<Filters = SceneFilters> {
 	app: App;
 	host: CorkboardHost;
 	/** Speaks the loaded project's language; rebuilt with the board when it changes. */
@@ -42,7 +43,7 @@ export interface CorkboardControls {
 	/** True while the plugin is unloading, when a dialog opened now would outlive its owner. */
 	unloading?(): boolean;
 	popover: LentFilterPopover;
-	memory: CorkboardMemory;
+	memory: CorkboardMemory<Filters>;
 	/** Save the tab layout and, when provided, the individual project preferences changed. */
 	remember(changes?: Partial<CorkboardPreferences>): void;
 }
@@ -69,14 +70,14 @@ export interface CorkboardHandle {
  * another surface's drag type and that surface's cards landing on it. With
  * nothing set the board is the corkboard.
  */
-export interface CorkboardVariant {
+export interface CorkboardVariant<Member = SceneViewModel> {
 	/**
-	 * The scenes the board may show at all, applied after the search and the
+	 * The notes the board may show at all, applied after the search and the
 	 * funnel so a card keeps its narrative number. A board showing a subset
 	 * never offers the neighbourly actions, since its neighbours are not the
 	 * order's.
 	 */
-	include?: (scene: SceneViewModel) => boolean;
+	include?: (member: Member) => boolean;
 	/** The band's add button: the labelled call to action, or a plus icon alone. */
 	addButton?: 'label' | 'icon';
 	/**

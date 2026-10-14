@@ -297,10 +297,17 @@ export function mergeStoryStructureViewState(
 /**
  * What outlives a mount of the board: the settings the view persists, and
  * the search, the funnel's answers and the scroll, which last the session.
+ * The field the cards are gathered by is any of the view's own, which only
+ * the scene view's are the layout's to keep, so the view narrows it as it
+ * saves.
  */
-export interface CorkboardMemory extends CorkboardSettings {
+export interface CorkboardMemory<Filters = SceneFilters> {
+	mode: CorkboardMode;
+	/** The field the cards are gathered by, one of the view's own, or '' for none. */
+	group: string;
+	reversed: boolean;
 	query: string;
-	filters: SceneFilters;
+	filters: Filters;
 	scrollTop: number;
 }
 

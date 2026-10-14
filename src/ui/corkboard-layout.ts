@@ -74,7 +74,7 @@ export interface GroupContext {
 	resolveLink?: (target: string, sourcePath: string) => string | null;
 }
 
-interface GroupValue {
+export interface GroupValue {
 	key: string;
 	label: string;
 	/** Where the group stands among its field's: a lower rank first, then the label. */
@@ -83,7 +83,8 @@ interface GroupValue {
 
 const NONE_RANK = Number.MAX_SAFE_INTEGER;
 
-function groupValues(
+/** The groups a scene falls into for one of the board's fields. */
+export function groupValues(
 	scene: CorkboardScene,
 	field: CorkboardGroupField,
 	ctx: GroupContext,
@@ -174,6 +175,29 @@ export function displayOrder(
 	group: CorkboardGroupField | '',
 	ctx: GroupContext,
 ): DisplayOrder {
+	return displayOrderOf(
+		shown,
+		reversed,
+		group,
+		(entry) => (group === '' ? [] : groupValues(entry.scene, group, ctx)),
+		group === '' ? '' : ctx.t(`corkboard.none.${group}`),
+		ctx.locale,
+	);
+}
+
+/**
+ * The same order for any kind of note: the groups a note falls into for the
+ * field are the deal's to say, and so is what the group for notes with none
+ * is called.
+ */
+export function displayOrderOf<Shown extends { index: number }>(
+	shown: readonly Shown[],
+	reversed: boolean,
+	group: string,
+	valuesOf: (entry: Shown) => GroupValue[],
+	noneLabel: string,
+	locale: string,
+): DisplayOrder {
 	const sequence = reversed ? [...shown].reverse() : [...shown];
 	if (group === '') {
 		return {
@@ -202,11 +226,11 @@ export function displayOrder(
 	};
 	const none: GroupValue = {
 		key: '',
-		label: ctx.t(`corkboard.none.${group}`),
+		label: noneLabel,
 		rank: NONE_RANK,
 	};
 	for (const entry of sequence) {
-		const values = groupValues(entry.scene, group, ctx);
+		const values = valuesOf(entry);
 		const item = { sceneIndex: entry.index };
 		if (values.length === 0) place(none, item);
 		const placed = new Set<string>();
@@ -219,7 +243,7 @@ export function displayOrder(
 	const ordered = [...gathered.values()].sort(
 		(a, b) =>
 			a.rank - b.rank ||
-			(a.rank === NONE_RANK ? 0 : a.label.localeCompare(b.label, ctx.locale)),
+			(a.rank === NONE_RANK ? 0 : a.label.localeCompare(b.label, locale)),
 	);
 	return {
 		groups: ordered.map(({ key, label, items }) => ({ key, label, items })),
@@ -257,6 +281,8 @@ export function corkboardMetrics(
 	columns?: number,
 	/** The gap between cards in rem, where the board's own, sized for its insertion buttons, is more than wanted. */
 	gapRem?: number,
+	/** A card's height per style in rem, the scene card's unless the view deals another kind. */
+	cardHeights: Readonly<Record<CorkboardMode, number>> = CORKBOARD_REM.cardHeight,
 ): CorkboardMetrics {
 	const measuredCompactHeight =
 		mode === 'compact' &&
@@ -269,7 +295,7 @@ export function corkboardMetrics(
 		width,
 		gap: (gapRem ?? CORKBOARD_REM.gap) * remPx,
 		minCardWidth: CORKBOARD_REM.minCardWidth * remPx,
-		cardHeight: measuredCompactHeight ?? CORKBOARD_REM.cardHeight[mode] * remPx,
+		cardHeight: measuredCompactHeight ?? cardHeights[mode] * remPx,
 		headHeight: CORKBOARD_REM.headHeight * remPx,
 		...(columns === undefined ? {} : { columns: Math.max(1, Math.floor(columns)) }),
 	};
@@ -549,7 +575,8 @@ export function adjacencyAllowed(state: {
 	/** A filter besides the continuous scene-number range is active. */
 	filtered: boolean;
 	query: string;
-	group: CorkboardGroupField | '';
+	/** The field the cards are gathered by, or '' for none. */
+	group: string;
 	readOnly: boolean;
 	anySceneReadOnly: boolean;
 }): boolean {
