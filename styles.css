@@ -4588,6 +4588,7 @@ textarea.snowflake-method-corkboard-recovered-text {
 	height: calc(var(--snowflake-method-gallery-size) + var(--size-4-4));
 	overflow: hidden;
 	perspective: 60rem;
+	user-select: none;
 }
 
 .snowflake-method-gallery-item {

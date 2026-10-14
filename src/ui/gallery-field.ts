@@ -317,9 +317,10 @@ export class GalleryField {
 		if (stage === null) throw new Error('The gallery row has no stage to stand a picture in.');
 		const { t } = this.context;
 		const el = stage.createDiv({ cls: 'snowflake-method-gallery-item' });
+		// Not draggable: a pull across the picture is a swipe of the fan, which the browser's own image drag would cancel.
 		const picture = el.createEl('img', {
 			cls: 'snowflake-method-gallery-picture',
-			attr: { alt: '', loading: 'lazy', decoding: 'async' },
+			attr: { alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' },
 		});
 		const missing = el.createDiv({ cls: 'snowflake-method-gallery-missing' });
 		const missingIcon = missing.createSpan({ attr: { 'aria-hidden': 'true' } });
