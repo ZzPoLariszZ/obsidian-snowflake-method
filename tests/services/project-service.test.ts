@@ -2041,6 +2041,49 @@ describe("SnowflakeProjectService", () => {
     expect(fakeVault.contents.get(second!.path)).toBe(before.get(second!.path));
   });
 
+  it("reports the revisions a character or an entity rank write moves, as it does a scene's", async () => {
+    const project = await service.createProject({ name: "Member rank revisions" });
+    const characters = [
+      await service.createCharacter(project, { name: "Ada" }),
+      await service.createCharacter(project, { name: "Lin" }),
+      await service.createCharacter(project, { name: "Mo" }),
+    ];
+    const entities = [
+      await service.createEntity(project, { kind: "location", name: "Harbour" }),
+      await service.createEntity(project, { kind: "location", name: "Market" }),
+    ];
+    const before = new Map(
+      [...characters, ...entities].map((member) => [member.path, fakeVault.contents.get(member.path)!]),
+    );
+    const changes: RankRevisionChange[] = [];
+    const reordered = await service.reorderCharacter(project, characters[2]!.characterId, 0, (change) => {
+      changes.push(change);
+    });
+    expect(reordered.map((character) => character.name)).toEqual(["Mo", "Ada", "Lin"]);
+    expect(changes.map((change) => change.id).sort()).toEqual(
+      reordered.filter((character) => fakeVault.contents.get(character.path) !== before.get(character.path))
+        .map((character) => character.characterId).sort(),
+    );
+    for (const change of changes) {
+      const character = reordered.find((candidate) => candidate.characterId === change.id)!;
+      expect(change.before).toBe(fingerprint(before.get(character.path)));
+      expect(change.after).toBe(character.revision);
+      expect(change.after).not.toBe(change.before);
+    }
+
+    const entityChanges: RankRevisionChange[] = [];
+    const places = await service.reorderEntity(project, "location", entities[1]!.entityId, 0, (change) => {
+      entityChanges.push(change);
+    });
+    expect(places.map((entity) => entity.name)).toEqual(["Market", "Harbour"]);
+    expect(entityChanges.length).toBeGreaterThan(0);
+    for (const change of entityChanges) {
+      const entity = places.find((candidate) => candidate.entityId === change.id)!;
+      expect(change.before).toBe(fingerprint(before.get(entity.path)));
+      expect(change.after).toBe(entity.revision);
+    }
+  });
+
   it("stores and updates the complete Step 8 scene form", async () => {
     const project = await service.createProject({ name: "Scene Details" });
     const ada = await service.createCharacter(project, { name: "Ada", type: "major" });

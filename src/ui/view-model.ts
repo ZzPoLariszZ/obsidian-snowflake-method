@@ -731,6 +731,8 @@ export type EntityFormIntent =
 			mode: 'create';
 			kind: WorldbuildingKindId;
 			preset?: { name?: string; timeKind?: TimeKind; lockTimeKind?: boolean };
+			/** Where the note lands in the kind's order: after this index, or at the end for null or none. */
+			afterIndex?: number | null;
 	  };
 
 export interface DashboardHost {
@@ -847,6 +849,7 @@ export interface DashboardHost {
 		entityId: string,
 		targetIndex: number,
 		projectPath?: string,
+		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void>;
 	openProjectBase(id: ProjectBaseChoice): Promise<void>;
 	/** Rewrites the base from the current template and opens it. */
@@ -916,6 +919,12 @@ export interface DashboardHost {
 	/** Opens an existing character's edit form without switching away from the caller. */
 	openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void>;
 	/**
+	 * Opens the character create form for another surface, the character to
+	 * land after the index or at the end for null; resolves when the modal
+	 * closes, with the id of the character made.
+	 */
+	openCreateCharacterForm(afterIndex: number | null, projectPath?: string, onSaved?: () => void): Promise<string | null>;
+	/**
 	 * Brings one task's card into sight on the named project's task board,
 	 * opening the project's dashboard forward where none stands; false where
 	 * the board does not show the task, as with one archived or gone.
@@ -955,7 +964,12 @@ export interface DashboardHost {
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void>;
-	reorderCharacter(characterId: string, targetIndex: number, projectPath?: string): Promise<void>;
+	reorderCharacter(
+		characterId: string,
+		targetIndex: number,
+		projectPath?: string,
+		onRankWritten?: (change: RankRevisionChange) => void,
+	): Promise<void>;
 	openManagedFile(
 		path: string,
 		sectionId?: string,

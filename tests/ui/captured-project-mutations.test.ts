@@ -332,6 +332,47 @@ describe('captured project mutation ownership', () => {
 	});
 });
 
+describe('create forms opened for another surface', () => {
+	it('open on the owner and land the new note after the asked index', async () => {
+		const fixture = await setup();
+		const { plugin, service, owner } = fixture;
+		await plugin.createCharacter(characterRequest({ name: 'First' }), owner.projectFile);
+		await plugin.createCharacter(characterRequest({ name: 'Last' }), owner.projectFile);
+		await plugin.createEntity(entityRequest('Harbour'), owner.projectFile);
+		await plugin.createEntity(entityRequest('Market'), owner.projectFile);
+		const before = fixture.activeContents();
+		const modelOf = async (): Promise<ProjectDashboardModel> =>
+			({ ...await service.loadProject(owner), path: owner.projectFile }) as unknown as ProjectDashboardModel;
+		const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
+		Object.assign(view, {
+			app: plugin.app, t: (key: string) => key, projectPath: owner.projectFile,
+			host: Object.assign(Object.create(plugin) as object, { loadDashboardModel: modelOf }),
+			memberFormContext: async () => ({}), refresh: vi.fn(async () => undefined), queueRefreshWhenShown: vi.fn(),
+		});
+		const saved = vi.fn();
+		const characterOpening = view.openCreateCharacterForm(0, saved);
+		await vi.waitFor(() => expect(openedForms).toHaveLength(1));
+		const characterForm = openedForms[0] as { submitHandler(request: CreateCharacterRequest): Promise<void>; close(): void };
+		await characterForm.submitHandler(characterRequest({ name: 'Inserted' }));
+		characterForm.close();
+		const characters = (await service.loadProject(owner)).characters;
+		expect(characters.map((character) => character.name)).toEqual(['First', 'Inserted', 'Last']);
+		expect(await characterOpening).toBe(characters[1]!.characterId);
+		expect(saved).toHaveBeenCalledOnce();
+
+		const entityOpening = view.openEntityForm({ mode: 'create', kind: 'location', afterIndex: 0 }, saved);
+		await vi.waitFor(() => expect(openedForms).toHaveLength(2));
+		const entityForm = openedForms[1] as { submitHandler(request: EntityFormRequest): Promise<unknown>; close(): void };
+		await entityForm.submitHandler(entityRequest('Inn'));
+		entityForm.close();
+		const places = (await service.loadProject(owner)).worldbuilding.location!;
+		expect(places.map((entity) => entity.name)).toEqual(['Harbour', 'Inn', 'Market']);
+		expect(await entityOpening).toBe(places[1]!.entityId);
+		expect(saved).toHaveBeenCalledTimes(2);
+		fixture.assertOwnership(before);
+	});
+});
+
 describe('gallery saves through the host', () => {
 	const picture = (name: string, byte: number) => ({
 		kind: 'data' as const, name, read: () => Promise.resolve(new Uint8Array([byte]).buffer),

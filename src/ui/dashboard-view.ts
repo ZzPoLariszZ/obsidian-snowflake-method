@@ -5421,11 +5421,50 @@ export class SnowflakeDashboardView extends ItemView {
 			intent.preset ?? {},
 			async (request) => {
 				const entity = await this.host.createEntity(request, model.path);
+				// Made at the end, then walked back to where the asker wants it, as a scene is.
+				const afterIndex = intent.afterIndex ?? null;
+				if (afterIndex !== null) await this.host.reorderEntity(kind, entity.id, afterIndex + 1, model.path);
 				made.id = entity.id;
 				saved();
 				return { value: entity.path, label: request.name };
 			},
 		);
+		return made.id;
+	}
+
+	/**
+	 * The character create form for another surface, as `openSceneForm` makes
+	 * a scene: at the end of the cast, or walked back to after the index.
+	 * Resolves when the modal closes, with the id of the character made.
+	 */
+	async openCreateCharacterForm(afterIndex: number | null, onSaved?: () => void): Promise<string | null> {
+		const requestedProject = this.projectPath;
+		if (requestedProject === null) return null;
+		const model = await this.host.loadDashboardModel(requestedProject);
+		if (this.projectPath !== requestedProject) return null;
+		if (model === null || model.readOnly) return null;
+		const saved = (): void => {
+			this.queueRefreshWhenShown();
+			onSaved?.();
+		};
+		const made = { id: null as string | null };
+		const context = await this.memberFormContext(model, 'character', model.path, async () => { saved(); });
+		const form = new CreateCharacterModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => character.name),
+			async (request) => {
+				const created = await this.host.createCharacter(request, model.path);
+				if (afterIndex !== null) await this.host.reorderCharacter(created.id, afterIndex + 1, model.path);
+				made.id = created.id;
+				saved();
+			},
+			undefined,
+			undefined,
+			context,
+		);
+		form.open();
+		await whenClosed(form);
 		return made.id;
 	}
 

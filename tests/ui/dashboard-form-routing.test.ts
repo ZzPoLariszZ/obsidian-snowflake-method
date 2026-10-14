@@ -36,6 +36,7 @@ function dashboardLeaf(
 	const dashboard = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
 	const openSceneForm = vi.fn((_intent: SceneFormIntent) => Promise.resolve('saved-scene'));
 	const openCharacterForm = vi.fn((_id: string) => Promise.resolve());
+	const openCreateCharacterForm = vi.fn((_afterIndex: number | null) => Promise.resolve('made-character'));
 	const openEntityForm = vi.fn((_intent: EntityFormIntent) => Promise.resolve(null));
 	const revealTask = vi.fn((_id: string) => Promise.resolve(true));
 	const createMemberFromField = vi.fn((_group: string, _name: string) => Promise.resolve<{ id: string; name: string } | null>({ id: 'made-1', name: 'Ferryman' }));
@@ -45,6 +46,7 @@ function dashboardLeaf(
 		getProjectPath: () => path,
 		openSceneForm,
 		openCharacterForm,
+		openCreateCharacterForm,
 		openEntityForm,
 		revealTask,
 		createMemberFromField,
@@ -68,7 +70,7 @@ function dashboardLeaf(
 			leaf.view = dashboard;
 		}),
 	};
-	return { leaf, openSceneForm, openCharacterForm, openEntityForm, revealTask, createMemberFromField, createMemberThroughForm, queueRefreshWhenShown };
+	return { leaf, openSceneForm, openCharacterForm, openCreateCharacterForm, openEntityForm, revealTask, createMemberFromField, createMemberThroughForm, queueRefreshWhenShown };
 }
 
 function pluginWith(
@@ -123,6 +125,13 @@ const forms = [
 		open: (plugin: SnowflakeMethodPlugin) => plugin.openCharacterForm('character-1'),
 		called: (dashboard: ReturnType<typeof dashboardLeaf>) => {
 			expect(dashboard.openCharacterForm).toHaveBeenCalledExactlyOnceWith('character-1');
+		},
+	},
+	{
+		name: 'new character',
+		open: (plugin: SnowflakeMethodPlugin) => plugin.openCreateCharacterForm(2),
+		called: (dashboard: ReturnType<typeof dashboardLeaf>) => {
+			expect(dashboard.openCreateCharacterForm).toHaveBeenCalledExactlyOnceWith(2);
 		},
 	},
 	{

@@ -2310,6 +2310,7 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     characterId: string,
     targetIndex: number,
+    onRankWritten?: (change: RankRevisionChange) => void,
   ): Promise<CharacterRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
@@ -2317,6 +2318,7 @@ export class SnowflakeProjectService {
     await this.persistReorderedRanks(
       current,
       moveRanked(current, characterId, targetIndex),
+      onRankWritten,
     );
     return this.listCharacters(project);
   }
@@ -5458,11 +5460,12 @@ export class SnowflakeProjectService {
     kind: WorldbuildingKindId,
     entityId: string,
     targetIndex: number,
+    onRankWritten?: (change: RankRevisionChange) => void,
   ): Promise<WorldbuildingRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const current = entitiesOf(project, kind);
-    await this.persistReorderedRanks(current, moveRanked(current, entityId, targetIndex));
+    await this.persistReorderedRanks(current, moveRanked(current, entityId, targetIndex), onRankWritten);
     return this.listEntities(project, kind);
   }
 

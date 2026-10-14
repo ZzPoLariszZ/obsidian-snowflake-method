@@ -2631,10 +2631,11 @@ export default class SnowflakeMethodPlugin
 		entityId: string,
 		targetIndex: number,
 		projectPath?: string,
+		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void> {
 		const project = await this.requireProject(projectPath);
 		try {
-			await this.projects.reorderEntity(project, kind, entityId, targetIndex);
+			await this.projects.reorderEntity(project, kind, entityId, targetIndex, onRankWritten);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2991,9 +2992,14 @@ export default class SnowflakeMethodPlugin
 		await this.projects.reorderScene(project, sceneId, targetIndex, onRankWritten);
 	}
 
-	async reorderCharacter(characterId: string, targetIndex: number, projectPath?: string): Promise<void> {
+	async reorderCharacter(
+		characterId: string,
+		targetIndex: number,
+		projectPath?: string,
+		onRankWritten?: (change: RankRevisionChange) => void,
+	): Promise<void> {
 		const project = await this.requireProject(projectPath);
-		await this.projects.reorderCharacter(project, characterId, targetIndex);
+		await this.projects.reorderCharacter(project, characterId, targetIndex, onRankWritten);
 	}
 
 	async openManagedFile(
@@ -11826,6 +11832,11 @@ export default class SnowflakeMethodPlugin
 	async openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void> {
 		await this.withDashboardForm((view) => onSaved === undefined
 			? view.openCharacterForm(id) : view.openCharacterForm(id, onSaved), undefined, projectPath);
+	}
+
+	async openCreateCharacterForm(afterIndex: number | null, projectPath?: string, onSaved?: () => void): Promise<string | null> {
+		return this.withDashboardForm((view) => onSaved === undefined
+			? view.openCreateCharacterForm(afterIndex) : view.openCreateCharacterForm(afterIndex, onSaved), null, projectPath);
 	}
 
 	async openEntityForm(intent: EntityFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null> {
