@@ -57,7 +57,6 @@ import {
 	type FreeformStep,
 	type FreeformView,
 	type MacaronColor,
-	type ProgressStatus,
 } from '../domain';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
 import type { FreeformBridge, FreeformHandle, FreeformReading, RenderFreeform } from './freeform-bridge';
@@ -71,7 +70,8 @@ import {
 	type CanvasSelection,
 } from './freeform-canvas-port';
 import { freeformClipSize, readFreeformClip, writeFreeformClip } from './freeform-clipboard';
-import { createFreeformFaces, type CardNode } from './freeform-faces';
+import { createEntityCardDeck, kindOf, type EntityCard, type EntityMember } from './entity-card';
+import { createFreeformFaces } from './freeform-faces';
 import {
 	FreeformEdgeFormModal,
 	FreeformFrameFormModal,
@@ -129,6 +129,7 @@ import {
 } from './freeform-resources';
 import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
 import { kindIcon } from './kind-icon';
+import { kindWord as kindWordFor, memberKindWord } from './kind-word';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import { renderEmptyLine } from './pane-parts';
 import { formatStickyCreated } from './sticky-note-layout';
@@ -640,52 +641,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	};
 
 	/** What a kind of note is called: the copy's word for a built-in, an authored kind its own name. */
-	const kindWord = (kind: string): string => {
-		if (kind === 'scene') return t('form.group.scene');
-		if (kind === 'character') return t('form.group.character');
-		return isWorldbuildingKind(kind) ? t(`worldbuilding.kind.${kind}`) : kind;
-	};
-
-	/** What a card's foot calls its note's kind: a time by its point or period, the rest by their kind. */
-	const kindWordOf = (node: CardNode): string => {
-		if (node.type === 'character') return kindWord('character');
-		if (node.entity.kind === 'time') return t(node.entity.timeKind === 'period' ? 'form.timeKind.period' : 'form.timeKind.point');
-		return kindWord(node.entity.kind);
-	};
-
-	/** Gives a character's or a worldbuilding note's card its tint, written to its note as a scene's is to its own. */
-	const setCardColor = (node: CardNode, color: MacaronColor | null): void => {
-		const path = controls.projectPath();
-		if (path === null || readOnly || disposed) return;
-		const written = node.type === 'character'
-			? controls.host.patchCharacter(node.character.id, { expectedRevision: node.character.revision, color }, path)
-			: controls.host.patchEntity(node.entity.id, { expectedRevision: node.entity.revision, color }, path);
-		written.then(
-			() => {
-				void controls.refresh();
-			},
-			(error: unknown) => {
-				if (!disposed) new Notice(error instanceof Error ? error.message : t('errors.unknown'));
-			},
-		);
-	};
-
-	/** A character's or a worldbuilding note's standing set from its card, written to the note. */
-	const setCardStatus = (node: CardNode, status: ProgressStatus): void => {
-		const path = controls.projectPath();
-		if (path === null || readOnly || disposed) return;
-		const written = node.type === 'character'
-			? controls.host.patchCharacter(node.character.id, { expectedRevision: node.character.revision, progressStatus: status }, path)
-			: controls.host.patchEntity(node.entity.id, { expectedRevision: node.entity.revision, progressStatus: status }, path);
-		written.then(
-			() => {
-				void controls.refresh();
-			},
-			(error: unknown) => {
-				if (!disposed) new Notice(error instanceof Error ? error.message : t('errors.unknown'));
-			},
-		);
-	};
+	const kindWord = (kind: string): string => kindWordFor(t, kind);
 
 	/** A frame's tint set from its head, written to the view as its form once wrote it. */
 	const setFrameColor = (id: string, color: MacaronColor | null): void => {
@@ -1134,7 +1090,13 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	/** The laying out itself, from the model handed to it and the document last read. */
 	const draw = (nextModel: ProjectDashboardModel | null): void => {
 		const modelMoved = nextModel !== model;
-		if (modelMoved) laneDeck.index(nextModel);
+		if (modelMoved) {
+			laneDeck.index(nextModel);
+			entitiesById = new Map(
+				[...(nextModel?.characters ?? []), ...Object.values(nextModel?.worldbuilding ?? {}).flat()]
+					.map((member): [string, EntityMember] => [member.id, member]),
+			);
+		}
 		model = nextModel;
 		// The model's word, renewed with every project refresh, or the tab's own lock.
 		readOnly = (model?.readOnly ?? true) || memory.readOnly;
@@ -1430,9 +1392,53 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		titleReadOnly: true,
 	});
 	const { deck } = laneDeck;
+	/**
+	 * The characters' and worldbuilding notes' cards, dealt from the entity
+	 * deck as the board's own views deal them: each wears its kind's symbol
+	 * in place of a number and says its kind on the foot, since kinds mix on
+	 * the canvas, and changes only its tint and its standing here.
+	 */
+	let entitiesById = new Map<string, EntityMember>();
+	const kinds = (): { worldbuildingKinds: ProjectDashboardModel['worldbuildingKinds'] } => model ?? { worldbuildingKinds: [] };
+	const entityDeck = createEntityCardDeck<EntityCard>({
+		app,
+		host,
+		t,
+		notice,
+		refresh: () => controls.refresh(),
+		projectPath: () => controls.projectPath(),
+		readOnly: () => readOnly,
+		unloading: () => controls.unloading?.() === true,
+		membersById: () => entitiesById,
+		// The name is read here and never typed into, so no name is ever taken.
+		nameTaken: () => false,
+		footWord: (member) => memberKindWord(t, member),
+		icon: (member) => kindIcon(kinds(), kindOf(member)),
+		symbol: (member) => kindIcon(kinds(), kindOf(member)),
+		dragAllowed: () => false,
+		menu: (card, event) => {
+			openNodeMenu(card.key, event);
+		},
+		extend: (card) => card,
+		bodyReadOnly: true,
+		titleReadOnly: true,
+	});
 	// A press on a card's control is let go wherever it ends, and a colour
 	// panel goes with the window the card leaves, as under the corkboard.
-	const unbindDeckWindow = bindFrameWindow({ root, deck, invalidateRects: () => undefined });
+	const unbindDeckWindow = bindFrameWindow({
+		root,
+		deck: {
+			releasePress: () => {
+				deck.releasePress();
+				entityDeck.releasePress();
+			},
+			closeColorPanel: () => {
+				deck.closeColorPanel();
+				entityDeck.closeColorPanel();
+			},
+		},
+		invalidateRects: () => undefined,
+	});
 
 	/** Keeps the words of the card's field holding the focus; true when one did. */
 	const keepFocusedCard = (): boolean => {
@@ -1542,9 +1548,6 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		today: () => controls.bridge().today(),
 		dateFormat: () => controls.bridge().dateFormat(),
 		locale: () => reading?.locale ?? 'en',
-		kindWord: kindWordOf,
-		setColor: setCardColor,
-		setStatus: setCardStatus,
 		setFrameColor,
 		scenes: {
 			mount: (parent, key, scene, index) => deck.mount(parent, key, scene, index),
@@ -1559,6 +1562,21 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			},
 			retire: (key) => {
 				deck.retire(key);
+			},
+		},
+		entities: {
+			mount: (parent, key, member, index) => entityDeck.mount(parent, key, member, index),
+			dress: (card, member) => {
+				entityDeck.dress(card, member, 0, { position: 1, size: 1 });
+			},
+			settle: (key) => {
+				const card = entityDeck.cards.get(key);
+				if (card === undefined) return;
+				entityDeck.commitTitle(card, false);
+				entityDeck.commitBody(card);
+			},
+			retire: (key) => {
+				entityDeck.retire(key);
 			},
 		},
 	});
@@ -2774,6 +2792,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			paintZoom(viewport.zoom);
 			// A colour panel hangs where its card's button stood; the card has moved from under it.
 			deck.closeColorPanel();
+			entityDeck.closeColorPanel();
 			faces.closeColorPanel();
 		},
 		menu: openMenu,
@@ -3012,9 +3031,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			disposed = true;
 			faces.closeColorPanel();
 			canvas.dispose();
-			// The cards' own words go last, through the deck's queue, which outlives the workspace.
+			// The cards' own words go last, through the decks' queues, which outlive the workspace.
 			unbindDeckWindow();
 			deck.dispose();
+			entityDeck.dispose();
 			viewField?.destroy();
 			root.remove();
 		},

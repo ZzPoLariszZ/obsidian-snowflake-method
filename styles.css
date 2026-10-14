@@ -16950,7 +16950,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* A scene's title on the canvas is read and never typed into, and wears
    nothing of a button that cannot be pressed: the card changes only its
    tint and its standing here. */
-.snowflake-method-freeform-face.is-scene button.snowflake-method-corkboard-title:disabled {
+.snowflake-method-freeform-face:is(.is-scene, .is-card) button.snowflake-method-corkboard-title:disabled {
 	opacity: 1;
 	color: var(--text-normal);
 	cursor: default;
@@ -16965,7 +16965,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* The conflict is read on the canvas and never typed into there: it takes
    no press, so a press on it takes hold of the node, and a press twice on
    it opens the scene, as one anywhere else on the card does. */
-.snowflake-method-freeform-face.is-scene textarea.snowflake-method-corkboard-body-text {
+.snowflake-method-freeform-face:is(.is-scene, .is-card) textarea.snowflake-method-corkboard-body-text {
 	overflow: hidden;
 	pointer-events: none;
 	cursor: default;
@@ -16973,7 +16973,9 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-body,
 .snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-links,
-.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='standard'] .snowflake-method-corkboard-links {
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-picture,
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='standard'] .snowflake-method-corkboard-links,
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='standard'] .snowflake-method-corkboard-picture {
 	display: none;
 }
 
@@ -16983,65 +16985,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-footer {
 	margin-block-start: 0;
-}
-
-/* A character's or a worldbuilding note's card: its name and its standing
-   stand where a scene's title and status do and in their measures, though
-   neither is typed into nor picked from here; its words stand as a scene's
-   conflict does; and what its foot says stands where a scene names its
-   point of view, with the way to its menu at the foot's end as a scene
-   keeps its own. */
-.snowflake-method-freeform-card-title {
-	flex: 1 1 auto;
-	min-width: 0;
-	height: 1.5rem;
-	padding: 0 var(--size-2-1);
-	border: 1px solid transparent;
-	overflow: hidden;
-	font-size: var(--font-ui-small);
-	font-weight: var(--font-semibold);
-	line-height: calc(1.5rem - 2px);
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
-/* The standing on a character's or a worldbuilding note's card is picked
-   from the statuses as a scene's is, in the scene card's own select, which
-   gives way before the name does. */
-.snowflake-method-freeform-card-status {
-	flex: 0 1 auto;
-	min-width: 0;
-	max-width: 45%;
-}
-
-.snowflake-method-freeform-card-words {
-	flex: 1 1 auto;
-	min-height: 0;
-	padding: var(--size-4-2) var(--size-4-3);
-	overflow: hidden;
-	overflow-wrap: anywhere;
-	font-family: var(--font-text);
-	font-size: var(--font-ui-small);
-	line-height: var(--line-height-normal);
-	white-space: pre-wrap;
-}
-
-.snowflake-method-freeform-card-extra {
-	flex: 1 1 auto;
-	min-width: 0;
-	overflow: hidden;
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
-.snowflake-method-freeform-face .snowflake-method-corkboard-actions > .clickable-icon.snowflake-method-freeform-node-more {
-	float: none;
-	width: var(--snowflake-method-corkboard-action-size);
-	margin: 0;
-	padding: var(--size-2-1) var(--size-2-2);
-	color: var(--text-muted);
 }
 
 /* A task's card wears its symbol and the way to its menu at its title's

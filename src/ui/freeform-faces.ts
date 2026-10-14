@@ -7,8 +7,9 @@
  *
  * Each kind of node has a painter. A text node is typed into where it
  * stands; a scene is the corkboard's own card, dealt from the deck the
- * workspace holds, and a character or a worldbuilding note wears that
- * card's shape, read and never written; a task is the board's own card, a
+ * workspace holds, and a character or a worldbuilding note is the entity
+ * card the workspace's other deck deals, read but for its tint and its
+ * standing; a task is the board's own card, a
  * foreshadowing or a revision the card the manuscript's margin pins, and a
  * sticky note its own card, each read here and written where it lives; a
  * frame shows its title at its head; a node whose resource has gone says so
@@ -19,23 +20,20 @@
 
 import { Component, Keymap, MarkdownRenderer, setIcon, setTooltip, type App } from 'obsidian';
 
-import { FORESHADOWING_STATUSES, PROGRESS_STATUSES, type DateFormat, type FreeformFrame, type MacaronColor, type ProgressStatus } from '../domain';
+import { FORESHADOWING_STATUSES, type DateFormat, type FreeformFrame, type MacaronColor } from '../domain';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import { CANVAS_FAR_KIND, CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
 import type { ForeshadowingOccurrenceRow } from './foreshadowing-rows';
-import { statusOptions } from './corkboard-layout';
 import { faceKindOf, faceModeOf } from './freeform-layout';
 import type { FreeformFileKind, ResolvedNode } from './freeform-resources';
 import type { Translate } from './modals';
 import { railParts, type RailParts } from './rail-parts';
-import { fillSelect, type SceneCard } from './scene-card';
+import type { EntityCard, EntityMember } from './entity-card';
+import type { SceneCard } from './scene-card';
 import { renderStickySwatches } from './sticky-note-card';
 import { formatStickyCreated } from './sticky-note-layout';
 import { paintTaskMeta } from './task-card-parts';
 import type { SceneViewModel } from './view-model';
-
-/** A character's or a worldbuilding note's node, the two that wear the corkboard card's shape. */
-export type CardNode = Extract<ResolvedNode, { type: 'character' | 'worldbuilding' }>;
 
 export interface FreeformFaceDeps {
 	app: App;
@@ -68,12 +66,6 @@ export interface FreeformFaceDeps {
 	dateFormat: () => DateFormat;
 	/** The language a sticky note's birth is said in, under the pointer. */
 	locale: () => string;
-	/** What a card's foot calls its note's kind: a character, a time's point or period, a location, an item, an authored kind by its name. */
-	kindWord: (node: CardNode) => string;
-	/** Gives a character's or a worldbuilding note's card its tint, written to the note, or takes it off. */
-	setColor: (node: CardNode, color: MacaronColor | null) => void;
-	/** Sets a character's or a worldbuilding note's standing, written to the note, as a scene's card sets its own. */
-	setStatus: (node: CardNode, status: ProgressStatus) => void;
 	/** Gives a frame its tint, written to the view, or takes it off. */
 	setFrameColor: (id: string, color: MacaronColor | null) => void;
 	/**
@@ -88,6 +80,17 @@ export interface FreeformFaceDeps {
 		/** Keeps a card's open words without taking it down. */
 		settle: (key: string) => void;
 		/** Keeps a card's open words and takes it down. */
+		retire: (key: string) => void;
+	};
+	/**
+	 * The deck the characters' and worldbuilding notes' cards are dealt from,
+	 * for an entity's face: the card is the deck's, wired and written by it,
+	 * and the face only holds it, keyed by its placement as a scene's is.
+	 */
+	entities: {
+		mount: (parent: HTMLElement, key: string, member: EntityMember, index: number) => EntityCard;
+		dress: (card: EntityCard, member: EntityMember) => void;
+		settle: (key: string) => void;
 		retire: (key: string) => void;
 	};
 }
@@ -398,19 +401,6 @@ function scenePainter(deps: FreeformFaceDeps): NodePainter {
 
 // -- The cards the entities wear ----------------------------------------------------
 
-/** What a card's head says of the note's standing, and the class that inks it. */
-function standingOf(node: CardNode, t: Translate): { words: string; tone: ProgressStatus } | null {
-	const status = node.type === 'character' ? node.character.progressStatus : node.entity.progressStatus;
-	return status === null ? null : { words: t(`status.${status}`), tone: status };
-}
-
-/** The words a card's body holds: a character's one-sentence storyline, a worldbuilding note's description. */
-const bodyWordsOf = (node: CardNode): string =>
-	node.type === 'character' ? node.character.oneSentenceStoryline : node.entity.description;
-
-/** The tint a card's note wears. */
-const tintOf = (node: CardNode): MacaronColor | null => (node.type === 'character' ? node.character.color : node.entity.color);
-
 /** What a palette hangs the swatches for: the tint worn now, read afresh as the panel is hung, and where a pick goes. */
 interface TintSubject {
 	/** The tint worn now; undefined for a subject that has gone, which hangs nothing. */
@@ -424,12 +414,6 @@ interface TintPanel {
 	/** Puts the panel away if it hangs under this button. */
 	closeFor: (anchor: HTMLElement) => void;
 	close: () => void;
-}
-
-/** The character or worldbuilding note a card stands for, as it stands now, which may be a newer reading than the one a panel was hung from. */
-function cardNodeOf(deps: FreeformFaceDeps, id: string): CardNode | null {
-	const node = deps.node(id);
-	return node?.type === 'character' || node?.type === 'worldbuilding' ? node : null;
 }
 
 function createTintPanel(deps: FreeformFaceDeps): TintPanel {
@@ -495,94 +479,25 @@ function paintPalette(palette: HTMLButtonElement, tint: MacaronColor | null, rea
 }
 
 /**
- * A character's or a worldbuilding note's face: the corkboard card's own
- * shape, read and never written here but for its tint and its standing,
- * which are the two things a card changes on any surface. Its symbol, its
- * name and its standing on the head, as a scene carries its own, the
- * standing a select as the scene's is; its one-sentence storyline or its
- * description as the body, where a scene shows its conflict; and on the
- * foot what kind of note it is, with its palette and the way to its menu at
- * the foot's end, where a scene keeps its own.
+ * A character's or a worldbuilding note's face: the entity card the
+ * workspace's deck deals, named, coloured and set in its standing where it
+ * stands as a scene's card is, its words and its name read and never typed
+ * into here, and its fullest face showing the main picture of its gallery.
+ * The face sets which of the card's three styles is shown, and stands
+ * selected with the node.
  */
-function cardPainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
-	const { t } = deps;
+function entityPainter(deps: FreeformFaceDeps): NodePainter {
 	return {
 		mount: (body, id, context): PaintedNode => {
 			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-card' });
-			const card = face.createDiv({ cls: 'snowflake-method-corkboard-card snowflake-method-sticky-tint' });
-			const head = card.createDiv({ cls: 'snowflake-method-corkboard-head' });
-			const symbol = head.createSpan({ cls: 'snowflake-method-corkboard-symbol', attr: { 'aria-hidden': 'true' } });
-			const name = head.createSpan({ cls: 'snowflake-method-freeform-card-title' });
-			const status = head.createEl('select', {
-				cls: 'dropdown snowflake-method-entity-status snowflake-method-corkboard-status-select snowflake-method-freeform-card-status',
-				attr: { 'aria-label': t('table.progressStatus') },
-			});
-			let statusSignature = '';
-			status.addEventListener('change', () => {
-				const node = cardNodeOf(deps, id);
-				const picked = status.value;
-				if (node === null || !(PROGRESS_STATUSES as readonly string[]).includes(picked)) return;
-				deps.setStatus(node, picked as ProgressStatus);
-			});
-			const words = card.createDiv({ cls: 'snowflake-method-corkboard-body' }).createDiv({ cls: 'snowflake-method-freeform-card-words' });
-			const foot = card.createDiv({ cls: 'snowflake-method-corkboard-footer' }).createDiv({ cls: 'snowflake-method-corkboard-footer-row' });
-			const extra = foot.createSpan({ cls: 'snowflake-method-freeform-card-extra' });
-			const actions = foot.createDiv({ cls: 'snowflake-method-corkboard-actions' });
-			// The palette stands where a scene's does, and hangs the same swatches.
-			const palette = actions.createEl('button', {
-				cls: 'clickable-icon snowflake-method-corkboard-color',
-				attr: { type: 'button', 'aria-haspopup': 'dialog' },
-			});
-			setIcon(palette, 'palette');
-			palette.addEventListener('click', (event) => {
-				event.stopPropagation();
-				tints.toggle(palette, {
-					tint: () => {
-						const now = cardNodeOf(deps, id);
-						return now === null ? undefined : tintOf(now);
-					},
-					pick: (color) => {
-						const now = cardNodeOf(deps, id);
-						if (now !== null) deps.setColor(now, color);
-					},
-				});
-			});
-			moreButton(actions, deps, id);
-			let worn = '';
+			let card: EntityCard | null = null;
 			const dress = (next: PaintContext): void => {
 				const node = deps.node(id);
 				if (node?.type !== 'character' && node?.type !== 'worldbuilding') return;
-				const icon = deps.icon(node);
-				if (icon !== worn) {
-					worn = icon;
-					setIcon(symbol, icon);
-				}
-				const called = deps.label(node);
-				if (name.textContent !== called) {
-					name.setText(called);
-					setTooltip(name, called);
-				}
-				// The standing is picked from the statuses as a scene's is; a note with none shows the blank the scene's shows.
-				const standing = standingOf(node, t);
-				const options = statusOptions(standing?.tone ?? null, t);
-				const signature = options.map((option) => option.value).join('\n');
-				if (signature !== statusSignature) {
-					statusSignature = signature;
-					fillSelect(status, options);
-				}
-				const tone = standing?.tone ?? '';
-				if (status.value !== tone) status.value = tone;
-				for (const each of PROGRESS_STATUSES) status.toggleClass(`is-${each}`, each === tone);
-				status.disabled = next.readOnly;
-				const held = bodyWordsOf(node);
-				if (words.textContent !== held) words.setText(held);
-				const under = deps.kindWord(node);
-				if (extra.textContent !== under) extra.setText(under);
-				const tint = tintOf(node);
-				if (tint === null) card.removeAttribute('data-color');
-				else if (card.getAttribute('data-color') !== tint) card.setAttribute('data-color', tint);
-				paintPalette(palette, tint, next.readOnly, t);
-				if (next.readOnly) tints.closeFor(palette);
+				const member: EntityMember = node.type === 'character' ? node.character : node.entity;
+				// Dealt bare, a card is dressed by the deck as it is shown and every time after.
+				if (card === null) card = deps.entities.mount(face, id, member, 0);
+				deps.entities.dress(card, member);
 				face.dataset.type = node.type;
 				face.dataset.kind = node.type === 'character' ? 'character' : node.entity.kind;
 				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'card', next.height);
@@ -591,9 +506,12 @@ function cardPainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
 			dress(context);
 			return {
 				dress,
-				settle: () => undefined,
+				settle: () => {
+					if (card !== null) deps.entities.settle(id);
+				},
 				unmount: () => {
-					tints.closeFor(palette);
+					if (card !== null) deps.entities.retire(id);
+					card = null;
 					face.remove();
 				},
 			};
@@ -1261,7 +1179,7 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const text = textPainter(deps, texts);
 	const scene = scenePainter(deps);
 	const tints = createTintPanel(deps);
-	const card = cardPainter(deps, tints);
+	const entity = entityPainter(deps);
 	const task = taskPainter(deps);
 	const thread = threadPainter(deps, parts);
 	const revision = revisionPainter(deps, parts);
@@ -1275,8 +1193,8 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const painters: Record<string, NodePainter> = {
 		text,
 		scene,
-		character: card,
-		worldbuilding: card,
+		character: entity,
+		worldbuilding: entity,
 		task,
 		foreshadowing: thread,
 		revision,

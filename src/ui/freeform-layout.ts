@@ -61,7 +61,8 @@ export type FreeformFaceKind = 'scene' | 'card' | 'task' | 'thread' | 'revision'
  */
 export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<Record<FreeformFaceMode, number>>>> = {
 	scene: { compact: 80, standard: 240, extended: 304 },
-	card: { compact: 80, standard: 176, extended: 176 },
+	// The card's fullest face adds the picture pane, 16rem at the 16px root the table is in.
+	card: { compact: 80, standard: 176, extended: 432 },
 	task: { compact: 56, standard: 88, extended: 88 },
 	thread: { compact: 72, standard: 200, extended: 200 },
 	revision: { compact: 108, standard: 220, extended: 220 },
@@ -72,15 +73,16 @@ export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<R
 };
 
 /**
- * The faces each kind of node has, barest first. A scene's card has the
- * board's three; every other card its head alone and its head with its
- * body; a file, a link, a text and a stand-in one face, which is all they
- * have to show. A fuller face has no more room in the table above than the
- * fullest a kind has, so it is never asked for.
+ * The faces each kind of node has, barest first. A scene's card and an
+ * entity's have the board's three, the entity's fullest showing its picture;
+ * every other card its head alone and its head with its body; a file, a
+ * link, a text and a stand-in one face, which is all they have to show. A
+ * fuller face has no more room in the table above than the fullest a kind
+ * has, so it is never asked for.
  */
 export const FREEFORM_FACE_MODES_OF: Readonly<Record<FreeformFaceKind, readonly FreeformFaceMode[]>> = {
 	scene: ['compact', 'standard', 'extended'],
-	card: ['compact', 'standard'],
+	card: ['compact', 'standard', 'extended'],
 	task: ['compact', 'standard'],
 	thread: ['compact', 'standard'],
 	revision: ['compact', 'standard'],

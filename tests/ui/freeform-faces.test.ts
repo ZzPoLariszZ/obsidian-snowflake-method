@@ -55,7 +55,8 @@ import { Component, type App } from 'obsidian';
 
 import type { DateFormat, FreeformFrame, FreeformPlacement } from '../../src/domain';
 import { CANVAS_FAR_KIND, CANVAS_FRAME_KIND, type PaintContext } from '../../src/ui/freeform-canvas-port';
-import { createFreeformFaces, type CardNode, type FreeformFaceDeps } from '../../src/ui/freeform-faces';
+import type { EntityCard, EntityMember } from '../../src/ui/entity-card';
+import { createFreeformFaces, type FreeformFaceDeps } from '../../src/ui/freeform-faces';
 import type { ResolvedNode } from '../../src/ui/freeform-resources';
 import type { Task } from '../../src/domain';
 import type { StickyNoteRecord } from '../../src/services';
@@ -133,6 +134,27 @@ function faces(extra: Partial<FreeformFaceDeps> = {}) {
 			held.el.remove();
 		}),
 	};
+	/** And the entity deck's stand-in, keeping the same tallies. */
+	const dealtEntities = new Map<string, { el: CorkboardElement; member: EntityMember; dressed: number; settled: number; retired: number }>();
+	const entities: FreeformFaceDeps['entities'] = {
+		mount: vi.fn((parent: HTMLElement, key: string, member: EntityMember) => {
+			const el = (parent as unknown as CorkboardElement).createDiv({ cls: 'snowflake-method-corkboard-card' });
+			el.setAttribute('data-key', key);
+			dealtEntities.set(key, { el, member, dressed: 0, settled: 0, retired: 0 });
+			return { key, id: member.id, el, member } as unknown as EntityCard;
+		}),
+		dress: vi.fn((card: EntityCard, member: EntityMember) => {
+			const held = dealtEntities.get(card.key)!;
+			held.member = member;
+			held.dressed += 1;
+		}),
+		settle: vi.fn((key: string) => { dealtEntities.get(key)!.settled += 1; }),
+		retire: vi.fn((key: string) => {
+			const held = dealtEntities.get(key)!;
+			held.retired += 1;
+			held.el.remove();
+		}),
+	};
 	const deps = {
 		app: {
 			workspace: { openLinkText: vi.fn(() => Promise.resolve()) },
@@ -159,11 +181,9 @@ function faces(extra: Partial<FreeformFaceDeps> = {}) {
 		today: () => today,
 		dateFormat: (): DateFormat => 'YYYY-MM-DD',
 		locale: () => 'en',
-		kindWord: vi.fn((node: CardNode) => `kind of ${node.placement.id}`),
-		setColor: vi.fn(),
-		setStatus: vi.fn(),
 		setFrameColor: vi.fn(),
 		scenes,
+		entities,
 		...extra,
 	} satisfies FreeformFaceDeps;
 	const made = createFreeformFaces(deps);
@@ -173,7 +193,7 @@ function faces(extra: Partial<FreeformFaceDeps> = {}) {
 		return { body, painted, face: body.children[0]! };
 	};
 	return {
-		dom, deps, made, nodes, frames, mount, dealt,
+		dom, deps, made, nodes, frames, mount, dealt, dealtEntities,
 		children: (component as unknown as { children: Set<unknown> }).children,
 		edit: (id: string | null) => { editing = id; },
 		setToday: (day: string) => { today = day; },
@@ -544,14 +564,14 @@ describe('the way to a node’s menu', () => {
 		const { nodes, frames, mount, deps } = faces();
 		nodes.set('t1', textNode('t1', 'One'));
 		nodes.set('s1', { type: 'pending', placement: placement('s1'), of: 'task' });
-		nodes.set('c1', { type: 'character', placement: placement('c1'), character: characterModel() });
 		nodes.set('k1', { type: 'task', placement: placement('k1'), task: taskModel });
 		nodes.set('f2', { type: 'foreshadowing', placement: placement('f2'), item: threadModel });
 		nodes.set('r1', { type: 'revision', placement: placement('r1'), row: revisionModel });
 		nodes.set('n1', { type: 'sticky-note', placement: placement('n1'), note: noteModel });
 		frames.set('f1', { id: 'f1', title: 'Act', color: null, x: 0, y: 0, width: 400, height: 300, zIndex: 0 });
+		// A scene's and an entity's faces hold the decks' own cards, whose menu button is the card's and wired by its deck.
 		const faced = [
-			['text', 't1'], ['pending', 's1'], ['character', 'c1'], ['task', 'k1'], ['foreshadowing', 'f2'], ['revision', 'r1'], ['sticky-note', 'n1'], [CANVAS_FRAME_KIND, 'f1'],
+			['text', 't1'], ['pending', 's1'], ['task', 'k1'], ['foreshadowing', 'f2'], ['revision', 'r1'], ['sticky-note', 'n1'], [CANVAS_FRAME_KIND, 'f1'],
 		] as const;
 		for (const [kind, id] of faced) {
 			const { face } = mount(kind, id);
@@ -786,141 +806,61 @@ const noteModel: StickyNoteRecord = {
 const partsOf = (host: CorkboardElement, names: Record<string, string>): string[] =>
 	host.children.map((child) => Object.entries(names).find(([cls]) => child.classes.has(cls))?.[1] ?? '?');
 
-describe('a card’s face', () => {
-	const CARD_PARTS = { 'snowflake-method-corkboard-head': 'head', 'snowflake-method-corkboard-body': 'body', 'snowflake-method-corkboard-footer': 'foot' };
-
-	it('shows a character in the scene card’s shape: symbol, name and standing at the head, the storyline as the body, and on the foot its kind, its palette and the way to its menu', () => {
-		const { nodes, mount, deps } = faces();
-		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 400 }), character: characterModel() });
-		const { face, painted } = mount('character', 'c1', context({ height: 400 }));
+describe('an entity’s face', () => {
+	it('is the deck’s own card, dealt as the face is raised and dressed with it, in the style its box has room for', () => {
+		const { nodes, mount, deps, dealtEntities } = faces();
+		const anna = characterModel();
+		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 176 }), character: anna });
+		const { face, painted } = mount('character', 'c1', context({ height: 176 }));
 		expect(face.classes.has('is-card')).toBe(true);
 		expect(face.dataset).toMatchObject({ type: 'character', kind: 'character', mode: 'standard' });
-		const card = face.children[0]!;
-		expect(card.classes.has('snowflake-method-corkboard-card')).toBe(true);
-		expect(partsOf(card, CARD_PARTS)).toEqual(['head', 'body', 'foot']);
-		expect(icons.map((entry) => entry.icon)).toEqual(['palette', 'ellipsis', 'icon-character']);
-		// The foot says the kind the workspace names, and carries the palette ahead of the way to the menu.
-		expect(deps.kindWord).toHaveBeenCalledWith(nodes.get('c1'));
-		const actions = face.querySelector('.snowflake-method-corkboard-actions')!;
-		expect(actions.children.map((child) => (child.classes.has('snowflake-method-corkboard-color') ? 'palette' : 'more'))).toEqual(['palette', 'more']);
-		expect(card.querySelector('.snowflake-method-corkboard-symbol')).not.toBeNull();
-		expect(face.querySelector('.snowflake-method-freeform-card-title')!.textContent).toBe('called c1');
-		// The standing is the scene card's own select, which lists the statuses and is written to the note on a pick.
-		const status = face.querySelector('.snowflake-method-freeform-card-status')!;
-		expect(status.value).toBe('complete');
-		expect(status.classes.has('is-complete')).toBe(true);
-		expect(status.classes.has('snowflake-method-entity-status')).toBe(true);
-		expect(status.classes.has('snowflake-method-corkboard-status-select')).toBe(true);
-		expect(status.getAttribute('aria-label')).toBe('table.progressStatus');
-		expect(status.children.map((option) => option.getAttribute('value'))).toEqual(['not-started', 'in-progress', 'in-revision', 'complete']);
-		expect(status.disabled).toBe(false);
-		status.value = 'in-progress';
-		status.dispatch('change');
-		expect(deps.setStatus).toHaveBeenLastCalledWith(nodes.get('c1'), 'in-progress');
-		expect(face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('Wants out');
-		expect(face.querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('kind of c1');
-		// The way to the menu stands at the foot's end, where a scene keeps its own; nothing else on the card is typed into.
-		expect(face.querySelector('.snowflake-method-corkboard-actions')!.querySelector('.snowflake-method-freeform-node-more')).not.toBeNull();
-		expect(face.querySelectorAll('textarea')).toEqual([]);
-		expect(face.querySelectorAll('input')).toEqual([]);
-		expect(face.querySelectorAll('select')).toHaveLength(1);
-		painted.dress(context({ height: 400, selected: true }));
-		expect(face.classes.has('is-selected')).toBe(true);
-		// A note with no standing shows the blank the scene's shows, with the statuses still on offer; a project that cannot be written offers none.
-		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 400 }), character: characterModel({ progressStatus: null, oneSentenceStoryline: 'Wants in' }) });
-		painted.dress(context({ height: 400 }));
-		expect(face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('Wants in');
-		expect(status.value).toBe('');
-		expect(status.children.map((option) => option.getAttribute('value'))).toEqual(['', 'not-started', 'in-progress', 'in-revision', 'complete']);
-		expect(status.classes.has('is-complete')).toBe(false);
-		painted.dress(context({ height: 400, readOnly: true }));
-		expect(status.disabled).toBe(true);
-		painted.unmount();
-		expect(face.parent).toBeNull();
-	});
-
-	it('shows a worldbuilding note’s description as the body, and its kind on the foot', () => {
-		const { nodes, mount, deps } = faces();
-		nodes.set('w1', { type: 'worldbuilding', placement: placement('w1', { height: 400 }), entity: entityModel() });
-		const harbour = mount('worldbuilding', 'w1', context({ height: 400 }));
-		expect(harbour.face.dataset).toMatchObject({ type: 'worldbuilding', kind: 'location' });
-		expect(harbour.face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('A harbour');
-		expect(harbour.face.querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('kind of w1');
-		expect(harbour.face.querySelector('.snowflake-method-freeform-card-status')!.value).toBe('');
-		nodes.set('w2', {
-			type: 'worldbuilding',
-			placement: placement('w2', { height: 400 }),
-			entity: entityModel({ id: 'time-1', kind: 'time', timeKind: 'period', description: 'The season', progressStatus: 'in-progress' }),
-		});
-		const season = mount('worldbuilding', 'w2', context({ height: 400 }));
-		expect(season.face.dataset.kind).toBe('time');
-		expect(season.face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('The season');
-		expect(season.face.querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('kind of w2');
-		expect(season.face.querySelector('.snowflake-method-freeform-card-status')!.value).toBe('in-progress');
-		season.face.querySelector('.snowflake-method-freeform-card-status')!.value = 'complete';
-		season.face.querySelector('.snowflake-method-freeform-card-status')!.dispatch('change');
-		expect(deps.setStatus).toHaveBeenLastCalledWith(nodes.get('w2'), 'complete');
-	});
-
-	it('wears the tint its note has, and hangs the swatches from its palette, which give the tint to the workspace to write', () => {
-		const { nodes, mount, deps, dom, made } = faces();
-		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 400 }), character: characterModel({ color: 'macaron-3' }) });
-		const { face, painted } = mount('character', 'c1', context({ height: 400 }));
-		const card = face.children[0]!;
-		expect(card.getAttribute('data-color')).toBe('macaron-3');
-		const palette = face.querySelector('.snowflake-method-corkboard-color')!;
-		expect(palette.getAttribute('aria-label')).toBe('corkboard.colorLabel');
-		expect(palette.getAttribute('aria-haspopup')).toBe('dialog');
-		expect(palette.disabled).toBe(false);
-		const panelOf = () => dom.container.querySelector('.snowflake-method-corkboard-color-panel');
-		// A press hangs the swatches, the tint worn among them chosen; a press again puts them away.
-		expect(fire(palette, 'click').stopped).toBe(1);
-		const panel = panelOf()!;
-		expect(panel.getAttribute('role')).toBe('dialog');
-		const swatches = panel.querySelector('.snowflake-method-sticky-swatches')!.querySelectorAll('.snowflake-method-sticky-swatch');
-		expect(swatches.find((swatch) => swatch.classes.has('is-selected'))?.getAttribute('data-color')).toBe('macaron-3');
-		fire(palette, 'click');
-		expect(panelOf()).toBeNull();
-		// A swatch picked is handed to the workspace with the node as it stands now, and the panel goes.
-		fire(palette, 'click');
-		const first = panelOf()!.querySelector('.snowflake-method-sticky-swatches')!.querySelectorAll('.snowflake-method-sticky-swatch');
-		first[1]!.dispatch('click');
-		expect(deps.setColor).toHaveBeenLastCalledWith(nodes.get('c1'), 'macaron-1');
-		expect(panelOf()).toBeNull();
-		fire(palette, 'click');
-		panelOf()!.querySelector('.snowflake-method-sticky-swatches')!.querySelectorAll('.snowflake-method-sticky-swatch')[0]!.dispatch('click');
-		expect(deps.setColor).toHaveBeenLastCalledWith(nodes.get('c1'), null);
-		// The tint written comes back with the reading, and a note with none wears none.
-		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 400 }), character: characterModel({ color: null }) });
-		painted.dress(context({ height: 400 }));
-		expect(card.getAttribute('data-color')).toBeNull();
-		// Read-only, the palette sleeps and any panel it hung goes; the workspace can put one away too.
-		fire(palette, 'click');
-		expect(panelOf()).not.toBeNull();
-		painted.dress(context({ height: 400, readOnly: true }));
-		expect(palette.disabled).toBe(true);
-		expect(panelOf()).toBeNull();
-		painted.dress(context({ height: 400 }));
-		fire(palette, 'click');
-		made.closeColorPanel();
-		expect(panelOf()).toBeNull();
-		fire(palette, 'click');
-		painted.unmount();
-		expect(panelOf()).toBeNull();
-	});
-
-	it('shows, on Auto, the fullest face the zoom allows that the box has room for', () => {
-		const { nodes, mount } = faces();
-		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 200 }), character: characterModel() });
-		const { face, painted } = mount('character', 'c1', context({ height: 200 }));
-		// A card's fullest face is its standard one, however near the canvas is looked at.
+		expect(deps.entities.mount).toHaveBeenCalledExactlyOnceWith(face, 'c1', anna, 0);
+		expect(dealtEntities.get('c1')).toMatchObject({ dressed: 1, settled: 0, retired: 0 });
+		expect(face.children[0]!.classes.has('snowflake-method-corkboard-card')).toBe(true);
+		// Dressed again, the one card is dressed with the note as it stands now; the fullest face shows in a box grown to it.
+		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 432 }), character: characterModel({ name: 'Anna' }) });
+		painted.dress(context({ height: 432, band: 'extended' }));
+		expect(deps.entities.mount).toHaveBeenCalledTimes(1);
+		expect(dealtEntities.get('c1')).toMatchObject({ dressed: 2 });
+		expect(dealtEntities.get('c1')!.member.name).toBe('Anna');
+		expect(face.dataset.mode).toBe('extended');
+		painted.dress(context({ height: 431, band: 'extended' }));
 		expect(face.dataset.mode).toBe('standard');
 		painted.dress(context({ height: 40 }));
 		expect(face.dataset.mode).toBe('compact');
-		painted.dress(context({ height: 400, band: 'compact' }));
+		painted.dress(context({ height: 432, band: 'far' }));
 		expect(face.dataset.mode).toBe('compact');
-		painted.dress(context({ height: 400, band: 'far' }));
-		expect(face.dataset.mode).toBe('compact');
+		painted.dress(context({ height: 432, selected: true }));
+		expect(face.classes.has('is-selected')).toBe(true);
+		// The face hands its card's open words and its taking down to the deck.
+		painted.settle();
+		expect(deps.entities.settle).toHaveBeenCalledExactlyOnceWith('c1');
+		painted.unmount();
+		expect(deps.entities.retire).toHaveBeenCalledExactlyOnceWith('c1');
+		expect(face.parent).toBeNull();
+	});
+
+	it('deals a worldbuilding note the same card, named by its kind, and deals none for a node that is no entity', () => {
+		const { nodes, mount, deps } = faces();
+		const harbourModel = entityModel();
+		nodes.set('w1', { type: 'worldbuilding', placement: placement('w1', { height: 176 }), entity: harbourModel });
+		const harbour = mount('worldbuilding', 'w1', context({ height: 176 }));
+		expect(harbour.face.dataset).toMatchObject({ type: 'worldbuilding', kind: 'location', mode: 'standard' });
+		expect(deps.entities.mount).toHaveBeenLastCalledWith(harbour.face, 'w1', harbourModel, 0);
+		nodes.set('w2', {
+			type: 'worldbuilding',
+			placement: placement('w2', { height: 176 }),
+			entity: entityModel({ id: 'time-1', kind: 'time', timeKind: 'period', description: 'The season' }),
+		});
+		expect(mount('worldbuilding', 'w2', context({ height: 176 })).face.dataset.kind).toBe('time');
+		nodes.set('t1', textNode('t1', 'words'));
+		const other = mount('character', 't1');
+		expect(deps.entities.mount).toHaveBeenCalledTimes(2);
+		other.painted.settle();
+		other.painted.unmount();
+		expect(deps.entities.settle).not.toHaveBeenCalled();
+		expect(deps.entities.retire).not.toHaveBeenCalled();
+		expect(other.face.parent).toBeNull();
 	});
 });
 

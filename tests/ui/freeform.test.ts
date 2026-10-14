@@ -1989,7 +1989,7 @@ describe('nodes added by type', () => {
 		expect(fixture.viewHeld('a').placements).toHaveLength(6);
 		// A character's face is a card in the scene card's shape.
 		expect(fixture.face(added[0]!).classes.has('is-card')).toBe(true);
-		expect(fixture.face(added[0]!).querySelector('.snowflake-method-freeform-card-title')!.textContent).toBe('Anna');
+		expect(fixture.face(added[0]!).querySelector('.snowflake-method-corkboard-title')!.textContent).toBe('Anna');
 		expect(fixture.face(added[1]!).classes.has('is-missing')).toBe(true);
 	});
 
@@ -2074,26 +2074,30 @@ describe('what a node opens', () => {
 			],
 		})]);
 		await settle();
-		expect(fixture.face('c1').querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('form.group.character');
-		expect(fixture.face('w1').querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('worldbuilding.kind.location');
+		expect(fixture.face('c1').querySelector('.snowflake-method-corkboard-word')!.textContent).toBe('form.group.character');
+		expect(fixture.face('w1').querySelector('.snowflake-method-corkboard-word')!.textContent).toBe('worldbuilding.kind.location');
 		const swatchesOf = (): CorkboardElement[] =>
 			fixture.dom.container.querySelector('.snowflake-method-corkboard-color-panel')!.querySelector('.snowflake-method-sticky-swatches')!.querySelectorAll('.snowflake-method-sticky-swatch');
 		fire(fixture.face('c1').querySelector('.snowflake-method-corkboard-color')!, 'click');
 		swatchesOf()[2]!.dispatch('click');
-		expect(fixture.host.patchCharacter).toHaveBeenCalledWith('char-1', { expectedRevision: 'c1', color: 'macaron-2' }, 'P');
+		// The write goes through the deck's queue, as a scene card's does.
 		await settle();
+		expect(fixture.host.patchCharacter).toHaveBeenCalledWith('char-1', { expectedRevision: 'c1', color: 'macaron-2' }, 'P');
 		expect(fixture.refresh).toHaveBeenCalled();
 		fire(fixture.face('w1').querySelector('.snowflake-method-corkboard-color')!, 'click');
 		swatchesOf()[0]!.dispatch('click');
+		await settle();
 		expect(fixture.host.patchEntity).toHaveBeenCalledWith('loc-1', { expectedRevision: 'w1', color: null }, 'P');
 		// The standing is picked on the card as a scene's is, and written to the note the same way.
-		const standing = fixture.face('c1').querySelector('.snowflake-method-freeform-card-status')!;
+		const standing = fixture.face('c1').querySelector('.snowflake-method-corkboard-status-select')!;
 		standing.value = 'in-progress';
 		standing.dispatch('change');
+		await settle();
 		expect(fixture.host.patchCharacter).toHaveBeenCalledWith('char-1', { expectedRevision: 'c1', progressStatus: 'in-progress' }, 'P');
-		const place = fixture.face('w1').querySelector('.snowflake-method-freeform-card-status')!;
+		const place = fixture.face('w1').querySelector('.snowflake-method-corkboard-status-select')!;
 		place.value = 'complete';
 		place.dispatch('change');
+		await settle();
 		expect(fixture.host.patchEntity).toHaveBeenCalledWith('loc-1', { expectedRevision: 'w1', progressStatus: 'complete' }, 'P');
 		// On a project that cannot be written the palette sleeps.
 		const held = workspace([view('a', {
@@ -2127,7 +2131,7 @@ describe('what a node opens', () => {
 		expect(fixture.menuAt({ kind: 'node', id: 'm1' })!.map((item) => item.title)).toEqual([
 			...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
-		// A note's card offers its two faces.
+		// A note's card offers its three faces, the fullest showing its picture.
 		expect(fixture.menuAt({ kind: 'node', id: 'c1' })!.map((item) => item.title)).toEqual([
 			'actions.edit', 'common.open', ...CARD_DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
@@ -3060,7 +3064,7 @@ describe('copies, the clipboard and the order nodes stand in', () => {
 
 /** The faces a scene's card offers; every other card offers two, and a text, a file, a link and a stand-in offer none to choose. */
 const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
-const CARD_DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard'];
+const CARD_DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
 /** What a menu offers one node alone. */
 const SINGLE_ITEMS = ['freeformCanvas.node.connect', 'freeformCanvas.node.geometry'];
 /** What a menu offers whatever is chosen: a copy of it, and its place among its neighbours. */
