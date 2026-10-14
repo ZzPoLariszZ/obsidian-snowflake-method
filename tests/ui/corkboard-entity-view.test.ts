@@ -129,7 +129,7 @@ function board(view: CorkboardView, options: { characters?: CharacterViewModel[]
 	let handle: CorkboardHandle;
 	const refresh = vi.fn(async () => { handle.refresh(); });
 	const choose = vi.fn();
-	const memory = view === 'scene' ? corkboardMemory() : entityCorkboardMemory(view, { mode: 'standard', reversed: false });
+	const memory = view === 'scene' ? corkboardMemory() : entityCorkboardMemory(view, { mode: 'standard', group: '', reversed: false });
 	const controls = {
 		app: { metadataCache: { getFirstLinkpathDest: () => null }, vault: { getResourcePath: () => '' } },
 		host, t: (key: string, vars?: Record<string, string | number>) => (vars === undefined ? key : `${key}:${Object.values(vars).join('/')}`),

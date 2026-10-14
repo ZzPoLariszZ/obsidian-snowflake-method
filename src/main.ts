@@ -358,9 +358,11 @@ import {
 	SnowflakeStoryStructureView,
 } from './ui/story-structure-view';
 import {
+	CORKBOARD_SCENE_VIEW,
 	DEFAULT_STORY_STRUCTURE_VISUALIZATION,
 	readCorkboardPreferences,
 	type CorkboardPreferences,
+	type CorkboardView,
 	type StoryStructureVisualization,
 } from './ui/story-structure-state';
 import { renderCorkboard } from './ui/corkboard';
@@ -1269,8 +1271,8 @@ export default class SnowflakeMethodPlugin
 					host: this,
 					fingerprint: () => `${this.settings.uiLocale}|${moment.locale()}`,
 					recentProjectPath: () => this.settings.recentProjectPath,
-					corkboardPreferences: (projectId) => this.corkboardPreferences(projectId),
-					rememberCorkboardPreferences: (projectId, changes, onlyIfMissing) => this.rememberCorkboardPreferences(projectId, changes, onlyIfMissing),
+					corkboardPreferences: (projectId, view) => this.corkboardPreferences(projectId, view),
+					rememberCorkboardPreferences: (projectId, changes, onlyIfMissing, view) => this.rememberCorkboardPreferences(projectId, changes, onlyIfMissing, view),
 					corkboard: renderCorkboard,
 					timeline: renderTimeline,
 					beatSheet: renderBeatSheet,
@@ -6755,14 +6757,21 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	private corkboardPreferences(projectId: string): Partial<CorkboardPreferences> {
+	/** Where a project's defaults for a view of the board are kept: the scene view's under the key every build has read, the others' under it by view. */
+	private corkboardPreferenceKey(projectId: string, view?: CorkboardView): string {
+		return view === undefined || view === CORKBOARD_SCENE_VIEW
+			? `${CORKBOARD_PREFERENCES_KEY}:${projectId}`
+			: `${CORKBOARD_PREFERENCES_KEY}:${projectId}:${view}`;
+	}
+
+	private corkboardPreferences(projectId: string, view?: CorkboardView): Partial<CorkboardPreferences> {
 		return readCorkboardPreferences(
-			this.app.loadLocalStorage(`${CORKBOARD_PREFERENCES_KEY}:${projectId}`) as unknown,
+			this.app.loadLocalStorage(this.corkboardPreferenceKey(projectId, view)) as unknown,
 		);
 	}
 
-	private rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing = false): void {
-		const key = `${CORKBOARD_PREFERENCES_KEY}:${projectId}`;
+	private rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing = false, view?: CorkboardView): void {
+		const key = this.corkboardPreferenceKey(projectId, view);
 		const raw: unknown = this.app.loadLocalStorage(key);
 		const saved = typeof raw === 'object' && raw !== null && !Array.isArray(raw)
 			? raw as Record<string, unknown> : {};

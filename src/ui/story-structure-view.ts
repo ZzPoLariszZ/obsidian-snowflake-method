@@ -37,7 +37,7 @@ import type {
 import type { MountFreeformCanvas } from './freeform-canvas-port';
 import type { Translate } from './modals';
 import { renderTabStrip } from './pane-parts';
-import type { EntityFilters } from './entity-filters';
+import { isEntityGroupField, type EntityFilters } from './entity-filters';
 import { clearSceneFilters, type SceneFilters } from './scene-filters';
 import {
 	STORY_STRUCTURE_FAMILIES,
@@ -47,6 +47,7 @@ import {
 	familyVisualization,
 	CORKBOARD_SCENE_VIEW,
 	corkboardViewAvailable,
+	defaultCorkboardViewSettings,
 	entityCorkboardMemory,
 	freeformMemory,
 	isCorkboardGroupField,
@@ -58,6 +59,7 @@ import {
 	type CorkboardGroupField,
 	type CorkboardMemory,
 	type CorkboardView,
+	type CorkboardViewSettings,
 	type CorkboardPreferences,
 	type FreeformMemory,
 	type StoryStructureViewStateSnapshot,
@@ -81,8 +83,9 @@ export interface StoryStructureViewDeps {
 	 */
 	fingerprint(): string;
 	recentProjectPath(): string | null;
-	corkboardPreferences(projectId: string): Partial<CorkboardPreferences>;
-	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean): void;
+	/** A project's defaults for a view of the board; the scene view's where none is named. */
+	corkboardPreferences(projectId: string, view?: CorkboardView): Partial<CorkboardPreferences>;
+	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean, view?: CorkboardView): void;
 	corkboard: RenderCorkboard;
 	timeline: RenderTimeline;
 	beatSheet: RenderBeatSheet;
@@ -95,11 +98,11 @@ export interface StoryStructureViewDeps {
 
 export class SnowflakeStoryStructureView extends ItemView {
 	private state: StoryStructureViewStateSnapshot = defaultStoryStructureState();
-	/** The scene view's memory, whose card style and direction every other view of the board shares. */
+	/** The scene view's memory, which the pools of the other workspaces deal from too. */
 	private readonly memory: CorkboardMemory = corkboardMemory();
 	/** The view the corkboard tab shows. */
 	private corkboardView: CorkboardView = CORKBOARD_SCENE_VIEW;
-	/** The character and worldbuilding views' memories, each made when first shown and kept for the session. */
+	/** The character and worldbuilding views' memories, each made when first shown, its settings the tab's and the project's. */
 	private readonly entityMemories = new Map<CorkboardView, CorkboardMemory<EntityFilters>>();
 	private model: ProjectDashboardModel | null = null;
 	private board: CorkboardHandle | TimelineHandle | BeatSheetHandle | FreeformHandle | null = null;
@@ -197,6 +200,13 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.memory.group = update.state.corkboard.group;
 		this.memory.reversed = update.state.corkboard.reversed;
 		this.corkboardView = update.state.corkboard.view;
+		for (const [view, settings] of Object.entries(update.state.corkboard.views)) {
+			const held = this.entityMemories.get(view);
+			if (held === undefined) continue;
+			held.mode = settings.mode;
+			held.group = settings.group;
+			held.reversed = settings.reversed;
+		}
 		this.timelineMemory.pool.mode = update.state.timeline.pool.mode;
 		this.timelineMemory.pool.group = update.state.timeline.pool.group;
 		this.timelineMemory.pool.reversed = update.state.timeline.pool.reversed;
@@ -223,8 +233,17 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	private snapshot(): StoryStructureViewStateSnapshot {
-		// A board's memory gathers by any field of its view; the layout keeps only the scene view's.
+		// The scene view's memory, which the pools share, gathers by a scene field alone.
 		const groupSetting = (group: string): CorkboardGroupField | '' => (isCorkboardGroupField(group) ? group : '');
+		// Every other view's settings: the ones the layout named and the tab has not shown, under the ones it has.
+		const views: Record<string, CorkboardViewSettings> = { ...this.state.corkboard.views };
+		for (const [view, memory] of this.entityMemories) {
+			views[view] = {
+				mode: memory.mode,
+				group: isEntityGroupField(memory.group) ? memory.group : '',
+				reversed: memory.reversed,
+			};
+		}
 		return {
 			projectPath: this.state.projectPath,
 			visualization: this.state.visualization,
@@ -233,6 +252,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 				group: groupSetting(this.memory.group),
 				reversed: this.memory.reversed,
 				view: this.corkboardView,
+				views,
 			},
 			timeline: {
 				pool: {
@@ -456,19 +476,34 @@ export class SnowflakeStoryStructureView extends ItemView {
 
 	/**
 	 * The memory of the view shown: the scene view's own, or one made for a
-	 * character or worldbuilding view when first shown. The card style and
-	 * the direction are the project's own and come from the scene view's each
-	 * time, so a choice made on any view holds on every other.
+	 * character or worldbuilding view when first shown, from the settings the
+	 * tab's layout kept for it, else the project's own defaults for that view,
+	 * else the board's. Each view keeps its own card style, grouping and
+	 * direction, so a choice made on one holds on no other.
 	 */
 	private corkboardMemoryFor(view: CorkboardView): CorkboardMemory<SceneFilters> | CorkboardMemory<EntityFilters> {
 		if (view === CORKBOARD_SCENE_VIEW) return this.memory;
 		let held = this.entityMemories.get(view);
 		if (held === undefined) {
-			held = entityCorkboardMemory(view, this.memory);
+			const projectId = this.model?.projectId ?? null;
+			const saved = projectId === null ? {} : this.deps.corkboardPreferences(projectId, view);
+			const kept = this.state.corkboard.views[view];
+			const settings: CorkboardViewSettings = {
+				...defaultCorkboardViewSettings(),
+				...saved,
+				...(kept ?? {}),
+			};
+			held = entityCorkboardMemory(view, settings);
 			this.entityMemories.set(view, held);
+			// A view the project has no defaults for yet takes the ones it opens with, as the scene view does.
+			if (projectId !== null) {
+				const missing = {
+					...(saved.mode === undefined ? { mode: settings.mode } : {}),
+					...(saved.reversed === undefined ? { reversed: settings.reversed } : {}),
+				};
+				if (Object.keys(missing).length > 0) this.deps.rememberCorkboardPreferences(projectId, missing, true, view);
+			}
 		}
-		held.mode = this.memory.mode;
-		held.reversed = this.memory.reversed;
 		return held;
 	}
 
@@ -550,12 +585,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 			popover: this.filterPanel.lend(),
 			memory: this.corkboardMemoryFor(this.corkboardView),
 			remember: (changes) => {
-				// The two project preferences live on the scene view's memory, whichever view chose them.
-				if (changes?.mode !== undefined) this.memory.mode = changes.mode;
-				if (changes?.reversed !== undefined) this.memory.reversed = changes.reversed;
+				// The board wrote the change on the view's own memory; the layout and the project's defaults for that view follow.
 				this.app.workspace.requestSaveLayout();
 				if (changes !== undefined && this.model !== null) {
-					this.deps.rememberCorkboardPreferences(this.model.projectId, changes);
+					this.deps.rememberCorkboardPreferences(this.model.projectId, changes, false, this.corkboardView);
 				}
 			},
 			views: {

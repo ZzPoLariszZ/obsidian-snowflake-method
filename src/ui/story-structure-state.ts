@@ -7,7 +7,7 @@
  */
 
 import type { WorldbuildingKindId } from '../domain';
-import { entityFilters, type EntityFilters } from './entity-filters';
+import { entityFilters, isEntityGroupField, type EntityFilters } from './entity-filters';
 import { sceneFilters, type SceneFilters } from './scene-filters';
 
 export const STORY_STRUCTURE_FAMILIES = [
@@ -114,9 +114,25 @@ export function corkboardViewAvailable(
 	return view === CORKBOARD_SCENE_VIEW || view === CORKBOARD_CHARACTER_VIEW || kinds.some((kind) => kind.id === view);
 }
 
-/** The corkboard tab's own settings: the board's three, and which view it shows. */
+/** How a character or worldbuilding view of the board is set: as the scene view is, gathered by any field of its own. */
+export interface CorkboardViewSettings {
+	mode: CorkboardMode;
+	group: string;
+	reversed: boolean;
+}
+
+/**
+ * The corkboard tab's own settings: the scene view's three, flat as every
+ * build has kept them, which view the tab shows, and every other view's
+ * three by view, each kept since the tab first showed it.
+ */
 export interface CorkboardTabSettings extends CorkboardSettings {
 	view: CorkboardView;
+	views: Record<string, CorkboardViewSettings>;
+}
+
+export function defaultCorkboardViewSettings(): CorkboardViewSettings {
+	return { mode: 'standard', group: '', reversed: false };
 }
 
 /** Project defaults for newly opened tabs; grouping and filters stay in the tab. */
@@ -195,7 +211,7 @@ export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 	return {
 		projectPath: null,
 		visualization: DEFAULT_STORY_STRUCTURE_VISUALIZATION,
-		corkboard: { mode: 'standard', group: '', reversed: false, view: CORKBOARD_SCENE_VIEW },
+		corkboard: { mode: 'standard', group: '', reversed: false, view: CORKBOARD_SCENE_VIEW, views: {} },
 		timeline: defaultTimelineSettings(),
 		beatSheet: defaultBeatSheetSettings(),
 		freeform: defaultFreeformSettings(),
@@ -218,21 +234,53 @@ function mergeCorkboardSettings(current: CorkboardSettings, value: unknown): Cor
 	};
 }
 
-const sameCorkboardSettings = (left: CorkboardSettings, right: CorkboardSettings): boolean =>
+const sameCorkboardSettings = (left: CorkboardSettings | CorkboardViewSettings, right: CorkboardSettings | CorkboardViewSettings): boolean =>
 	left.mode === right.mode && left.group === right.group && left.reversed === right.reversed;
 
+const sameCorkboardViews = (
+	left: Record<string, CorkboardViewSettings>,
+	right: Record<string, CorkboardViewSettings>,
+): boolean => {
+	const names = Object.keys(left);
+	if (names.length !== Object.keys(right).length) return false;
+	return names.every((name) => {
+		const other = right[name];
+		const own = left[name];
+		return other !== undefined && own !== undefined && sameCorkboardSettings(own, other);
+	});
+};
+
+/** An entity view's three taken one by one over the current ones; its grouping is any field of its own. */
+function mergeCorkboardViewSettings(current: CorkboardViewSettings, value: unknown): CorkboardViewSettings {
+	const board =
+		typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+	return {
+		mode: isCorkboardMode(board.mode) ? board.mode : current.mode,
+		group: board.group === '' || isEntityGroupField(board.group) ? board.group : current.group,
+		reversed: typeof board.reversed === 'boolean' ? board.reversed : current.reversed,
+	};
+}
+
 /**
- * The tab's settings over the current ones: the board's three one by one, and
- * the view where one is named. A layout saved before views existed names none
- * and stays on the scenes; one naming a kind the project no longer has is
- * taken here and falls back where the model is known.
+ * The tab's settings over the current ones: the scene view's three one by
+ * one, the view where one is named, and every other view's three by view,
+ * over the ones the tab already holds. A layout saved before views existed
+ * names none and stays on the scenes; one naming a kind the project no
+ * longer has is taken here and falls back where the model is known.
  */
 function mergeCorkboardTabSettings(current: CorkboardTabSettings, value: unknown): CorkboardTabSettings {
 	const board =
 		typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+	const views: Record<string, CorkboardViewSettings> = { ...current.views };
+	const named = typeof board.views === 'object' && board.views !== null ? (board.views as Record<string, unknown>) : {};
+	for (const [view, settings] of Object.entries(named)) {
+		if (!isCorkboardView(view) || view === CORKBOARD_SCENE_VIEW) continue;
+		views[view] = mergeCorkboardViewSettings(views[view] ?? defaultCorkboardViewSettings(), settings);
+	}
 	return {
 		...mergeCorkboardSettings(current, value),
 		view: isCorkboardView(board.view) ? board.view : current.view,
+		views,
 	};
 }
 
@@ -326,6 +374,7 @@ export function mergeStoryStructureViewState(
 			state.visualization !== current.visualization ||
 			!sameCorkboardSettings(state.corkboard, current.corkboard) ||
 			state.corkboard.view !== current.corkboard.view ||
+			!sameCorkboardViews(state.corkboard.views, current.corkboard.views) ||
 			!sameCorkboardSettings(state.timeline.pool, current.timeline.pool) ||
 			state.timeline.poolCollapsed !== current.timeline.poolCollapsed ||
 			state.timeline.timeCollapsed !== current.timeline.timeCollapsed ||
@@ -374,17 +423,17 @@ export function corkboardMemory(settings?: CorkboardSettings): CorkboardMemory {
 }
 
 /**
- * A character or worldbuilding view's memory, lasting the session: the card
- * style and the direction are the project's own and come from the scene
- * view's, the grouping, the search, the funnel and the scroll are the view's.
+ * A character or worldbuilding view's memory: its card style, grouping and
+ * direction are the view's own, as its search, funnel and scroll are, which
+ * last the session.
  */
 export function entityCorkboardMemory(
 	view: CorkboardView,
-	settings: Pick<CorkboardSettings, 'mode' | 'reversed'>,
+	settings: CorkboardViewSettings,
 ): CorkboardMemory<EntityFilters> {
 	return {
 		mode: settings.mode,
-		group: '',
+		group: settings.group,
 		reversed: settings.reversed,
 		view,
 		query: '',

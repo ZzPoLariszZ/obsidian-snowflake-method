@@ -23,7 +23,7 @@ vi.mock('obsidian', async (importOriginal) => {
 import SnowflakeMethodPlugin from '../../src/main';
 import type { CorkboardControls } from '../../src/ui/corkboard-bridge';
 import { sceneFilters } from '../../src/ui/scene-filters';
-import type { CorkboardPreferences } from '../../src/ui/story-structure-state';
+import type { CorkboardPreferences, CorkboardView } from '../../src/ui/story-structure-state';
 import { SnowflakeStoryStructureView } from '../../src/ui/story-structure-view';
 import type { DashboardHost, ProjectDashboardModel } from '../../src/ui/view-model';
 
@@ -31,8 +31,8 @@ const firstProject = 'First/First.md';
 const secondProject = 'Second/Second.md';
 const firstProjectId = 'project-first';
 const secondProjectId = 'project-second';
-const preferenceKey = (projectId: string): string =>
-	`snowflake-method-corkboard-preferences:${projectId}`;
+const preferenceKey = (projectId: string, view?: string): string =>
+	view === undefined ? `snowflake-method-corkboard-preferences:${projectId}` : `snowflake-method-corkboard-preferences:${projectId}:${view}`;
 
 function preferenceStore(initial: Record<string, unknown> = {}) {
 	const stored = new Map(Object.entries(initial));
@@ -41,15 +41,15 @@ function preferenceStore(initial: Record<string, unknown> = {}) {
 		saveLocalStorage: vi.fn((key: string, value: unknown) => { stored.set(key, value); }),
 	};
 	const plugin = Object.create(SnowflakeMethodPlugin.prototype) as {
-		corkboardPreferences(projectId: string): Partial<CorkboardPreferences>;
-		rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean): void;
+		corkboardPreferences(projectId: string, view?: CorkboardView): Partial<CorkboardPreferences>;
+		rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean, view?: CorkboardView): void;
 	};
 	Object.assign(plugin, { app });
 	return {
 		stored, app,
-		read: (projectId: string) => plugin.corkboardPreferences(projectId),
-		write: (projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean) =>
-			plugin.rememberCorkboardPreferences(projectId, changes, onlyIfMissing),
+		read: (projectId: string, view?: CorkboardView) => plugin.corkboardPreferences(projectId, view),
+		write: (projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean, view?: CorkboardView) =>
+			plugin.rememberCorkboardPreferences(projectId, changes, onlyIfMissing, view),
 	};
 }
 
@@ -197,6 +197,38 @@ describe('corkboard preferences across closed tabs', () => {
 
 		expect(first.controls.memory).toMatchObject({ mode: 'standard', reversed: false, group: 'pov', query: 'scene' });
 		expect(store.app.saveLocalStorage).not.toHaveBeenCalled();
+	});
+
+	it('keeps every view of the board its own card style and direction, in the tab and in the project', async () => {
+		const store = preferenceStore({ [preferenceKey(firstProjectId)]: { mode: 'extended', reversed: true } });
+		const first = await openView(store);
+		const tab = first.view as unknown as { showCorkboardView(view: CorkboardView): void; controls(): CorkboardControls; getState(): { corkboard: Record<string, unknown> } };
+		// The character view opens on the board's own defaults, not the scene view's, and takes them as the project's for it.
+		tab.showCorkboardView('character');
+		const characters = tab.controls().memory;
+		expect(characters).toMatchObject({ view: 'character', mode: 'standard', reversed: false, group: '' });
+		expect(store.stored.get(preferenceKey(firstProjectId, 'character'))).toEqual({ mode: 'standard', reversed: false });
+		characters.mode = 'gallery';
+		tab.controls().remember({ mode: 'gallery' });
+		characters.group = 'role';
+		tab.controls().remember();
+		expect(store.stored.get(preferenceKey(firstProjectId, 'character'))).toEqual({ mode: 'gallery', reversed: false });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'extended', reversed: true });
+		expect(tab.getState().corkboard).toMatchObject({
+			mode: 'extended', reversed: true, view: 'character',
+			views: { character: { mode: 'gallery', group: 'role', reversed: false } },
+		});
+		// Back on the scenes, nothing of theirs moved; the layout restores each view's own.
+		tab.showCorkboardView('scene');
+		expect(tab.controls().memory).toMatchObject({ view: 'scene', mode: 'extended', reversed: true });
+		await first.view.onClose();
+		const reopened = await openView(store, firstProject, { view: 'character', views: { character: { mode: 'gallery', group: 'role', reversed: false } } });
+		const again = reopened.view as unknown as { controls(): CorkboardControls };
+		expect(again.controls().memory).toMatchObject({ view: 'character', mode: 'gallery', group: 'role', reversed: false, query: '' });
+		// A tab opened fresh takes the project's defaults for the view, without the grouping.
+		const fresh = await openView(store);
+		(fresh.view as unknown as { showCorkboardView(view: CorkboardView): void }).showCorkboardView('character');
+		expect((fresh.view as unknown as { controls(): CorkboardControls }).controls().memory).toMatchObject({ mode: 'gallery', reversed: false, group: '' });
 	});
 
 	it('applies the project defaults when a view receives a different project', async () => {

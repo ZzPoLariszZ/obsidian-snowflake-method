@@ -27,7 +27,7 @@ import {
 const current: StoryStructureViewStateSnapshot = {
 	projectPath: 'Novel/Novel.md',
 	visualization: 'timeline',
-	corkboard: { mode: 'compact', group: 'pov', reversed: true, view: 'scene' },
+	corkboard: { mode: 'compact', group: 'pov', reversed: true, view: 'scene', views: {} },
 	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
 	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false }, poolCollapsed: false, beatsCollapsed: true },
 	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false, snapObjects: false, readOnly: false },
@@ -44,7 +44,7 @@ describe('story structure restored state', () => {
 			state: {
 				projectPath: null,
 				visualization: 'beat-sheet',
-				corkboard: { mode: 'extended', group: 'color', reversed: true, view: 'scene' },
+				corkboard: { mode: 'extended', group: 'color', reversed: true, view: 'scene', views: {} },
 				timeline: defaultTimelineSettings(),
 				beatSheet: defaultBeatSheetSettings(),
 				freeform: defaultFreeformSettings(),
@@ -67,7 +67,7 @@ describe('story structure restored state', () => {
 		expect(update.state).toEqual({
 			projectPath: current.projectPath,
 			visualization: 'timeline',
-			corkboard: { mode: 'compact', group: '', reversed: true, view: 'scene' },
+			corkboard: { mode: 'compact', group: '', reversed: true, view: 'scene', views: {} },
 			timeline: current.timeline,
 			beatSheet: current.beatSheet,
 			freeform: current.freeform,
@@ -99,10 +99,41 @@ describe('story structure restored state', () => {
 		expect(isCorkboardView(null)).toBe(false);
 	});
 
-	it('makes an entity view its memory from the scene view\'s style and direction, at rest otherwise', () => {
-		const memory = entityCorkboardMemory('character', { mode: 'extended', reversed: true });
+	it('restores every other view\'s settings by view, each field only when it is one of its own', () => {
+		const restored = mergeStoryStructureViewState(current, {
+			corkboard: {
+				view: 'character',
+				views: {
+					character: { mode: 'gallery', group: 'role', reversed: true },
+					location: { mode: 'wide', group: 'pov', reversed: 'yes' },
+					scene: { mode: 'compact', group: 'status', reversed: false },
+					'': { mode: 'compact' },
+				},
+			},
+		});
+		expect(restored.state.corkboard).toEqual({
+			...current.corkboard,
+			view: 'character',
+			views: {
+				character: { mode: 'gallery', group: 'role', reversed: true },
+				location: { mode: 'standard', group: '', reversed: false },
+			},
+		});
+		expect(restored.changed).toBe(true);
+		// The views the tab holds stay under the ones a restored state names; the same settings move nothing.
+		const held: StoryStructureViewStateSnapshot = { ...current, corkboard: { ...current.corkboard, views: { time: { mode: 'compact', group: 'timeKind', reversed: false } } } };
+		const again = mergeStoryStructureViewState(held, { corkboard: { views: { item: { reversed: true } } } });
+		expect(again.state.corkboard.views).toEqual({
+			time: { mode: 'compact', group: 'timeKind', reversed: false },
+			item: { mode: 'standard', group: '', reversed: true },
+		});
+		expect(mergeStoryStructureViewState(held, { corkboard: { views: { time: { group: 'timeKind' } } } }).changed).toBe(false);
+	});
+
+	it('makes an entity view its memory from its own settings, at rest otherwise', () => {
+		const memory = entityCorkboardMemory('character', { mode: 'extended', group: 'role', reversed: true });
 		expect(memory).toEqual({
-			mode: 'extended', group: '', reversed: true, view: 'character', query: '', scrollTop: 0,
+			mode: 'extended', group: 'role', reversed: true, view: 'character', query: '', scrollTop: 0,
 			filters: { status: 'all', category: '', color: '', role: '', timeKind: '' },
 		});
 	});
@@ -321,6 +352,6 @@ describe('story structure restored state', () => {
 			},
 			scrollTop: 0,
 		});
-		expect(corkboardMemory(current.corkboard)).toMatchObject(current.corkboard);
+		expect(corkboardMemory(current.corkboard)).toMatchObject({ mode: 'compact', group: 'pov', reversed: true, view: 'scene' });
 	});
 });
