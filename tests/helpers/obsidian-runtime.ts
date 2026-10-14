@@ -102,6 +102,35 @@ export class Modal {
 	close(): void {}
 }
 /**
+ * The two list dialogs, enough to be subclassed and opened: a test that
+ * drives one mocks the module with a richer stand-in, as the form tests do.
+ */
+export class SuggestModal<T> extends Modal {
+	limit = 0;
+	emptyStateText = '';
+	inputEl = { value: '', focus: (): void => undefined };
+	setPlaceholder(_text: string): this {
+		return this;
+	}
+	setInstructions(_instructions: unknown[]): this {
+		return this;
+	}
+	getSuggestions(_query: string): T[] | Promise<T[]> {
+		return [];
+	}
+	renderSuggestion(_value: T, _el: unknown): void {}
+	onChooseSuggestion(_value: T, _event: unknown): void {}
+}
+export class FuzzySuggestModal<T> extends SuggestModal<T> {
+	getItems(): T[] {
+		return [];
+	}
+	getItemText(_item: T): string {
+		return '';
+	}
+	onChooseItem(_item: T, _event: unknown): void {}
+}
+/**
  * Stands in only so a module that builds one can be imported. The tests
  * exercise the pure helpers beside it, never the input itself, which needs a
  * DOM this runtime does not have.

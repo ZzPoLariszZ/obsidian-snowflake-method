@@ -66,8 +66,18 @@ export class FakeVault {
       file.stat.size = content.length;
     },
   );
+  /**
+   * The bytes of a file made with `createBinary`, kept apart from the text so
+   * a picture never reads as a note. Making one moves the stat as a text
+   * write does.
+   */
+  readonly binaryContents = new Map<string, ArrayBuffer>();
   readonly processCalls: string[] = [];
   readonly createCalls: string[] = [];
+  /** Every binary file made, in order, so a test can tell what a save landed. */
+  readonly createBinaryCalls: string[] = [];
+  /** One simulated write failure for `createBinary`, the way a vault can refuse a picture. */
+  failNextCreateBinaryPath: string | null = null;
   /** Every file opened, so a test can tell a read from an answer already held. */
   readonly readCalls: string[] = [];
   failNextCreatePath: string | null = null;
@@ -137,6 +147,44 @@ export class FakeVault {
     return file;
   }
 
+  async createBinary(path: string, data: ArrayBuffer): Promise<TFile> {
+    const normalized = normalizeFakePath(path);
+    if (this.failNextCreateBinaryPath === normalized) {
+      this.failNextCreateBinaryPath = null;
+      throw new Error(`Simulated binary create failure: ${normalized}`);
+    }
+    if (this.nodes.has(normalized)) throw new Error(`Already exists: ${normalized}`);
+    const parent = this.requireFolder(parentOf(normalized));
+    const file = fakeFile(normalized, parent);
+    parent.children.push(file);
+    this.nodes.set(normalized, file);
+    this.binaryContents.set(normalized, data);
+    this.tick += 1;
+    file.stat.mtime = this.tick;
+    file.stat.size = data.byteLength;
+    this.createBinaryCalls.push(normalized);
+    return file;
+  }
+
+  async readBinary(file: TFile): Promise<ArrayBuffer> {
+    const held = this.binaryContents.get(file.path);
+    if (held !== undefined) return held;
+    // A text file read as bytes answers its words, as the real vault would.
+    const content = this.contents.get(file.path);
+    if (content === undefined) throw new Error(`Missing content: ${file.path}`);
+    return new TextEncoder().encode(content).buffer;
+  }
+
+  /** The address a window loads a file from, as the app serves one: unique per path and stamp. */
+  getResourcePath(file: TFile): string {
+    return `app://fake/${file.path}?${String(file.stat.mtime)}`;
+  }
+
+  /** Every file the vault holds, in no promised order, as `Vault.getFiles` answers. */
+  getFiles(): TFile[] {
+    return [...this.nodes.values()].filter((node): node is FakeFile => "extension" in node);
+  }
+
   async read(file: TFile): Promise<string> {
     if (this.failNextReadPath === file.path) {
       this.failNextReadPath = null;
@@ -196,6 +244,9 @@ export class FakeVault {
       const destination = `${newNormalized}${path.slice(oldNormalized.length)}`;
       const content = this.contents.get(path);
       this.contents.delete(path);
+      const bytes = this.binaryContents.get(path);
+      this.binaryContents.delete(path);
+      if (bytes !== undefined) this.binaryContents.set(destination, bytes);
       movingNode.path = destination;
       movingNode.name = basename(destination);
       if ("extension" in movingNode) movingNode.basename = stem(destination);
@@ -217,6 +268,7 @@ export class FakeVault {
     for (const candidate of doomed) {
       this.nodes.delete(candidate);
       this.contents.delete(candidate);
+      this.binaryContents.delete(candidate);
     }
   }
 
@@ -283,6 +335,28 @@ export class FakeMetadataCache {
         },
       },
     };
+  }
+
+  /**
+   * Which files each note links to, counted per link, as Obsidian's
+   * `resolvedLinks` has it: every `[[...]]` in a note's text, frontmatter
+   * included, resolved from that note. Built afresh on each read, so it
+   * never runs behind the fake's own writes; the real index does, which
+   * code reading it has to allow for by other means.
+   */
+  get resolvedLinks(): Record<string, Record<string, number>> {
+    const links: Record<string, Record<string, number>> = {};
+    for (const [path, content] of this.vault.contents) {
+      if (!path.endsWith(".md")) continue;
+      const counts: Record<string, number> = {};
+      for (const match of content.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/gu)) {
+        const target = this.getFirstLinkpathDest((match[1] ?? "").trim(), path);
+        if (target === null) continue;
+        counts[target.path] = (counts[target.path] ?? 0) + 1;
+      }
+      links[path] = counts;
+    }
+    return links;
   }
 
   getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null {
