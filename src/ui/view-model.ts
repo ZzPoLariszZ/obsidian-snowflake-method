@@ -547,6 +547,8 @@ export interface ManuscriptHost {
 	 * words given as its name, while the stream stays in front.
 	 */
 	addEntityFromText(projectPath: string | null, name: string): Promise<void>;
+	/** The words added to a note the project already has, as one of its aliases. */
+	addAliasFromText(projectPath: string | null, name: string): Promise<void>;
 	/** A sticky note holding the words given, floated as a new one is. */
 	addStickyNoteFromText(projectPath: string | null, text: string): Promise<void>;
 	/** One note's plain text under the export settings, for the clipboard. */

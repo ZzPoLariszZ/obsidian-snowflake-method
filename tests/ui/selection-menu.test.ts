@@ -48,24 +48,27 @@ describe('nameFromSelection', () => {
 });
 
 describe('addSelectionMakers', () => {
-	it('makes an entity named by the words, and a sticky note holding them as written', () => {
+	it('makes an entity named by the words, an alias of one, and a sticky note holding them as written', () => {
 		const { menu, entries } = fakeMenu();
 		const addEntity = vi.fn();
+		const addAlias = vi.fn();
 		const addStickyNote = vi.fn();
 		addSelectionMakers(menu as never, {
 			t,
 			section: 'snowflake-method',
 			selection: ' The **ash** tree. ',
 			addEntity,
+			addAlias,
 			addStickyNote,
 		});
-		expect(entries.map((entry) => [entry.title, entry.section, entry.disabled])).toEqual([
-			['manuscript.menu.addEntity', 'snowflake-method', false],
-			['manuscript.menu.addStickyNote', 'snowflake-method', false],
+		expect(entries.map((entry) => [entry.title, entry.icon, entry.section, entry.disabled])).toEqual([
+			['manuscript.menu.addEntity', 'square-plus', 'snowflake-method', false],
+			['manuscript.menu.addAlias', 'tags', 'snowflake-method', false],
+			['manuscript.menu.addStickyNote', 'sticker', 'snowflake-method', false],
 		]);
-		entries[0]?.press();
-		entries[1]?.press();
+		for (const entry of entries) entry.press();
 		expect(addEntity).toHaveBeenCalledWith('The ash tree.');
+		expect(addAlias).toHaveBeenCalledWith('The ash tree.');
 		expect(addStickyNote).toHaveBeenCalledWith('The **ash** tree.');
 	});
 
@@ -76,9 +79,10 @@ describe('addSelectionMakers', () => {
 			section: 'snowflake-method',
 			selection: '',
 			addEntity: vi.fn(),
+			addAlias: vi.fn(),
 			addStickyNote: vi.fn(),
 		});
-		expect(entries.map((entry) => entry.disabled)).toEqual([true, true]);
+		expect(entries.map((entry) => entry.disabled)).toEqual([true, true, true]);
 	});
 });
 

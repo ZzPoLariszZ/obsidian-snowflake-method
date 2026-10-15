@@ -5146,6 +5146,9 @@ export class SnowflakeManuscriptView extends ItemView {
 					addEntity: (name) => {
 						guarded(this.host.addEntityFromText(projectPath, name));
 					},
+					addAlias: (name) => {
+						guarded(this.host.addAliasFromText(projectPath, name));
+					},
 					addStickyNote: (text) => {
 						guarded(this.host.addStickyNoteFromText(projectPath, text));
 					},

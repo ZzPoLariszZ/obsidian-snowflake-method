@@ -327,3 +327,63 @@ describe('a note made from words selected in the manuscript', () => {
 		expect(standing.createMemberThroughForm).not.toHaveBeenCalled();
 	});
 });
+
+describe('words added to a note as one of its aliases', () => {
+	const character = { characterId: 'c1', name: 'Ash', aliases: ['The Tree'], revision: 'r1' };
+	const scene = { sceneId: 's1', title: 'Landing', aliases: [], revision: 'r2' };
+	const guild = { entityId: 'e1', kind: 'faction', name: 'Guild', aliases: [], revision: 'r3' };
+	/** The plugin over one project, the note picked as given and every write recorded. */
+	function picked(answer: { group: string; option: { value: string; label: string } } | null, readOnly = false) {
+		const { plugin } = pluginWith([]);
+		const askAliasOwner = vi.fn(() => Promise.resolve(answer));
+		const patchCharacter = vi.fn(() => Promise.resolve('r1b'));
+		const patchScene = vi.fn(() => Promise.resolve('r2b'));
+		const patchEntity = vi.fn(() => Promise.resolve('r3b'));
+		const refreshDashboards = vi.fn(() => Promise.resolve());
+		Object.assign(plugin, {
+			resolveProject: vi.fn(() => Promise.resolve({
+				projectFile: projectPath, locale: 'en', readOnly, worldbuildingKinds: [],
+				characters: [character], scenes: [scene], worldbuilding: { faction: [guild] },
+			})),
+			translateForProject: (_locale: unknown, key: string) => key,
+			askAliasOwner, patchCharacter, patchScene, patchEntity, refreshDashboards,
+		});
+		return { plugin, askAliasOwner, patchCharacter, patchScene, patchEntity, refreshDashboards };
+	}
+
+	it('adds the words to the picked character under its revision, after the aliases it has', async () => {
+		const { plugin, patchCharacter, refreshDashboards } = picked({ group: 'character', option: { value: 'c1', label: 'Ash' } });
+		await plugin.addAliasFromText(projectPath, 'Ashen One');
+		expect(patchCharacter).toHaveBeenCalledExactlyOnceWith('c1', { expectedRevision: 'r1', aliases: ['The Tree', 'Ashen One'] }, projectPath);
+		expect(refreshDashboards).toHaveBeenCalledOnce();
+	});
+
+	it('writes a scene and a worldbuilding note through their own patches', async () => {
+		const first = picked({ group: 'scene', option: { value: 's1', label: 'Landing' } });
+		await first.plugin.addAliasFromText(projectPath, 'Arrival');
+		expect(first.patchScene).toHaveBeenCalledExactlyOnceWith('s1', { expectedRevision: 'r2', aliases: ['Arrival'] }, projectPath);
+		expect(first.patchCharacter).not.toHaveBeenCalled();
+		const second = picked({ group: 'faction', option: { value: 'e1', label: 'Guild' } });
+		await second.plugin.addAliasFromText(projectPath, 'The Hall');
+		expect(second.patchEntity).toHaveBeenCalledExactlyOnceWith('e1', { expectedRevision: 'r3', aliases: ['The Hall'] }, projectPath);
+	});
+
+	it('leaves words that already name the note, as its name or as an alias', async () => {
+		for (const words of ['Ash', 'The Tree']) {
+			const { plugin, patchCharacter, refreshDashboards } = picked({ group: 'character', option: { value: 'c1', label: 'Ash' } });
+			await plugin.addAliasFromText(projectPath, words);
+			expect(patchCharacter).not.toHaveBeenCalled();
+			expect(refreshDashboards).not.toHaveBeenCalled();
+		}
+	});
+
+	it('writes nothing when the author walks away, and asks nothing in a project that cannot be written', async () => {
+		const away = picked(null);
+		await away.plugin.addAliasFromText(projectPath, 'Ashen One');
+		expect(away.patchCharacter).not.toHaveBeenCalled();
+		const held = picked({ group: 'character', option: { value: 'c1', label: 'Ash' } }, true);
+		await held.plugin.addAliasFromText(projectPath, 'Ashen One');
+		expect(held.askAliasOwner).not.toHaveBeenCalled();
+		expect(held.patchCharacter).not.toHaveBeenCalled();
+	});
+});

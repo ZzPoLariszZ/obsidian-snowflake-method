@@ -3,8 +3,8 @@
  * by the manuscript stream's right-click menu, a project note's own, and the
  * menu over a box of the dashboard or a dialog (`field-menu.ts`), so all of
  * them offer the same things in the same words: the words made into an
- * entity or a sticky note, and the note, the manuscript or the words
- * written out as plain text.
+ * entity, added to one the project has as an alias, or made into a sticky
+ * note, and the note, the manuscript or the words written out as plain text.
  *
  * An entry that needs selected words stands greyed while there are none, as
  * the stream's foreshadowing entries do, so the menu keeps one shape and says
@@ -37,11 +37,13 @@ export interface SelectionMakerOptions {
 	selection: string;
 	/** The selected words as a name, for the kind the author picks next. */
 	addEntity: (name: string) => void;
+	/** The selected words as an alias, for the note the author picks next. */
+	addAlias: (name: string) => void;
 	/** The selected words as a sticky note's text. */
 	addStickyNote: (text: string) => void;
 }
 
-/** The two entries that make something new from the selected words. */
+/** The entries that make something of the selected words: a note, an alias of one, a sticky note. */
 export function addSelectionMakers(menu: Menu, options: SelectionMakerOptions): void {
 	const { t, section } = options;
 	const name = nameFromSelection(options.selection);
@@ -54,6 +56,16 @@ export function addSelectionMakers(menu: Menu, options: SelectionMakerOptions): 
 			.setDisabled(name.length === 0)
 			.onClick(() => {
 				options.addEntity(name);
+			}),
+	);
+	menu.addItem((item) =>
+		item
+			.setSection(section)
+			.setTitle(t('manuscript.menu.addAlias'))
+			.setIcon('tags')
+			.setDisabled(name.length === 0)
+			.onClick(() => {
+				options.addAlias(name);
 			}),
 	);
 	menu.addItem((item) =>

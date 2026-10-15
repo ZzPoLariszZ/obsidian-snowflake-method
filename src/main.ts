@@ -398,6 +398,7 @@ import {
 	type CreateSceneRequest,
 	promptForDefinitionKind,
 	promptForDefinitionPath,
+	promptForEntityReference,
 	DailyWordGoalModal,
 	SessionSetupModal,
 	confirmHighlightRuleDeletion,
@@ -447,7 +448,7 @@ import type {
 	SceneViewModel,
 	WorldbuildingEntityViewModel,
 } from './ui/view-model';
-import type { EntityGroupId } from './ui/entity-form';
+import type { EntityGroupId, PickedEntity } from './ui/entity-form';
 import { ManuscriptSaveConflict, NEXT_FOCUS_LEVEL, kindEntities } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
@@ -4149,6 +4150,9 @@ export default class SnowflakeMethodPlugin
 				selection,
 				addEntity: (name) => {
 					settled(this.addEntityFromText(root, name));
+				},
+				addAlias: (name) => {
+					settled(this.addAliasFromText(root, name));
 				},
 				addStickyNote: (text) => {
 					settled(this.addStickyNoteFromText(root, text));
@@ -11766,6 +11770,94 @@ export default class SnowflakeMethodPlugin
 			false,
 			project.projectFile,
 		);
+	}
+
+	/**
+	 * Which note of the project the words join as an alias: its kind first,
+	 * then the note, in the one dialog a record's reference is picked in.
+	 */
+	private askAliasOwner(project: ProjectSnapshot, t: Translate): Promise<PickedEntity | null> {
+		const kinds = entityKindIds(project.worldbuildingKinds);
+		const entities = Object.values(project.worldbuilding).flat();
+		return promptForEntityReference(this.app, t, {
+			groups: () => kinds.map((kind) => ({ id: kind, label: this.kindLabel(kind, t) })),
+			entitiesIn: (group) => {
+				if (group === 'character') {
+					return project.characters.map((record) => ({ value: record.characterId, label: record.name }));
+				}
+				if (group === 'scene') {
+					return project.scenes.map((record) => ({ value: record.sceneId, label: record.title }));
+				}
+				return entities
+					.filter((record) => record.kind === group)
+					.map((record) => ({ value: record.entityId, label: record.name }));
+			},
+		});
+	}
+
+	/** The note picked, as the alias write needs it: what it is called now, and its write under its revision. */
+	private aliasOwnerOf(
+		project: ProjectSnapshot,
+		picked: PickedEntity,
+	): { name: string; aliases: readonly string[]; write: (aliases: string[]) => Promise<string> } | null {
+		const id = picked.option.value;
+		const path = project.projectFile;
+		if (picked.group === 'character') {
+			const record = project.characters.find((candidate) => candidate.characterId === id);
+			if (record === undefined) return null;
+			return {
+				name: record.name,
+				aliases: record.aliases,
+				write: (aliases) => this.patchCharacter(id, { expectedRevision: record.revision, aliases }, path),
+			};
+		}
+		if (picked.group === 'scene') {
+			const record = project.scenes.find((candidate) => candidate.sceneId === id);
+			if (record === undefined) return null;
+			return {
+				name: record.title,
+				aliases: record.aliases,
+				write: (aliases) => this.patchScene(id, { expectedRevision: record.revision, aliases }, path),
+			};
+		}
+		const record = Object.values(project.worldbuilding)
+			.flat()
+			.find((candidate) => candidate.entityId === id);
+		if (record === undefined) return null;
+		return {
+			name: record.name,
+			aliases: record.aliases,
+			write: (aliases) => this.patchEntity(id, { expectedRevision: record.revision, aliases }, path),
+		};
+	}
+
+	/**
+	 * Words selected in the manuscript or a note, added to a note the project
+	 * already has as one of its aliases: the kind is asked first, then the
+	 * note, as a record's reference is picked. Words that already name the
+	 * note, as its name or one of its aliases, are left as they are and said
+	 * so.
+	 */
+	async addAliasFromText(projectPath: string | null, name: string): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		if (project.readOnly) {
+			new Notice(t('errors.readOnly'));
+			return;
+		}
+		const picked = await this.askAliasOwner(project, t);
+		if (picked === null) return;
+		const owner = this.aliasOwnerOf(project, picked);
+		if (owner === null) return;
+		if (owner.name === name || owner.aliases.includes(name)) {
+			new Notice(t('manuscript.menu.aliasExists', { alias: name, name: owner.name }));
+			return;
+		}
+		await owner.write([...owner.aliases, name]);
+		await this.refreshDashboards({ streams: true });
+		new Notice(t('manuscript.menu.aliasAdded', { alias: name, name: owner.name }));
 	}
 
 	private async addWorldbuildingNote(): Promise<void> {
