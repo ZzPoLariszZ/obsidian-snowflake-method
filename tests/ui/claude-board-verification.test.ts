@@ -147,10 +147,10 @@ describe('corkboard correctness regressions', () => {
 		const fixture = board([scene('A', { healthIssues: [{ blocking: true, code: 'missing' }] as unknown as SceneViewModel['healthIssues'] })]);
 		const conflict = fixture.button('corkboard-body-text');
 		expect(fixture.cards()[0]!.classes.has('has-managed-section-issue')).toBe(true);
-		expect(conflict.readOnly).toBe(true);
+		expect(conflict.getAttribute('aria-readonly')).toBe('true');
 		expect(fixture.button('corkboard-title').getAttribute('aria-disabled')).toBe('true');
 		expect(menu(fixture.cards()[0]!).get('actions.edit')!.disabled).toBe(true);
-		conflict.value = 'New conflict'; conflict.dispatch('input'); conflict.dispatch('blur'); await settle();
+		conflict.textContent = 'New conflict'; conflict.dispatch('input'); conflict.dispatch('blur'); await settle();
 		expect(fixture.host.patchScene).not.toHaveBeenCalled();
 		fixture.handle.dispose();
 	});
@@ -158,7 +158,7 @@ describe('corkboard correctness regressions', () => {
 	it('#1 advisory scene health keeps editing available without the damage treatment', () => {
 		const fixture = board([scene('A', { healthIssues: [{ blocking: false, code: 'unknown-section' }] as unknown as SceneViewModel['healthIssues'] })]);
 		expect(fixture.cards()[0]!.classes.has('has-managed-section-issue')).toBe(false);
-		expect(fixture.button('corkboard-body-text').readOnly).toBe(false);
+		expect(fixture.button('corkboard-body-text').getAttribute('aria-readonly')).toBe('false');
 		fixture.handle.dispose();
 	});
 

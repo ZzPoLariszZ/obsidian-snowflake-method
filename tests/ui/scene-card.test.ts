@@ -191,7 +191,7 @@ describe('a scene card dealt from the deck', () => {
 		}
 		expect(el(card.number).textContent).toBe('1');
 		expect(el(card.title).textContent).toBe('Opening');
-		expect(el(card.body).value).toBe('An obstacle');
+		expect(el(card.body).textContent).toBe('An obstacle');
 		expect(el(card.status).value).toBe('in-progress');
 		expect(deck.cards.get('scene')).toBe(card);
 	});
@@ -203,11 +203,11 @@ describe('a scene card dealt from the deck', () => {
 		expect(el(card.number).classes.has('snowflake-method-corkboard-number')).toBe(false);
 		expect(el(card.number).getAttribute('aria-hidden')).toBe('true');
 		expect(el(card.number).getAttribute('aria-label')).toBeNull();
-		// A conflict only read invites no writing: no placeholder, not reached by the Tab key, and read-only however writable the scene is.
-		expect(card.body.readOnly).toBe(true);
-		expect(el(card.body).getAttribute('placeholder')).toBeNull();
-		expect(el(card.body).getAttribute('tabindex')).toBe('-1');
-		expect(el(card.body).value).toBe('An obstacle');
+		// A conflict only read invites no writing: no placeholder, no typing and not reached by the Tab key, however writable the scene is.
+		expect(card.bodyBox.readOnly).toBe(true);
+		expect(el(card.body).getAttribute('data-placeholder')).toBeNull();
+		expect(el(card.body).getAttribute('contenteditable')).toBe('false');
+		expect(el(card.body).textContent).toBe('An obstacle');
 		// The rest of the card is still the writer's.
 		expect(card.status.disabled).toBe(false);
 		expect(card.title.disabled).toBe(false);
@@ -226,7 +226,7 @@ describe('a scene card dealt from the deck', () => {
 		const before = [el(card.title).textWrites, el(card.pov).textWrites, el(card.moreLinks).textWrites];
 		deck.dress(card, stored(), 0, { position: 1, size: 2 });
 		expect([el(card.title).textWrites, el(card.pov).textWrites, el(card.moreLinks).textWrites]).toEqual(before);
-		expect(el(card.body).value).toBe('An obstacle');
+		expect(el(card.body).textContent).toBe('An obstacle');
 	});
 
 	it('edits the name in place, refusing an empty one and one another scene answers to', async () => {
@@ -266,14 +266,14 @@ describe('a scene card dealt from the deck', () => {
 		const { host, mount, stored, refresh } = deal();
 		const card = mount();
 		const conflict = el(card.body);
-		conflict.value = 'Changed';
+		conflict.textContent = 'Changed';
 		conflict.dispatch('input');
 		expect(card.bodyDirty).toBe(true);
 		conflict.dispatch('blur');
 		await settle();
 		expect(host.patchScene).toHaveBeenLastCalledWith('scene', { conflict: 'Changed', expectedRevision: 'initial' }, PROJECT);
 		expect(refresh).toHaveBeenCalledTimes(1);
-		conflict.value = 'Again';
+		conflict.textContent = 'Again';
 		conflict.dispatch('input');
 		press(conflict, 'Enter');
 		await settle();
@@ -334,7 +334,7 @@ describe('a scene card dealt from the deck', () => {
 		const opened: CorkboardDraftModal[] = [];
 		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
 		const card = mount();
-		el(card.body).value = 'Draft';
+		el(card.body).textContent = 'Draft';
 		el(card.body).dispatch('input');
 		deck.park(card);
 		expect(el(card.el).isConnected).toBe(false);
@@ -346,7 +346,7 @@ describe('a scene card dealt from the deck', () => {
 		await settle();
 		expect(opened).toHaveLength(1);
 		expect(card.bodyDirty).toBe(false);
-		expect(el(card.body).value).toBe('An obstacle');
+		expect(el(card.body).textContent).toBe('An obstacle');
 	});
 
 	it('recovers the draft of a scene that went when its card comes down', async () => {
@@ -426,7 +426,7 @@ describe('a scene card dealt from the deck', () => {
 	it('drains a dirty conflict into the queue when disposed, without a read', async () => {
 		const { deck, host, mount, refresh } = deal();
 		const card = mount();
-		el(card.body).value = 'Late';
+		el(card.body).textContent = 'Late';
 		el(card.body).dispatch('input');
 		deck.dispose();
 		await settle();

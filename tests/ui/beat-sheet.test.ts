@@ -2318,7 +2318,7 @@ describe('the beat sheet workspace owns its dialogs and the words in it', () => 
 		vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null);
 		const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-body-text')!;
 		conflict.focus();
-		conflict.value = 'Unsaved draft';
+		conflict.textContent = 'Unsaved draft';
 		conflict.dispatch('input');
 		vi.mocked(fixture.host.patchScene).mockRejectedValueOnce(new Error('Revision conflict'));
 		fixture.handle.dispose();

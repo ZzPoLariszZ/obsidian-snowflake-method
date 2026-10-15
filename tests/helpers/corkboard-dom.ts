@@ -3,6 +3,21 @@
  * and animation frames are supplied explicitly; card construction, event
  * wiring, windowing and content writes all run through production code.
  */
+// A prose box tells a text node by the DOM's own constant, which a runtime
+// without a DOM does not define; the boards' cards hold their words in one.
+// A class, so that an `instanceof Node` asked of a fake element answers
+// false rather than throwing.
+if (typeof (globalThis as { Node?: unknown }).Node === 'undefined') {
+	Object.assign(globalThis, { Node: class { static readonly TEXT_NODE = 3; } });
+}
+
+/** A text node of the fake: what a prose box reads its words off. */
+export interface CorkboardTextNode {
+	nodeType: 3;
+	nodeName: '#text';
+	nodeValue: string;
+}
+
 export class CorkboardDom {
 	width = 1_000;
 	height = 600;
@@ -114,6 +129,15 @@ export class CorkboardElement {
 	readonly listeners = new Map<string, ((event: DomEvent) => void)[]>();
 	parent: CorkboardElement | null = null;
 	textContent = '';
+	readonly nodeType = 1;
+	get nodeName(): string { return this.tag.toUpperCase(); }
+	/** The element's own text as one text node, then its children: what a prose box reads its words off. */
+	get childNodes(): (CorkboardTextNode | CorkboardElement)[] {
+		const text: CorkboardTextNode[] =
+			this.textContent === '' ? [] : [{ nodeType: 3, nodeName: '#text', nodeValue: this.textContent }];
+		return [...text, ...this.children];
+	}
+	get firstChild(): CorkboardTextNode | CorkboardElement | null { return this.childNodes[0] ?? null; }
 	value = '';
 	/** An option's standing in its list. */
 	selected = false;

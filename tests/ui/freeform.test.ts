@@ -800,9 +800,10 @@ describe('the freeform workspace', () => {
 		expect(card.querySelector('.snowflake-method-corkboard-color')).not.toBeNull();
 		expect(card.querySelector('.snowflake-method-corkboard-number')).toBeNull();
 		expect(card.querySelector('.snowflake-method-corkboard-symbol')).not.toBeNull();
-		const conflict = card.querySelector('.snowflake-method-corkboard-body-text')! as unknown as HTMLTextAreaElement;
-		expect(conflict.readOnly).toBe(true);
-		expect(conflict.getAttribute('placeholder')).toBeNull();
+		const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
+		expect(conflict.getAttribute('aria-readonly')).toBe('true');
+		expect(conflict.getAttribute('contenteditable')).toBe('false');
+		expect(conflict.getAttribute('data-placeholder')).toBeNull();
 		expect(fixture.face('f1').querySelector('.snowflake-method-freeform-frame-title')!.textContent).toBe('Opening');
 	});
 

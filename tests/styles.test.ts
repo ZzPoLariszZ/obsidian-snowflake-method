@@ -1175,6 +1175,13 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-corkboard-picture::after')).toContain('height: 1px');
 		// On the canvas a still title follows the node's own cursor, the hand that drags it.
 		expect(styles).toMatch(/button\.snowflake-method-corkboard-title\[aria-disabled='true'\] \{\n\topacity: 1;\n\tcolor: var\(--text-normal\);\n\tcursor: inherit;/u);
+		// The body is a prose box, so the field rules' alignment and indent reach it, and the card gives it no dress of its own.
+		const body = declarations('.snowflake-method-scene-cards .snowflake-method-prose-box.snowflake-method-corkboard-body-text');
+		expect(body).toContain('background: transparent');
+		expect(body).toContain('border: 0');
+		expect(body).toContain('scrollbar-gutter: auto');
+		expect(styles).not.toMatch(/textarea\.snowflake-method-corkboard-body-text/u);
+		expect(styles).toMatch(/\.snowflake-method-freeform-face:is\(\.is-scene, \.is-card\) \.snowflake-method-prose-box\.snowflake-method-corkboard-body-text \{\n\toverflow: hidden;\n\tpointer-events: none;/u);
 		const hidden = styles
 			.replace(/\/\*[\s\S]*?\*\//g, ' ')
 			.split('}')

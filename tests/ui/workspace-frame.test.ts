@@ -576,7 +576,7 @@ function custodyOf() {
 	const outside = dom.container.createEl('button');
 	const cardEl = scroller.createDiv({ cls: 'snowflake-method-corkboard-card', attr: { 'data-key': 'row-1 scene-1' } });
 	const title = cardEl.createEl('button', { cls: 'snowflake-method-corkboard-title' });
-	const conflict = cardEl.createEl('textarea', { cls: 'snowflake-method-corkboard-body-text' });
+	const conflict = cardEl.createDiv({ cls: 'snowflake-method-prose-box snowflake-method-corkboard-body-text' });
 	const card = { el: cardEl, body: conflict } as unknown as SceneCard;
 	const cards = new Map<string, SceneCard>([['row-1 scene-1', card]]);
 	const partOf = vi.fn((_card: SceneCard, part: string): Element => (part === 'title' ? title : cardEl) as unknown as Element);

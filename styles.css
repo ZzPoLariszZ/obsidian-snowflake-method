@@ -14033,7 +14033,13 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-height: 0;
 }
 
-.snowflake-method-scene-cards textarea.snowflake-method-corkboard-body-text {
+/* The body is a prose box, as the dashboard's steps are, so the typography's
+   alignment and first-line indent reach it through the field rules (see
+   "Field alignment"). On the card it wears none of a box's own dress: the
+   card is its frame, the card's ground shows through it, and a hover or the
+   focus draws nothing on it. The scrollbar's room a box holds on both edges
+   is given back too, so the words stand at the card's own padding. */
+.snowflake-method-scene-cards .snowflake-method-prose-box.snowflake-method-corkboard-body-text {
 	flex: 1 1 auto;
 	width: 100%;
 	min-height: 0;
@@ -14044,13 +14050,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	background: transparent;
 	box-shadow: none;
 	overflow: auto;
+	scrollbar-gutter: auto;
 	resize: none;
 	font-family: var(--font-text);
 	font-size: var(--font-ui-small);
 	line-height: var(--line-height-normal);
 }
 
-.snowflake-method-scene-cards textarea.snowflake-method-corkboard-body-text:focus {
+.snowflake-method-scene-cards .snowflake-method-prose-box.snowflake-method-corkboard-body-text:hover,
+.snowflake-method-scene-cards .snowflake-method-prose-box.snowflake-method-corkboard-body-text:focus {
+	background-color: transparent;
 	outline: none;
 	box-shadow: none;
 }
@@ -17138,10 +17147,10 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	user-select: text;
 }
 
-/* The conflict is read on the canvas and never typed into there: it takes
-   no press, so a press on it takes hold of the node, and a press twice on
-   it opens the scene, as one anywhere else on the card does. */
-.snowflake-method-freeform-face:is(.is-scene, .is-card) textarea.snowflake-method-corkboard-body-text {
+/* The body is read on the canvas and never typed into there: it takes no
+   press, so a press on it takes hold of the node, and a press twice on it
+   opens the note, as one anywhere else on the card does. */
+.snowflake-method-freeform-face:is(.is-scene, .is-card) .snowflake-method-prose-box.snowflake-method-corkboard-body-text {
 	overflow: hidden;
 	pointer-events: none;
 	cursor: default;
@@ -18099,8 +18108,8 @@ body.snowflake-method-hide-tooltips .tooltip:not(.snowflake-method-boundary-tool
 /* == Field alignment ======================================================= */
 
 /* The typography's alignment, worn by every multi-line field the dashboard
-   and the plugin's dialogs offer, so a paragraph typed into a box sits as
-   it will on the page. The class rides each window's body, put there with
+   and the plugin's dialogs offer, and by the body of every card the boards
+   deal, so a paragraph typed into a box sits as it will on the page. The class rides each window's body, put there with
    the other dress preferences, and only when the page is justified: a left
    alignment is the field's own and asks for no rule. The recovered-text
    boxes are the two dialogs that show drafts back, which open on no form
@@ -18115,7 +18124,8 @@ body.snowflake-method-justify-fields .snowflake-method-source-summary-content {
 }
 
 /* The typography's first-line indent, on the prose boxes the dashboard's
-   steps are written in and on the paragraphs quoted above them. A textarea
+   steps and the cards' bodies are written in, and on the paragraphs quoted
+   above them. A textarea
    cannot wear it: told to set each line after a forced break in, Chromium
    sets in the first line of the box and no other, and a box with its first
    paragraph alone set in reads as a mistake, so the dialogs' textareas keep

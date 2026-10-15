@@ -2569,14 +2569,14 @@ describe('a row moved while a conflict is being written on one of its cards', ()
 		const [from, to] = order === 'down' ? ['time-1', 'time-2'] : ['time-2', 'time-1'];
 		const card = cardsIn(fixture.cell(from, 'a'))[0]!;
 		conflictOf(card).focus();
-		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).textContent = 'Unsaved draft';
 		conflictOf(card).dispatch('input');
 		await fixture.bridge.moveRow('a', 'r1', to, null);
 		fixture.notify();
 		await settle();
 		expect(cardsIn(fixture.cell(to, 'a'))[0]).toBe(card);
 		expect(fixture.cards()).toHaveLength(1);
-		expect(conflictOf(card).value).toBe('Unsaved draft');
+		expect(conflictOf(card).textContent).toBe('Unsaved draft');
 		expect(fixture.dom.doc.activeElement).toBe(conflictOf(card));
 		expect(fixture.host.patchScene).not.toHaveBeenCalled();
 	});
@@ -2585,7 +2585,7 @@ describe('a row moved while a conflict is being written on one of its cards', ()
 		const fixture = laid('flat', 'down');
 		await settle();
 		const card = cardsIn(fixture.cell('time-1', 'a'))[0]!;
-		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).textContent = 'Unsaved draft';
 		conflictOf(card).dispatch('input');
 		await fixture.bridge.deleteRow('a', 'r1');
 		fixture.notify();
@@ -2611,7 +2611,7 @@ describe('a placement taken away while a conflict is being written on its card',
 		await settle();
 		const card = fixture.cards().find((candidate) => candidate.getAttribute('data-id') === 'scene-1')!;
 		conflictOf(card).focus();
-		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).textContent = 'Unsaved draft';
 		conflictOf(card).dispatch('input');
 		await fixture.bridge.removeScene('a', 'scene-1');
 		fixture.notify();
@@ -2626,7 +2626,7 @@ describe('a placement taken away while a conflict is being written on its card',
 		await settle();
 		const card = fixture.cards()[0]!;
 		expect(card.getAttribute('data-id')).toBe('scene-1');
-		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).textContent = 'Unsaved draft';
 		conflictOf(card).dispatch('input');
 		fixture.root.querySelector('.snowflake-method-timeline-stack-next')!.dispatch('click');
 		expect(fixture.cards().map((candidate) => candidate.getAttribute('data-id'))).toEqual(['scene-2']);
@@ -2640,7 +2640,7 @@ describe('a placement taken away while a conflict is being written on its card',
 		await settle();
 		const card = fixture.cards().find((candidate) => candidate.getAttribute('data-id') === 'scene-1')!;
 		conflictOf(card).focus();
-		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).textContent = 'Unsaved draft';
 		conflictOf(card).dispatch('input');
 		const opened: CorkboardDraftModal[] = [];
 		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
@@ -2916,7 +2916,7 @@ describe('a draft whose save fails once its card has come down', () => {
 			const card = fixture.cards()[0]!;
 			const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
 			conflict.focus();
-			conflict.value = 'Unsaved draft';
+			conflict.textContent = 'Unsaved draft';
 			conflict.dispatch('input');
 			vi.mocked(fixture.host.patchScene).mockRejectedValueOnce(new Error('Revision conflict'));
 			await fixture.bridge.removeScene('a', 'scene-1');
@@ -3463,7 +3463,7 @@ describe('timeline words during plugin unload', () => {
 		try {
 			const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-body-text')!;
 			conflict.focus();
-			conflict.value = 'Unsaved draft';
+			conflict.textContent = 'Unsaved draft';
 			conflict.dispatch('input');
 			vi.mocked(fixture.host.patchScene).mockRejectedValueOnce(new Error('Revision conflict'));
 			fixture.handle.dispose();

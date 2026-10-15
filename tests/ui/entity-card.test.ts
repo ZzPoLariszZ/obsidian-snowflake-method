@@ -179,17 +179,17 @@ describe('an entity card dealt from the deck', () => {
 		expect(footRow.children.map((child) => child.className.split(' ')[0])).toEqual(['snowflake-method-corkboard-word', 'snowflake-method-corkboard-actions']);
 		expect(el(card.number).textContent).toBe('1');
 		expect(el(card.title).textContent).toBe('Ada');
-		expect(el(card.body).value).toBe('Seeks the crown');
+		expect(el(card.body).textContent).toBe('Seeks the crown');
 		expect(el(card.body).getAttribute('aria-label')).toBe('modal.character.oneSentenceStoryline');
-		expect(el(card.body).getAttribute('placeholder')).toBe('modal.character.oneSentenceStorylinePlaceholder');
+		expect(el(card.body).getAttribute('data-placeholder')).toBe('modal.character.oneSentenceStorylinePlaceholder');
 		expect(el(card.word).textContent).toBe('word:character');
 		expect(el(card.status).value).toBe('in-progress');
 		expect(root.getAttribute('data-color')).toBeNull();
 
 		const place = fixture.mount('harbour');
-		expect(el(place.body).value).toBe('Where the ships come in');
+		expect(el(place.body).textContent).toBe('Where the ships come in');
 		expect(el(place.body).getAttribute('aria-label')).toBe('form.description');
-		expect(el(place.body).getAttribute('placeholder')).toBe('form.description.placeholder');
+		expect(el(place.body).getAttribute('data-placeholder')).toBe('form.description.placeholder');
 		expect(el(place.el).getAttribute('data-color')).toBe('macaron-2');
 		expect(el(place.word).textContent).toBe('word:location');
 	});
@@ -200,8 +200,8 @@ describe('an entity card dealt from the deck', () => {
 		expect(el(card.number).classes.has('snowflake-method-corkboard-symbol')).toBe(true);
 		expect(card.symbolIcon).toBe('user');
 		expect(fixture.mount('harbour').symbolIcon).toBe('map-pin');
-		expect(el(card.body).readOnly).toBe(true);
-		expect(el(card.body).getAttribute('placeholder')).toBeNull();
+		expect(card.bodyBox.readOnly).toBe(true);
+		expect(el(card.body).getAttribute('data-placeholder')).toBeNull();
 		expect(el(card.title).disabled).toBe(false);
 		expect(el(card.title).getAttribute('aria-disabled')).toBe('true');
 		expect(el(card.title).getAttribute('tabindex')).toBe('-1');
@@ -335,7 +335,7 @@ describe('an entity card dealt from the deck', () => {
 		await settle();
 		expect(fixture.host.patchCharacter).toHaveBeenCalledWith('ada', { expectedRevision: 'initial', name: 'Ada the Bold' }, PROJECT);
 		expect(fixture.stored('ada').name).toBe('Ada the Bold');
-		el(card.body).value = 'Seeks the crown and finds the sea';
+		el(card.body).textContent = 'Seeks the crown and finds the sea';
 		el(card.body).dispatch('input');
 		el(card.body).dispatch('blur');
 		await settle();
@@ -343,7 +343,7 @@ describe('an entity card dealt from the deck', () => {
 		expect(fixture.stored('ada').revision).toBe('saved-2');
 
 		const place = fixture.mount('harbour');
-		el(place.body).value = 'Where the ships leave';
+		el(place.body).textContent = 'Where the ships leave';
 		el(place.body).dispatch('input');
 		el(place.body).dispatch('blur');
 		await settle();
@@ -384,7 +384,7 @@ describe('an entity card dealt from the deck', () => {
 		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(() => undefined);
 		const fixture = deal([character()]);
 		const card = fixture.mount('ada');
-		el(card.body).value = 'Unsaved words';
+		el(card.body).textContent = 'Unsaved words';
 		el(card.body).dispatch('input');
 		fixture.remove('ada');
 		fixture.deck.unmount('ada');
@@ -398,7 +398,7 @@ describe('an entity card dealt from the deck', () => {
 		const fixture = deal([location({ readOnly: true })]);
 		const card = fixture.mount('harbour');
 		expect(el(card.el).classes.has('is-read-only')).toBe(true);
-		expect(el(card.body).readOnly).toBe(true);
+		expect(card.bodyBox.readOnly).toBe(true);
 		expect(el(card.title).disabled).toBe(false);
 		expect(el(card.title).getAttribute('aria-disabled')).toBe('true');
 		// A press on the still title takes no focus, and goes on to whatever moves the card.

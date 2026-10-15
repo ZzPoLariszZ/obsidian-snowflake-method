@@ -61,6 +61,25 @@ describe('ProseBox', () => {
 		expect(box.el.classList.contains('is-disabled')).toBe(false);
 	});
 
+	it('holds its words to reading when told, with its full look and no prompt', () => {
+		const box = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: '', readOnly: true, value: 'kept' });
+		expect(box.readOnly).toBe(true);
+		expect(box.disabled).toBe(false);
+		expect(box.el.getAttribute('contenteditable')).toBe('false');
+		expect(box.el.getAttribute('aria-readonly')).toBe('true');
+		expect(box.el.classList.contains('is-read-only')).toBe(true);
+		expect(box.el.classList.contains('is-disabled')).toBe(false);
+		expect(box.el.hasAttribute('data-placeholder')).toBe(false);
+		expect(box.value).toBe('kept');
+		box.readOnly = false;
+		expect(box.el.getAttribute('contenteditable')).toBe('plaintext-only');
+		// Either state alone keeps typing off: disabled and then held to reading, enabled again, it still takes none.
+		box.disabled = true;
+		box.readOnly = true;
+		box.disabled = false;
+		expect(box.el.getAttribute('contenteditable')).toBe('false');
+	});
+
 	it('follows another box node for node, keeping the text node it already has', () => {
 		const typedIn = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p', value: 'orig' });
 		const follower = new ProseBox(document.body.createDiv(), { label: 'a', placeholder: 'p', value: 'orig' });

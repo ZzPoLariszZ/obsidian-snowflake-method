@@ -5,8 +5,8 @@
  * A textarea takes the typography's alignment but not its first-line
  * indent: told to indent each line after a forced break, Chromium indents
  * the first line of the box and no other. A block honours the same
- * instruction, so the boxes the dashboard's steps are written in are blocks
- * that edit plain text -- what the browser calls `plaintext-only`, which
+ * instruction, so the boxes the dashboard's steps are written in, and the
+ * bodies of the cards the boards deal, are blocks that edit plain text -- what the browser calls `plaintext-only`, which
  * keeps Enter a newline character, paste the words alone, and the box's
  * content a run of text nodes. The value is read off those nodes rather
  * than the rendered text, so a test without a layout engine reads the same
@@ -20,9 +20,12 @@ export interface ProseBoxSpec {
 	cls?: string;
 	/** The box's accessible name. */
 	label: string;
+	/** The prompt an empty box shows; none where it is empty, for a box that invites no writing. */
 	placeholder: string;
 	value?: string;
 	disabled?: boolean;
+	/** Held to reading: the words stand to be read and copied, and take no typing. */
+	readOnly?: boolean;
 }
 
 /**
@@ -78,18 +81,20 @@ export class ProseBox {
 	readonly el: HTMLElement;
 
 	constructor(parent: HTMLElement, spec: ProseBoxSpec) {
+		const attr: Record<string, string> = {
+			role: 'textbox',
+			'aria-multiline': 'true',
+			'aria-label': spec.label,
+			spellcheck: 'true',
+		};
+		if (spec.placeholder !== '') attr['data-placeholder'] = spec.placeholder;
 		this.el = parent.createDiv({
 			cls: spec.cls === undefined ? PROSE_BOX_CLASS : `${PROSE_BOX_CLASS} ${spec.cls}`,
-			attr: {
-				role: 'textbox',
-				'aria-multiline': 'true',
-				'aria-label': spec.label,
-				'data-placeholder': spec.placeholder,
-				spellcheck: 'true',
-			},
+			attr,
 		});
 		this.value = spec.value ?? '';
 		this.disabled = spec.disabled ?? false;
+		this.readOnly = spec.readOnly ?? false;
 		// Deleting the last character leaves a lone line break behind, and
 		// the placeholder shows only over a box that holds nothing at all.
 		this.el.addEventListener('input', () => {
@@ -135,13 +140,33 @@ export class ProseBox {
 	}
 
 	get disabled(): boolean {
-		return this.el.getAttribute('contenteditable') === 'false';
+		return this.el.getAttribute('aria-disabled') === 'true';
 	}
 
 	set disabled(off: boolean) {
-		this.el.setAttribute('contenteditable', off ? 'false' : 'plaintext-only');
 		this.el.setAttribute('aria-disabled', off ? 'true' : 'false');
 		this.el.toggleClass('is-disabled', off);
+		this.settleEditing();
+	}
+
+	/**
+	 * Whether the box is held to reading. Its words stand, to be read and
+	 * copied, and take no typing; unlike a disabled box it keeps its full look,
+	 * since nothing is wrong with it, it is only not the reader's to write.
+	 */
+	get readOnly(): boolean {
+		return this.el.getAttribute('aria-readonly') === 'true';
+	}
+
+	set readOnly(on: boolean) {
+		this.el.setAttribute('aria-readonly', on ? 'true' : 'false');
+		this.el.toggleClass('is-read-only', on);
+		this.settleEditing();
+	}
+
+	/** Tells the browser whether the box takes typing: only when it is neither disabled nor held to reading. */
+	private settleEditing(): void {
+		this.el.setAttribute('contenteditable', this.disabled || this.readOnly ? 'false' : 'plaintext-only');
 	}
 
 	focus(): void {

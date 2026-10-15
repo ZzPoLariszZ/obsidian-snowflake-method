@@ -288,7 +288,7 @@ describe('the corkboard as a pool', () => {
 		const card = fixture.cards()[0]!;
 		expect(card.getAttribute('data-id')).toBe('scene-a');
 		const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
-		conflict.value = 'Unsaved draft';
+		conflict.textContent = 'Unsaved draft';
 		conflict.dispatch('input');
 		conflict.dispatch('blur');
 		// The scene leaves the pool while its write is on its way, so its card is
@@ -310,7 +310,7 @@ describe('the corkboard as a pool', () => {
 		fixture.host.patchScene.mockRejectedValueOnce(new Error('The scene has moved on'));
 		const card = fixture.cards()[0]!;
 		const conflict = card.querySelector('.snowflake-method-corkboard-body-text')!;
-		conflict.value = 'Unsaved draft';
+		conflict.textContent = 'Unsaved draft';
 		conflict.dispatch('input');
 		conflict.dispatch('blur');
 		// The refusal of the case above, with the plugin on its way out: a

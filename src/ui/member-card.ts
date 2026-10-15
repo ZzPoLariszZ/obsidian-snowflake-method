@@ -23,13 +23,14 @@ import { statusOptions, type CardSelectOption } from './corkboard-layout';
 import { resolveGalleryPicture } from './gallery-links';
 import type { Translate } from './modals';
 import { paintCount } from './pane-parts';
+import { PROSE_BOX_CLASS, ProseBox } from './prose-box';
 import { renderStickySwatches } from './sticky-note-card';
 
 export const CARD_SELECTOR = '.snowflake-method-corkboard-card';
-/** What a press on begins a text selection or a choice, never a drag. */
-const CONTROL_SELECTOR = 'input, textarea, select, button, a';
+/** What a press on begins a text selection or a choice, never a drag; the body is a prose box. */
+const CONTROL_SELECTOR = `input, textarea, select, button, a, .${PROSE_BOX_CLASS}`;
 /** Where a press begins something of its own: the words being written, and the lists. */
-const PRESS_SELECTOR = 'input, textarea, select';
+const PRESS_SELECTOR = `input, textarea, select, .${PROSE_BOX_CLASS}`;
 
 /** What every note a card can stand for has: its identity, where it is, and whether it can be written. */
 export interface CardMember {
@@ -83,7 +84,10 @@ export interface MemberCard<Member extends CardMember> {
 	more: HTMLButtonElement;
 	status: HTMLSelectElement;
 	statusSignature: string;
-	body: HTMLTextAreaElement;
+	/** The body's words, in a block that edits plain text: the box's element, which the focus can stand on. */
+	body: HTMLElement;
+	/** The box the body is read from and written into; `body` is its element. */
+	bodyBox: ProseBox;
 	bodyDirty: boolean;
 	bodyOriginal: string;
 	bodyRevision: EditRevision;
@@ -559,16 +563,14 @@ export function createMemberCardDeck<
 		pictureStar.setAttribute('aria-pressed', 'false');
 		const pictureRemove = pictureButton('remove', 'trash-2');
 		const body = el.createDiv({ cls: 'snowflake-method-corkboard-body' });
-		// A body only read invites no writing: it shows no placeholder, and is not reached by the Tab key.
-		const text = body.createEl('textarea', {
+		// The words are a prose box, as the dashboard's steps are, so the
+		// typography's alignment and indent reach them. A body only read invites
+		// no writing: it shows no placeholder, and is not reached by the Tab key.
+		const bodyBox = new ProseBox(body, {
 			cls: 'snowflake-method-corkboard-body-text',
-			attr: {
-				'aria-label': kind.words.bodyLabel(member),
-				rows: '3',
-				...(deps.bodyReadOnly === true
-					? { readonly: 'readonly', tabindex: '-1' }
-					: { placeholder: kind.words.bodyPlaceholder(member) }),
-			},
+			label: kind.words.bodyLabel(member),
+			placeholder: deps.bodyReadOnly === true ? '' : kind.words.bodyPlaceholder(member),
+			readOnly: deps.bodyReadOnly === true,
 		});
 		const footer = el.createDiv({ cls: 'snowflake-method-corkboard-footer' });
 		const footerRow = footer.createDiv({ cls: 'snowflake-method-corkboard-footer-row' });
@@ -608,7 +610,8 @@ export function createMemberCardDeck<
 			more,
 			status,
 			statusSignature: '',
-			body: text,
+			body: bodyBox.el,
+			bodyBox,
 			bodyDirty: false,
 			bodyOriginal: kind.body(member),
 			bodyRevision: editRevision(member),
@@ -627,7 +630,7 @@ export function createMemberCardDeck<
 	const recoverBlockedDraft = (card: Card): void => {
 		const fields: Pick<RecoveredCorkboardDraft, 'title' | 'body'> = {};
 		if (card.editingTitle && card.titleInput.value !== card.titleOriginal) fields.title = card.titleInput.value;
-		if (card.bodyDirty && card.body.value !== card.bodyOriginal) fields.body = card.body.value;
+		if (card.bodyDirty && card.bodyBox.value !== card.bodyOriginal) fields.body = card.bodyBox.value;
 		card.bodyDirty = false;
 		if (card.editingTitle) endTitleEdit(card, false);
 		paintBody(card);
@@ -671,7 +674,7 @@ export function createMemberCardDeck<
 		if (card.bodyDirty) return;
 		const pending = pendingBodies.get(card.id);
 		const value = pending?.value ?? kind.body(card.member);
-		if (card.body.value !== value) card.body.value = value;
+		if (card.bodyBox.value !== value) card.bodyBox.value = value;
 		card.bodyOriginal = value;
 		card.bodyRevision = pending?.base ?? editRevision(card.member);
 	};
@@ -728,7 +731,7 @@ export function createMemberCardDeck<
 		paintStatus(card, shownStatus);
 		card.status.disabled = !writable;
 		paintBody(card);
-		card.body.readOnly = !writable || deps.bodyReadOnly === true;
+		card.bodyBox.readOnly = !writable || deps.bodyReadOnly === true;
 		const bodyLabel = kind.words.bodyLabel(member);
 		if (card.body.getAttribute('aria-label') !== bodyLabel) card.body.setAttribute('aria-label', bodyLabel);
 		paintPicture(card, member, writable);
@@ -897,7 +900,7 @@ export function createMemberCardDeck<
 				) {
 					recoverText(card.member, { [field]: pending.value });
 				} else if (field === 'body' && !draft.bodyDirty) {
-					draft.body.value = pending.value;
+					draft.bodyBox.value = pending.value;
 					draft.bodyOriginal = pending.original;
 					draft.bodyRevision = pending.base;
 					draft.bodyDirty = true;
@@ -953,7 +956,7 @@ export function createMemberCardDeck<
 			paintBody(card);
 			return;
 		}
-		const value = card.body.value;
+		const value = card.bodyBox.value;
 		card.bodyDirty = false;
 		if (value === kind.body(card.member) && !pendingBodies.has(card.id)) {
 			paintBody(card);
@@ -1054,7 +1057,7 @@ export function createMemberCardDeck<
 			});
 		});
 		card.body.addEventListener('input', () => {
-			card.bodyDirty = card.body.value !== card.bodyOriginal;
+			card.bodyDirty = card.bodyBox.value !== card.bodyOriginal;
 		});
 		card.body.addEventListener('blur', () => {
 			commitBody(card);

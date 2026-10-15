@@ -29,6 +29,14 @@ import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-mo
 const PROJECT = 'First/Project.md';
 const OTHER_PROJECT = 'Second/Project.md';
 
+/** The words a field holds: a title input's value, or the text of the body's prose box. */
+const wordsOf = (field: CorkboardElement): string => (field.tag === 'input' ? field.value : field.textContent);
+/** Puts words in a field, as typing would leave them. */
+const write = (field: CorkboardElement, words: string): void => {
+	if (field.tag === 'input') field.value = words;
+	else field.textContent = words;
+};
+
 function deferred() {
 	let resolve!: () => void;
 	const promise = new Promise<void>((settle) => { resolve = settle; });
@@ -118,7 +126,7 @@ function board(group: CorkboardMemory['group'] = '', scene: Partial<SceneViewMod
 		holdWrite: () => { writeGate = deferred(); return writeGate; },
 		holdRefresh: () => { refreshGate = deferred(); return refreshGate; },
 		typeConflict: (value: string) => {
-			conflict.value = value;
+			conflict.textContent = value;
 			conflict.dispatch('input');
 		},
 		setStatus: (value: string) => {
@@ -138,7 +146,7 @@ describe('corkboard refused draft recovery', () => {
 		const fixture = board();
 		const input = field === 'title' ? fixture.titleInput : fixture.conflict;
 		if (field === 'title') fixture.title.dispatch('click');
-		input.focus(); input.value = 'Keep this unsaved text'; input.dispatch('input');
+		input.focus(); write(input, 'Keep this unsaved text'); input.dispatch('input');
 		fixture.external({ readOnly: true, revision: 'external-readonly' });
 		input.dispatch('blur');
 		fixture.handle.refresh();
@@ -153,7 +161,7 @@ describe('corkboard refused draft recovery', () => {
 		expect(recovered.value).toBe('Keep this unsaved text');
 		expect(recovered.readOnly).toBe(true);
 		expect(recovered.isConnected).toBe(true);
-		expect(fixture.conflict.value).toBe('An obstacle');
+		expect(fixture.conflict.textContent).toBe('An obstacle');
 		expect(fixture.titleInput.classes.has('is-hidden')).toBe(true);
 	});
 
@@ -245,14 +253,14 @@ describe('corkboard drafts across regrouping', () => {
 		const editor = field === 'conflict' ? fixture.conflict : fixture.titleInput;
 		if (field === 'title') fixture.title.dispatch('click');
 		editor.focus();
-		editor.value = 'Unsaved local draft';
+		write(editor, 'Unsaved local draft');
 		editor.dispatch('input');
 		gate.resolve();
 		await settle();
 		expect(fixture.card.getAttribute('data-key')).toBe('status:complete|scene');
 		expect(fixture.dom.container.contains(editor)).toBe(true);
 		expect(fixture.dom.doc.activeElement).toBe(editor);
-		expect(editor.value).toBe('Unsaved local draft');
+		expect(wordsOf(editor)).toBe('Unsaved local draft');
 		editor.dispatch('blur');
 		await settle();
 		expect(fixture.host.patchScene).toHaveBeenLastCalledWith('scene', {
@@ -268,12 +276,12 @@ describe('corkboard drafts across regrouping', () => {
 		const editor = field === 'conflict' ? fixture.conflict : fixture.titleInput;
 		if (field === 'title') fixture.title.dispatch('click');
 		editor.focus();
-		editor.value = 'Unsaved local draft';
+		write(editor, 'Unsaved local draft');
 		editor.dispatch('input');
 		fixture.external({ progressStatus: 'complete', [field]: 'External edit', revision: 'external' });
 		expect(fixture.dom.doc.activeElement).toBe(editor);
 		expect(fixture.dom.container.contains(editor)).toBe(true);
-		expect(editor.value).toBe('Unsaved local draft');
+		expect(wordsOf(editor)).toBe('Unsaved local draft');
 		editor.dispatch('blur');
 		await settle();
 		expect(fixture.host.patchScene).toHaveBeenLastCalledWith('scene', {
@@ -281,7 +289,7 @@ describe('corkboard drafts across regrouping', () => {
 		}, PROJECT);
 		expect(fixture.stored()[field]).toBe('External edit');
 		expect(notices).toHaveBeenCalledWith('Revision conflict');
-		expect(editor.value).toBe('Unsaved local draft');
+		expect(wordsOf(editor)).toBe('Unsaved local draft');
 		escape(editor);
 		fixture.handle.dispose();
 	});
@@ -296,7 +304,7 @@ describe('corkboard drafts across regrouping', () => {
 		expect(fixture.dom.container.querySelectorAll('.snowflake-method-corkboard-card')).toEqual([fixture.card]);
 		expect(fixture.card.getAttribute('data-key')).toBe('category:B|scene');
 		expect(fixture.dom.doc.activeElement).toBe(fixture.conflict);
-		expect(fixture.conflict.value).toBe('Draft from A');
+		expect(fixture.conflict.textContent).toBe('Draft from A');
 		escape(fixture.conflict);
 		fixture.handle.dispose();
 	});
@@ -305,18 +313,18 @@ describe('corkboard drafts across regrouping', () => {
 		const fixture = board('category', { categoryPaths: ['A', 'B'] });
 		const other = fixture.dom.container.querySelectorAll('.snowflake-method-corkboard-body-text')[1]!;
 		fixture.typeConflict('Draft from A');
-		other.value = 'Draft from B';
+		write(other, 'Draft from B');
 		other.dispatch('input');
 		other.focus();
 		fixture.external({ categoryPaths: ['C'], revision: 'external' });
 		expect(fixture.dom.container.contains(other)).toBe(true);
 		expect(fixture.dom.doc.activeElement).toBe(other);
-		expect(other.value).toBe('Draft from B');
+		expect(other.textContent).toBe('Draft from B');
 		fixture.external({ categoryPaths: ['A', 'B'], revision: 'external-2' });
 		expect(fixture.dom.container.contains(fixture.conflict)).toBe(true);
 		expect(fixture.dom.container.contains(other)).toBe(true);
-		expect(fixture.conflict.value).toBe('Draft from A');
-		expect(other.value).toBe('Draft from B');
+		expect(fixture.conflict.textContent).toBe('Draft from A');
+		expect(other.textContent).toBe('Draft from B');
 		expect(fixture.dom.doc.activeElement).toBe(other);
 		escape(fixture.conflict);
 		escape(other);
@@ -332,7 +340,7 @@ describe('corkboard drafts across regrouping', () => {
 		fixture.controls.memory.query = '';
 		fixture.handle.refresh();
 		expect(fixture.dom.container.contains(fixture.conflict)).toBe(true);
-		expect(fixture.conflict.value).toBe('Hidden draft');
+		expect(fixture.conflict.textContent).toBe('Hidden draft');
 		escape(fixture.conflict);
 		fixture.handle.dispose();
 	});
@@ -356,7 +364,7 @@ describe('corkboard text revisions', () => {
 		const fixture = board();
 		fixture.conflict.focus();
 		fixture.external({ conflict: 'External edit', revision: 'external' });
-		expect(fixture.conflict.value).toBe('External edit');
+		expect(fixture.conflict.textContent).toBe('External edit');
 		fixture.conflict.dispatch('blur');
 		await settle();
 		expect(fixture.host.patchScene).not.toHaveBeenCalled();
@@ -368,7 +376,7 @@ describe('corkboard text revisions', () => {
 		const fixture = board();
 		fixture.typeConflict('My draft');
 		fixture.external({ conflict: 'External edit', revision: 'external' });
-		expect(fixture.conflict.value).toBe('My draft');
+		expect(fixture.conflict.textContent).toBe('My draft');
 		fixture.conflict.dispatch('blur');
 		await settle();
 		expect(fixture.host.patchScene).toHaveBeenCalledWith('scene', {
@@ -376,14 +384,14 @@ describe('corkboard text revisions', () => {
 		}, PROJECT);
 		expect(fixture.stored().conflict).toBe('External edit');
 		expect(notices).toHaveBeenCalledWith('Revision conflict');
-		expect(fixture.conflict.value).toBe('My draft');
+		expect(fixture.conflict.textContent).toBe('My draft');
 		fixture.conflict.dispatch('blur');
 		await settle();
 		expect(fixture.host.patchScene).toHaveBeenLastCalledWith('scene', {
 			conflict: 'My draft', expectedRevision: 'initial',
 		}, PROJECT);
 		escape(fixture.conflict);
-		expect(fixture.conflict.value).toBe('External edit');
+		expect(fixture.conflict.textContent).toBe('External edit');
 		fixture.typeConflict('Resolved draft');
 		fixture.conflict.dispatch('blur');
 		await settle();
@@ -425,7 +433,7 @@ describe('corkboard text revisions', () => {
 		fixture.conflict.dispatch('blur');
 		await settle();
 		expect(fixture.host.patchScene).not.toHaveBeenCalled();
-		expect(fixture.conflict.value).toBe('External edit');
+		expect(fixture.conflict.textContent).toBe('External edit');
 		fixture.handle.dispose();
 	});
 
@@ -437,7 +445,7 @@ describe('corkboard text revisions', () => {
 		fixture.typeConflict('My draft');
 		gate.resolve();
 		await settle();
-		expect(fixture.conflict.value).toBe('My draft');
+		expect(fixture.conflict.textContent).toBe('My draft');
 		fixture.conflict.dispatch('blur');
 		await settle();
 		expect(fixture.host.patchScene).toHaveBeenLastCalledWith('scene', {
@@ -465,7 +473,7 @@ describe('corkboard text revisions', () => {
 		await settle();
 		commit('Second draft');
 		fixture.handle.refresh();
-		expect(field === 'title' ? fixture.title.textContent : fixture.conflict.value).toBe('Second draft');
+		expect(field === 'title' ? fixture.title.textContent : fixture.conflict.textContent).toBe('Second draft');
 		gate.resolve();
 		await settle();
 		expect(fixture.host.patchScene).toHaveBeenCalledTimes(2);
