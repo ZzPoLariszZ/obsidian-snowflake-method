@@ -219,6 +219,107 @@ describe("GalleryService", () => {
     expect(fakeMetadataCache.resolvedLinks[result.path]?.[`${folder}/shared.png`]).toBe(2);
   });
 
+  it("gives a namesake the name of a picture the same save takes off, once that one is in the trash", async () => {
+    const project = await service.createProject({ name: "Namesakes" });
+    const folder = galleryFolderPath(project, "character");
+    const { result: created } = await service.gallery.commit(
+      project,
+      "character",
+      { entries: [data("face.png", "old")], removed: [], mainIndex: 0 },
+      (gallery) => service.createCharacter(project, { name: "Pictured", ...gallery }),
+      (character) => character.path,
+    );
+    expect(created.gallery).toEqual([link(`${folder}/face.png`)]);
+
+    // Taken off and a namesake picked from the device in one save: the note
+    // names face.png, the new bytes stand under it, the old are in the trash.
+    fakeFileManager.trashCalls.length = 0;
+    fakeFileManager.renameCalls.length = 0;
+    const swap: GalleryDraft = { entries: [data("face.png", "new")], removed: [link(`${folder}/face.png`)], mainIndex: 0 };
+    const { result: updated, trashFailed } = await service.gallery.commit(
+      project,
+      "character",
+      swap,
+      (gallery) => service.updateCharacter(project.projectFile, created.characterId, {
+        expectedRevision: created.revision,
+        ...gallery,
+      }),
+      (character) => character.path,
+      created.path,
+    );
+    expect(trashFailed).toEqual([]);
+    expect(updated.gallery).toEqual([link(`${folder}/face.png`)]);
+    expect(updated.galleryMain).toBe(link(`${folder}/face.png`));
+    expect(stored(updated.path)[FRONTMATTER_KEYS.gallery]).toEqual([link(`${folder}/face.png`)]);
+    expect(fakeFileManager.trashCalls).toEqual([`${folder}/face.png`]);
+    expect(fakeFileManager.renameCalls).toEqual([{ from: `${folder}/face (2).png`, to: `${folder}/face.png` }]);
+    expect(fakeVault.getFileByPath(`${folder}/face (2).png`)).toBeNull();
+    expect(new TextDecoder().decode(fakeVault.binaryContents.get(`${folder}/face.png`))).toBe("new");
+
+    // Named by another note as well, the leaving picture stays, so the next namesake is numbered as before.
+    const other = await service.createCharacter(project, { name: "Other", gallery: [link(`${folder}/face.png`)] });
+    fakeFileManager.trashCalls.length = 0;
+    fakeFileManager.renameCalls.length = 0;
+    const shared: GalleryDraft = { entries: [data("face.png", "third")], removed: [link(`${folder}/face.png`)], mainIndex: 0 };
+    const { result: numbered } = await service.gallery.commit(
+      project,
+      "character",
+      shared,
+      (gallery) => service.updateCharacter(project.projectFile, created.characterId, {
+        expectedRevision: updated.revision,
+        ...gallery,
+      }),
+      (character) => character.path,
+      created.path,
+    );
+    expect(numbered.gallery).toEqual([link(`${folder}/face (2).png`)]);
+    expect(fakeFileManager.trashCalls).toEqual([]);
+    expect(fakeFileManager.renameCalls).toEqual([]);
+    expect(other.gallery).toEqual([link(`${folder}/face.png`)]);
+    expect(new TextDecoder().decode(fakeVault.binaryContents.get(`${folder}/face.png`))).toBe("new");
+  });
+
+  it("hands a freed name to the first namesake only, and a refused write moves nothing", async () => {
+    const project = await service.createProject({ name: "Two namesakes" });
+    const folder = galleryFolderPath(project, "character");
+    const { result: created } = await service.gallery.commit(
+      project,
+      "character",
+      { entries: [data("face.png", "old")], removed: [], mainIndex: null },
+      (gallery) => service.createCharacter(project, { name: "Pictured", ...gallery }),
+      (character) => character.path,
+    );
+    const pair: GalleryDraft = {
+      entries: [data("face.png", "one"), data("face.png", "two")],
+      removed: [link(`${folder}/face.png`)],
+      mainIndex: null,
+    };
+    const { result } = await service.gallery.commit(
+      project,
+      "character",
+      pair,
+      (gallery) => service.updateCharacter(project.projectFile, created.characterId, {
+        expectedRevision: created.revision,
+        ...gallery,
+      }),
+      (character) => character.path,
+      created.path,
+    );
+    expect(result.gallery).toEqual([link(`${folder}/face.png`), link(`${folder}/face (3).png`)]);
+    expect(new TextDecoder().decode(fakeVault.binaryContents.get(`${folder}/face.png`))).toBe("one");
+    expect(new TextDecoder().decode(fakeVault.binaryContents.get(`${folder}/face (3).png`))).toBe("two");
+    expect(fakeVault.getFileByPath(`${folder}/face (2).png`)).toBeNull();
+
+    // A write the note refuses leaves the leaving picture where it stands and the namesake nowhere.
+    const refused: GalleryDraft = { entries: [data("face.png", "late")], removed: [link(`${folder}/face.png`)], mainIndex: null };
+    await expect(
+      service.gallery.commit(project, "character", refused, () => Promise.reject(new Error("note refused")), () => "", created.path),
+    ).rejects.toThrow("note refused");
+    expect(new TextDecoder().decode(fakeVault.binaryContents.get(`${folder}/face.png`))).toBe("one");
+    expect(fakeVault.getFileByPath(`${folder}/face (2).png`)).toBeNull();
+    expect(stored(result.path)[FRONTMATTER_KEYS.gallery]).toEqual([link(`${folder}/face.png`), link(`${folder}/face (3).png`)]);
+  });
+
   it("stores the two keys on every kind, drops them when emptied, and holds the main to the list", async () => {
     const project = await service.createProject({ name: "Keys" });
     const picture = link(`${project.rootPath}/40_Scene/45_Gallery/dawn.png`);

@@ -2351,7 +2351,8 @@ export default class SnowflakeMethodPlugin
 	/**
 	 * Writes a note with its gallery: the form's pictures are landed around the
 	 * note's own write, and a removed picture that would not go to the trash
-	 * is said by name, since the save itself has landed.
+	 * is said by name, since the save itself has landed. An update names where the
+	 * note stands, so a picture picked under a leaving picture's name can take it.
 	 */
 	private async saveWithGallery<T>(
 		project: ProjectSnapshot,
@@ -2359,8 +2360,9 @@ export default class SnowflakeMethodPlugin
 		draft: GalleryDraft | undefined,
 		write: (gallery: GalleryWrite) => Promise<T>,
 		notePathOf: (result: T) => string,
+		notePath?: string,
 	): Promise<T> {
-		const { result, trashFailed } = await this.projects.gallery.commit(project, kind, draft, write, notePathOf);
+		const { result, trashFailed } = await this.projects.gallery.commit(project, kind, draft, write, notePathOf, notePath);
 		for (const name of trashFailed) new Notice(this.t('form.gallery.trashFailed', { name }));
 		return result;
 	}
@@ -2430,7 +2432,7 @@ export default class SnowflakeMethodPlugin
 					relationships: request.relationships,
 					customFields: request.customFields,
 					...gallery,
-				}), (updated) => updated.path);
+				}), (updated) => updated.path, project.characters.find((record) => record.characterId === id)?.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2609,7 +2611,7 @@ export default class SnowflakeMethodPlugin
 					relationships: request.relationships,
 					customFields: request.customFields,
 					...gallery,
-				}), (updated) => updated.path);
+				}), (updated) => updated.path, project.worldbuilding[request.kind]?.find((record) => record.entityId === id)?.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -2903,7 +2905,7 @@ export default class SnowflakeMethodPlugin
 					color: request.color,
 					linkedManuscript: request.linkedManuscript,
 					...gallery,
-				}), (updated) => updated.path);
+				}), (updated) => updated.path, project.scenes.find((record) => record.sceneId === id)?.path);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
