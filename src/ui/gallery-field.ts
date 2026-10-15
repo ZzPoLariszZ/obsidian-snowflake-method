@@ -3,15 +3,16 @@
  * form: the pictures the note keeps, fanned out as a coverflow with the
  * chosen one facing front and its neighbours turned away on either side. A
  * neighbour comes to the front when clicked, the arrow keys and a swipe
- * step through the row, and the front picture carries two buttons that show
- * under the pointer: the star at its left corner saying it is the main one,
- * the bin at its right corner taking it off. Pictures come in through the
- * Add button beside the row's name, from the vault or from the device. The
- * row holds what the author picked and nothing more: no file is read or
- * written until the form saves, when the draft it hands back is landed
- * beside the note.
+ * step through the row, and with three pictures or more the row turns in a
+ * cycle, the last standing beside the first: three or four stand three wide,
+ * five or more five wide. The front picture carries two
+ * buttons that show under the pointer: the star at its left corner saying
+ * it is the main one, the bin at its right corner taking it off. Pictures
+ * come in through the Add button beside the row's name, from the vault or
+ * from the device. The row holds what the author picked and nothing more:
+ * no file is read or written until the form saves, when the draft it hands
+ * back is landed beside the note.
  */
-
 import { Notice, setIcon, setTooltip, type App, type TFile } from 'obsidian';
 
 import { galleryLinkTarget, isImagePath, type GalleryDraft } from '../domain';
@@ -34,9 +35,14 @@ export interface GalleryFieldState {
 /** Where a picture is brought in from. */
 export type GallerySource = 'vault' | 'device';
 
-/** How far from the front a picture still stands in the fan; the rest wait out of sight. */
+/** How far from the front a picture still stands in the full fan: five on the stage, two to either side. */
 export const GALLERY_REACH = 2;
 
+/** With this many pictures or more, the fan turns in a cycle, the last standing beside the first. */
+export const GALLERY_CYCLE_FROM = 3;
+
+/** With this many pictures or more, the fan stands its full five; fewer stand three wide, one to either side. */
+export const GALLERY_FULL_FROM = GALLERY_REACH * 2 + 1;
 /** How far a pointer travels across the fan before the move counts as a swipe, in px. */
 const SWIPE_PX = 32;
 
@@ -71,6 +77,8 @@ interface GalleryItem {
 	missingWords: HTMLElement;
 	star: HTMLButtonElement | null;
 	remove: HTMLButtonElement | null;
+	/** Where the item was last drawn, as an offset from the front; null before its first draw. */
+	offset: number | null;
 }
 
 const nameOfPath = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
@@ -192,19 +200,41 @@ export class GalleryField {
 		this.items.clear();
 	}
 
+	/** Whether the fan turns in a cycle: with three pictures or more. */
+	private cyclic(): boolean {
+		return this.entries.length >= GALLERY_CYCLE_FROM;
+	}
+
+	/** How far from the front a picture still stands in the fan now: two to either side with five pictures or more, else one. */
+	private reach(): number {
+		return this.entries.length >= GALLERY_FULL_FROM ? GALLERY_REACH : 1;
+	}
+
+	/** How far an entry stands from the front: the short way round when the fan cycles. */
+	private offsetOf(index: number): number {
+		const count = this.entries.length;
+		const plain = index - this.at;
+		if (!this.cyclic()) return plain;
+		let around = ((plain % count) + count) % count;
+		if (around > count / 2) around -= count;
+		return around;
+	}
+
 	private step(by: number): void {
 		this.show(this.at + by);
 	}
 
-	/** Brings the picture at the index to the front. */
+	/** Brings the picture at the index to the front; past either end the fan comes round, or stops where it does not cycle. */
 	private show(index: number): void {
-		if (this.entries.length === 0) return;
-		const next = Math.min(this.entries.length - 1, Math.max(0, index));
+		const count = this.entries.length;
+		if (count === 0) return;
+		const next = this.cyclic() ? ((index % count) + count) % count : Math.min(count - 1, Math.max(0, index));
 		if (next === this.at) return;
+		const from = this.at;
 		this.at = next;
-		this.paint();
+		// How far the front moved, the short way round: what every picture's offset falls by.
+		this.paint(-this.offsetOf(from));
 	}
-
 	private toggleMain(index: number): void {
 		if (this.entries[index] === undefined) return;
 		this.mainIndex = this.mainIndex === index ? null : index;
@@ -355,36 +385,78 @@ export class GalleryField {
 			if (Date.now() - this.swipedAt < 400) return;
 			this.show(this.entries.indexOf(entry));
 		});
-		const item: GalleryItem = { el, picture, missing, missingWords, star, remove };
+		const item: GalleryItem = { el, picture, missing, missingWords, star, remove, offset: null };
 		this.items.set(entry, item);
 		return item;
 	}
 
-	private paint(): void {
+	/**
+	 * Where an item is drawn for its offset, and the snap that gets it there
+	 * the right way: a picture coming into sight enters from the side it
+	 * stands on, one going out of sight leaves by the side it stood on, and
+	 * one the cycle carries round from one end to the other is set down out
+	 * of sight on its new side first, so it never crosses the stage. With no
+	 * step given, as after a picture is added or taken off, every item just
+	 * moves to where it now stands.
+	 */
+	private standOf(item: GalleryItem, offset: number, by: number | null): number {
+		const reach = this.reach();
+		const beyond = reach + 1;
+		const previous = item.offset;
+		if (Math.abs(offset) <= reach) {
+			if (previous !== null && by !== null) {
+				const wasOut = Math.abs(previous) > reach;
+				const entersFromTheOtherSide = wasOut && Math.sign(previous) !== Math.sign(offset);
+				const carriedRound = !wasOut && offset !== previous - by;
+				if (entersFromTheOtherSide || carriedRound) this.snap(item, Math.sign(offset) * beyond);
+			}
+			item.offset = offset;
+			return offset;
+		}
+		const side = (previous === null ? Math.sign(offset) : Math.sign(previous)) || 1;
+		item.offset = side * beyond;
+		return item.offset;
+	}
+
+	/** Sets an item down somewhere without the move being shown, so its next move starts from there. */
+	private snap(item: GalleryItem, offset: number): void {
+		item.el.addClass('is-snapping');
+		item.el.setCssProps({
+			'--snowflake-method-gallery-offset': String(offset),
+			'--snowflake-method-gallery-distance': String(Math.abs(offset)),
+		});
+		// Read back, so the item is laid down there before it moves on.
+		void item.el.offsetWidth;
+		item.el.removeClass('is-snapping');
+	}
+
+	private paint(by: number | null = null): void {
 		const { t } = this.context;
 		const root = this.root;
 		if (root === null) return;
 		const count = this.entries.length;
 		root.toggleClass('is-empty', count === 0);
 		root.toggleClass('has-many', count > 1);
+		root.toggleClass('is-cyclic', this.cyclic());
+		const reach = this.reach();
 		this.empty?.toggleClass('is-hidden', count > 0);
 		let frontName = '';
 		this.entries.forEach((entry, index) => {
 			const item = this.itemOf(entry);
-			const offset = index - this.at;
-			const distance = Math.abs(offset);
+			const offset = this.offsetOf(index);
+			const stands = this.standOf(item, offset, by);
 			const current = index === this.at;
 			const main = this.mainIndex === index;
 			const { name, source } = this.shown(entry);
 			if (current) frontName = name;
 			item.el.toggleClass('is-current', current);
 			item.el.toggleClass('is-main', main);
-			item.el.toggleClass('is-hidden', distance > GALLERY_REACH);
+			item.el.toggleClass('is-hidden', Math.abs(stands) > reach);
 			item.el.setAttribute('data-offset', String(offset));
 			item.el.setAttribute('aria-hidden', current ? 'false' : 'true');
 			item.el.setCssProps({
-				'--snowflake-method-gallery-offset': String(offset),
-				'--snowflake-method-gallery-distance': String(distance),
+				'--snowflake-method-gallery-offset': String(stands),
+				'--snowflake-method-gallery-distance': String(Math.abs(stands)),
 			});
 			if (source === null) item.picture.removeAttribute('src');
 			else if (item.picture.getAttribute('src') !== source) item.picture.setAttribute('src', source);

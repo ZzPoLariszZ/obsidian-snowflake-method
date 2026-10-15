@@ -3,6 +3,8 @@ import type { App } from 'obsidian';
 
 import { galleryDraftOf } from '../../src/domain';
 import {
+	GALLERY_CYCLE_FROM,
+	GALLERY_FULL_FROM,
 	GALLERY_REACH,
 	GalleryField,
 	galleryFieldState,
@@ -175,10 +177,76 @@ describe('GalleryField', () => {
 		const links = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `[[Demo/20_Character/25_Gallery/${name}.png]]`);
 		const shown = mount(galleryFieldState(galleryDraftOf(links, null)));
 		const hidden = (): boolean[] => shown.items().map((item) => item.classes.has('is-hidden'));
-		expect(hidden()).toEqual([false, false, false, true, true, true]);
+		// Six cycle: the last two stand on the left of the first, and only the fourth waits out of sight.
+		expect(hidden()).toEqual([false, false, false, true, false, false]);
 		expect(GALLERY_REACH).toBe(2);
 		for (let step = 0; step < 3; step += 1) shown.key('ArrowRight');
 		expect(hidden()).toEqual([true, false, false, false, false, false]);
+	});
+
+	it('turns in a cycle from three pictures, three wide below five and five wide from there, and stops at the ends with two', () => {
+		const five = ['a', 'b', 'c', 'd', 'e'].map((name) => `[[Demo/20_Character/25_Gallery/${name}.png]]`);
+		const shown = mount(galleryFieldState(galleryDraftOf(five, null)));
+		expect(GALLERY_CYCLE_FROM).toBe(3);
+		expect(GALLERY_FULL_FROM).toBe(5);
+		expect(shown.root().classes.has('is-cyclic')).toBe(true);
+		// 4 5 [1] 2 3
+		expect(shown.offsets()).toEqual(['0', '1', '2', '-2', '-1']);
+		expect(shown.items().every((item) => !item.classes.has('is-hidden'))).toBe(true);
+		shown.key('ArrowRight');
+		// 5 1 [2] 3 4: the fourth comes round from the far left to the far right, set down out of sight on the right first.
+		expect(shown.offsets()).toEqual(['-1', '0', '1', '2', '-2']);
+		expect(shown.items()[3]?.styles['--snowflake-method-gallery-offset']).toBe('2');
+		expect(shown.items()[3]?.classes.has('is-snapping')).toBe(false);
+		shown.key('ArrowLeft');
+		shown.key('ArrowLeft');
+		// 3 4 [5] 1 2: before the first stands the last.
+		expect(shown.counter().textContent).toBe('form.gallery.counter:5/5');
+		expect(shown.offsets()).toEqual(['1', '2', '-2', '-1', '0']);
+		shown.key('ArrowRight');
+		expect(shown.counter().textContent).toBe('form.gallery.counter:1/5');
+
+		const six = [...five, '[[Demo/20_Character/25_Gallery/f.png]]'];
+		const more = mount(galleryFieldState(galleryDraftOf(six, null)));
+		// 5 6 [1] 2 3, the fourth out of sight.
+		expect(more.offsets()).toEqual(['0', '1', '2', '3', '-2', '-1']);
+		expect(more.items().map((item) => item.classes.has('is-hidden'))).toEqual([false, false, false, true, false, false]);
+		more.key('ArrowRight');
+		// 6 1 [2] 3 4: the fifth left by the left side and waits there, whichever way round it is counted.
+		expect(more.offsets()).toEqual(['-1', '0', '1', '2', '3', '-2']);
+		expect(more.items().map((item) => item.classes.has('is-hidden'))).toEqual([false, false, false, false, true, false]);
+		expect(more.items()[4]?.styles['--snowflake-method-gallery-offset']).toBe('-3');
+		expect(more.items()[3]?.styles['--snowflake-method-gallery-offset']).toBe('2');
+
+		// Four stand three wide and cycle: 4 [1] 2, the third out of sight; then 3 [4] 1.
+		const four = mount(galleryFieldState(galleryDraftOf(five.slice(0, 4), null)));
+		expect(four.root().classes.has('is-cyclic')).toBe(true);
+		expect(four.offsets()).toEqual(['0', '1', '2', '-1']);
+		expect(four.items().map((item) => item.classes.has('is-hidden'))).toEqual([false, false, true, false]);
+		four.key('ArrowLeft');
+		expect(four.counter().textContent).toBe('form.gallery.counter:4/4');
+		expect(four.offsets()).toEqual(['1', '2', '-1', '0']);
+		expect(four.items().map((item) => item.classes.has('is-hidden'))).toEqual([false, true, false, false]);
+		expect(four.items()[1]?.styles['--snowflake-method-gallery-offset']).toBe('2');
+
+		// Three stand three wide and cycle, the third coming round from one side to the other.
+		const three = mount(galleryFieldState(galleryDraftOf(five.slice(0, 3), null)));
+		expect(three.offsets()).toEqual(['0', '1', '-1']);
+		expect(three.items().every((item) => !item.classes.has('is-hidden'))).toBe(true);
+		three.key('ArrowRight');
+		expect(three.offsets()).toEqual(['-1', '0', '1']);
+		expect(three.items()[2]?.styles['--snowflake-method-gallery-offset']).toBe('1');
+		three.key('ArrowRight');
+		expect(three.counter().textContent).toBe('form.gallery.counter:3/3');
+		expect(three.offsets()).toEqual(['1', '-1', '0']);
+
+		// Two do not cycle: the ends stay ends.
+		const two = mount(galleryFieldState(galleryDraftOf(five.slice(0, 2), null)));
+		expect(two.root().classes.has('is-cyclic')).toBe(false);
+		two.key('ArrowLeft');
+		expect(two.counter().textContent).toBe('form.gallery.counter:1/2');
+		expect(two.offsets()).toEqual(['0', '1']);
+		expect(two.items().every((item) => !item.classes.has('is-hidden'))).toBe(true);
 	});
 
 	it('stars the front picture as the main one and lets it go again', () => {
