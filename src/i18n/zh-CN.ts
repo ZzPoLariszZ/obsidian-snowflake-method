@@ -1082,6 +1082,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'corkboard.cards.compact': '紧凑',
 	'corkboard.cards.standard': '标准',
 	'corkboard.cards.gallery': '图库',
+	'corkboard.picture.previous': '上一张',
+	'corkboard.picture.next': '下一张',
 	'corkboard.cards.extended': '扩展',
 	'corkboard.groupBy': '分组依据',
 	'corkboard.none.pov': '无视点人物',

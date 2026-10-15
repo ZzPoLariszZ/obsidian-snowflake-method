@@ -135,6 +135,7 @@ import {
 	type StickyNoteColor,
 	type ChapterFollower,
 	type ChapterNumbering,
+	galleryLinkTarget,
 	type ChapterNumberRule,
 	type ChapterNumberProposal,
 	type ChapterRemovalProposal,
@@ -2374,6 +2375,36 @@ export default class SnowflakeMethodPlugin
 		for (const name of failed) new Notice(this.t('form.gallery.trashFailed', { name }));
 	}
 
+	/**
+	 * Where a card's write touches the note's gallery, the project and the
+	 * note as they stand before it, for the tidy after; nothing for a write
+	 * that leaves the gallery alone, which loads nothing extra.
+	 */
+	private async galleryBefore<M extends { path: string; gallery: string[] }>(
+		projectPath: string,
+		gallery: string[] | undefined,
+		find: (project: ProjectSnapshot) => M | undefined,
+	): Promise<{ project: ProjectSnapshot; member: M } | undefined> {
+		if (gallery === undefined) return undefined;
+		const project = await this.requireProject(projectPath);
+		const member = find(project);
+		return member === undefined ? undefined : { project, member };
+	}
+
+	/** A card's write that shortens the note's gallery sends the pictures taken off to the trash, as the form's save does. */
+	private async tidyAfterPatch(
+		project: ProjectSnapshot,
+		before: { path: string; gallery: string[] } | undefined,
+		gallery: string[] | undefined,
+	): Promise<void> {
+		if (before === undefined || gallery === undefined) return;
+		const kept = new Set(gallery.map((link) => galleryLinkTarget(link) ?? link.trim()));
+		await this.tidyGallery(project, {
+			path: before.path,
+			gallery: before.gallery.filter((link) => !kept.has(galleryLinkTarget(link) ?? link.trim())),
+		});
+	}
+
 	async createCharacter(
 		request: CreateCharacterRequest,
 		projectPath?: string,
@@ -2913,7 +2944,11 @@ export default class SnowflakeMethodPlugin
 
 	async patchScene(id: string, patch: ScenePatch, projectPath: string): Promise<string> {
 		try {
-			const written = await this.projects.updateScene(projectPath, id, patch);
+			const before = await this.galleryBefore(projectPath, patch.gallery, (project) =>
+				project.scenes.find((candidate) => candidate.sceneId === id),
+			);
+			const written = await this.projects.updateScene(before?.project ?? projectPath, id, patch);
+			if (before !== undefined) await this.tidyAfterPatch(before.project, before.member, patch.gallery);
 			return written.revision;
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -2922,7 +2957,11 @@ export default class SnowflakeMethodPlugin
 
 	async patchCharacter(id: string, patch: CharacterPatch, projectPath: string): Promise<string> {
 		try {
-			const written = await this.projects.updateCharacter(projectPath, id, patch);
+			const before = await this.galleryBefore(projectPath, patch.gallery, (project) =>
+				project.characters.find((candidate) => candidate.characterId === id),
+			);
+			const written = await this.projects.updateCharacter(before?.project ?? projectPath, id, patch);
+			if (before !== undefined) await this.tidyAfterPatch(before.project, before.member, patch.gallery);
 			return written.revision;
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -2931,7 +2970,13 @@ export default class SnowflakeMethodPlugin
 
 	async patchEntity(id: string, patch: EntityPatch, projectPath: string): Promise<string> {
 		try {
-			const written = await this.projects.updateEntity(projectPath, id, patch);
+			const before = await this.galleryBefore(projectPath, patch.gallery, (project) =>
+				Object.values(project.worldbuilding)
+					.flat()
+					.find((candidate) => candidate.entityId === id),
+			);
+			const written = await this.projects.updateEntity(before?.project ?? projectPath, id, patch);
+			if (before !== undefined) await this.tidyAfterPatch(before.project, before.member, patch.gallery);
 			return written.revision;
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);

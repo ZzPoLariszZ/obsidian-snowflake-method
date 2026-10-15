@@ -94,6 +94,8 @@ function characterPatchOf(fields: MemberCardPatch, expectedRevision: string): Ch
 	if (fields.body !== undefined) patch.oneSentenceStoryline = fields.body;
 	if (fields.color !== undefined) patch.color = fields.color;
 	if (fields.progressStatus !== undefined) patch.progressStatus = fields.progressStatus;
+	if (fields.gallery !== undefined) patch.gallery = fields.gallery;
+	if (fields.galleryMain !== undefined) patch.galleryMain = fields.galleryMain;
 	return patch;
 }
 
@@ -104,6 +106,8 @@ function entityPatchOf(fields: MemberCardPatch, expectedRevision: string): Entit
 	if (fields.body !== undefined) patch.description = fields.body;
 	if (fields.color !== undefined) patch.color = fields.color;
 	if (fields.progressStatus !== undefined) patch.progressStatus = fields.progressStatus;
+	if (fields.gallery !== undefined) patch.gallery = fields.gallery;
+	if (fields.galleryMain !== undefined) patch.galleryMain = fields.galleryMain;
 	return patch;
 }
 
@@ -113,6 +117,8 @@ function entityApplied(member: EntityMember, fields: MemberCardPatch, revision: 
 		...(fields.title === undefined ? {} : { name: fields.title }),
 		...(fields.color === undefined ? {} : { color: fields.color }),
 		...(fields.progressStatus === undefined ? {} : { progressStatus: fields.progressStatus }),
+		...(fields.gallery === undefined ? {} : { gallery: fields.gallery }),
+		...(fields.galleryMain === undefined ? {} : { galleryMain: fields.galleryMain }),
 		revision,
 	};
 	if (isCharacterMember(member)) {

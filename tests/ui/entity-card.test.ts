@@ -85,6 +85,8 @@ function deal(initial: EntityMember[], options: { symbol?: string | ((member: En
 			if (fields.oneSentenceStoryline !== undefined) next.oneSentenceStoryline = fields.oneSentenceStoryline;
 			if (fields.progressStatus !== undefined && fields.progressStatus !== null) next.progressStatus = fields.progressStatus;
 			if (fields.color !== undefined) next.color = fields.color;
+			if (fields.gallery !== undefined) next.gallery = fields.gallery;
+			if (fields.galleryMain !== undefined) next.galleryMain = fields.galleryMain;
 			return next;
 		}
 		const next: WorldbuildingEntityViewModel = { ...(member as WorldbuildingEntityViewModel), revision };
@@ -93,6 +95,8 @@ function deal(initial: EntityMember[], options: { symbol?: string | ((member: En
 		if (fields.description !== undefined) next.description = fields.description;
 		if (fields.progressStatus !== undefined && fields.progressStatus !== null) next.progressStatus = fields.progressStatus;
 		if (fields.color !== undefined) next.color = fields.color;
+		if (fields.gallery !== undefined) next.gallery = fields.gallery;
+		if (fields.galleryMain !== undefined) next.galleryMain = fields.galleryMain;
 		return next;
 	};
 	const write = (id: string, patch: CharacterPatch | EntityPatch, projectPath: string): string => {
@@ -203,6 +207,84 @@ describe('an entity card dealt from the deck', () => {
 		expect(el(card.title).getAttribute('tabindex')).toBe('-1');
 	});
 
+	it('turns the pane through the gallery in a cycle, stars the picture shown, and takes it off the note', async () => {
+		const links = ['face', 'back', 'side'].map((name) => `[[First/20_Character/25_Gallery/${name}.png]]`);
+		const fixture = deal([character({ gallery: links, galleryMain: links[1]! })]);
+		for (const name of ['face', 'back', 'side']) {
+			fixture.files.set(`First/20_Character/25_Gallery/${name}.png`, { path: `First/20_Character/25_Gallery/${name}.png`, name: `${name}.png`, stat: { mtime: 1 } });
+		}
+		const card = fixture.mount('ada');
+		const pane = el(card.picture);
+		const src = (): string | null => pane.querySelector('img')!.getAttribute('src');
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/back.png?1');
+		expect(pane.classes.has('has-many')).toBe(true);
+		for (const button of [card.picturePrevious, card.pictureNext, card.pictureStar, card.pictureRemove]) expect(el(button).classes.has('is-hidden')).toBe(false);
+		expect(el(card.pictureStar).getAttribute('aria-pressed')).toBe('true');
+		expect(el(card.pictureStar).classes.has('is-main')).toBe(true);
+		expect(el(card.pictureNext).getAttribute('aria-label')).toBe('corkboard.picture.next');
+		expect(el(card.picturePrevious).getAttribute('aria-label')).toBe('corkboard.picture.previous');
+		expect(el(card.pictureStar).getAttribute('aria-label')).toBe('form.gallery.unsetMain');
+		expect(el(card.pictureRemove).getAttribute('aria-label')).toBe('form.gallery.removePicture:back.png');
+
+		// The arrows turn the pane, round past either end; the star says whether the picture shown is the main.
+		el(card.pictureNext).dispatch('click');
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/side.png?1');
+		expect(el(card.pictureStar).getAttribute('aria-pressed')).toBe('false');
+		el(card.pictureNext).dispatch('click');
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/face.png?1');
+		el(card.picturePrevious).dispatch('click');
+		el(card.picturePrevious).dispatch('click');
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/back.png?1');
+		el(card.picturePrevious).dispatch('click');
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/face.png?1');
+		expect(fixture.host.patchCharacter).not.toHaveBeenCalled();
+
+		// A dressing from the model keeps the picture the pane was turned to.
+		fixture.deck.dress(card, fixture.stored('ada'), 0, { position: 1, size: 1 });
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/face.png?1');
+
+		// The star makes the picture shown the main one, shown at once and written under the card's revision.
+		el(card.pictureStar).dispatch('click');
+		expect(el(card.pictureStar).getAttribute('aria-pressed')).toBe('true');
+		await settle();
+		expect(fixture.host.patchCharacter).toHaveBeenCalledWith('ada', { expectedRevision: 'initial', galleryMain: links[0]! }, PROJECT);
+		expect(fixture.stored('ada').galleryMain).toBe(links[0]);
+		expect(el(card.pictureStar).getAttribute('aria-pressed')).toBe('true');
+
+		// The bin takes the picture shown off the note, the main with it, and the pane turns to the next.
+		el(card.pictureRemove).dispatch('click');
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/back.png?1');
+		await settle();
+		expect(fixture.host.patchCharacter).toHaveBeenLastCalledWith('ada', { expectedRevision: 'saved-1', gallery: [links[1]!, links[2]!], galleryMain: null }, PROJECT);
+		expect(fixture.stored('ada').gallery).toEqual([links[1]!, links[2]!]);
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/back.png?1');
+		expect(el(card.pictureStar).getAttribute('aria-pressed')).toBe('false');
+
+		// Down to one picture the arrows go; a note that cannot be written keeps its arrows and loses the star and the bin.
+		fixture.external('ada', { gallery: [links[2]!], galleryMain: null });
+		fixture.deck.dress(card, fixture.stored('ada'), 0, { position: 1, size: 1 });
+		expect(el(card.picturePrevious).classes.has('is-hidden')).toBe(true);
+		expect(el(card.pictureNext).classes.has('is-hidden')).toBe(true);
+		expect(el(card.pictureStar).classes.has('is-hidden')).toBe(false);
+		fixture.setReadOnly(true);
+		fixture.deck.dress(card, fixture.stored('ada'), 0, { position: 1, size: 1 });
+		expect(el(card.pictureStar).classes.has('is-hidden')).toBe(true);
+		expect(el(card.pictureRemove).classes.has('is-hidden')).toBe(true);
+		expect(src()).toBe('app://fake/First/20_Character/25_Gallery/side.png?1');
+
+		// A link that resolves to no file says so in the frame, and the gallery emptied shows the kind's symbol.
+		fixture.setReadOnly(false);
+		fixture.external('ada', { gallery: ['[[First/20_Character/25_Gallery/gone.png]]'], galleryMain: null });
+		fixture.deck.dress(card, fixture.stored('ada'), 0, { position: 1, size: 1 });
+		expect(pane.querySelector('img')).toBeNull();
+		expect(el(card.pictureRemove).getAttribute('aria-label')).toBe('form.gallery.removePicture:gone.png');
+		expect(pane.classes.has('is-empty')).toBe(false);
+		fixture.external('ada', { gallery: [], galleryMain: null });
+		fixture.deck.dress(card, fixture.stored('ada'), 0, { position: 1, size: 1 });
+		expect(pane.classes.has('is-empty')).toBe(true);
+		expect(el(card.pictureRemove).classes.has('is-hidden')).toBe(true);
+	});
+
 	it('shows the gallery\'s main picture in the pane, the kind\'s symbol without one, and redraws only when the picture moves', () => {
 		const fixture = deal([character({ gallery: ['[[First/20_Character/25_Gallery/face.png]]', '[[First/20_Character/25_Gallery/back.png]]'], galleryMain: '[[First/20_Character/25_Gallery/back.png]]' })]);
 		fixture.files.set('First/20_Character/25_Gallery/back.png', { path: 'First/20_Character/25_Gallery/back.png', name: 'back.png', stat: { mtime: 7 } });
@@ -239,7 +321,9 @@ describe('an entity card dealt from the deck', () => {
 		// A link to a picture that has gone shows the symbol too.
 		fixture.external('ada', { gallery: ['[[First/20_Character/25_Gallery/lost.png]]'], galleryMain: null });
 		fixture.deck.dress(card, fixture.stored('ada'), 0, { position: 1, size: 1 });
-		expect(pane.classes.has('is-empty')).toBe(true);
+		expect(pane.classes.has('is-empty')).toBe(false);
+		expect(pane.querySelector('img')).toBeNull();
+		expect(pane.querySelector('.snowflake-method-corkboard-picture-symbol')).not.toBeNull();
 	});
 
 	it('writes the name and the storyline of a character, and the name and description of a worldbuilding note, under the revision each card holds', async () => {

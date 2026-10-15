@@ -16,7 +16,7 @@
 
 import { Keymap, Notice, setIcon, setTooltip, type App } from 'obsidian';
 
-import { PROGRESS_STATUSES, galleryCover, isProgressStatus, type MacaronColor, type ProgressStatus } from '../domain';
+import { PROGRESS_STATUSES, galleryCover, galleryLinkTarget, isProgressStatus, type MacaronColor, type ProgressStatus } from '../domain';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import { CorkboardDraftModal, type RecoveredCorkboardDraft } from './corkboard-draft-modal';
 import { statusOptions, type CardSelectOption } from './corkboard-layout';
@@ -87,10 +87,18 @@ export interface MemberCard<Member extends CardMember> {
 	bodyDirty: boolean;
 	bodyOriginal: string;
 	bodyRevision: EditRevision;
-	/** The pane the gallery style, and an entity card's fullest style, show the main picture in. */
+	/** The pane the gallery style, and an entity card's fullest style, show a picture of the note's gallery in. */
 	picture: HTMLElement;
-	/** What the pane was last drawn from: the picture's path and stamp, or the symbol shown in its place. */
+	/** Where the picture stands inside the pane, remade when the picture moves; the pane's buttons stand beside it. */
+	pictureFrame: HTMLElement;
+	/** What the frame was last drawn from: the picture's path and stamp, or the symbol shown in its place. */
 	pictureSignature: string;
+	/** The link of the picture the pane was turned to with its arrows; null shows the main picture, else the first. */
+	pictureLink: string | null;
+	picturePrevious: HTMLButtonElement;
+	pictureNext: HTMLButtonElement;
+	pictureStar: HTMLButtonElement;
+	pictureRemove: HTMLButtonElement;
 }
 
 /** What a card's picture pane draws from: the note's gallery, where its links resolve from, and the symbol shown without one. */
@@ -107,6 +115,9 @@ export interface MemberCardPatch {
 	body?: string;
 	color?: MacaronColor | null;
 	progressStatus?: ProgressStatus;
+	/** The note's gallery as the pane leaves it, and which of its pictures is the main one. */
+	gallery?: string[];
+	galleryMain?: string | null;
 }
 
 /** Where a kind builds its own parts into the card: the elements the shared parts stand in. */
@@ -272,6 +283,16 @@ export interface MemberCardDeck<Member extends CardMember, Card extends MemberCa
 	/** Drains every editor into the queue, which keeps running after the board is gone. */
 	dispose: () => void;
 }
+
+/** Whether two gallery links name the same picture. */
+const sameGalleryTarget = (left: string, right: string): boolean =>
+	(galleryLinkTarget(left) ?? left.trim()) === (galleryLinkTarget(right) ?? right.trim());
+
+/** The file name a gallery link ends in, for a picture that resolves to no file. */
+const galleryLinkName = (link: string): string => {
+	const target = galleryLinkTarget(link) ?? link.trim();
+	return target.slice(target.lastIndexOf('/') + 1);
+};
 
 /** Whether an event began on one of a card's controls, which answer for themselves. */
 export function controlWithin(target: EventTarget | null): boolean {
@@ -519,8 +540,24 @@ export function createMemberCardDeck<
 			cls: 'dropdown snowflake-method-entity-status snowflake-method-corkboard-status-select',
 			attr: { 'aria-label': t('table.progressStatus') },
 		});
-		// The picture stands between the head and the words.
+		// The picture stands between the head and the words, in a frame of its
+		// own, with the pane's buttons beside it: the arrows that turn the
+		// note's gallery round, the star and the bin.
 		const picture = el.createDiv({ cls: 'snowflake-method-corkboard-picture is-empty' });
+		const pictureFrame = picture.createDiv({ cls: 'snowflake-method-corkboard-picture-frame' });
+		const pictureButton = (part: string, icon: string): HTMLButtonElement => {
+			const button = picture.createEl('button', {
+				cls: `clickable-icon snowflake-method-corkboard-picture-${part} is-hidden`,
+				attr: { type: 'button' },
+			});
+			setIcon(button, icon);
+			return button;
+		};
+		const picturePrevious = pictureButton('previous', 'chevron-left');
+		const pictureNext = pictureButton('next', 'chevron-right');
+		const pictureStar = pictureButton('star', 'star');
+		pictureStar.setAttribute('aria-pressed', 'false');
+		const pictureRemove = pictureButton('remove', 'trash-2');
 		const body = el.createDiv({ cls: 'snowflake-method-corkboard-body' });
 		// A body only read invites no writing: it shows no placeholder, and is not reached by the Tab key.
 		const text = body.createEl('textarea', {
@@ -576,7 +613,13 @@ export function createMemberCardDeck<
 			bodyOriginal: kind.body(member),
 			bodyRevision: editRevision(member),
 			picture,
+			pictureFrame,
 			pictureSignature: '',
+			pictureLink: null,
+			picturePrevious,
+			pictureNext,
+			pictureStar,
+			pictureRemove,
 		};
 		return Object.assign(core, extras);
 	};
@@ -688,37 +731,110 @@ export function createMemberCardDeck<
 		card.body.readOnly = !writable || deps.bodyReadOnly === true;
 		const bodyLabel = kind.words.bodyLabel(member);
 		if (card.body.getAttribute('aria-label') !== bodyLabel) card.body.setAttribute('aria-label', bodyLabel);
-		paintPicture(card, member);
+		paintPicture(card, member, writable);
 		kind.dress(card, member);
 	};
 
-	/** The pane shows the gallery's main picture, else its first, else the kind's symbol; redrawn only when that moves. */
-	const paintPicture = (card: Card, member: Member): void => {
+	/** The link of the picture the pane shows: the one its arrows turned to while the note still holds it, else the main picture, else the first. */
+	const pictureShown = (card: Card, gallery: readonly string[], galleryMain: string | null): string | null => {
+		if (card.pictureLink !== null && gallery.includes(card.pictureLink)) return card.pictureLink;
+		card.pictureLink = null;
+		return galleryCover(gallery, galleryMain);
+	};
+
+	/** A button's label and tooltip, set only when the words move. */
+	const say = (button: HTMLButtonElement, label: string): void => {
+		if (button.getAttribute('aria-label') === label) return;
+		button.setAttribute('aria-label', label);
+		setTooltip(button, label);
+	};
+
+	/**
+	 * The pane shows one picture of the note's gallery: the one its arrows
+	 * were turned to while the note still holds it, else the main picture,
+	 * else the first. A note with none shows the kind's symbol, and a link
+	 * that resolves to no file says so. The frame is redrawn only when that
+	 * moves. The arrows show for more than one picture, the star and the bin
+	 * for a picture on a note that can be written.
+	 */
+	const paintPicture = (card: Card, member: Member, writable: boolean): void => {
 		const { gallery, galleryMain, path, icon } = kind.picture(member);
-		const cover = galleryCover(gallery, galleryMain);
-		const file = cover === null ? null : resolveGalleryPicture(deps.app.metadataCache, cover, path);
+		const link = pictureShown(card, gallery, galleryMain);
+		const file = link === null ? null : resolveGalleryPicture(deps.app.metadataCache, link, path);
 		const name = kind.title(member);
-		const signature = file === null ? `icon:${icon}` : `${file.path}|${String(file.stat.mtime)}`;
+		const signature =
+			link === null ? `icon:${icon}` : file === null ? `missing:${link}` : `${file.path}|${String(file.stat.mtime)}`;
 		if (signature !== card.pictureSignature) {
 			card.pictureSignature = signature;
-			card.picture.empty();
-			card.picture.toggleClass('is-empty', file === null);
+			card.pictureFrame.empty();
 			if (file === null) {
-				const symbol = card.picture.createSpan({
+				const symbol = card.pictureFrame.createSpan({
 					cls: 'snowflake-method-corkboard-picture-symbol',
 					attr: { 'aria-hidden': 'true' },
 				});
-				setIcon(symbol, icon);
+				setIcon(symbol, link === null ? icon : 'image-off');
 			} else {
-				card.picture.createEl('img', {
+				card.pictureFrame.createEl('img', {
 					attr: { src: deps.app.vault.getResourcePath(file), alt: name, loading: 'lazy' },
 				});
 			}
 		} else if (file !== null) {
 			// A rename moves the words under the picture, not the picture.
-			const shown = card.picture.querySelector('img');
+			const shown = card.pictureFrame.querySelector('img');
 			if (shown !== null && shown.getAttribute('alt') !== name) shown.setAttribute('alt', name);
 		}
+		card.picture.toggleClass('is-empty', gallery.length === 0);
+		card.picture.toggleClass('has-many', gallery.length > 1);
+		card.picturePrevious.toggleClass('is-hidden', gallery.length < 2);
+		card.pictureNext.toggleClass('is-hidden', gallery.length < 2);
+		const main = link !== null && galleryMain !== null && sameGalleryTarget(link, galleryMain);
+		card.pictureStar.toggleClass('is-hidden', link === null || !writable);
+		card.pictureStar.toggleClass('is-main', main);
+		card.pictureStar.setAttribute('aria-pressed', main ? 'true' : 'false');
+		card.pictureRemove.toggleClass('is-hidden', link === null || !writable);
+		say(card.picturePrevious, t('corkboard.picture.previous'));
+		say(card.pictureNext, t('corkboard.picture.next'));
+		say(card.pictureStar, t(main ? 'form.gallery.unsetMain' : 'form.gallery.setMain'));
+		say(card.pictureRemove, t('form.gallery.removePicture', { name: file?.name ?? (link === null ? '' : galleryLinkName(link)) }));
+	};
+
+	/** Turns the pane to the next or the previous picture of the note's gallery, round past either end. */
+	const turnPicture = (card: Card, by: number): void => {
+		const { gallery, galleryMain } = kind.picture(card.member);
+		const count = gallery.length;
+		if (count < 2) return;
+		const shown = pictureShown(card, gallery, galleryMain);
+		const from = shown === null ? 0 : gallery.indexOf(shown);
+		card.pictureLink = gallery[(((from + by) % count) + count) % count] ?? null;
+		paintPicture(card, card.member, editable(card));
+	};
+
+	/** The star makes the picture shown the note's main one, or lets it go again; the pane shows the answer at once, as the status does. */
+	const starPicture = (card: Card): void => {
+		if (!editable(card)) return;
+		const { gallery, galleryMain } = kind.picture(card.member);
+		const link = pictureShown(card, gallery, galleryMain);
+		if (link === null) return;
+		const main = galleryMain !== null && sameGalleryTarget(link, galleryMain);
+		const fields: MemberCardPatch = { galleryMain: main ? null : link };
+		void patch(card, fields);
+		paintPicture(card, kind.applied(card.member, fields, card.member.revision), true);
+	};
+
+	/** The bin takes the picture shown off the note, the main with it where it was the main, and turns the pane to the next. */
+	const removePicture = (card: Card): void => {
+		if (!editable(card)) return;
+		const { gallery, galleryMain } = kind.picture(card.member);
+		const link = pictureShown(card, gallery, galleryMain);
+		if (link === null) return;
+		const kept = gallery.filter((entry) => entry !== link);
+		const fields: MemberCardPatch = {
+			gallery: kept,
+			...(galleryMain !== null && sameGalleryTarget(link, galleryMain) ? { galleryMain: null } : {}),
+		};
+		card.pictureLink = kept[Math.min(gallery.indexOf(link), kept.length - 1)] ?? null;
+		void patch(card, fields);
+		paintPicture(card, kind.applied(card.member, fields, card.member.revision), true);
 	};
 
 	// -- Editing in place ----------------------------------------------------
@@ -962,6 +1078,23 @@ export function createMemberCardDeck<
 		card.more.addEventListener('click', (event) => {
 			event.stopPropagation();
 			deps.menu(card, event);
+		});
+		// The pane's arrows turn the note's gallery round; its star and its bin write the note, as the status and the tint do.
+		card.picturePrevious.addEventListener('click', (event) => {
+			event.stopPropagation();
+			turnPicture(card, -1);
+		});
+		card.pictureNext.addEventListener('click', (event) => {
+			event.stopPropagation();
+			turnPicture(card, 1);
+		});
+		card.pictureStar.addEventListener('click', (event) => {
+			event.stopPropagation();
+			starPicture(card);
+		});
+		card.pictureRemove.addEventListener('click', (event) => {
+			event.stopPropagation();
+			removePicture(card);
 		});
 		el.addEventListener('contextmenu', (event) => {
 			if (controlWithin(event.target) && event.target !== card.more) return;

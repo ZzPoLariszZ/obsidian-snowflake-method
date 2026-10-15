@@ -110,6 +110,8 @@ function scenePatchOf(fields: MemberCardPatch, expectedRevision: string): SceneP
 	if (fields.body !== undefined) patch.conflict = fields.body;
 	if (fields.color !== undefined) patch.color = fields.color;
 	if (fields.progressStatus !== undefined) patch.progressStatus = fields.progressStatus;
+	if (fields.gallery !== undefined) patch.gallery = fields.gallery;
+	if (fields.galleryMain !== undefined) patch.galleryMain = fields.galleryMain;
 	return patch;
 }
 
@@ -120,6 +122,8 @@ function sceneApplied(scene: SceneViewModel, fields: MemberCardPatch, revision: 
 	if (fields.body !== undefined) next.conflict = fields.body;
 	if (fields.color !== undefined) next.color = fields.color;
 	if (fields.progressStatus !== undefined) next.progressStatus = fields.progressStatus;
+	if (fields.gallery !== undefined) next.gallery = fields.gallery;
+	if (fields.galleryMain !== undefined) next.galleryMain = fields.galleryMain;
 	return next;
 }
 

@@ -419,4 +419,28 @@ describe('gallery saves through the host', () => {
 		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`, `${folder}/extra.png`, character.path]);
 		expect(env.fakeVault.getFileByPath(`${folder}/face.png`)).not.toBeNull();
 	});
+
+	it('sends a picture a card takes off to the trash, as the form\'s save does, and moves the main without touching a file', async () => {
+		const fixture = await setup();
+		const { plugin, service, owner, env } = fixture;
+		const folder = `${owner.rootPath}/20_Character/25_Gallery`;
+		const face = `[[${folder}/face.png]]`;
+		const back = `[[${folder}/back.png]]`;
+		const created = await plugin.createCharacter(characterRequest({
+			name: 'Pictured',
+			gallery: { entries: [picture('face.png', 1), picture('back.png', 2)], removed: [], mainIndex: 0 },
+		}), owner.projectFile);
+		const reload = async () => (await service.loadProject(owner)).characters.find((candidate) => candidate.characterId === created.id)!;
+		let character = await reload();
+		await plugin.patchCharacter(created.id, { expectedRevision: character.revision, galleryMain: back }, owner.projectFile);
+		character = await reload();
+		expect(character.galleryMain).toBe(back);
+		expect(env.fakeFileManager.trashCalls).toEqual([]);
+		await plugin.patchCharacter(created.id, { expectedRevision: character.revision, gallery: [face], galleryMain: null }, owner.projectFile);
+		character = await reload();
+		expect(character.gallery).toEqual([face]);
+		expect(character.galleryMain).toBeNull();
+		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`]);
+		expect(env.fakeVault.getFileByPath(`${folder}/face.png`)).not.toBeNull();
+	});
 });

@@ -14050,6 +14050,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
    it; a card with no picture shows its kind's symbol in the middle, as the
    dashboard's rail draws it. */
 .snowflake-method-corkboard-picture {
+	position: relative;
 	display: flex;
 	align-items: center;
 	flex: 0 0 auto;
@@ -14060,7 +14061,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	overflow: hidden;
 }
 
-.snowflake-method-corkboard-picture > img {
+.snowflake-method-corkboard-picture-frame {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+}
+
+.snowflake-method-corkboard-picture-frame > img {
 	display: block;
 	width: 100%;
 	height: 100%;
@@ -14075,6 +14084,74 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-corkboard-picture-symbol svg {
 	width: var(--icon-xl);
 	height: var(--icon-xl);
+}
+
+/* The pane's own buttons: the arrows at its sides turn the note's gallery
+   round, the star at its first corner says the picture shown is the main
+   one, the bin at its last corner takes it off the note. Each stands on a
+   faint ground and shows only under the pointer, under the keyboard's focus
+   or on a touch screen, and a little see-through even then, so the picture
+   shows through. */
+.snowflake-method-corkboard-picture > .clickable-icon {
+	position: absolute;
+	z-index: 1;
+	background-color: color-mix(in srgb, var(--background-primary) 75%, transparent);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--anim-duration-fast) var(--anim-motion-smooth);
+}
+
+.snowflake-method-corkboard-picture:hover > .clickable-icon,
+.snowflake-method-corkboard-picture:focus-within > .clickable-icon,
+body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
+	opacity: 0.7;
+	pointer-events: auto;
+}
+
+.snowflake-method-corkboard-picture > .clickable-icon:hover,
+.snowflake-method-corkboard-picture > .clickable-icon:focus-visible {
+	opacity: 1;
+}
+
+.snowflake-method-corkboard-picture > .clickable-icon.is-hidden {
+	display: none;
+}
+
+.snowflake-method-corkboard-picture-previous,
+.snowflake-method-corkboard-picture-next {
+	inset-block-start: 50%;
+	translate: 0 -50%;
+}
+
+.snowflake-method-corkboard-picture-previous {
+	inset-inline-start: var(--size-4-1);
+}
+
+.snowflake-method-corkboard-picture-next {
+	inset-inline-end: var(--size-4-1);
+}
+
+.snowflake-method-corkboard-picture-star {
+	inset-block-start: var(--size-4-1);
+	inset-inline-start: var(--size-4-1);
+}
+
+.snowflake-method-corkboard-picture-star.is-main,
+.snowflake-method-corkboard-picture-star.is-main:hover {
+	color: var(--color-yellow);
+}
+
+.snowflake-method-corkboard-picture-star.is-main svg {
+	fill: var(--color-yellow);
+}
+
+.snowflake-method-corkboard-picture-remove {
+	inset-block-start: var(--size-4-1);
+	inset-inline-end: var(--size-4-1);
+}
+
+.snowflake-method-corkboard-picture-remove:hover {
+	color: var(--text-error);
 }
 
 /* What an entity's card says at its foot where a scene names its point of

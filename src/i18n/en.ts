@@ -1180,6 +1180,8 @@ export const en = {
 	'corkboard.cards.compact': 'Compact',
 	'corkboard.cards.standard': 'Standard',
 	'corkboard.cards.gallery': 'Gallery',
+	'corkboard.picture.previous': 'Previous picture',
+	'corkboard.picture.next': 'Next picture',
 	'corkboard.cards.extended': 'Extended',
 	'corkboard.groupBy': 'Group by',
 	'corkboard.none.pov': 'No point of view',
