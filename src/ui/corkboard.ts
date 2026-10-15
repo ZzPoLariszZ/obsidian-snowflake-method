@@ -24,9 +24,10 @@ import { Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 import type { CorkboardControls, CorkboardFilters, CorkboardHandle, CorkboardVariant } from './corkboard-bridge';
 import type { CorkboardDeal, MemberMoveTarget } from './corkboard-deal';
 import {
-	CORKBOARD_REM,
 	adjacencyAllowed,
 	buildLayout,
+	cardHeightOf,
+	cardWidthOf,
 	cardPosition,
 	corkboardMetrics,
 	displayOrderOf,
@@ -396,6 +397,16 @@ export function renderBoard<
 		return Number.isFinite(size) && size > 0 ? size : 16;
 	};
 
+	/** The card's two side borders in px, which the square pane stands inside of; nothing until a card is drawn. */
+	const cardSides = (): number => {
+		for (const { el } of cards.values()) {
+			if (!el.isConnected) continue;
+			const style = root.win.getComputedStyle(el);
+			return (Number.parseFloat(style.borderLeftWidth) || 0) + (Number.parseFloat(style.borderRightWidth) || 0);
+		}
+		return 0;
+	};
+
 	const compactHeight = (): number | undefined => {
 		if (memory.mode !== 'compact' && memory.mode !== 'gallery') return undefined;
 		for (const { el } of cards.values()) {
@@ -433,15 +444,14 @@ export function renderBoard<
 	/** Geometry changes do not change the notes admitted by the filter or their order. */
 	const arrange = (metrics: CorkboardMetrics, reuseRows = false): boolean => {
 		const previous = layout;
+		const cardWidth = cardWidthOf(metrics);
+		const cardHeight = cardHeightOf(metrics, cardWidth);
 		const sameRows = reuseRows && previous !== null &&
 			previous.columns === layoutColumns(metrics) &&
-			previous.gap === metrics.gap && previous.cardHeight === metrics.cardHeight &&
+			previous.gap === metrics.gap && previous.cardHeight === cardHeight &&
 			previous.headHeight === metrics.headHeight;
 		if (sameRows) {
-			layout = {
-				...previous,
-				cardWidth: (metrics.width - (previous.columns - 1) * metrics.gap) / previous.columns,
-			};
+			layout = { ...previous, cardWidth };
 		} else {
 			layout = buildLayout(order, metrics);
 			headLines = new Map();
@@ -535,7 +545,7 @@ export function renderBoard<
 		const rem = remPx();
 		// The scroller extends past the frame for its scrollbar; the canvas
 		// keeps the same content edges as the toolbar above it.
-		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight(), variant.columns, variant.gap, deal.cardHeight);
+		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight(), variant.columns, variant.gap, deal.cardHeight, deal.paned, cardSides());
 		arrange(metrics);
 		displayKeys = [];
 		for (const group of order.groups) {
@@ -576,13 +586,14 @@ export function renderBoard<
 		// The first render supplies the themed header/footer measurements; the
 		// gallery style stands the picture pane on them, as the metrics do.
 		const measuredHeight = compactHeight();
+		const drawn = layout;
 		const expectedHeight =
-			measuredHeight === undefined
+			measuredHeight === undefined || drawn === null
 				? undefined
 				: memory.mode === 'gallery'
-					? measuredHeight + CORKBOARD_REM.pictureHeight * rem
+					? measuredHeight - cardSides() + drawn.cardWidth
 					: measuredHeight;
-		if (expectedHeight !== undefined && Math.abs(expectedHeight - metrics.cardHeight) > 0.5) {
+		if (expectedHeight !== undefined && drawn !== null && Math.abs(expectedHeight - drawn.cardHeight) > 0.5) {
 			paintAll({ keepFirst: true });
 		}
 	};
@@ -1264,11 +1275,15 @@ export function renderBoard<
 		// Hidden workspace tabs have no useful geometry; their next reveal measures again.
 		if (width <= 0) return null;
 		const viewport: ViewportMeasure = { top: scroller.scrollTop, height: scroller.clientHeight };
-		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight(), variant.columns, variant.gap, deal.cardHeight);
-		if (Math.abs(metrics.cardHeight - layout.cardHeight) <= 0.5) {
-			metrics.cardHeight = layout.cardHeight;
+		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight(), variant.columns, variant.gap, deal.cardHeight, deal.paned, cardSides());
+		let cardHeight = cardHeightOf(metrics, cardWidthOf(metrics));
+		if (Math.abs(cardHeight - layout.cardHeight) <= 0.5) {
+			// A hair of measurement moves no row: the layout keeps its height.
+			if (metrics.paneOn === undefined) metrics.cardHeight = layout.cardHeight;
+			else metrics.paneOn += layout.cardHeight - cardHeight;
+			cardHeight = layout.cardHeight;
 		}
-		const unchanged = width === lastWidth && metrics.cardHeight === layout.cardHeight &&
+		const unchanged = width === lastWidth && cardHeight === layout.cardHeight &&
 			metrics.gap === layout.gap && metrics.headHeight === layout.headHeight;
 		if (unchanged) return repaint || viewport.height !== lastViewportHeight ? viewport : null;
 		if (drag !== null) {

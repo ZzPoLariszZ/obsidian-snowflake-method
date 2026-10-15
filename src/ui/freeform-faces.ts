@@ -380,7 +380,7 @@ function scenePainter(deps: FreeformFaceDeps): NodePainter {
 				// Dealt bare, a card is dressed by the deck as it is shown and every time after.
 				if (card === null) card = deps.scenes.mount(face, id, node.scene, node.index);
 				deps.scenes.dress(card, node.scene, node.index);
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'scene', next.height);
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'scene', next.height, next.width);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -500,7 +500,7 @@ function entityPainter(deps: FreeformFaceDeps): NodePainter {
 				deps.entities.dress(card, member);
 				face.dataset.type = node.type;
 				face.dataset.kind = node.type === 'character' ? 'character' : node.entity.kind;
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'card', next.height);
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'card', next.height, next.width);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);

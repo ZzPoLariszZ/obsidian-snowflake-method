@@ -7,7 +7,7 @@
 
 import type { CorkboardControls } from './corkboard-bridge';
 import type { CorkboardDeal } from './corkboard-deal';
-import { CORKBOARD_REM, SCENE_DRAG_TYPE, groupValues } from './corkboard-layout';
+import { CORKBOARD_PANED, CORKBOARD_REM, SCENE_DRAG_TYPE, groupValues } from './corkboard-layout';
 import {
 	SCENE_CARD_PART_CLASSES,
 	createSceneCardDeck,
@@ -70,6 +70,7 @@ export function sceneDeal(controls: CorkboardControls<SceneFilters>): SceneDeal 
 		view: 'scene',
 		dragType: SCENE_DRAG_TYPE,
 		cardHeight: CORKBOARD_REM.cardHeight,
+		paned: CORKBOARD_PANED,
 		words: {
 			search: t('table.searchScenes'),
 			add: t('actions.addScene'),

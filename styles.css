@@ -13511,7 +13511,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--snowflake-method-corkboard-card-width: 16rem;
 	--snowflake-method-corkboard-card-height: 15rem;
 	/* The picture an entity's fullest card shows: as tall as the narrowest card is wide, so square there. */
-	--snowflake-method-corkboard-picture-height: 16rem;
 	/* A view field in a toolbar is as wide as a timeline's time column: a
 	   card, its handle, its menu, the gaps and the padding around the words,
 	   so the field stands the same on every workspace that has one. */
@@ -13728,14 +13727,25 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	box-shadow: inset -3px 0 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
 }
 
-/* The picture pane stands on a ground of its own, which would cover the
-   mark laid inside the card's edge, so the pane carries the mark on. */
-.snowflake-method-corkboard-card.is-drop-before > .snowflake-method-corkboard-picture {
-	box-shadow: inset 3px 0 0 0 var(--interactive-accent);
+/* The picture pane stands on a ground of its own, and a picture fills it,
+   either of which would cover the mark laid inside the card's edge, so the
+   pane carries the mark on, laid over the picture. */
+.snowflake-method-corkboard-card:is(.is-drop-before, .is-drop-after) > .snowflake-method-corkboard-picture::before {
+	content: '';
+	position: absolute;
+	z-index: 1;
+	inset-block: 0;
+	width: 3px;
+	background-color: var(--interactive-accent);
+	pointer-events: none;
 }
 
-.snowflake-method-corkboard-card.is-drop-after > .snowflake-method-corkboard-picture {
-	box-shadow: inset -3px 0 0 0 var(--interactive-accent);
+.snowflake-method-corkboard-card.is-drop-before > .snowflake-method-corkboard-picture::before {
+	inset-inline-start: 0;
+}
+
+.snowflake-method-corkboard-card.is-drop-after > .snowflake-method-corkboard-picture::before {
+	inset-inline-end: 0;
 }
 
 .snowflake-method-corkboard-head {
@@ -14045,20 +14055,35 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	box-shadow: none;
 }
 
-/* The picture an entity's fullest card shows above its words: one pane of a
-   fixed height, square at the narrowest card, the picture fitted whole inside
-   it; a card with no picture shows its kind's symbol in the middle, as the
-   dashboard's rail draws it. */
+/* The picture a card's gallery style, and an entity's fullest, shows above
+   its words: one square pane as wide as the card, the picture fitted whole
+   inside it, the card made tall enough for it by the surface; a card with no
+   picture shows its kind's symbol in the middle, as the dashboard's rail
+   draws it. A card cut shorter by hand on the canvas cuts the pane first. */
 .snowflake-method-corkboard-picture {
 	position: relative;
 	display: flex;
 	align-items: center;
-	flex: 0 0 auto;
+	flex: 0 1 auto;
 	justify-content: center;
-	height: var(--snowflake-method-corkboard-picture-height);
-	border-block-end: 1px solid color-mix(in srgb, var(--snowflake-method-sticky-edge) 50%, transparent);
+	min-height: 0;
+	aspect-ratio: 1 / 1;
 	background-color: var(--background-secondary);
 	overflow: hidden;
+}
+
+/* The hairline under the pane is laid over its last row rather than added
+   below it, so the pane's inside stays a square and a square picture fills
+   it to the edge. */
+.snowflake-method-corkboard-picture::after {
+	content: '';
+	position: absolute;
+	z-index: 1;
+	inset-inline: 0;
+	inset-block-end: 0;
+	height: 1px;
+	background-color: color-mix(in srgb, var(--snowflake-method-sticky-edge) 50%, transparent);
+	pointer-events: none;
 }
 
 .snowflake-method-corkboard-picture-frame {
@@ -15728,9 +15753,8 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 /* Stacked, a card's mark lies along its top or bottom, outside it, where no pane covers it. */
-.snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-before > .snowflake-method-corkboard-picture,
-.snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-after > .snowflake-method-corkboard-picture {
-	box-shadow: none;
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card:is(.is-drop-before, .is-drop-after) > .snowflake-method-corkboard-picture::before {
+	content: none;
 }
 
 /* Touch needs the menus and add controls in sight without a hover. Match

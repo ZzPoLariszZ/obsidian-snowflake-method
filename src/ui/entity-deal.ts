@@ -40,8 +40,11 @@ import type { Translate } from './modals';
 import type { CorkboardMode } from './story-structure-state';
 import { kindEntities, type ProjectDashboardModel } from './view-model';
 
-/** An entity card's height per style in rem: the scene card's, its fullest style grown by the picture pane. */
-export const ENTITY_CARD_REM: Readonly<Record<CorkboardMode, number>> = { compact: 5, standard: 15, gallery: 21, extended: 31 };
+/** An entity card's height per style in rem with no pane on it: the scene card's, its fullest the standard's. */
+export const ENTITY_CARD_REM: Readonly<Record<CorkboardMode, number>> = { compact: 5, standard: 15, gallery: 5, extended: 15 };
+
+/** The styles that stand the picture pane on an entity's card: the gallery style, and its fullest above the words. */
+export const ENTITY_CARD_PANED: readonly CorkboardMode[] = ['gallery', 'extended'];
 
 /** What the funnel of an entity view needs beyond the model: the kind's category tree. */
 export interface EntityFilterExtra {
@@ -88,6 +91,7 @@ export function entityDeal(controls: CorkboardControls<EntityFilters>, kind: str
 		view: kind,
 		dragType: character ? CHARACTER_DRAG_TYPE : ENTITY_DRAG_TYPE,
 		cardHeight: ENTITY_CARD_REM,
+		paned: ENTITY_CARD_PANED,
 		words,
 		index: (next) => {
 			model = next;

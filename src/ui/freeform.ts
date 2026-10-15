@@ -1947,7 +1947,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			const node = made.nodes.get(id);
 			if (placement === undefined || node === undefined) continue;
 			modes.push({ id, mode });
-			const height = heightForMode(faceKindOf(node.type), mode, placement.height);
+			const height = heightForMode(faceKindOf(node.type), mode, placement.height, placement.width);
 			if (height !== placement.height) places.push({ id, x: placement.x, y: placement.y, height });
 		}
 		if (modes.length === 0) return;

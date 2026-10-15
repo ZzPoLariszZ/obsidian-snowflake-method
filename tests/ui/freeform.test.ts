@@ -2208,11 +2208,11 @@ describe('how a node is shown and where it stands', () => {
 				{ ...text('c1', ''), resource: { type: 'entity', kind: 'scene', id: 'scene-1', name: 'Arrival' }, height: 250 },
 				{ ...text('c2', ''), resource: { type: 'entity', kind: 'scene', id: 'scene-1', name: 'Arrival' }, x: 300, height: 400 },
 				{ ...text('c3', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 600, height: 40 },
-				{ ...text('c4', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 900, height: 400 },
+				{ ...text('c4', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 900, height: 300 },
 			],
 		})]);
 		await settle();
-		// The plain canvas dresses at the fullest band: a box too low for that face falls back to what fits, and a card has no fullest face.
+		// The plain canvas dresses at the fullest band: a box too low for that face falls back to what fits; a card's fullest face wants a square pane as wide as it.
 		expect(fixture.face('c1').dataset.mode).toBe('standard');
 		expect(fixture.face('c2').dataset.mode).toBe('extended');
 		expect(fixture.face('c3').dataset.mode).toBe('compact');

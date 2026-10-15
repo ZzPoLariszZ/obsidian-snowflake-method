@@ -12,6 +12,8 @@ import { CANVAS_FRAME_KIND } from '../../src/ui/freeform-canvas-port';
 import {
 	FREEFORM_CASCADE,
 	FREEFORM_FACE_HEIGHTS,
+	FREEFORM_PANE_INSET,
+	FREEFORM_PANED_FACES,
 	FREEFORM_FACE_MODES_OF,
 	FREEFORM_GRID,
 	FREEFORM_NODE_MIN,
@@ -19,6 +21,7 @@ import {
 	FREEFORM_SEARCH_MISS,
 	cornersOf,
 	faceKindOf,
+	faceHeight,
 	faceModeOf,
 	frameTone,
 	heightForMode,
@@ -127,11 +130,19 @@ describe('the face a node shows', () => {
 		expect(faceModeOf('auto', 'extended', 'scene', scene.extended)).toBe('extended');
 		expect(faceModeOf('auto', 'extended', 'scene', scene.extended - 1)).toBe('standard');
 		expect(faceModeOf('auto', 'extended', 'scene', scene.standard - 1)).toBe('compact');
-		expect(faceModeOf('auto', 'extended', 'card', card.extended)).toBe('extended');
-		expect(faceModeOf('auto', 'extended', 'card', card.extended - 1)).toBe('standard');
-		expect(faceModeOf('auto', 'extended', 'card', card.standard - 1)).toBe('compact');
-		// The entity card's fullest face is the scene's standard grown by the picture pane, 16rem at the table's 16px root.
-		expect(card.extended).toBe(card.standard + 256);
+		// A paned face stands a square pane, as wide as the node's inside, on its bare height: the card's fullest on its standard one.
+		const fullest = faceHeight('card', 'extended', 256);
+		expect(fullest).toBe(card.standard + 256 - FREEFORM_PANE_INSET);
+		expect(faceHeight('card', 'gallery', 300)).toBe(card.gallery + 300 - FREEFORM_PANE_INSET);
+		expect(faceHeight('scene', 'gallery', 300)).toBe(scene.gallery + 300 - FREEFORM_PANE_INSET);
+		expect(faceHeight('scene', 'extended', 300)).toBe(scene.extended);
+		expect(FREEFORM_PANED_FACES.card).toEqual(['gallery', 'extended']);
+		expect(FREEFORM_PANED_FACES.scene).toEqual(['gallery']);
+		expect(faceModeOf('auto', 'extended', 'card', fullest, 256)).toBe('extended');
+		expect(faceModeOf('auto', 'extended', 'card', fullest - 1, 256)).toBe('standard');
+		expect(faceModeOf('auto', 'extended', 'card', card.standard - 1, 256)).toBe('compact');
+		// A wider node needs a taller box for the same face.
+		expect(faceModeOf('auto', 'extended', 'card', fullest, 400)).toBe('standard');
 		expect(faceModeOf('auto', 'standard', 'thread', thread.standard)).toBe('standard');
 		expect(faceModeOf('auto', 'standard', 'thread', thread.standard - 1)).toBe('compact');
 		// A revision's barest face carries its chapter too, so it needs more room than a thread's.
@@ -167,7 +178,8 @@ describe('the face a node shows', () => {
 		expect(heightForMode('scene', 'compact', 100)).toBe(scene.compact);
 		expect(heightForMode('record', 'auto', 10)).toBe(10);
 		// A face the kind does not have sizes the box to its fullest.
-		expect(heightForMode('card', 'extended', 10)).toBe(card.extended);
+		expect(heightForMode('card', 'extended', 10)).toBe(faceHeight('card', 'extended', 256));
+		expect(heightForMode('card', 'gallery', 10, 300)).toBe(card.gallery + 300 - FREEFORM_PANE_INSET);
 		expect(heightForMode('task', 'extended', 10)).toBe(FREEFORM_FACE_HEIGHTS.task.standard);
 		expect(heightForMode('record', 'standard', 300)).toBe(record.compact);
 	});

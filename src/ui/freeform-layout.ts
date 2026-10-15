@@ -60,10 +60,9 @@ export type FreeformFaceKind = 'scene' | 'card' | 'task' | 'thread' | 'revision'
  * drawn, with a few units to spare.
  */
 export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<Record<FreeformFaceMode, number>>>> = {
-	// The gallery face is the barest with the picture pane, 16rem at the 16px root the table is in.
-	scene: { compact: 80, standard: 240, gallery: 336, extended: 304 },
-	// The card's fullest face adds the picture pane to its standard one.
-	card: { compact: 80, standard: 176, gallery: 336, extended: 432 },
+	// A paned face is measured here without its pane: the gallery face is the barest, and the card's fullest its standard one.
+	scene: { compact: 80, standard: 240, gallery: 80, extended: 304 },
+	card: { compact: 80, standard: 176, gallery: 80, extended: 176 },
 	task: { compact: 56, standard: 88, gallery: 88, extended: 88 },
 	thread: { compact: 72, standard: 200, gallery: 200, extended: 200 },
 	revision: { compact: 108, standard: 220, gallery: 220, extended: 220 },
@@ -72,6 +71,32 @@ export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<R
 	text: { compact: 56, standard: 56, gallery: 56, extended: 56 },
 	plain: { compact: 48, standard: 48, gallery: 48, extended: 48 },
 };
+
+/**
+ * The faces that stand the picture pane on the card: a square as wide as
+ * the node's inside, added to the face's bare height once the width is
+ * known. A scene's fullest face keeps its links and no pane.
+ */
+export const FREEFORM_PANED_FACES: Readonly<Record<FreeformFaceKind, readonly FreeformFaceMode[]>> = {
+	scene: ['gallery'],
+	card: ['gallery', 'extended'],
+	task: [],
+	thread: [],
+	revision: [],
+	sticky: [],
+	record: [],
+	text: [],
+	plain: [],
+};
+
+/** What the node's border takes off its width before the pane, in px: one hairline either side. */
+export const FREEFORM_PANE_INSET = 2;
+
+/** How tall a face stands on a node of the width: its bare height, and the pane as wide as the node's inside where the face has one. */
+export function faceHeight(kind: FreeformFaceKind, face: FreeformFaceMode, width: number): number {
+	const bare = FREEFORM_FACE_HEIGHTS[kind][face];
+	return FREEFORM_PANED_FACES[kind].includes(face) ? bare + Math.max(0, width - FREEFORM_PANE_INSET) : bare;
+}
 
 /**
  * The faces each kind of node has, barest first. A scene's card and an
@@ -145,11 +170,11 @@ export function faceModeOf(
 	band: ZoomBand,
 	kind: FreeformFaceKind,
 	height: number,
+	width: number = FREEFORM_SIZE.width,
 ): FreeformFaceMode {
 	if (mode !== 'auto') return ownFace(kind, mode);
 	let shown = ownFace(kind, band === 'far' ? 'compact' : band);
-	const heights = FREEFORM_FACE_HEIGHTS[kind];
-	while (shown !== 'compact' && height < heights[shown]) {
+	while (shown !== 'compact' && height < faceHeight(kind, shown, width)) {
 		shown = shown === 'extended' ? 'standard' : 'compact';
 	}
 	return shown;
@@ -160,9 +185,14 @@ export function faceModeOf(
  * needs, so a box neither runs on empty under a barer face nor cuts a
  * fuller one short. Left to the canvas, a box keeps the height it has.
  */
-export function heightForMode(kind: FreeformFaceKind, mode: FreeformDisplayMode, height: number): number {
+export function heightForMode(
+	kind: FreeformFaceKind,
+	mode: FreeformDisplayMode,
+	height: number,
+	width: number = FREEFORM_SIZE.width,
+): number {
 	if (mode === 'auto') return height;
-	return FREEFORM_FACE_HEIGHTS[kind][ownFace(kind, mode)];
+	return faceHeight(kind, ownFace(kind, mode), width);
 }
 
 /** The room a note lands with: its standard face's where it has one, else its one face's. */

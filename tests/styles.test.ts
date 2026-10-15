@@ -1162,15 +1162,17 @@ describe('styles.css', () => {
 
 	it('shows an entity card\'s picture in a fixed pane above the words, hidden under the two barer styles', () => {
 		const pane = declarations('.snowflake-method-corkboard-picture');
-		expect(pane).toContain('height: var(--snowflake-method-corkboard-picture-height)');
+		expect(pane).toContain('aspect-ratio: 1 / 1');
+		expect(pane).toContain('flex: 0 1 auto');
 		expect(pane).toContain('overflow: hidden');
-		expect(declarations('.snowflake-method-scene-cards')).toContain('--snowflake-method-corkboard-picture-height: 16rem');
 		expect(pane).toContain('position: relative');
 		expect(declarations('.snowflake-method-corkboard-picture-frame > img')).toContain('object-fit: contain');
 		// The pane's buttons show under the pointer, the arrows a little see-through, and the landing mark carries on over the pane's ground.
 		expect(declarations('.snowflake-method-corkboard-picture > .clickable-icon')).toContain('opacity: 0');
 		expect(declarations('.snowflake-method-corkboard-picture:hover > .clickable-icon')).toContain('opacity: 0.7');
-		expect(declarations('.snowflake-method-corkboard-card.is-drop-before > .snowflake-method-corkboard-picture')).toContain('inset 3px 0 0 0 var(--interactive-accent)');
+		expect(declarations('.snowflake-method-corkboard-card.is-drop-before > .snowflake-method-corkboard-picture::before')).toContain('inset-inline-start: 0');
+		expect(styles).toMatch(/corkboard-picture::before \{\n\tcontent: '';\n\tposition: absolute;\n\tz-index: 1;\n\tinset-block: 0;\n\twidth: 3px;\n\tbackground-color: var\(--interactive-accent\);/u);
+		expect(declarations('.snowflake-method-corkboard-picture::after')).toContain('height: 1px');
 		// On the canvas a still title follows the node's own cursor, the hand that drags it.
 		expect(styles).toMatch(/button\.snowflake-method-corkboard-title\[aria-disabled='true'\] \{\n\topacity: 1;\n\tcolor: var\(--text-normal\);\n\tcursor: inherit;/u);
 		const hidden = styles

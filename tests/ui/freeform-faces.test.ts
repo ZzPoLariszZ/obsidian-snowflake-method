@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { faceHeight } from '../../src/ui/freeform-layout';
 
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
@@ -817,20 +818,22 @@ describe('an entity’s face', () => {
 		expect(deps.entities.mount).toHaveBeenCalledExactlyOnceWith(face, 'c1', anna, 0);
 		expect(dealtEntities.get('c1')).toMatchObject({ dressed: 1, settled: 0, retired: 0 });
 		expect(face.children[0]!.classes.has('snowflake-method-corkboard-card')).toBe(true);
-		// Dressed again, the one card is dressed with the note as it stands now; the fullest face shows in a box grown to it.
-		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 432 }), character: characterModel({ name: 'Anna' }) });
-		painted.dress(context({ height: 432, band: 'extended' }));
+		// Dressed again, the one card is dressed with the note as it stands now; the fullest face shows in a box grown to it,
+		// its square pane as wide as the 200px node's inside.
+		const fullest = faceHeight('card', 'extended', 200);
+		nodes.set('c1', { type: 'character', placement: placement('c1', { height: fullest }), character: characterModel({ name: 'Anna' }) });
+		painted.dress(context({ height: fullest, band: 'extended' }));
 		expect(deps.entities.mount).toHaveBeenCalledTimes(1);
 		expect(dealtEntities.get('c1')).toMatchObject({ dressed: 2 });
 		expect(dealtEntities.get('c1')!.member.name).toBe('Anna');
 		expect(face.dataset.mode).toBe('extended');
-		painted.dress(context({ height: 431, band: 'extended' }));
+		painted.dress(context({ height: fullest - 1, band: 'extended' }));
 		expect(face.dataset.mode).toBe('standard');
 		painted.dress(context({ height: 40 }));
 		expect(face.dataset.mode).toBe('compact');
-		painted.dress(context({ height: 432, band: 'far' }));
+		painted.dress(context({ height: fullest, band: 'far' }));
 		expect(face.dataset.mode).toBe('compact');
-		painted.dress(context({ height: 432, selected: true }));
+		painted.dress(context({ height: fullest, selected: true }));
 		expect(face.classes.has('is-selected')).toBe(true);
 		// The face hands its card's open words and its taking down to the deck.
 		painted.settle();

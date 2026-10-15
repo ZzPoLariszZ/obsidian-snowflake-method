@@ -260,10 +260,12 @@ export const CORKBOARD_REM = {
 	/** A 1.25rem insertion button has 0.625rem of room on each side. */
 	gap: 2.5,
 	headHeight: 2.25,
-	/** The picture pane a card's gallery style and an entity card's fullest style show. */
-	pictureHeight: 16,
-	cardHeight: { compact: 5, standard: 15, gallery: 21, extended: 19 },
+	/** A card's height per style with no pane on it; a paned style adds a square pane as wide as the card. */
+	cardHeight: { compact: 5, standard: 15, gallery: 5, extended: 19 },
 } as const;
+
+/** The styles that stand the picture pane on a scene's card: the gallery style alone, its fullest keeping the links. */
+export const CORKBOARD_PANED: readonly CorkboardMode[] = ['gallery'];
 
 export interface CorkboardMetrics {
 	/** The width the cards may take, in px. */
@@ -271,6 +273,12 @@ export interface CorkboardMetrics {
 	gap: number;
 	minCardWidth: number;
 	cardHeight: number;
+	/**
+	 * The card's height without its pane, in px, where the style stands a
+	 * square pane on it as wide as the card's inside: the card is then this
+	 * and its width tall, and `cardHeight` holds the narrowest card's.
+	 */
+	paneOn?: number;
 	headHeight: number;
 	/** A column count fixed by the board, whatever the width holds. */
 	columns?: number;
@@ -286,28 +294,31 @@ export function corkboardMetrics(
 	columns?: number,
 	/** The gap between cards in rem, where the board's own, sized for its insertion buttons, is more than wanted. */
 	gapRem?: number,
-	/** A card's height per style in rem, the scene card's unless the view deals another kind. */
+	/** A card's height per style in rem with no pane on it, the scene card's unless the view deals another kind. */
 	cardHeights: Readonly<Record<CorkboardMode, number>> = CORKBOARD_REM.cardHeight,
+	/** The styles that stand the picture pane on the card, the scene card's unless the view deals another kind. */
+	paned: readonly CorkboardMode[] = CORKBOARD_PANED,
+	/** The card's two side borders in px, which the square pane stands inside of. */
+	cardSidesPx = 0,
 ): CorkboardMetrics {
 	const measuredCompactHeight =
 		compactHeightPx !== undefined && Number.isFinite(compactHeightPx) && compactHeightPx > 0
 			? compactHeightPx
 			: null;
-	// The gallery style is the compact card with the picture pane between its head and its foot.
-	const measuredHeight =
-		measuredCompactHeight === null
-			? null
-			: mode === 'compact'
-				? measuredCompactHeight
-				: mode === 'gallery'
-					? measuredCompactHeight + CORKBOARD_REM.pictureHeight * remPx
-					: null;
+	// The compact style is the bare card as measured, and the gallery style
+	// stands the pane on that same bare card; the other styles hold their rem.
+	const bare =
+		(mode === 'compact' || mode === 'gallery') && measuredCompactHeight !== null
+			? measuredCompactHeight
+			: cardHeights[mode] * remPx;
+	const withPane = paned.includes(mode);
 	return {
 		width,
 		gap: (gapRem ?? CORKBOARD_REM.gap) * remPx,
 		minCardWidth: CORKBOARD_REM.minCardWidth * remPx,
-		cardHeight: measuredHeight ?? cardHeights[mode] * remPx,
+		cardHeight: withPane ? bare - cardSidesPx + CORKBOARD_REM.minCardWidth * remPx : bare,
 		headHeight: CORKBOARD_REM.headHeight * remPx,
+		...(withPane ? { paneOn: bare - cardSidesPx } : {}),
 		...(columns === undefined ? {} : { columns: Math.max(1, Math.floor(columns)) }),
 	};
 }
@@ -352,6 +363,19 @@ export interface CorkboardLayout {
 	height: number;
 }
 
+/** The width each card takes: the width shared out between the columns, or the least width where there is none yet. */
+export function cardWidthOf(metrics: CorkboardMetrics): number {
+	const columns = layoutColumns(metrics);
+	return metrics.width > 0
+		? (metrics.width - (columns - 1) * metrics.gap) / columns
+		: metrics.minCardWidth;
+}
+
+/** The height each card takes at the width: the style's own, or its bare height and a square pane as wide as the card. */
+export function cardHeightOf(metrics: CorkboardMetrics, cardWidth: number): number {
+	return metrics.paneOn === undefined ? metrics.cardHeight : metrics.paneOn + cardWidth;
+}
+
 /**
  * The canvas: a labelled group opens with a head line, and its cards fill
  * rows of `columns`, each row a card high and a gap. An unlabeled group has
@@ -362,10 +386,8 @@ export function buildLayout(
 	metrics: CorkboardMetrics,
 ): CorkboardLayout {
 	const columns = layoutColumns(metrics);
-	const cardWidth =
-		metrics.width > 0
-			? (metrics.width - (columns - 1) * metrics.gap) / columns
-			: metrics.minCardWidth;
+	const cardWidth = cardWidthOf(metrics);
+	const cardHeight = cardHeightOf(metrics, cardWidth);
 	const lines: LayoutLine[] = [];
 	const heights: number[] = [];
 	const items: DisplayItem[] = [];
@@ -388,14 +410,14 @@ export function buildLayout(
 				items.push(item);
 			}
 			lines.push({ kind: 'row', cards });
-			heights.push(metrics.cardHeight + metrics.gap);
+			heights.push(cardHeight + metrics.gap);
 		}
 	}
 	const offsets = rowOffsets(heights);
 	return {
 		columns,
 		cardWidth,
-		cardHeight: metrics.cardHeight,
+		cardHeight,
 		gap: metrics.gap,
 		headHeight: metrics.headHeight,
 		lines,

@@ -4,7 +4,9 @@ import {
 	SCENE_DRAG_TYPE,
 	adjacencyAllowed,
 	buildLayout,
+	cardHeightOf,
 	cardPosition,
+	cardWidthOf,
 	columnsFor,
 	layoutColumns,
 	corkboardMetrics,
@@ -325,9 +327,19 @@ describe('the layout', () => {
 	it('keeps full card modes fixed and falls back when compact content cannot be measured', () => {
 		expect(corkboardMetrics(500, 'standard', 16, 76).cardHeight).toBe(240);
 		expect(corkboardMetrics(500, 'extended', 16, 76).cardHeight).toBe(304);
-		// The gallery style stands the picture pane on the measured bare card, and on the compact style's rem without one.
-		expect(corkboardMetrics(500, 'gallery', 16, 76).cardHeight).toBe(332);
+		// The gallery style stands a square pane on the measured bare card, and on the compact style's rem without one: the
+		// metrics hold the narrowest card's height, and the layout adds the card's own width, less its side borders.
+		const paned = corkboardMetrics(500, 'gallery', 16, 76);
+		expect(paned.cardHeight).toBe(332);
+		expect(paned.paneOn).toBe(76);
+		expect(cardHeightOf(paned, 400)).toBe(476);
+		expect(cardHeightOf(corkboardMetrics(500, 'gallery', 16, 76, undefined, undefined, undefined, undefined, 2), 400)).toBe(474);
 		expect(corkboardMetrics(500, 'gallery', 16).cardHeight).toBe(336);
+		expect(corkboardMetrics(500, 'standard', 16, 76).paneOn).toBeUndefined();
+		expect(cardHeightOf(corkboardMetrics(500, 'standard', 16, 76), 400)).toBe(240);
+		// An entity's fullest style stands the pane on its standard one; a scene's keeps its links and no pane.
+		expect(cardHeightOf(corkboardMetrics(500, 'extended', 16, 76, undefined, undefined, { compact: 5, standard: 15, gallery: 5, extended: 15 }, ['gallery', 'extended']), 300)).toBe(540);
+		expect(cardWidthOf(corkboardMetrics(1000, 'gallery', 16, 76)).toFixed(2)).toBe('306.67');
 		for (const height of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
 			expect(corkboardMetrics(500, 'compact', 16, height).cardHeight).toBe(80);
 		}

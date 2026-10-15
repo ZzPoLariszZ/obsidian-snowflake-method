@@ -59,8 +59,10 @@ export interface CorkboardDeal<
 	view: string;
 	/** The type a card leaves the board under; a type of its own per kind, so a card never lands on another kind's board. */
 	dragType: string;
-	/** A card's height per style, in rem. */
+	/** A card's height per style in rem, with no pane on it. */
 	cardHeight: Readonly<Record<CorkboardMode, number>>;
+	/** The styles that stand the picture pane on the card: a square as wide as the card, added to the style's height. */
+	paned: readonly CorkboardMode[];
 	words: {
 		search: string;
 		add: string;
