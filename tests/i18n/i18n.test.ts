@@ -145,7 +145,7 @@ describe('translation resources', () => {
 			'Vault-relative folder path for Snowflake projects.',
 		);
 		expect(zhCN['modal.projectManager.projectRootDesc']).toBe(
-			'雪花写作项目文件夹的 Vault 相对路径。',
+			'雪花写作项目文件夹相对于仓库的路径。',
 		);
 		expect(
 			t('en', 'modal.projectManager.version', { version: '0.1.0' }),
@@ -164,7 +164,7 @@ describe('translation resources', () => {
 			'Vault-relative folder path for Snowflake projects.',
 		);
 		expect(zhCN['settings.projectRoot.desc']).toBe(
-			'雪花写作项目文件夹的 Vault 相对路径。',
+			'雪花写作项目文件夹相对于仓库的路径。',
 		);
 		expect(en['settings.uiLocale.desc']).toBe(
 			'Language used by the plugin interface.',
