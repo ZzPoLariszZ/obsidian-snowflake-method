@@ -365,7 +365,7 @@ describe('translation resources', () => {
 		);
 		expect(en['modal.character.oneSentenceStoryline']).toBe('One-sentence storyline');
 		expect(en['modal.character.oneSentenceStorylinePlaceholder']).toBe(
-			'Summarize the entire story in one sentence from this character’s point of view.',
+			'Summarize the entire story in one sentence from this character’s POV.',
 		);
 		expect(en['modal.character.oneParagraphStoryline']).toBe('One-paragraph storyline');
 		expect(en['modal.character.oneParagraphStorylinePlaceholder']).toBe(

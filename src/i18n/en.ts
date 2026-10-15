@@ -1885,7 +1885,7 @@ export const en = {
 	'modal.character.name': 'Name',
 	'modal.character.oneSentenceStoryline': 'One-sentence storyline',
 	'modal.character.oneSentenceStorylinePlaceholder':
-		'Summarize the entire story in one sentence from this character’s point of view.',
+		'Summarize the entire story in one sentence from this character’s POV.',
 	'modal.character.oneParagraphStoryline': 'One-paragraph storyline',
 	'modal.character.oneParagraphStorylinePlaceholder':
 		'Expand the one-sentence storyline into a full paragraph.',
