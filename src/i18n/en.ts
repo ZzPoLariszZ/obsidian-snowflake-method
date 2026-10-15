@@ -2287,7 +2287,7 @@ export const en = {
 	'errors.exportOverSource':
 		'The export would be written over the note itself, at {path}. Choose another export folder.',
 	'manuscript.copySelection': 'Copy',
-	'manuscript.revision.create': 'Create revision',
+	'manuscript.revision.create': 'Add revision',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',
 	'manuscript.revision.overlap': 'Another revision already covers that spot.',
 	'manuscript.revision.newerSchema':
@@ -2317,7 +2317,7 @@ export const en = {
 	'manuscript.foreshadowing.next': 'Next occurrence',
 	'manuscript.foreshadowing.refused':
 		'The foreshadowing could not be written, so nothing was saved.',
-	'manuscript.foreshadowing.create': 'Create foreshadowing',
+	'manuscript.foreshadowing.create': 'Add foreshadowing',
 	'manuscript.foreshadowing.addExisting': 'Add to existing foreshadowing',
 	'manuscript.foreshadowing.relink': 'Relink to unresolved foreshadowing',
 	'manuscript.foreshadowing.addTitle': 'Add to a foreshadowing',
