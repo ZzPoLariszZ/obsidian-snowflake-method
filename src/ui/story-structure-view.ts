@@ -416,6 +416,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 						this.clearCorkboardSession();
 					}
 					this.model = model;
+					// The project shown, marked on the root as the dashboard marks its
+					// own, so the menu over words in a card's body knows whose they are.
+					if (path === null) delete this.contentEl.dataset.snowflakeProject;
+					else this.contentEl.dataset.snowflakeProject = path;
 					if (model !== null) this.restoreCorkboardPreferences(model.projectId);
 					// A view of a kind the project no longer has falls back to the scenes, here where the model is known.
 					if (model !== null && !corkboardViewAvailable(this.corkboardView, model.worldbuildingKinds)) {

@@ -288,7 +288,7 @@ import {
 } from './ui/note-mentions';
 import { NotePresentation, type DressableNote } from './ui/note-presentation';
 import { NoteToolbars, type ToolbarNote } from './ui/note-toolbar';
-import { isProseBox, proseBoxSelection, proseBoxText } from './ui/prose-box';
+import { PROSE_BOX_CLASS, isProseBox, proseBoxSelection, proseBoxText } from './ui/prose-box';
 import type { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import {
@@ -4017,8 +4017,9 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The project a box of the dashboard or of a dialog belongs to. The
-	 * dashboard marks its root, and a member form its dialog, since a note's
+	 * The project a box of the dashboard, of a board or of a dialog belongs
+	 * to. The dashboard and the boards' view mark their roots, and a member
+	 * form its dialog, since a note's
 	 * menu opens the form of the note's project, which need not be the
 	 * current one. A dialog of no mark of its own was opened from the one
 	 * beneath it -- a vocabulary entry's from the form whose record asked for
@@ -4039,8 +4040,8 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The plugin's menu over words selected in a box of the dashboard or of a
-	 * dialog of its own, in one window. The press is read in the capture
+	 * The plugin's menu over words selected in a box of the dashboard, of a
+	 * dialog of its own or of a card on a board, in one window. The press is read in the capture
 	 * phase, before the browser moves the caret, and the menu stands in for
 	 * the app's only where the right-click lands on the selection it found.
 	 */
@@ -4070,11 +4071,16 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	/** A box of the dashboard or of one of the plugin's dialogs, if the event landed in one. */
+	/**
+	 * A box the menu serves, if the event landed in one: a box of the
+	 * dashboard or of one of the plugin's dialogs, or a prose box wherever it
+	 * stands, which is what a card's body is on the boards.
+	 */
 	private menuField(target: EventTarget | null): TextField | null {
 		const field = textFieldOf(target);
 		if (field === null) return null;
-		return field.closest(`.${DIALOG_CLASS}`) !== null ||
+		return field.hasClass(PROSE_BOX_CLASS) ||
+			field.closest(`.${DIALOG_CLASS}`) !== null ||
 			field.closest('.snowflake-method-dashboard') !== null
 			? field
 			: null;

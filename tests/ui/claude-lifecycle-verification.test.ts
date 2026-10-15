@@ -10,7 +10,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		Plugin: class {},
 		ItemView: class {
 			app: unknown;
-			contentEl = { addClass: (): void => undefined };
+			contentEl = { addClass: (): void => undefined, dataset: {} as Record<string, string> };
 			constructor(public leaf: { app: unknown }) { this.app = leaf.app; }
 			setState(): Promise<void> { return Promise.resolve(); }
 			registerDomEvent(): void {}

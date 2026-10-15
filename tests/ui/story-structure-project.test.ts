@@ -10,7 +10,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		Plugin: class {},
 		ItemView: class {
 			app: unknown;
-			contentEl = { addClass: (): void => undefined };
+			contentEl = { addClass: (): void => undefined, dataset: {} as Record<string, string> };
 			constructor(public leaf: { app: unknown }) { this.app = leaf.app; }
 			setState(): Promise<void> { return Promise.resolve(); }
 			registerDomEvent(): void {}
@@ -621,6 +621,8 @@ describe('the timeline tab', () => {
 		expect(controls.bridge()).toBe(timelineBridge);
 		expect(controls.bridge()).toBe(timelineBridge);
 		expect(controls.projectPath()).toBe(firstProject);
+		// The project shown is marked on the root, for the menu over words in a card's body.
+		expect(dom.container.dataset.snowflakeProject).toBe(firstProject);
 		await view.refresh();
 		expect(handle.refresh).toHaveBeenCalledOnce();
 		expect(handle.dispose).not.toHaveBeenCalled();

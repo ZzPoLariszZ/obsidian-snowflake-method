@@ -139,3 +139,38 @@ describe('the project a member form belongs to', () => {
 		]);
 	});
 });
+
+describe('the project a card’s body belongs to', () => {
+	/** A prose box holding words, the page's selection set over a stretch of them, right-clicked. */
+	const rightClickProse = (parent: HTMLElement, value: string, start: number, end: number): HTMLElement => {
+		const box = parent.createDiv({ cls: 'snowflake-method-prose-box snowflake-method-corkboard-body-text' });
+		box.setAttribute('contenteditable', 'plaintext-only');
+		const text = document.createTextNode(value);
+		box.appendChild(text);
+		const range = document.createRange();
+		range.setStart(text, start);
+		range.setEnd(text, end);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		box.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
+		box.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		return box;
+	};
+
+	it('is the project marked on the board the card stands on, and the current one where nothing is marked', () => {
+		const { rightClick, heard } = fieldMenu();
+		const board = document.body.createDiv({
+			cls: 'snowflake-method-story-structure',
+			attr: { 'data-snowflake-project': OTHER },
+		});
+		const onBoard = rightClickProse(board, 'the old mill road', 4, 12);
+		const loose = rightClickProse(document.body.createDiv(), 'the old mill road', 4, 12);
+		// A text area on the board is not a card's body, and the app keeps its own menu over it.
+		rightClick(board);
+		expect(heard()).toEqual([
+			[onBoard, 'old mill', OTHER],
+			[loose, 'old mill', CURRENT],
+		]);
+	});
+});
