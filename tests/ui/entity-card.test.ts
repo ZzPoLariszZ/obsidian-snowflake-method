@@ -198,7 +198,9 @@ describe('an entity card dealt from the deck', () => {
 		expect(fixture.mount('harbour').symbolIcon).toBe('map-pin');
 		expect(el(card.body).readOnly).toBe(true);
 		expect(el(card.body).getAttribute('placeholder')).toBeNull();
-		expect(el(card.title).disabled).toBe(true);
+		expect(el(card.title).disabled).toBe(false);
+		expect(el(card.title).getAttribute('aria-disabled')).toBe('true');
+		expect(el(card.title).getAttribute('tabindex')).toBe('-1');
 	});
 
 	it('shows the gallery\'s main picture in the pane, the kind\'s symbol without one, and redraws only when the picture moves', () => {
@@ -313,7 +315,14 @@ describe('an entity card dealt from the deck', () => {
 		const card = fixture.mount('harbour');
 		expect(el(card.el).classes.has('is-read-only')).toBe(true);
 		expect(el(card.body).readOnly).toBe(true);
-		expect(el(card.title).disabled).toBe(true);
+		expect(el(card.title).disabled).toBe(false);
+		expect(el(card.title).getAttribute('aria-disabled')).toBe('true');
+		// A press on the still title takes no focus, and goes on to whatever moves the card.
+		let prevented = false;
+		for (const listener of el(card.title).listeners.get('mousedown') ?? []) {
+			listener({ target: el(card.title), preventDefault: () => { prevented = true; }, stopPropagation: () => undefined });
+		}
+		expect(prevented).toBe(true);
 		for (const listener of el(card.el).listeners.get('keydown') ?? []) {
 			listener({ target: el(card.el), ...{ key: 'Enter' }, preventDefault: () => undefined, stopPropagation: () => undefined });
 		}

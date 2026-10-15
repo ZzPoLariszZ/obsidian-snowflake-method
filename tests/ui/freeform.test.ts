@@ -790,7 +790,10 @@ describe('the freeform workspace', () => {
 		const title = card.querySelector('.snowflake-method-corkboard-title')!;
 		expect(title.textContent).toBe('Arrival');
 		// The title is read and never typed into on the canvas: a press on it opens no field; the card changes only its tint and its standing here.
-		expect(title.disabled).toBe(true);
+		// Said so, not disabled: a disabled button would swallow the press that drags the node.
+		expect(title.disabled).toBe(false);
+		expect(title.getAttribute('aria-disabled')).toBe('true');
+		expect(title.getAttribute('tabindex')).toBe('-1');
 		fire(title, 'click');
 		expect(card.querySelector('.snowflake-method-corkboard-title-input')!.classes.has('is-hidden')).toBe(true);
 		expect(card.querySelector('.snowflake-method-corkboard-status-select')).not.toBeNull();

@@ -211,6 +211,12 @@ describe('a scene card dealt from the deck', () => {
 		// The rest of the card is still the writer's.
 		expect(card.status.disabled).toBe(false);
 		expect(card.title.disabled).toBe(false);
+		expect(card.title.getAttribute('aria-disabled')).toBeNull();
+		let prevented = false;
+		for (const listener of el(card.title).listeners.get('mousedown') ?? []) {
+			listener({ target: el(card.title), preventDefault: () => { prevented = true; }, stopPropagation: () => undefined });
+		}
+		expect(prevented).toBe(false);
 		expect(el(card.el).classes.has('is-read-only')).toBe(false);
 	});
 

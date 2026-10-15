@@ -13829,8 +13829,12 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	display: none;
 }
 
-.snowflake-method-scene-cards button.snowflake-method-corkboard-title:disabled {
+/* A title read and never typed into is said so, not disabled, so a press on
+   it still reaches whatever moves the card; it wears the look Obsidian gives
+   a disabled button, beside the card's other stilled controls. */
+.snowflake-method-scene-cards button.snowflake-method-corkboard-title[aria-disabled='true'] {
 	cursor: default;
+	opacity: 0.7;
 }
 
 .snowflake-method-corkboard-card.has-managed-section-issue
@@ -17000,7 +17004,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* A scene's title on the canvas is read and never typed into, and wears
    nothing of a button that cannot be pressed: the card changes only its
    tint and its standing here. */
-.snowflake-method-freeform-face:is(.is-scene, .is-card) button.snowflake-method-corkboard-title:disabled {
+.snowflake-method-freeform-face:is(.is-scene, .is-card) button.snowflake-method-corkboard-title[aria-disabled='true'] {
 	opacity: 1;
 	color: var(--text-normal);
 	cursor: default;

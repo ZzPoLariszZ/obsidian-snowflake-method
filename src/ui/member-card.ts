@@ -599,6 +599,22 @@ export function createMemberCardDeck<
 		}
 	};
 
+	/**
+	 * A title that is read and never typed into is said to be so, never
+	 * disabled: a disabled button swallows the press that drags the card's
+	 * node on the canvas, and loses its tooltip. Said so, it leaves the tab
+	 * order, and a press on it takes no focus, as with a disabled one.
+	 */
+	const stillTitle = (card: Card, still: boolean): void => {
+		if (still) {
+			card.title.setAttribute('aria-disabled', 'true');
+			card.title.setAttribute('tabindex', '-1');
+		} else {
+			card.title.removeAttribute('aria-disabled');
+			card.title.removeAttribute('tabindex');
+		}
+	};
+
 	const paintTitle = (card: Card): void => {
 		if (card.editingTitle) return;
 		const title = pendingTitles.get(card.id)?.value ?? kind.title(card.member);
@@ -651,7 +667,7 @@ export function createMemberCardDeck<
 			setIcon(card.number, symbol);
 		}
 		paintTitle(card);
-		card.title.disabled = !writable || deps.titleReadOnly === true;
+		stillTitle(card, !writable || deps.titleReadOnly === true);
 		const colorLabel =
 			tint === null
 				? t('modal.scene.colorNone')
@@ -880,6 +896,10 @@ export function createMemberCardDeck<
 		const { el } = card;
 		card.title.addEventListener('click', () => {
 			beginTitleEdit(card);
+		});
+		// A still title takes no focus from a press, as a disabled one would not; the press goes on to whatever moves the card.
+		card.title.addEventListener('mousedown', (event) => {
+			if (card.title.getAttribute('aria-disabled') === 'true') event.preventDefault();
 		});
 		card.titleInput.addEventListener('keydown', (event) => {
 			if (event.isComposing) return;

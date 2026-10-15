@@ -148,7 +148,7 @@ describe('corkboard correctness regressions', () => {
 		const conflict = fixture.button('corkboard-body-text');
 		expect(fixture.cards()[0]!.classes.has('has-managed-section-issue')).toBe(true);
 		expect(conflict.readOnly).toBe(true);
-		expect(fixture.button('corkboard-title').disabled).toBe(true);
+		expect(fixture.button('corkboard-title').getAttribute('aria-disabled')).toBe('true');
 		expect(menu(fixture.cards()[0]!).get('actions.edit')!.disabled).toBe(true);
 		conflict.value = 'New conflict'; conflict.dispatch('input'); conflict.dispatch('blur'); await settle();
 		expect(fixture.host.patchScene).not.toHaveBeenCalled();
