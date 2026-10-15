@@ -17012,7 +17012,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-freeform-face:is(.is-scene, .is-card) button.snowflake-method-corkboard-title[aria-disabled='true'] {
 	opacity: 1;
 	color: var(--text-normal);
-	cursor: default;
+	cursor: inherit;
 }
 
 /* The engine keeps the words of a node from being selected, so a drag
