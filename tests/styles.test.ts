@@ -1163,7 +1163,8 @@ describe('styles.css', () => {
 	it('shows an entity card\'s picture in a fixed pane above the words, hidden under the two barer styles', () => {
 		const pane = declarations('.snowflake-method-corkboard-picture');
 		expect(pane).toContain('aspect-ratio: 1 / 1');
-		expect(pane).toContain('flex: 0 1 auto');
+		expect(pane).toContain('flex: 0 0 auto');
+		expect(pane).not.toContain('min-height');
 		expect(pane).toContain('overflow: hidden');
 		expect(pane).toContain('position: relative');
 		expect(declarations('.snowflake-method-corkboard-picture-frame > img')).toContain('object-fit: contain');

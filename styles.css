@@ -14068,14 +14068,17 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
    its words: one square pane as wide as the card, the picture fitted whole
    inside it, the card made tall enough for it by the surface; a card with no
    picture shows its kind's symbol in the middle, as the dashboard's rail
-   draws it. A card cut shorter by hand on the canvas cuts the pane first. */
+   draws it. The pane never gives way to the words under it: a text longer
+   than its room scrolls in its box, and a card cut shorter by hand on the
+   canvas cuts the words first, then the pane is clipped with the rest. Were
+   the pane to shrink, its square would narrow with it, and the picture
+   would stand short of the card's edges. */
 .snowflake-method-corkboard-picture {
 	position: relative;
 	display: flex;
 	align-items: center;
-	flex: 0 1 auto;
+	flex: 0 0 auto;
 	justify-content: center;
-	min-height: 0;
 	aspect-ratio: 1 / 1;
 	background-color: var(--background-secondary);
 	overflow: hidden;
