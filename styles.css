@@ -14114,9 +14114,9 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* The pane's own buttons: the arrows at its sides turn the note's gallery
    round, the star at its first corner says the picture shown is the main
    one, the bin at its last corner takes it off the note. Each stands on a
-   faint ground and shows only under the pointer, under the keyboard's focus
-   or on a touch screen, and a little see-through even then, so the picture
-   shows through. */
+   faint ground, as far in from the edge as the gallery row stands its own,
+   and shows only under the pointer, under the keyboard's focus or on a touch
+   screen, and a little see-through even then, so the picture shows through. */
 .snowflake-method-corkboard-picture > .clickable-icon {
 	position: absolute;
 	z-index: 1;
@@ -14149,16 +14149,16 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 .snowflake-method-corkboard-picture-previous {
-	inset-inline-start: var(--size-4-1);
+	inset-inline-start: var(--size-4-2);
 }
 
 .snowflake-method-corkboard-picture-next {
-	inset-inline-end: var(--size-4-1);
+	inset-inline-end: var(--size-4-2);
 }
 
 .snowflake-method-corkboard-picture-star {
-	inset-block-start: var(--size-4-1);
-	inset-inline-start: var(--size-4-1);
+	inset-block-start: var(--size-4-2);
+	inset-inline-start: var(--size-4-2);
 }
 
 .snowflake-method-corkboard-picture-star.is-main,
@@ -14171,8 +14171,8 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 .snowflake-method-corkboard-picture-remove {
-	inset-block-start: var(--size-4-1);
-	inset-inline-end: var(--size-4-1);
+	inset-block-start: var(--size-4-2);
+	inset-inline-end: var(--size-4-2);
 }
 
 .snowflake-method-corkboard-picture-remove:hover {
