@@ -13728,6 +13728,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	box-shadow: inset -3px 0 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
 }
 
+/* The picture pane stands on a ground of its own, which would cover the
+   mark laid inside the card's edge, so the pane carries the mark on. */
+.snowflake-method-corkboard-card.is-drop-before > .snowflake-method-corkboard-picture {
+	box-shadow: inset 3px 0 0 0 var(--interactive-accent);
+}
+
+.snowflake-method-corkboard-card.is-drop-after > .snowflake-method-corkboard-picture {
+	box-shadow: inset -3px 0 0 0 var(--interactive-accent);
+}
+
 .snowflake-method-corkboard-head {
 	display: flex;
 	flex: 0 0 auto;
@@ -15638,6 +15648,12 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-after {
 	box-shadow: 0 3px 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
+}
+
+/* Stacked, a card's mark lies along its top or bottom, outside it, where no pane covers it. */
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-before > .snowflake-method-corkboard-picture,
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-after > .snowflake-method-corkboard-picture {
+	box-shadow: none;
 }
 
 /* Touch needs the menus and add controls in sight without a hover. Match
