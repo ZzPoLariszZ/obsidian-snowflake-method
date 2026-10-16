@@ -442,5 +442,39 @@ describe('gallery saves through the host', () => {
 		expect(character.galleryMain).toBeNull();
 		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`]);
 		expect(env.fakeVault.getFileByPath(`${folder}/face.png`)).not.toBeNull();
+
+		// A picture another note of the kind shares, linked where it stands, is kept when a card takes it off.
+		await plugin.createCharacter(characterRequest({
+			name: 'Twin',
+			gallery: { entries: [{ kind: 'vault', path: `${folder}/face.png` }], removed: [], mainIndex: null },
+		}), owner.projectFile);
+		character = await reload();
+		await plugin.patchCharacter(created.id, { expectedRevision: character.revision, gallery: [], galleryMain: null }, owner.projectFile);
+		character = await reload();
+		expect(character.gallery).toEqual([]);
+		expect(env.fakeFileManager.trashCalls).toEqual([`${folder}/back.png`]);
+		expect(env.fakeVault.getFileByPath(`${folder}/face.png`)).not.toBeNull();
+	});
+
+	it('tidies a deleted note\'s orphaned pictures after the plugin\'s own confirmation, where other notes name it', async () => {
+		const fixture = await setup();
+		const { plugin, service, owner, env } = fixture;
+		const folder = `${owner.rootPath}/20_Character/25_Gallery`;
+		const created = await plugin.createCharacter(characterRequest({
+			name: 'Pictured',
+			gallery: { entries: [picture('face.png', 1)], removed: [], mainIndex: 0 },
+		}), owner.projectFile);
+		const character = (await service.loadProject(owner)).characters.find((candidate) => candidate.characterId === created.id)!;
+		// A scene naming the character sends the deletion through the plugin's own confirmation rather than Obsidian's prompt.
+		await service.createScene(owner, { title: 'With the character', characters: [character.path] });
+		Object.setPrototypeOf(env.fakeVault.getFileByPath(character.path), TFile.prototype);
+		const deleting = plugin.deleteCharacter(created.id, character.revision, owner.projectFile);
+		await vi.waitFor(() => expect(openedForms).toHaveLength(1));
+		const confirmation = openedForms[0] as { confirmed: boolean; close(): void };
+		confirmation.confirmed = true;
+		confirmation.close();
+		await deleting;
+		expect(fixture.promptForDeletion).not.toHaveBeenCalled();
+		expect(env.fakeFileManager.trashCalls).toEqual([character.path, `${folder}/face.png`]);
 	});
 });
