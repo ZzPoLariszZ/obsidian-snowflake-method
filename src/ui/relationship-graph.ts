@@ -23,11 +23,16 @@ import { Notice } from 'obsidian';
 
 import {
 	buildEntityGraph,
+	defaultEntityGraphState,
 	EMPTY_ENTITY_GRAPH,
 	GRAPH_CUSTOM_KIND_COLOR_NAMES,
 	GRAPH_DEFAULT_COLOR_NAMES,
 	indexGraphForQueries,
+	isWorldbuildingKind,
+	patchEntityGraphState,
+	sameEntityGraphState,
 	type EntityGraph,
+	type EntityGraphState,
 	type GraphEdge,
 	type GraphNode,
 	type GraphQueryIndex,
@@ -40,6 +45,12 @@ import type {
 	RelationshipGraphReading,
 } from './relationship-graph-bridge';
 import { probeGraphColors } from './relationship-graph-canvas';
+import {
+	GRAPH_STATE_SAVE_MS,
+	hexOfColor,
+	renderGraphControls,
+	type GraphControlsKind,
+} from './relationship-graph-controls';
 import { pictureOf } from './relationship-graph-model';
 import type { GraphClickModifiers, GraphColors, GraphHandle, GraphPort } from './relationship-graph-port';
 import { renderSceneManuscriptPane } from './scene-manuscript-pane';
@@ -69,6 +80,10 @@ export const GRAPH_ACCENT_NAMES: readonly string[] = [
 
 /** How long the view may keep moving before where it stands is written to the file. */
 export const VIEWPORT_SAVE_MS = 1500;
+
+/** Whether two states set the picture alike, the viewport aside: the engine moves that, and the scene has an echo rule of its own for it. */
+const sameControls = (a: EntityGraphState, b: EntityGraphState): boolean =>
+	sameEntityGraphState({ ...a, viewport: null }, { ...b, viewport: null });
 
 const sameViewport = (a: GraphViewport | null, b: GraphViewport | null): boolean =>
 	a === b || (a !== null && b !== null && a.x === b.x && a.y === b.y && a.k === b.k);
@@ -123,6 +138,68 @@ export function renderRelationshipGraph(
 			viewportTimer = null;
 			flushViewport();
 		}, VIEWPORT_SAVE_MS);
+	};
+
+	// The controls write the state a part at a time: the picture takes each
+	// change at once, the file takes them together once the hand rests.
+	let owedState: Partial<EntityGraphState> | null = null;
+	let stateTimer: number | null = null;
+	/** The entities as the file last gave them, to tell a ring that moved nothing from a change made outside. */
+	let readEntities: EntityGraphState | null = null;
+	/** What the file will give back for each write of ours still on its way, oldest first: the picture shows them already. */
+	let echoesOwed: EntityGraphState[] = [];
+	const flushState = (): void => {
+		if (stateTimer !== null) {
+			win.clearTimeout(stateTimer);
+			stateTimer = null;
+		}
+		const patch = owedState;
+		owedState = null;
+		if (patch === null || reading === null) return;
+		echoesOwed.push(reading.held.entities);
+		void controls.bridge().updateEntities(patch).catch(notice);
+	};
+	const changeState = (patch: Partial<EntityGraphState>): void => {
+		if (reading === null || reading.readOnly) return;
+		reading = { ...reading, held: { ...reading.held, entities: patchEntityGraphState(reading.held.entities, patch) } };
+		owedState = { ...(owedState ?? {}), ...patch };
+		if (stateTimer !== null) win.clearTimeout(stateTimer);
+		stateTimer = win.setTimeout(() => {
+			stateTimer = null;
+			flushState();
+		}, GRAPH_STATE_SAVE_MS);
+		paintStage();
+	};
+	/**
+	 * The entities to draw once the file has been read again. A reading that
+	 * gives a write of ours back, or moved nothing, leaves the picture on what
+	 * the panel last set, which may be ahead of the file by a change still
+	 * owed: taken as read, the file would undo that change for the moment its
+	 * write takes to land, and the switch would flash. A change made outside
+	 * is taken, with what is owed on top. The viewport is always the file's;
+	 * the scene tells its own echo apart.
+	 */
+	const entitiesAfterReading = (held: EntityGraphState | null, incoming: EntityGraphState): EntityGraphState => {
+		const echoed = echoesOwed.findIndex((echo) => sameControls(echo, incoming));
+		if (echoed >= 0) echoesOwed.splice(0, echoed + 1);
+		const moved = readEntities === null || !sameControls(incoming, readEntities);
+		readEntities = incoming;
+		if (held !== null && (echoed >= 0 || !moved)) return { ...held, viewport: incoming.viewport };
+		echoesOwed = [];
+		return owedState === null ? incoming : patchEntityGraphState(incoming, owedState);
+	};
+
+	/** The node kinds the graph has, in the project's order, each by its name. */
+	const kindsPresent = (): GraphControlsKind[] => {
+		const present = new Set(graph.nodes.map((node) => node.kind));
+		const kinds: GraphControlsKind[] = [];
+		if (present.has('character')) kinds.push({ id: 'character', name: t('relationshipGraph.filter.characters') });
+		if (present.has('scene')) kinds.push({ id: 'scene', name: t('relationshipGraph.filter.scenes') });
+		for (const kind of reading?.kinds ?? []) {
+			if (!present.has(kind.id)) continue;
+			kinds.push({ id: kind.id, name: isWorldbuildingKind(kind.id) ? t(`worldbuilding.kind.${kind.id}`) : kind.id });
+		}
+		return kinds;
 	};
 
 	/** A node opens its form, or with the modifier its note; a target no note answers to opens nothing. */
@@ -202,12 +279,15 @@ export function renderRelationshipGraph(
 		'sliders-horizontal',
 		t('relationshipGraph.controls'),
 	);
-	controlsButton.setAttribute('aria-pressed', memory.controlsOpen ? 'true' : 'false');
-	controlsButton.addEventListener('click', () => {
-		memory.controlsOpen = !memory.controlsOpen;
-		controlsButton.setAttribute('aria-pressed', memory.controlsOpen ? 'true' : 'false');
+	const foldControls = (open: boolean): void => {
+		memory.controlsOpen = open;
+		controlsButton.setAttribute('aria-pressed', open ? 'true' : 'false');
 		controls.remember();
 		paintStage();
+	};
+	controlsButton.setAttribute('aria-pressed', memory.controlsOpen ? 'true' : 'false');
+	controlsButton.addEventListener('click', () => {
+		foldControls(!memory.controlsOpen);
 	});
 	const refreshButton = iconButton('snowflake-method-relationship-graph-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
@@ -224,6 +304,28 @@ export function renderRelationshipGraph(
 	const stage = root.createDiv({ cls: 'snowflake-method-relationship-graph-stage' });
 	const canvasHost = stage.createDiv({ cls: 'snowflake-method-relationship-graph-canvas' });
 	const sheet = stage.createDiv({ cls: 'snowflake-method-relationship-graph-sheet' });
+	const panel = renderGraphControls(stage, {
+		t,
+		state: () => reading?.held.entities ?? defaultEntityGraphState(),
+		query: () => memory.query,
+		kinds: kindsPresent,
+		customKinds: () => reading?.kinds.filter((kind) => kind.custom).map((kind) => kind.id) ?? [],
+		labels: () => graph.labels,
+		focus: () => (memory.focus === null ? null : (nodesById.get(memory.focus)?.name ?? null)),
+		readOnly: () => reading?.readOnly ?? true,
+		accentHex: (name) => hexOfColor(themeColors().accents[name] ?? ''),
+		onQuery: (text) => {
+			memory.query = text;
+			searchField.input.value = text;
+			paintStage();
+		},
+		onChange: changeState,
+		onFold: foldControls,
+		onShowWhole: () => {
+			memory.focus = null;
+			paintStage();
+		},
+	});
 
 	// Choosing the native view opens the graph tab once, there and then; a
 	// repaint, or a tab restored on this view, only shows the pane, whose
@@ -271,11 +373,17 @@ export function renderRelationshipGraph(
 		return engine;
 	};
 
+	/** The theme's colours, read once and kept until the theme changes. */
+	const themeColors = (): GraphColors => {
+		colors ??= probeGraphColors(canvasHost, GRAPH_ACCENT_NAMES);
+		return colors;
+	};
+
 	/** The picture of the reading held handed to the engine, and the file's view when it changed from outside. */
 	const drawScene = (read: RelationshipGraphReading): void => {
 		const first = engine === null;
 		const handle = ensureEngine();
-		colors ??= probeGraphColors(canvasHost, GRAPH_ACCENT_NAMES);
+		const colors = themeColors();
 		const state = read.held.entities;
 		const picture = pictureOf({
 			graph,
@@ -302,11 +410,14 @@ export function renderRelationshipGraph(
 		root.toggleClass('is-controls-open', memory.controlsOpen);
 		const empty = reading !== null && graph.edges.length === 0;
 		root.toggleClass('is-empty', empty);
+		panel.setOpen(memory.controlsOpen);
 		if (memory.view === 'entities') {
 			if (empty) {
 				sheet.createEl('p', { cls: 'snowflake-method-tab-planned', text: t('relationshipGraph.empty') });
 			} else if (reading !== null) {
 				drawScene(reading);
+				panel.setQuery(memory.query);
+				panel.refresh();
 			}
 		} else if (reading !== null) {
 			renderSceneManuscriptPane(sheet, {
@@ -324,8 +435,22 @@ export function renderRelationshipGraph(
 		paintStage();
 	};
 	const reload = async (): Promise<void> => {
-		const next = await controls.bridge().read();
+		const read = await controls.bridge().read();
 		if (disposed) return;
+		if (read === null) {
+			readEntities = null;
+			echoesOwed = [];
+		}
+		const next =
+			read === null
+				? null
+				: {
+						...read,
+						held: {
+							...read.held,
+							entities: entitiesAfterReading(reading?.held.entities ?? null, read.held.entities),
+						},
+					};
 		reading = next;
 		graph = next === null ? EMPTY_ENTITY_GRAPH : buildEntityGraph(next.members, next.resolveTarget);
 		index = next === null ? null : indexGraphForQueries(graph);
@@ -356,6 +481,7 @@ export function renderRelationshipGraph(
 		saveFocusedBody: () => false,
 		dispose: () => {
 			disposed = true;
+			flushState();
 			flushViewport();
 			app.workspace.offref(themeRef);
 			unsubscribe();
@@ -367,6 +493,7 @@ export function renderRelationshipGraph(
 				engine.dispose();
 				engine = null;
 			}
+			panel.dispose();
 			root.remove();
 		},
 	};

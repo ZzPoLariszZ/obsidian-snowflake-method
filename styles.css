@@ -17948,6 +17948,67 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	cursor: grabbing;
 }
 
+/* The controls panel borrows Obsidian's own markup and rules and stands in
+   the stage's corner as the native one does. What Obsidian leaves to its
+   code is set here: a folded section's rows out of sight, the local section
+   while no node is the focus, the read-only line, and the panel itself
+   while there is no graph to control or while it is folded, since the
+   toolbar's Controls button and the background menu unfold it and the
+   native open symbol is not drawn. */
+.snowflake-method-relationship-graph:not(.is-entities) .snowflake-method-graph-controls,
+.snowflake-method-graph-controls.is-close,
+.snowflake-method-relationship-graph.is-empty .snowflake-method-graph-controls,
+.snowflake-method-graph-controls .graph-control-section.is-collapsed > .tree-item-children,
+.snowflake-method-graph-controls .is-hidden {
+	display: none;
+}
+
+.snowflake-method-graph-controls .graph-control-section .graph-control-section {
+	padding-inline: 0;
+	border-bottom: none;
+}
+
+/* A dropdown stands taller than a toggle, so its row centres the name on
+   it; Obsidian's rows sit at the top, which is right for a toggle. */
+.snowflake-method-graph-controls .setting-item.mod-dropdown {
+	align-items: center;
+}
+
+/* A section's header is folded from the keyboard too, and shows that it
+   holds the focus the way Obsidian's own tree items do. */
+.snowflake-method-graph-controls .graph-control-section > .tree-item-self:focus-visible {
+	box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.snowflake-method-graph-controls .graph-color-group {
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-graph-controls .graph-color-group input[type='text'] {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.snowflake-method-graph-controls .graph-color-button-container {
+	display: grid;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-graph-controls .snowflake-method-graph-local-about,
+.snowflake-method-graph-controls .snowflake-method-graph-read-only {
+	margin: 0 0 var(--size-2-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-graph-controls .snowflake-method-graph-read-only {
+	padding: var(--size-2-3) var(--size-4-3);
+}
+
+.snowflake-method-graph-controls .snowflake-method-graph-local-whole {
+	width: 100%;
+}
+
 /* The pane that stands in for Obsidian's own graph: a column of words at a
    reading measure in the middle of the frame, as an empty board says what
    it waits for. The pane scrolls when the frame is too short for them, and

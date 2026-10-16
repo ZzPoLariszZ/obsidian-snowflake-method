@@ -144,10 +144,128 @@ export class SearchComponent {
 		return this;
 	}
 }
-/** Enough of a Setting for code paths that only construct rows. */
+/** An element that takes everything and shows nothing, for a Setting built off the page. */
+interface QuietElement {
+	addClass(...names: string[]): void;
+	removeClass(...names: string[]): void;
+	toggleClass(name: string, on: boolean): void;
+	setText(text: string): void;
+	setAttribute(name: string, value: string): void;
+	createDiv(spec?: unknown): QuietElement;
+	createEl(tag: string, spec?: unknown): QuietElement;
+	createSpan(spec?: unknown): QuietElement;
+	empty(): void;
+	remove(): void;
+}
+
+const quietElement = (): QuietElement => {
+	const element: QuietElement = {
+		addClass: () => undefined,
+		removeClass: () => undefined,
+		toggleClass: () => undefined,
+		setText: () => undefined,
+		setAttribute: () => undefined,
+		createDiv: () => quietElement(),
+		createEl: () => quietElement(),
+		createSpan: () => quietElement(),
+		empty: () => undefined,
+		remove: () => undefined,
+	};
+	return element;
+};
+
+/** A component that answers every call with itself and keeps one value, so a module that builds a panel can run. */
+class QuietComponent {
+	disabled = false;
+	private value: unknown = '';
+	private handler: ((value: never) => unknown) | null = null;
+	readonly inputEl = quietElement();
+	readonly clearButtonEl = quietElement();
+	readonly containerEl = quietElement();
+	readonly buttonEl = quietElement();
+	readonly extraSettingsEl = quietElement();
+	readonly selectEl = quietElement();
+	readonly sliderEl = quietElement();
+	readonly toggleEl = quietElement();
+	setValue(value: unknown): this {
+		this.value = value;
+		return this;
+	}
+	getValue(): unknown {
+		return this.value;
+	}
+	onChange(handler: (value: never) => unknown): this {
+		this.handler = handler;
+		return this;
+	}
+	/** What a test may do to stand in for the user. */
+	change(value: unknown): void {
+		this.value = value;
+		this.handler?.(value as never);
+	}
+	onClick(): this {
+		return this;
+	}
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		return this;
+	}
+	setPlaceholder(): this {
+		return this;
+	}
+	setLimits(): this {
+		return this;
+	}
+	setDynamicTooltip(): this {
+		return this;
+	}
+	setInstant(): this {
+		return this;
+	}
+	addOption(): this {
+		return this;
+	}
+	addOptions(): this {
+		return this;
+	}
+	setButtonText(): this {
+		return this;
+	}
+	setCta(): this {
+		return this;
+	}
+	setWarning(): this {
+		return this;
+	}
+	setIcon(): this {
+		return this;
+	}
+	setTooltip(): this {
+		return this;
+	}
+	then(callback: (component: this) => unknown): this {
+		callback(this);
+		return this;
+	}
+}
+
+/** Enough of a Setting to build a row on a page that may be a fake DOM or nothing at all. */
 export class Setting {
-	constructor(..._arguments: unknown[]) {}
-	setName(): this {
+	settingEl: QuietElement;
+	infoEl: QuietElement;
+	nameEl: QuietElement;
+	descEl: QuietElement;
+	controlEl: QuietElement;
+	constructor(container?: unknown) {
+		const parent = container as Partial<QuietElement> | undefined;
+		this.settingEl = typeof parent?.createDiv === 'function' ? parent.createDiv({ cls: 'setting-item' }) : quietElement();
+		this.infoEl = this.settingEl.createDiv({ cls: 'setting-item-info' });
+		this.nameEl = this.infoEl.createDiv({ cls: 'setting-item-name' });
+		this.descEl = this.infoEl.createDiv({ cls: 'setting-item-description' });
+		this.controlEl = this.settingEl.createDiv({ cls: 'setting-item-control' });
+	}
+	setName(name?: string): this {
+		if (typeof name === 'string') this.nameEl.setText(name);
 		return this;
 	}
 	setDesc(): this {
@@ -156,11 +274,64 @@ export class Setting {
 	setHeading(): this {
 		return this;
 	}
-	addDropdown(): this {
+	setClass(name: string): this {
+		this.settingEl.addClass(name);
 		return this;
 	}
-	addButton(): this {
+	setTooltip(): this {
 		return this;
+	}
+	setDisabled(): this {
+		return this;
+	}
+	private add(build?: (component: never) => unknown): this {
+		build?.(new QuietComponent() as never);
+		return this;
+	}
+	addDropdown(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addButton(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addExtraButton(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addToggle(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addSlider(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addSearch(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addText(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addTextArea(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+	addColorPicker(build?: (component: never) => unknown): this {
+		return this.add(build);
+	}
+}
+
+/** A text field off the page: the value kept, the hand on it called. */
+export class TextComponent extends QuietComponent {
+	constructor(container?: unknown) {
+		super();
+		const parent = container as Partial<QuietElement> | undefined;
+		if (typeof parent?.createEl === 'function') parent.createEl('input', { attr: { type: 'text' } });
+	}
+}
+
+/** A colour chip off the page: the value kept, the hand on it called. */
+export class ColorComponent extends QuietComponent {
+	constructor(container?: unknown) {
+		super();
+		const parent = container as Partial<QuietElement> | undefined;
+		if (typeof parent?.createEl === 'function') parent.createEl('input', { attr: { type: 'color' } });
 	}
 }
 

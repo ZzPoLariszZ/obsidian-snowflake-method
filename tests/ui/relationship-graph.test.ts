@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
-const { viewFields, searches, notices } = vi.hoisted(() => ({
+const { viewFields, searches, notices, rows } = vi.hoisted(() => ({
 	viewFields: [] as OptionFieldConfig[],
 	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
 	notices: vi.fn(),
+	/** The panel's rows, by name, as the runtime's Setting made them. */
+	rows: [] as { name: string; kind: string; component: { change(value: unknown): void; getValue(): unknown } }[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -27,11 +29,29 @@ vi.mock('obsidian', async (importOriginal) => {
 		onChange(handler: (value: string) => void): this { this.handler = handler; return this; }
 		type(value: string): void { this.inputEl.value = value; this.handler(value); }
 	}
+	type Build = (component: never) => unknown;
+	class Setting extends runtime.Setting {
+		private rowName = '';
+		setName(name?: string): this {
+			this.rowName = name ?? '';
+			return super.setName(name);
+		}
+		private record(kind: string, build?: Build): Build {
+			return (component) => {
+				rows.push({ name: this.rowName, kind, component: component });
+				build?.(component);
+			};
+		}
+		addToggle(build?: Build): this { return super.addToggle(this.record('toggle', build)); }
+		addSlider(build?: Build): this { return super.addSlider(this.record('slider', build)); }
+		addSearch(build?: Build): this { return super.addSearch(this.record('search', build)); }
+	}
 	return {
 		...runtime,
 		Notice: class { constructor(message: string) { notices(message); } },
 		getIcon: () => null,
 		SearchComponent,
+		Setting,
 	};
 });
 
@@ -578,5 +598,145 @@ describe('the entities view', () => {
 		expect(fixture.engines[0]!.calls.slice(-2)).toEqual(['centreOn:character-bob', 'focusNode:character-bob']);
 		fixture.handle.remeasure();
 		expect(fixture.engines[0]!.calls[fixture.engines[0]!.calls.length - 1]).toBe('remeasure');
+	});
+});
+
+describe('the controls panel in the workspace', () => {
+	const row = (name: string) => rows.filter((one) => one.name === name).pop()!.component;
+
+	it("stands in the stage and folds with the toolbar's symbol", async () => {
+		const fixture = mount({ members: family(), controlsOpen: false });
+		await settle();
+		const panel = fixture.root.querySelector('.snowflake-method-graph-controls')!;
+		expect(panel.classes.has('is-close')).toBe(true);
+		fixture.button('snowflake-method-relationship-graph-controls').dispatch('click');
+		expect(panel.classes.has('is-close')).toBe(false);
+		expect(fixture.memory.controlsOpen).toBe(true);
+		expect(fixture.remember).toHaveBeenCalledTimes(1);
+		panel.querySelector('.graph-controls-button.mod-close')!.dispatch('click');
+		expect(panel.classes.has('is-close')).toBe(true);
+		expect(fixture.memory.controlsOpen).toBe(false);
+		expect(fixture.button('snowflake-method-relationship-graph-controls').getAttribute('aria-pressed')).toBe('false');
+	});
+
+	it('takes a change from the panel into the picture at once and writes it after a pause', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		row('relationshipGraph.display.arrows').change(false);
+		row('relationshipGraph.filter.orphans').change(false);
+		const last = engine.scenes[engine.scenes.length - 1]!;
+		expect(last.display.arrows).toBe(false);
+		// The town stood alone; without orphans it is gone from the picture.
+		expect(last.picture.nodes.map((node) => node.id).sort()).toEqual(['character-alice', 'character-bob']);
+		expect(fixture.bridge.updateEntities).not.toHaveBeenCalled();
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+		const fresh = defaultRelationshipGraphDocument().entities;
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledWith({
+			display: { ...fresh.display, arrows: false },
+			filters: { ...fresh.filters, orphans: false },
+		});
+	});
+
+	it("keeps the change just made when the file gives an older write of the panel's back", async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		const fresh = defaultRelationshipGraphDocument().entities;
+		const fileWith = (arrows: boolean): RelationshipGraphReading => ({
+			...fixture.reading,
+			held: { ...fixture.reading.held, entities: { ...fresh, display: { ...fresh.display, arrows } } },
+		});
+		const ring = async (): Promise<void> => {
+			for (const listener of fixture.listeners) listener();
+			await settle();
+		};
+		const lastArrows = (): boolean => engine.scenes[engine.scenes.length - 1]!.display.arrows;
+		row('relationshipGraph.display.arrows').change(false);
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+		// Arrows back on before the first write has come back from the file: the file's older word must not flash them off.
+		row('relationshipGraph.display.arrows').change(true);
+		fixture.bridge.read.mockResolvedValueOnce(fileWith(false));
+		await ring();
+		expect(lastArrows()).toBe(true);
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(2);
+		fixture.bridge.read.mockResolvedValueOnce(fileWith(true));
+		await ring();
+		expect(lastArrows()).toBe(true);
+		// A ring that moved nothing in the file leaves the picture alone too.
+		fixture.bridge.read.mockResolvedValueOnce(fileWith(true));
+		await ring();
+		expect(lastArrows()).toBe(true);
+		// A change made outside, with nothing owed, is taken.
+		fixture.bridge.read.mockResolvedValueOnce(fileWith(false));
+		await ring();
+		expect(lastArrows()).toBe(false);
+	});
+
+	it('settles a change still owed when the tab closes', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		row('relationshipGraph.force.repel').change(3);
+		fixture.handle.dispose();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+	});
+
+	it('writes nothing from the panel for a read-only project', async () => {
+		const fixture = mount({ members: family(), readOnly: true });
+		await settle();
+		const engine = fixture.engines[0]!;
+		row('relationshipGraph.display.arrows').change(false);
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).not.toHaveBeenCalled();
+		expect(engine.scenes).toHaveLength(1);
+	});
+
+	it("mirrors the panel's words into the toolbar and the toolbar's into the panel", async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		row('').change('alice');
+		expect(fixture.memory.query).toBe('alice');
+		expect((searches[searches.length - 1]!.inputEl as CorkboardElement).value).toBe('alice');
+		const engine = fixture.engines[0]!;
+		expect(engine.scenes[engine.scenes.length - 1]!.picture.matches).toEqual(new Set(['character-alice']));
+		searches[searches.length - 1]!.type('bob');
+		fixture.dom.flushFrame();
+		expect(row('').getValue()).toBe('bob');
+	});
+
+	it('names the kinds the graph has, the built-ins by their words', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		expect(rows.filter((one) => one.kind === 'toggle').map((one) => one.name)).toEqual(
+			expect.arrayContaining(['relationshipGraph.filter.characters', 'relationshipGraph.filter.scenes', 'Family']),
+		);
+		expect(rows.some((one) => one.name === 'worldbuilding.kind.location')).toBe(false);
+		fixture.reading.kinds = [{ id: 'location', folderName: '32_Location', custom: false, icon: null, description: null }];
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(rows.some((one) => one.name === 'worldbuilding.kind.location')).toBe(true);
+	});
+
+	it('shows the local section around the focused node and lets the whole graph back', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const local = fixture.root.querySelector('.graph-control-section.mod-local')!;
+		expect(local.classes.has('is-hidden')).toBe(true);
+		fixture.memory.focus = 'character-alice';
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(local.classes.has('is-hidden')).toBe(false);
+		expect(local.querySelector('.snowflake-method-graph-local-about')!.textContent).toBe('relationshipGraph.local.about');
+		const engine = fixture.engines[0]!;
+		expect(engine.scenes[engine.scenes.length - 1]!.picture.local).toBe(true);
+		local.querySelector('.snowflake-method-graph-local-whole')!.dispatch('click');
+		expect(fixture.memory.focus).toBeNull();
+		expect(local.classes.has('is-hidden')).toBe(true);
+		expect(engine.scenes[engine.scenes.length - 1]!.picture.local).toBe(false);
 	});
 });
