@@ -1157,7 +1157,7 @@ function plainPainter(deps: FreeformFaceDeps): NodePainter {
 				const words = deps.label(node);
 				if (name.textContent !== words) name.setText(words);
 				face.dataset.type = node.type;
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, faceKindOf(node.type), next.height);
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, faceKindOf(node.type), next.height, next.width);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
