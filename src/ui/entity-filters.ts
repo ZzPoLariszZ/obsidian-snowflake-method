@@ -5,9 +5,11 @@
  */
 
 import {
+	CHARACTER_TYPES,
 	MACARON_COLORS,
 	PROGRESS_STATUSES,
 	TIME_KINDS,
+	isCharacterType,
 	isTimeKind,
 	type CharacterType,
 	type MacaronColor,
@@ -22,10 +24,6 @@ import { entityBodyOf, isCharacterMember, type EntityMember } from './entity-car
 import type { FilterRow } from './filter-rows';
 import type { Translate } from './modals';
 import { categoryFilterRow, categoryWithin, progressFilterRow } from './scene-filters';
-
-const CHARACTER_ROLES: readonly CharacterType[] = ['major', 'supporting', 'minor'];
-
-const isCharacterRole = (value: string): value is CharacterType => (CHARACTER_ROLES as readonly string[]).includes(value);
 
 /** The funnel's answers. Empty values mean the question is not being asked. */
 export interface EntityFilters {
@@ -152,7 +150,7 @@ export function entityGroupValues(
 			return member.categoryPaths.map((path) => ({ key: path, label: path, rank: 0 }));
 		case 'role':
 			return isCharacterMember(member) && member.type !== null
-				? [{ key: member.type, label: characterRoleName(ctx.locale, member.type), rank: CHARACTER_ROLES.indexOf(member.type) }]
+				? [{ key: member.type, label: characterRoleName(ctx.locale, member.type), rank: CHARACTER_TYPES.indexOf(member.type) }]
 				: [];
 		case 'timeKind':
 			return !isCharacterMember(member) && member.timeKind !== null
@@ -182,10 +180,10 @@ export function entityFilterRows(
 			label: t('corkboard.group.role'),
 			placeholder: t('table.filterAllRoles'),
 			empty: '',
-			options: () => CHARACTER_ROLES.map((role) => ({ value: role, label: characterRoleName(locale, role) })),
+			options: () => CHARACTER_TYPES.map((role) => ({ value: role, label: characterRoleName(locale, role) })),
 			value: filters.role,
 			apply: (next) => {
-				filters.role = isCharacterRole(next) ? next : '';
+				filters.role = isCharacterType(next) ? next : '';
 			},
 		});
 	}

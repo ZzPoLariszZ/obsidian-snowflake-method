@@ -61,7 +61,9 @@ export const DOCUMENT_TYPES = [
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 export type ProjectLanguage = 'en' | 'zh-CN';
-export type CharacterType = 'major' | 'supporting' | 'minor';
+/** The roles a character can have, the major first, as the board and the funnel rank them. */
+export const CHARACTER_TYPES = ['major', 'supporting', 'minor'] as const;
+export type CharacterType = (typeof CHARACTER_TYPES)[number];
 
 /**
  * Per-entity progress, the step vocabulary minus `skipped`: skipping is a
@@ -257,7 +259,7 @@ export function isProjectLanguage(value: unknown): value is ProjectLanguage {
 export function isCharacterType(
 	value: unknown,
 ): value is CharacterType {
-	return value === 'major' || value === 'supporting' || value === 'minor';
+	return typeof value === 'string' && (CHARACTER_TYPES as readonly string[]).includes(value);
 }
 
 export function isProgressStatus(value: unknown): value is ProgressStatus {
