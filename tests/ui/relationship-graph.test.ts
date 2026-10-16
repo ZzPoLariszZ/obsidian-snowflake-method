@@ -47,7 +47,8 @@ vi.mock('../../src/ui/option-picker', async (importOriginal) => {
 	};
 });
 
-import { defaultRelationshipGraphDocument } from '../../src/domain';
+import { defaultRelationshipGraphDocument, rememberSceneManuscriptOptions } from '../../src/domain';
+import { buildSceneManuscriptPreset, SCENE_MANUSCRIPT_FALLBACK_COLORS } from '../../src/ui/native-graph';
 import { renderRelationshipGraph } from '../../src/ui/relationship-graph';
 import type {
 	RelationshipGraphControls,
@@ -57,14 +58,33 @@ import { relationshipGraphMemory, type RelationshipGraphView } from '../../src/u
 
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-function mount(options: { view?: RelationshipGraphView; controlsOpen?: boolean; readOnly?: boolean } = {}) {
+interface MountOptions {
+	view?: RelationshipGraphView;
+	controlsOpen?: boolean;
+	readOnly?: boolean;
+	/** The file remembers native options from an earlier graph tab. */
+	stored?: boolean;
+	available?: boolean;
+	open?: boolean;
+}
+
+function mount(options: MountOptions = {}) {
 	const dom = new CorkboardDom();
 	const memory = relationshipGraphMemory({ view: options.view ?? 'entities', controlsOpen: options.controlsOpen ?? true });
 	const listeners = new Set<() => void>();
+	const empty = defaultRelationshipGraphDocument();
 	const reading: RelationshipGraphReading = {
-		projectPath: 'P',
+		projectPath: 'Demo/001_Project_Metadata.md',
+		rootPath: 'Demo',
 		locale: 'en',
-		held: defaultRelationshipGraphDocument(),
+		held: options.stored
+			? rememberSceneManuscriptOptions(
+					empty,
+					buildSceneManuscriptPreset({ rootPath: 'Demo', locale: 'en' }, SCENE_MANUSCRIPT_FALLBACK_COLORS),
+					'Demo',
+					1,
+				)!
+			: empty,
 		readOnly: options.readOnly ?? false,
 	};
 	const bridge = {
@@ -75,6 +95,9 @@ function mount(options: { view?: RelationshipGraphView; controlsOpen?: boolean; 
 			return () => { listeners.delete(listener); };
 		}),
 		updateEntities: vi.fn(() => Promise.resolve('written' as const)),
+		sceneManuscript: vi.fn(() => ({ available: options.available ?? true, open: options.open ?? false })),
+		openSceneManuscriptGraph: vi.fn(() => Promise.resolve('opened' as const)),
+		resetSceneManuscriptGraph: vi.fn(() => Promise.resolve('written' as const)),
 	};
 	const remember = vi.fn();
 	const refresh = vi.fn(() => Promise.resolve());
@@ -184,6 +207,77 @@ describe('the relationship graph workspace', () => {
 		expect(fixture.refresh).toHaveBeenCalledOnce();
 		expect(fixture.bridge.read).toHaveBeenCalledTimes(3);
 		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it('opens the native graph once when the view is chosen, and says why when it cannot', async () => {
+		const fixture = mount();
+		await settle();
+		fixture.viewField().choose('scene-manuscript');
+		await settle();
+		expect(fixture.bridge.openSceneManuscriptGraph).toHaveBeenCalledOnce();
+		expect(notices).not.toHaveBeenCalled();
+		// A repaint from the bell shows the pane again without opening another tab.
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(fixture.bridge.openSceneManuscriptGraph).toHaveBeenCalledOnce();
+		fixture.viewField().choose('entities');
+		fixture.bridge.openSceneManuscriptGraph.mockResolvedValueOnce('disabled' as never);
+		fixture.viewField().choose('scene-manuscript');
+		await settle();
+		expect(notices).toHaveBeenCalledWith('relationshipGraph.sceneManuscript.disabled');
+	});
+
+	it('stands in for the native graph with the lead and the open button, and no more', async () => {
+		const fixture = mount({ view: 'scene-manuscript' });
+		await settle();
+		expect(fixture.bridge.openSceneManuscriptGraph).not.toHaveBeenCalled();
+		const pane = fixture.root.querySelector('.snowflake-method-scene-manuscript-pane')!;
+		const body = pane.querySelector('.snowflake-method-scene-manuscript-body')!;
+		expect(body.querySelector('.snowflake-method-scene-manuscript-lead')?.textContent).toBe('relationshipGraph.sceneManuscript.lead');
+		const open = body.querySelector('.snowflake-method-scene-manuscript-open')!;
+		expect(open.classes.has('mod-cta')).toBe(true);
+		expect(open.disabled).toBe(false);
+		expect(body.querySelector('.snowflake-method-scene-manuscript-reset')).toBeNull();
+		// Nothing more is said: the body holds the lead and the buttons, and no line on how the settings stand.
+		expect(body.children.map((child) => [...child.classes].pop())).toEqual([
+			'snowflake-method-scene-manuscript-lead',
+			'snowflake-method-scene-manuscript-actions',
+		]);
+		open.dispatch('click');
+		expect(fixture.bridge.openSceneManuscriptGraph).toHaveBeenCalledOnce();
+	});
+
+	it('offers a reset while the file remembers settings', async () => {
+		const fixture = mount({ view: 'scene-manuscript', stored: true });
+		await settle();
+		const pane = fixture.root.querySelector('.snowflake-method-scene-manuscript-pane')!;
+		expect(pane.querySelector('.snowflake-method-scene-manuscript-state')).toBeNull();
+		pane.querySelector('.snowflake-method-scene-manuscript-reset')!.dispatch('click');
+		await settle();
+		expect(fixture.bridge.resetSceneManuscriptGraph).toHaveBeenCalledOnce();
+		expect(notices).toHaveBeenCalledWith('relationshipGraph.sceneManuscript.resetDone');
+	});
+
+	it('says only what stands in the way: the plugin being off, or a read-only project', async () => {
+		const open = mount({ view: 'scene-manuscript', open: true, stored: true });
+		await settle();
+		expect(open.root.querySelector('.snowflake-method-scene-manuscript-state')).toBeNull();
+
+		const off = mount({ view: 'scene-manuscript', available: false });
+		await settle();
+		const offPane = off.root.querySelector('.snowflake-method-scene-manuscript-pane')!;
+		const state = offPane.querySelector('.snowflake-method-scene-manuscript-state')!;
+		expect(state.classes.has('is-disabled')).toBe(true);
+		expect(state.textContent).toBe('relationshipGraph.sceneManuscript.disabled');
+		expect(offPane.querySelector('.snowflake-method-scene-manuscript-open')!.disabled).toBe(true);
+
+		const readOnly = mount({ view: 'scene-manuscript', readOnly: true, stored: true });
+		await settle();
+		const readOnlyPane = readOnly.root.querySelector('.snowflake-method-scene-manuscript-pane')!;
+		expect(readOnlyPane.querySelector('.snowflake-method-scene-manuscript-reset')).toBeNull();
+		expect(readOnlyPane.querySelector('.snowflake-method-scene-manuscript-read-only')?.textContent).toBe(
+			'relationshipGraph.sceneManuscript.readOnly',
+		);
 	});
 
 	it('lets go of the bell and the root when disposed', async () => {

@@ -374,6 +374,11 @@ import { renderCorkboard } from './ui/corkboard';
 import { renderBeatSheet } from './ui/beat-sheet';
 import { renderFreeform } from './ui/freeform';
 import { renderRelationshipGraph } from './ui/relationship-graph';
+import { packRgbTriplet, SCENE_MANUSCRIPT_FALLBACK_COLORS } from './ui/native-graph';
+import {
+	SceneManuscriptGraphKeeper,
+	type SceneManuscriptProject,
+} from './ui/scene-manuscript-graph';
 import { freeformCanvasMount } from './ui/freeform-canvas';
 import { renderTimeline } from './ui/timeline';
 import type {
@@ -670,6 +675,44 @@ export default class SnowflakeMethodPlugin
 	private readonly beatSheetBell = this.documentBell('a beat sheet workspace');
 	/** The relationship graph workspaces' bell, for a project's relationship graph file. */
 	private readonly relationshipGraphBell = this.documentBell('a relationship graph workspace');
+	/**
+	 * Opens Obsidian's own graph set to a project's scenes and manuscript and
+	 * gives the user's graph options back when the last such tab closes. The
+	 * options it keeps for a project live in the relationship graph file, so
+	 * every write goes through that file's gate.
+	 */
+	private readonly sceneManuscriptGraph = new SceneManuscriptGraphKeeper({
+		app: this.app,
+		stored: async (project) => {
+			const resolved = await this.resolveProject(project.projectFile);
+			if (resolved === null) return null;
+			return (await this.projects.relationshipGraph.read(resolved)).sceneManuscript;
+		},
+		store: (project, options) => {
+			const { write } = this.documentGates(this.relationshipGraphBell, () => project.projectFile);
+			return write((resolved) => this.projects.relationshipGraph.saveSceneManuscriptOptions(resolved, options));
+		},
+		clear: (project) => {
+			const { write } = this.documentGates(this.relationshipGraphBell, () => project.projectFile);
+			return write((resolved) => this.projects.relationshipGraph.clearSceneManuscriptOptions(resolved));
+		},
+		colors: () => {
+			const body = this.app.workspace.containerEl.doc.body;
+			const style = body.win.getComputedStyle(body);
+			return {
+				scenes: packRgbTriplet(style.getPropertyValue('--color-orange-rgb'), SCENE_MANUSCRIPT_FALLBACK_COLORS.scenes),
+				manuscript: packRgbTriplet(style.getPropertyValue('--color-blue-rgb'), SCENE_MANUSCRIPT_FALLBACK_COLORS.manuscript),
+			};
+		},
+		later: (callback, ms) => {
+			const win = this.app.workspace.containerEl.win;
+			const timer = win.setTimeout(callback, ms);
+			return () => win.clearTimeout(timer);
+		},
+		fail: (error) => {
+			this.showError(error);
+		},
+	});
 	/** The freeform workspaces' bell, for any of a project's views. */
 	private readonly freeformBell = this.documentBell('a freeform workspace');
 	/** The writing count in the status bar, and the text span inside it. */
@@ -1405,6 +1448,9 @@ export default class SnowflakeMethodPlugin
 		);
 
 		this.app.workspace.onLayoutReady(() => {
+			// The native graph tabs a cut-short run left behind are taken up
+			// again now that the leaves are there to find.
+			this.sceneManuscriptGraph.start();
 			// The notes this device remembers floating come back before anything
 			// else asks for them.
 			void this.reconcileStickyFloats().catch((error: unknown) => {
@@ -1496,6 +1542,7 @@ export default class SnowflakeMethodPlugin
 		this.timelineBell.dispose();
 		this.beatSheetBell.dispose();
 		this.relationshipGraphBell.dispose();
+		this.sceneManuscriptGraph.dispose();
 		this.freeformBell.dispose();
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
@@ -5115,7 +5162,14 @@ export default class SnowflakeMethodPlugin
 		const panelProject = (): string | null =>
 			context.projectPath ?? this.settings.recentProjectPath;
 		const graphs = this.projects.relationshipGraph;
+		const keeper = this.sceneManuscriptGraph;
 		const { write } = this.documentGates(this.relationshipGraphBell, panelProject);
+		const asSceneManuscriptProject = (project: ProjectSnapshot): SceneManuscriptProject => ({
+			projectFile: project.projectFile,
+			rootPath: project.rootPath,
+			locale: project.locale,
+			readOnly: project.readOnly,
+		});
 		return {
 			t,
 			read: async () => {
@@ -5125,13 +5179,35 @@ export default class SnowflakeMethodPlugin
 				if (project === null) return null;
 				return {
 					projectPath: project.projectFile,
+					rootPath: project.rootPath,
 					locale: project.locale,
 					held: await graphs.read(project),
 					readOnly: project.readOnly,
 				};
 			},
-			subscribe: (listener) => this.relationshipGraphBell.subscribe(listener),
+			subscribe: (listener) => {
+				const stopBell = this.relationshipGraphBell.subscribe(listener);
+				const stopKeeper = keeper.subscribe(listener);
+				return () => {
+					stopBell();
+					stopKeeper();
+				};
+			},
 			updateEntities: (patch) => write((project) => graphs.updateEntities(project, patch)),
+			sceneManuscript: () => {
+				const path = panelProject();
+				return { available: keeper.available(), open: path !== null && keeper.isOpen(path) };
+			},
+			openSceneManuscriptGraph: async () => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return 'absent';
+				return keeper.open(asSceneManuscriptProject(project));
+			},
+			resetSceneManuscriptGraph: async () => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return 'absent';
+				return keeper.reset(asSceneManuscriptProject(project));
+			},
 		};
 	}
 
@@ -9829,6 +9905,26 @@ export default class SnowflakeMethodPlugin
 					void this.openStoryStructure('relationship-graph').catch((error: unknown) => {
 						this.showError(error);
 					});
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'open-scene-manuscript-graph',
+			name: this.globalT('commands.openSceneManuscriptGraph'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					const bridge = this.relationshipGraph();
+					void bridge
+						.openSceneManuscriptGraph()
+						.then((opening) => {
+							if (opening === 'disabled') new Notice(bridge.t('relationshipGraph.sceneManuscript.disabled'));
+							if (opening === 'unavailable') new Notice(bridge.t('relationshipGraph.sceneManuscript.unavailable'));
+						})
+						.catch((error: unknown) => {
+							this.showError(error);
+						});
 				}
 				return available;
 			},

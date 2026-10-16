@@ -17908,6 +17908,53 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	display: none;
 }
 
+/* The pane that stands in for Obsidian's own graph: a column of words at a
+   reading measure in the middle of the frame, as an empty board says what
+   it waits for. The pane scrolls when the frame is too short for them, and
+   the body takes its margin from every side, so it stands in the middle
+   while there is room and starts at the top once there is not. */
+.snowflake-method-scene-manuscript-pane {
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	height: 100%;
+	padding: var(--size-4-4);
+	overflow: auto;
+}
+
+.snowflake-method-scene-manuscript-body {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--size-4-4);
+	max-width: 36rem;
+	margin: auto;
+	text-align: center;
+}
+
+.snowflake-method-scene-manuscript-lead {
+	margin: 0;
+}
+
+.snowflake-method-scene-manuscript-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--size-4-2);
+}
+
+/* Only what stands in the way is said below the buttons. */
+.snowflake-method-scene-manuscript-state,
+.snowflake-method-scene-manuscript-read-only {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-scene-manuscript-state.is-disabled {
+	color: var(--text-warning);
+}
+
 /* == File explorer ======================================================== */
 
 /* A word list on the settings page keeps room for a few lines and a handle to ask for more, like the lists in the forms. */

@@ -21,6 +21,7 @@ import type {
 	RelationshipGraphHandle,
 	RelationshipGraphReading,
 } from './relationship-graph-bridge';
+import { renderSceneManuscriptPane } from './scene-manuscript-pane';
 import {
 	RELATIONSHIP_GRAPH_VIEWS,
 	isRelationshipGraphView,
@@ -100,11 +101,34 @@ export function renderRelationshipGraph(
 
 	const stage = root.createDiv({ cls: 'snowflake-method-relationship-graph-stage' });
 
+	// Choosing the native view opens the graph tab once, there and then; a
+	// repaint, or a tab restored on this view, only shows the pane, whose
+	// button opens the graph again.
+	const openSceneManuscript = (): void => {
+		void controls
+			.bridge()
+			.openSceneManuscriptGraph()
+			.then((opening) => {
+				if (opening === 'disabled') new Notice(t('relationshipGraph.sceneManuscript.disabled'));
+				if (opening === 'unavailable') new Notice(t('relationshipGraph.sceneManuscript.unavailable'));
+			})
+			.catch(notice);
+	};
+	const resetSceneManuscript = (): void => {
+		void controls
+			.bridge()
+			.resetSceneManuscriptGraph()
+			.then((wrote) => {
+				if (wrote === 'written') new Notice(t('relationshipGraph.sceneManuscript.resetDone'));
+			})
+			.catch(notice);
+	};
 	const chooseView = (chosen: string): void => {
 		if (!isRelationshipGraphView(chosen) || chosen === memory.view) return;
 		memory.view = chosen;
 		controls.remember();
 		paintAll();
+		if (chosen === 'scene-manuscript') openSceneManuscript();
 	};
 	const viewField: OptionPicker = buildOptionField(app, viewHost, {
 		options: () => RELATIONSHIP_GRAPH_VIEWS.map((view) => ({ value: view, label: t(VIEW_WORDS[view]) })),
@@ -124,6 +148,15 @@ export function renderRelationshipGraph(
 		root.toggleClass('is-controls-open', memory.controlsOpen);
 		if (memory.view === 'entities') {
 			stage.createEl('p', { cls: 'snowflake-method-tab-planned', text: t('relationshipGraph.empty') });
+		} else if (reading !== null) {
+			renderSceneManuscriptPane(stage, {
+				t,
+				standing: controls.bridge().sceneManuscript(),
+				stored: reading.held.sceneManuscript !== null,
+				readOnly: reading.readOnly,
+				open: openSceneManuscript,
+				reset: resetSceneManuscript,
+			});
 		}
 	};
 	const paintAll = (): void => {

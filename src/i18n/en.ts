@@ -29,6 +29,7 @@ export const en = {
 	'commands.openTimeline': 'Open timeline workspace',
 	'commands.openBeatSheet': 'Open beat sheet workspace',
 	'commands.openRelationshipGraph': 'Open relationship graph workspace',
+	'commands.openSceneManuscriptGraph': 'Open scenes and manuscript graph',
 	'commands.openManuscriptStream': 'Open manuscript stream',
 	'commands.migrateMemberNotes': 'Update notes in older format',
 	'commands.splitManuscriptSegment': 'Split manuscript note at the cursor',
@@ -1326,6 +1327,15 @@ export const en = {
 	'relationshipGraph.fit': 'Fit to screen',
 	'relationshipGraph.resetView': 'Reset view',
 	'relationshipGraph.controls': 'Controls',
+	'relationshipGraph.sceneManuscript.lead':
+		"For performance and user experience, this view opens in Obsidian's native graph view, set to this project's scenes and manuscript notes.",
+	'relationshipGraph.sceneManuscript.open': 'Open graph',
+	'relationshipGraph.sceneManuscript.reset': 'Reset to project defaults',
+	'relationshipGraph.sceneManuscript.disabled': "Obsidian's core plugin for the graph view is turned off.",
+	'relationshipGraph.sceneManuscript.unavailable':
+		"Obsidian's graph could not be set to the project, so a plain graph tab was opened instead.",
+	'relationshipGraph.sceneManuscript.readOnly': "This project is read-only, so the graph's settings are not saved.",
+	'relationshipGraph.sceneManuscript.resetDone': 'Project defaults restored.',
 	'relationshipGraph.empty':
 		"No relationships yet. Add one in a character, scene or worldbuilding note's form.",
 	'relationshipGraph.newerSchema':

@@ -10,6 +10,8 @@ import type { App } from 'obsidian';
 import type { EntityGraphState, RelationshipGraphDocument } from '../domain';
 import type { RelationshipGraphWrite } from '../services';
 import type { Translate } from './modals';
+import type { SceneManuscriptOpening, SceneManuscriptWrite } from './scene-manuscript-graph';
+import type { SceneManuscriptStanding } from './scene-manuscript-pane';
 import type { RelationshipGraphMemory } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel } from './view-model';
 
@@ -20,6 +22,8 @@ import type { DashboardHost, ProjectDashboardModel } from './view-model';
  */
 export interface RelationshipGraphReading {
 	projectPath: string;
+	/** The project's root folder, which the native preset's filters are written for. */
+	rootPath: string;
 	locale: 'en' | 'zh-CN';
 	/** The document held, shared with the store's memo: treated as immutable by everyone who reads it. */
 	held: RelationshipGraphDocument;
@@ -30,10 +34,16 @@ export interface RelationshipGraphBridge {
 	t: Translate;
 	/** The document as the file holds it now; null while no project stands. */
 	read: () => Promise<RelationshipGraphReading | null>;
-	/** Fires when the relationship graph file changed: the workspace's own writes and the vault's events alike. */
+	/** Fires when the relationship graph file changed, or a native graph tab of ours opened or closed. */
 	subscribe: (listener: () => void) => () => void;
 	/** The entity view's state, one or more parts at a time. */
 	updateEntities: (patch: Partial<EntityGraphState>) => Promise<RelationshipGraphWrite>;
+	/** Whether Obsidian's graph is there to open, and whether one of ours shows the project now. */
+	sceneManuscript: () => SceneManuscriptStanding;
+	/** Opens Obsidian's graph set to the project, in a tab of its own; 'absent' while no project stands. */
+	openSceneManuscriptGraph: () => Promise<SceneManuscriptOpening | 'absent'>;
+	/** Lets the remembered native options go, so the next open builds the preset again. */
+	resetSceneManuscriptGraph: () => Promise<SceneManuscriptWrite>;
 }
 
 /** The host's own methods the workspace calls. */
