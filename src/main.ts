@@ -142,6 +142,7 @@ import {
 	type ChapterRemovalProposal,
 	type CanvasExportWords,
 	type NoteStanding,
+	type GraphMemberGroup,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -12187,6 +12188,10 @@ export default class SnowflakeMethodPlugin
 	async openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void> {
 		await this.withDashboardForm((view) => onSaved === undefined
 			? view.openCharacterForm(id) : view.openCharacterForm(id, onSaved), undefined, projectPath);
+	}
+
+	async openRelationship(source: { group: GraphMemberGroup; id: string }, record: number, projectPath?: string): Promise<boolean> {
+		return this.withDashboardForm((view) => view.openRelationship(source, record), false, projectPath);
 	}
 
 	async openCreateCharacterForm(afterIndex: number | null, projectPath?: string, onSaved?: () => void): Promise<string | null> {

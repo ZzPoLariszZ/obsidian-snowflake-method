@@ -32,6 +32,7 @@ import {
 	galleryDraftOf,
 	safeFileName,
 	type EntityKindId,
+	type GraphMemberGroup,
 	type ProjectWorldbuildingKind,
 	type ProgressStatus,
 	type TimeKind,
@@ -4802,7 +4803,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		character: CharacterViewModel,
 		afterSave?: () => Promise<void>,
-	): Promise<Modal> {
+	): Promise<CreateCharacterModal> {
 		return this.memberFormContext(model, 'character', character.path, afterSave).then((context) => {
 			const form = new CreateCharacterModal(
 				this.app,
@@ -5287,6 +5288,56 @@ export class SnowflakeDashboardView extends ItemView {
 			onSaved?.();
 		});
 		await whenClosed(form);
+	}
+
+	/**
+	 * One member's form opened on a relationship's card, for the graph's
+	 * line: the holder found afresh, since the picture may be older than the
+	 * notes, and the card by the record's place among them. False where the
+	 * member is gone or cannot be written, so the asker can say so.
+	 */
+	async openRelationship(source: { group: GraphMemberGroup; id: string }, record: number): Promise<boolean> {
+		const requestedProject = this.projectPath;
+		if (requestedProject === null) return false;
+		const model = await this.host.loadDashboardModel(requestedProject);
+		if (this.projectPath !== requestedProject) return false;
+		if (model === null || model.readOnly) return false;
+		const form = await this.openMemberEditor(model, source, async () => {
+			this.queueRefreshWhenShown();
+		});
+		if (form === null) return false;
+		form.revealRelationships(record);
+		await whenClosed(form);
+		return true;
+	}
+
+	/** A member's own editor by its group, as the dashboard opens it; null for one gone or not to be written. */
+	private openMemberEditor(
+		model: ProjectDashboardModel,
+		source: { group: GraphMemberGroup; id: string },
+		afterSave: () => Promise<void>,
+	): Promise<CreateCharacterModal | CreateSceneModal | EntityFormModal | null> {
+		const writable = (member: { readOnly: boolean; healthIssues: readonly { blocking: boolean }[] }): boolean =>
+			!member.readOnly && !member.healthIssues.some((issue) => issue.blocking);
+		switch (source.group) {
+			case 'character': {
+				const character = model.characters.find((candidate) => candidate.id === source.id);
+				if (character === undefined || !writable(character)) return Promise.resolve(null);
+				return this.openCharacterEditor(model, character, afterSave);
+			}
+			case 'scene': {
+				const scene = model.scenes.find((candidate) => candidate.id === source.id);
+				if (scene === undefined || !writable(scene)) return Promise.resolve(null);
+				return this.openSceneEditor(model, scene, undefined, afterSave);
+			}
+			case 'worldbuilding': {
+				const entity = Object.values(model.worldbuilding)
+					.flat()
+					.find((candidate) => candidate.id === source.id);
+				if (entity === undefined || !writable(entity)) return Promise.resolve(null);
+				return this.openEntityEditor(model, entity, afterSave);
+			}
+		}
 	}
 
 	/**
@@ -7310,7 +7361,7 @@ export class SnowflakeDashboardView extends ItemView {
 		scene: SceneViewModel,
 		section?: 'linked-manuscript',
 		afterSave?: () => Promise<void>,
-	): Promise<Modal> {
+	): Promise<CreateSceneModal> {
 		return this.memberFormContext(model, 'scene', scene.path, afterSave).then((context) => {
 			const form = new CreateSceneModal(
 				this.app,

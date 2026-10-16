@@ -1860,6 +1860,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 	private categoryField: CategoryPathField | null = null;
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
+	private relationshipsRevealFrame: number | null = null;
 	private customFieldsEditor: CustomFieldsEditor | null = null;
 	private galleryField: GalleryField | null = null;
 	private galleryState: GalleryFieldState;
@@ -2020,6 +2021,25 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		this.relationshipsEditor = editors.relationships;
 	}
 
+	/**
+	 * Opens on the relationships block, at one record's card, for the graph's
+	 * line; a record of null, or one the form no longer holds, lands on the
+	 * block itself. Two frames on, so the form's first layout and focus
+	 * cleanup cannot scroll back to the title.
+	 */
+	revealRelationships(record: number | null): void {
+		const modalWindow = this.modalEl.win;
+		if (this.relationshipsRevealFrame !== null) {
+			modalWindow.cancelAnimationFrame(this.relationshipsRevealFrame);
+		}
+		this.relationshipsRevealFrame = modalWindow.requestAnimationFrame(() => {
+			this.relationshipsRevealFrame = modalWindow.requestAnimationFrame(() => {
+				this.relationshipsRevealFrame = null;
+				this.relationshipsEditor?.revealCard(record);
+			});
+		});
+	}
+
 	/** Pulls the live editors back into the value, for collect and re-render. */
 	private syncEditors(): void {
 		if (this.aliasesField !== null) this.value.aliases = this.aliasesField.get();
@@ -2039,6 +2059,10 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 	}
 
 	onClose(): void {
+		if (this.relationshipsRevealFrame !== null) {
+			this.modalEl.win.cancelAnimationFrame(this.relationshipsRevealFrame);
+			this.relationshipsRevealFrame = null;
+		}
 		this.galleryField?.destroy();
 		this.galleryField = null;
 		super.onClose();
@@ -2844,6 +2868,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private locationsField: NoteListField | null = null;
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
+	private relationshipsRevealFrame: number | null = null;
 	private customFieldsEditor: CustomFieldsEditor | null = null;
 	private galleryField: GalleryField | null = null;
 	private galleryState: GalleryFieldState = galleryFieldState(galleryDraftOf([], null));
@@ -3225,6 +3250,25 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		this.relationshipsEditor = editors.relationships;
 	}
 
+	/**
+	 * Opens on the relationships block, at one record's card, for the graph's
+	 * line; a record of null, or one the form no longer holds, lands on the
+	 * block itself. Two frames on, so the form's first layout and focus
+	 * cleanup cannot scroll back to the title.
+	 */
+	revealRelationships(record: number | null): void {
+		const modalWindow = this.modalEl.win;
+		if (this.relationshipsRevealFrame !== null) {
+			modalWindow.cancelAnimationFrame(this.relationshipsRevealFrame);
+		}
+		this.relationshipsRevealFrame = modalWindow.requestAnimationFrame(() => {
+			this.relationshipsRevealFrame = modalWindow.requestAnimationFrame(() => {
+				this.relationshipsRevealFrame = null;
+				this.relationshipsEditor?.revealCard(record);
+			});
+		});
+	}
+
 	/** Pulls the live editors back into the fields, for collect and re-render. */
 	private syncEditors(): void {
 		if (this.galleryField !== null) this.galleryState = this.galleryField.state();
@@ -3250,6 +3294,10 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	}
 
 	onClose(): void {
+		if (this.relationshipsRevealFrame !== null) {
+			this.modalEl.win.cancelAnimationFrame(this.relationshipsRevealFrame);
+			this.relationshipsRevealFrame = null;
+		}
 		if (this.linkedManuscriptRevealFrame !== null) {
 			this.modalEl.win.cancelAnimationFrame(this.linkedManuscriptRevealFrame);
 			this.linkedManuscriptRevealFrame = null;
@@ -3458,6 +3506,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	private categoryField: CategoryPathField | null = null;
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
+	private relationshipsRevealFrame: number | null = null;
 	private customFieldsEditor: CustomFieldsEditor | null = null;
 	private galleryField: GalleryField | null = null;
 	private galleryState: GalleryFieldState;
@@ -3766,6 +3815,25 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		this.relationshipsEditor = editors.relationships;
 	}
 
+	/**
+	 * Opens on the relationships block, at one record's card, for the graph's
+	 * line; a record of null, or one the form no longer holds, lands on the
+	 * block itself. Two frames on, so the form's first layout and focus
+	 * cleanup cannot scroll back to the title.
+	 */
+	revealRelationships(record: number | null): void {
+		const modalWindow = this.modalEl.win;
+		if (this.relationshipsRevealFrame !== null) {
+			modalWindow.cancelAnimationFrame(this.relationshipsRevealFrame);
+		}
+		this.relationshipsRevealFrame = modalWindow.requestAnimationFrame(() => {
+			this.relationshipsRevealFrame = modalWindow.requestAnimationFrame(() => {
+				this.relationshipsRevealFrame = null;
+				this.relationshipsEditor?.revealCard(record);
+			});
+		});
+	}
+
 	private syncEditors(): void {
 		if (this.galleryField !== null) {
 			this.galleryState = this.galleryField.state();
@@ -3796,6 +3864,10 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	}
 
 	onClose(): void {
+		if (this.relationshipsRevealFrame !== null) {
+			this.modalEl.win.cancelAnimationFrame(this.relationshipsRevealFrame);
+			this.relationshipsRevealFrame = null;
+		}
 		if (this.descriptionRevealFrame !== null) {
 			this.modalEl.win.cancelAnimationFrame(this.descriptionRevealFrame);
 			this.descriptionRevealFrame = null;

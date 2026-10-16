@@ -846,6 +846,7 @@ interface RecordCard {
 export class RecordCardsEditor {
 	private cards: RecordCard[] = [];
 	private listEl: HTMLElement | null = null;
+	private blockEl: HTMLElement | null = null;
 	private readonly dragState: { dragging: RecordCard | null } = {
 		dragging: null,
 	};
@@ -866,6 +867,7 @@ export class RecordCardsEditor {
 
 	attach(container: HTMLElement): void {
 		const block = container.createDiv({ cls: 'snowflake-method-record-editor' });
+		this.blockEl = block;
 		block.createDiv({
 			cls: 'snowflake-method-record-title',
 			text: this.copy.title,
@@ -965,6 +967,32 @@ export class RecordCardsEditor {
 		// No smooth behavior: a scripted smooth scroll animates even for the
 		// authors who turned animations off, and the sibling scrolls plainly.
 		missing.el.scrollIntoView({ block: 'center' });
+	}
+
+	/**
+	 * Brings one record's card into view and puts the caret in its text, for
+	 * a surface that points at a record from outside the form: the graph's
+	 * line. The index is the record's place among the records the form opened
+	 * with; none, or one the form no longer holds, since the notes may have
+	 * moved on since the picture was drawn, brings the block itself into
+	 * view. The card is marked so the eye finds it, until the focus moves on.
+	 */
+	revealCard(index: number | null): void {
+		const card = index === null ? undefined : this.cards[index];
+		if (card === undefined) {
+			this.blockEl?.scrollIntoView({ block: 'start' });
+			return;
+		}
+		card.el.addClass('is-revealed');
+		card.el.addEventListener(
+			'focusout',
+			() => {
+				card.el.removeClass('is-revealed');
+			},
+			{ once: true },
+		);
+		card.valueEl.focus({ preventScroll: true });
+		card.el.scrollIntoView({ block: 'center' });
 	}
 
 	private addCard(record: RecordLine | null): RecordCard | null {

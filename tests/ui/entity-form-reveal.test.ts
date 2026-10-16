@@ -20,6 +20,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import { SnowflakeDashboardView } from '../../src/ui/dashboard-view';
+import { RecordCardsEditor } from '../../src/ui/entity-form';
 import { EntityFormModal } from '../../src/ui/modals';
 
 const entity = (fields: Partial<WorldbuildingEntityViewModel> = {}): WorldbuildingEntityViewModel => ({
@@ -47,18 +48,29 @@ const entity = (fields: Partial<WorldbuildingEntityViewModel> = {}): Worldbuildi
 	...fields,
 });
 
-function dashboard(entities: WorldbuildingEntityViewModel[]) {
+/** A member as the opener by group reads it: found by id, and written unless it says otherwise. */
+interface MemberStub {
+	id: string;
+	readOnly?: boolean;
+	healthIssues?: { blocking: boolean }[];
+}
+
+function dashboard(
+	entities: WorldbuildingEntityViewModel[],
+	members: { characters?: MemberStub[]; scenes?: MemberStub[]; readOnly?: boolean } = {},
+) {
 	const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
 	const refresh = vi.fn(async () => undefined);
 	const updateEntity = vi.fn(async () => undefined);
 	const createEntity = vi.fn(async () => ({ id: 'entity-9', path: 'Novel/60_Worldbuilding/61_Time/Dusk.md' }));
+	const stub = (member: MemberStub): MemberStub => ({ readOnly: false, healthIssues: [], ...member });
 	const loadDashboardModel = vi.fn(async () => ({
 		path: 'Novel/Novel.md',
-		scenes: [],
-		characters: [],
+		scenes: (members.scenes ?? []).map(stub),
+		characters: (members.characters ?? []).map(stub),
 		worldbuilding: { time: entities },
 		worldbuildingKinds: [{ id: 'time', folderName: '61_Time', custom: false }],
-		readOnly: false,
+		readOnly: members.readOnly ?? false,
 	} as unknown as ProjectDashboardModel));
 	Object.assign(view, {
 		app: {},
@@ -76,7 +88,15 @@ function dashboard(entities: WorldbuildingEntityViewModel[]) {
 	});
 	vi.spyOn(EntityFormModal.prototype, 'onClose').mockImplementation(() => undefined);
 	const revealed = vi.spyOn(EntityFormModal.prototype, 'revealDescription').mockImplementation(() => undefined);
-	return { view, refresh, opened, revealed, updateEntity, createEntity, loadDashboardModel };
+	const revealedRelationships = vi
+		.spyOn(EntityFormModal.prototype, 'revealRelationships')
+		.mockImplementation(() => undefined);
+	return { view, refresh, opened, revealed, revealedRelationships, updateEntity, createEntity, loadDashboardModel };
+}
+
+/** A character's or a scene's form as the opener sees it: revealed, then closed by the test. */
+function memberForm() {
+	return { revealRelationships: vi.fn(), onClose: vi.fn() };
 }
 
 const submit = (form: EntityFormModal, request: unknown): Promise<void> =>
@@ -154,6 +174,116 @@ describe('worldbuilding forms opened from another surface', () => {
 	});
 });
 
+describe('a relationship card opened for the graph', () => {
+	it("opens a note's form on the card and reports once the form has closed", async () => {
+		const { view, opened, revealed, revealedRelationships } = dashboard([entity()]);
+		const closing = view.openRelationship({ group: 'worldbuilding', id: 'entity-1' }, 2);
+		await vi.waitFor(() => expect(opened).toHaveLength(1));
+		expect(revealedRelationships).toHaveBeenCalledExactlyOnceWith(2);
+		expect(revealed).not.toHaveBeenCalled();
+		opened[0]!.onClose();
+		expect(await closing).toBe(true);
+	});
+
+	it("opens a character's or a scene's own form, and reveals the card there", async () => {
+		const { view } = dashboard([], { characters: [{ id: 'character-1' }], scenes: [{ id: 'scene-1' }] });
+		const character = memberForm();
+		const scene = memberForm();
+		const openCharacterEditor = vi.fn(() => Promise.resolve(character));
+		const openSceneEditor = vi.fn(() => Promise.resolve(scene));
+		Object.assign(view, { openCharacterEditor, openSceneEditor });
+
+		const closingCharacter = view.openRelationship({ group: 'character', id: 'character-1' }, 0);
+		await vi.waitFor(() => expect(character.revealRelationships).toHaveBeenCalledExactlyOnceWith(0));
+		expect(openCharacterEditor).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'Novel/Novel.md' }),
+			expect.objectContaining({ id: 'character-1' }),
+			expect.any(Function),
+		);
+		character.onClose();
+		expect(await closingCharacter).toBe(true);
+
+		const closingScene = view.openRelationship({ group: 'scene', id: 'scene-1' }, 1);
+		await vi.waitFor(() => expect(scene.revealRelationships).toHaveBeenCalledExactlyOnceWith(1));
+		expect(openSceneEditor).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'Novel/Novel.md' }),
+			expect.objectContaining({ id: 'scene-1' }),
+			undefined,
+			expect.any(Function),
+		);
+		scene.onClose();
+		expect(await closingScene).toBe(true);
+	});
+
+	it('says no for a member gone, one not to be written, and a project that cannot be', async () => {
+		const blocked = dashboard([entity({ readOnly: true })], {
+			characters: [{ id: 'character-1', healthIssues: [{ blocking: true }] }],
+		});
+		Object.assign(blocked.view, { openCharacterEditor: vi.fn() });
+		expect(await blocked.view.openRelationship({ group: 'worldbuilding', id: 'entity-1' }, 0)).toBe(false);
+		expect(await blocked.view.openRelationship({ group: 'worldbuilding', id: 'entity-9' }, 0)).toBe(false);
+		expect(await blocked.view.openRelationship({ group: 'character', id: 'character-1' }, 0)).toBe(false);
+		expect(await blocked.view.openRelationship({ group: 'scene', id: 'scene-1' }, 0)).toBe(false);
+		expect(blocked.opened).toHaveLength(0);
+
+		const readOnly = dashboard([entity()], { readOnly: true });
+		expect(await readOnly.view.openRelationship({ group: 'worldbuilding', id: 'entity-1' }, 0)).toBe(false);
+		expect(readOnly.opened).toHaveLength(0);
+	});
+});
+
+describe('a record card revealed from outside', () => {
+	function cardsEditor(count: number) {
+		const editor = Object.create(RecordCardsEditor.prototype) as RecordCardsEditor;
+		const block = { scrollIntoView: vi.fn() };
+		const cards = Array.from({ length: count }, () => {
+			const listeners = new Map<string, () => void>();
+			const classes = new Set<string>();
+			const el = {
+				classes,
+				addClass: (cls: string): void => { classes.add(cls); },
+				removeClass: (cls: string): void => { classes.delete(cls); },
+				scrollIntoView: vi.fn(),
+				addEventListener: vi.fn((type: string, listener: () => void) => { listeners.set(type, listener); }),
+			};
+			return { el, valueEl: { focus: vi.fn() }, listeners };
+		});
+		Object.assign(editor, { cards, blockEl: block });
+		return { editor, block, cards };
+	}
+
+	it('marks the card, puts the caret in its text and scrolls it to the middle, until the focus moves on', () => {
+		const { editor, block, cards } = cardsEditor(2);
+		editor.revealCard(1);
+		const [first, second] = cards;
+		expect(second!.el.classes.has('is-revealed')).toBe(true);
+		expect(second!.valueEl.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+		expect(second!.el.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'center' });
+		expect(second!.el.addEventListener).toHaveBeenCalledWith('focusout', expect.any(Function), { once: true });
+		expect(first!.el.classes.size).toBe(0);
+		expect(first!.valueEl.focus).not.toHaveBeenCalled();
+		expect(block.scrollIntoView).not.toHaveBeenCalled();
+		second!.listeners.get('focusout')!();
+		expect(second!.el.classes.has('is-revealed')).toBe(false);
+	});
+
+	it('brings the block itself into view for no record, or one the form no longer holds', () => {
+		const { editor, block, cards } = cardsEditor(1);
+		editor.revealCard(null);
+		editor.revealCard(4);
+		expect(block.scrollIntoView).toHaveBeenCalledTimes(2);
+		expect(block.scrollIntoView).toHaveBeenLastCalledWith({ block: 'start' });
+		expect(cards[0]!.el.classes.size).toBe(0);
+		expect(cards[0]!.valueEl.focus).not.toHaveBeenCalled();
+	});
+
+	it('does nothing before it is attached', () => {
+		const detached = Object.create(RecordCardsEditor.prototype) as RecordCardsEditor;
+		Object.assign(detached, { cards: [], blockEl: null });
+		expect(() => { detached.revealCard(0); }).not.toThrow();
+	});
+});
+
 describe('the description reveal lifetime', () => {
 	function frameWindow() {
 		const pending = new Map<number, () => void>();
@@ -181,6 +311,7 @@ describe('the description reveal lifetime', () => {
 		const modal = Object.create(EntityFormModal.prototype) as EntityFormModal;
 		const focus = vi.fn();
 		const scrollIntoView = vi.fn();
+		const revealCard = vi.fn();
 		const settingEl = { isConnected: true, scrollIntoView };
 		Object.assign(modal, {
 			modalEl: win === undefined ? {} : { win },
@@ -192,8 +323,10 @@ describe('the description reveal lifetime', () => {
 				settingEl,
 				controlEl: { querySelector: () => ({ focus }) },
 			},
+			relationshipsRevealFrame: null,
+			relationshipsEditor: { revealCard },
 		});
-		return { modal, focus, scrollIntoView, settingEl };
+		return { modal, focus, scrollIntoView, settingEl, revealCard };
 	}
 
 	it.each([0, 1])('cancels the pending reveal when closed after %i frames', (elapsed) => {
@@ -242,5 +375,91 @@ describe('the description reveal lifetime', () => {
 		expect(focus).not.toHaveBeenCalled();
 		expect(scrollIntoView).not.toHaveBeenCalled();
 		expect(win.pending.size).toBe(0);
+	});
+});
+
+describe('the relationships reveal lifetime', () => {
+	function frameWindow() {
+		const pending = new Map<number, () => void>();
+		let next = 0;
+		return {
+			pending,
+			requestAnimationFrame(callback: () => void): number {
+				const id = ++next;
+				pending.set(id, callback);
+				return id;
+			},
+			cancelAnimationFrame(id: number): void {
+				pending.delete(id);
+			},
+			advance(): void {
+				for (const [id, callback] of [...pending]) {
+					pending.delete(id);
+					callback();
+				}
+			},
+		};
+	}
+
+	function form(win: ReturnType<typeof frameWindow>) {
+		const modal = Object.create(EntityFormModal.prototype) as EntityFormModal;
+		const revealCard = vi.fn();
+		Object.assign(modal, {
+			modalEl: { win },
+			contentEl: { empty: (): void => undefined },
+			actionsEl: null,
+			pickers: [],
+			descriptionRevealFrame: null,
+			descriptionSetting: null,
+			relationshipsRevealFrame: null,
+			relationshipsEditor: { revealCard },
+		});
+		return { modal, revealCard };
+	}
+
+	it.each([0, 1])('cancels the pending reveal when closed after %i frames', (elapsed) => {
+		const win = frameWindow();
+		const { modal, revealCard } = form(win);
+		modal.revealRelationships(1);
+		for (let i = 0; i < elapsed; i++) win.advance();
+		expect(win.pending.size).toBe(1);
+		modal.onClose();
+		expect(win.pending.size).toBe(0);
+		expect(modal).toMatchObject({ relationshipsRevealFrame: null });
+		win.advance();
+		expect(revealCard).not.toHaveBeenCalled();
+	});
+
+	it('lands on the card after two frames, with the record it was asked for', () => {
+		const win = frameWindow();
+		const { modal, revealCard } = form(win);
+		modal.revealRelationships(3);
+		win.advance();
+		expect(revealCard).not.toHaveBeenCalled();
+		win.advance();
+		expect(revealCard).toHaveBeenCalledExactlyOnceWith(3);
+		expect(win.pending.size).toBe(0);
+		expect(modal).toMatchObject({ relationshipsRevealFrame: null });
+	});
+
+	it('replaces an earlier reveal, and hands the block itself on for no record', () => {
+		const win = frameWindow();
+		const { modal, revealCard } = form(win);
+		modal.revealRelationships(1);
+		win.advance();
+		modal.revealRelationships(null);
+		expect(win.pending.size).toBe(1);
+		win.advance();
+		win.advance();
+		expect(revealCard).toHaveBeenCalledExactlyOnceWith(null);
+	});
+
+	it('is at peace with a form drawn without the editor', () => {
+		const win = frameWindow();
+		const { modal } = form(win);
+		Object.assign(modal, { relationshipsEditor: null });
+		modal.revealRelationships(0);
+		win.advance();
+		expect(() => { win.advance(); }).not.toThrow();
 	});
 });

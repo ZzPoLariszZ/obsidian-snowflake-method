@@ -282,6 +282,7 @@ function mount(options: MountOptions = {}) {
 		openSceneForm: vi.fn(() => Promise.resolve(null)),
 		openEntityForm: vi.fn(() => Promise.resolve(null)),
 		openProjectFile: vi.fn(() => Promise.resolve()),
+		openRelationship: vi.fn(() => Promise.resolve(true)),
 	};
 	const activateProject = vi.fn();
 	const controls = {
@@ -691,9 +692,29 @@ describe('the entities view', () => {
 		port.nodeClicked('character-bob', { mod: true, shift: false });
 		expect(fixture.host.openProjectFile).toHaveBeenCalledWith('Demo/20_Character/Bob.md');
 		port.edgeClicked(fixture.engines[0]!.scenes[0]!.picture.edges[0]!);
-		expect(fixture.host.openCharacterForm).toHaveBeenLastCalledWith('character-alice', projectPath);
+		expect(fixture.host.openRelationship).toHaveBeenCalledExactlyOnceWith(
+			{ group: 'character', id: 'character-alice' },
+			0,
+			projectPath,
+		);
+		expect(fixture.activateProject).toHaveBeenCalledTimes(5);
 		port.nodeClicked('nobody', { mod: false, shift: false });
-		expect(fixture.host.openCharacterForm).toHaveBeenCalledTimes(2);
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledTimes(1);
+		expect(fixture.activateProject).toHaveBeenCalledTimes(5);
+	});
+
+	it("says so when a line's card cannot be opened", async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		fixture.host.openRelationship.mockResolvedValueOnce(false);
+		notices.mockClear();
+		const { port, scenes } = fixture.engines[0]!;
+		port.edgeClicked(scenes[0]!.picture.edges[0]!);
+		await settle();
+		expect(notices).toHaveBeenCalledExactlyOnceWith('relationshipGraph.edit.refused');
+		port.edgeClicked(scenes[0]!.picture.edges[0]!);
+		await settle();
+		expect(notices).toHaveBeenCalledTimes(1);
 	});
 
 	it('hands the engine where the nodes stood when the tab was last shown', async () => {
@@ -976,7 +997,11 @@ describe('the keys and menus of the entities view', () => {
 		port.edgeMenu(scenes[0]!.picture.edges[0]!, event);
 		expect(menuTitles()).toEqual(['relationshipGraph.edge.edit', 'relationshipGraph.edge.open', 'relationshipGraph.edge.open']);
 		clickItem('relationshipGraph.edge.edit');
-		expect(fixture.host.openCharacterForm).toHaveBeenCalledTimes(2);
+		expect(fixture.host.openRelationship).toHaveBeenCalledExactlyOnceWith(
+			{ group: 'character', id: 'character-alice' },
+			0,
+			'Demo/001_Project_Metadata.md',
+		);
 		port.backgroundMenu(event);
 		expect(menuTitles()).toContain('relationshipGraph.closeControls');
 		clickItem('relationshipGraph.closeControls');

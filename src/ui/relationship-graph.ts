@@ -31,6 +31,7 @@ import {
 	isWorldbuildingKind,
 	patchEntityGraphState,
 	sameEntityGraphState,
+	UNRESOLVED_GROUP,
 	type EntityGraph,
 	type EntityGraphState,
 	type GraphEdge,
@@ -233,8 +234,21 @@ export function renderRelationshipGraph(
 		}
 	};
 	/** A line opens the form of the entity that holds it. */
+	/**
+	 * A line opens its holder's form on the record's card. The holder is a
+	 * member, since only a target can be unresolved; a refusal is said here,
+	 * in the project's own words.
+	 */
 	const openEdge = (edge: GraphEdge): void => {
-		openNode(edge.source, { mod: false, shift: false });
+		const node = nodesById.get(edge.source);
+		if (node === undefined || node.group === UNRESOLVED_GROUP || reading === null) return;
+		controls.activateProject();
+		void host
+			.openRelationship({ group: node.group, id: node.id }, edge.record, reading.projectPath)
+			.then((opened) => {
+				if (!opened) new Notice(t('relationshipGraph.edit.refused'));
+			})
+			.catch(notice);
 	};
 
 	const port: GraphPort = {

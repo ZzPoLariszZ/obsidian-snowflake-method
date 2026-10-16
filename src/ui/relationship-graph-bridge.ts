@@ -59,10 +59,16 @@ export interface RelationshipGraphBridge {
 	resetSceneManuscriptGraph: () => Promise<SceneManuscriptWrite>;
 }
 
-/** The host's own methods the workspace calls: a node opens its form or its note. */
+/** The host's own methods the workspace calls: a node opens its form or its note, a line its card. */
 export type RelationshipGraphHost = Pick<
 	DashboardHost,
-	'openStoryStructure' | 'translateForProject' | 'openCharacterForm' | 'openSceneForm' | 'openEntityForm' | 'openProjectFile'
+	| 'openStoryStructure'
+	| 'translateForProject'
+	| 'openCharacterForm'
+	| 'openSceneForm'
+	| 'openEntityForm'
+	| 'openProjectFile'
+	| 'openRelationship'
 >;
 
 export interface RelationshipGraphControls {

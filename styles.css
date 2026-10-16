@@ -9517,6 +9517,11 @@ button.snowflake-method-kind-options {
 	border-color: var(--text-error);
 }
 
+/* The card a line of the graph pointed at, until the focus moves on. */
+.snowflake-method-record-card.is-revealed {
+	border-color: var(--interactive-accent);
+}
+
 .snowflake-method-record-drag {
 	display: flex;
 	align-items: center;

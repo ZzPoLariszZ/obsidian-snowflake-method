@@ -13,6 +13,7 @@ import type {
 	ForeshadowingEdit,
 	ForeshadowingOccurrence,
 	ForeshadowingRef,
+	GraphMemberGroup,
 	MacaronColor,
 	ManuscriptPresentation,
 	MentionHighlightMode,
@@ -924,6 +925,12 @@ export interface DashboardHost {
 	openSceneForm(intent: SceneFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null>;
 	/** Opens an existing character's edit form without switching away from the caller. */
 	openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void>;
+	/**
+	 * Opens a member's form on one of its relationship cards, for a surface
+	 * that points at the record from outside: the graph's line. False where
+	 * the member is gone or cannot be written, so the asker can say so.
+	 */
+	openRelationship(source: { group: GraphMemberGroup; id: string }, record: number, projectPath?: string): Promise<boolean>;
 	/**
 	 * Opens the character create form for another surface, the character to
 	 * land after the index or at the end for null; resolves when the modal

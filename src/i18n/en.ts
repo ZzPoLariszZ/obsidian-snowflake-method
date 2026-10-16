@@ -1372,6 +1372,7 @@ export const en = {
 	'relationshipGraph.node.moveRight': 'Move right',
 	'relationshipGraph.edge.edit': 'Edit relationship',
 	'relationshipGraph.edge.open': 'Open {name}',
+	'relationshipGraph.edit.refused': 'This relationship cannot be edited right now.',
 	'relationshipGraph.pan.up': 'Pan up',
 	'relationshipGraph.pan.down': 'Pan down',
 	'relationshipGraph.pan.left': 'Pan left',

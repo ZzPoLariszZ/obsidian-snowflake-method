@@ -1268,6 +1268,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'relationshipGraph.node.moveRight': '右移',
 	'relationshipGraph.edge.edit': '编辑关系',
 	'relationshipGraph.edge.open': '打开{name}',
+	'relationshipGraph.edit.refused': '现在无法编辑这条关系。',
 	'relationshipGraph.pan.up': '向上平移',
 	'relationshipGraph.pan.down': '向下平移',
 	'relationshipGraph.pan.left': '向左平移',
