@@ -8,6 +8,28 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0]
+
+### Added
+
+- **A gallery on every character, scene and worldbuilding note.** The three forms have a new **Gallery** field before the custom fields, showing the pictures in a row with one in front. **Add**, beside the field's name, brings in pictures from the vault or from your computer or phone. Each is copied into the kind's gallery folder, such as `20_Character/25_Gallery`, unless it's already there. The note keeps the links in a new `snowflake-gallery` property. Click, swipe or press the arrow keys to bring another picture to the front, and once there are three or more, the row loops around. The star on the front picture makes it the main one, kept as `snowflake-gallery-main`, and the bin takes it off. A picture taken off goes to the trash, unless another note still links to it. Deleting a note offers to trash the pictures only it used. A picture whose file is gone says so in the field, and the Bases views show both properties as columns.
+- **More views on the corkboard.** A field at the start of the bar chooses what the board shows, as on the other workspaces. Besides **Scene view**, there's **Character view** and a view for each worldbuilding kind, including the ones you add. Their cards work like scene cards. You edit the name, status, text and tint in place, drag to reorder, and add a note with **+** or the add button. The text is a character's one-sentence storyline or a note's description. The foot names a character's role, a time's point or period, or another note's categories. Search, the funnel and **Display** follow the kind, so you can also group and filter characters by role, and times by point or period. The tab stays on the view you chose, and each view keeps its own card size, grouping and direction. A view of a kind the project no longer has falls back to Scene view.
+- **A gallery card style.** **Display** on the corkboard offers **Gallery** between Standard and Extended. The card then shows its head, the note's main picture and its foot, without the text. A note without pictures shows its kind's icon instead. A character's or worldbuilding note's **Extended** card shows the picture above the text, while a scene's keeps its links. Hover over a picture to page through the note's gallery, star the main picture or take one off.
+- **Entity cards on the freeform canvas.** A character or worldbuilding note placed on the canvas is now the corkboard's card, with its kind named at the foot. Its menu adds **Gallery** and **Extended**, which show the main picture, and a scene card there gains **Gallery** too. The tint and the status are still set on the card, and the words are edited in the note.
+- **Add to existing entity as alias.** The right-click menu has a new entry under Add as entity. It asks for a kind and then a note, and adds the selected words to that note's aliases. If the note already goes by those words, even with other capitals, nothing changes.
+
+### Changed
+
+- **卡片看板.** The corkboard's Chinese name is now 卡片看板, card board, since it shows characters and worldbuilding as well as scenes. The English name stays Corkboard.
+- **Unsaved card text.** The dialog that keeps a card's text when it can't be saved is now called **Unsaved card text**. It names the box each text came from, such as the conflict or the description.
+- **仓库.** The Chinese interface now says 仓库 for the vault, Obsidian's own word for it, where it said Vault.
+- **Card text follows the typography.** The text on every card now follows the typography's alignment and first-line indent, as the dashboard's boxes do. Selected words on a card get the same right-click menu as well.
+- **Add revision, Add foreshadowing.** The two entries of the stream's right-click menu say Add, as the entries beside them do, where they said Create.
+
+### Fixed
+
+- A card on the freeform canvas can be dragged by its name. The name was a disabled button, which swallowed the press, so only the rest of the card moved the node. The pointer shows the hand over the name now, as over the rest of the card.
+
 ## [0.25.1]
 
 ### Fixed
@@ -617,6 +639,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
 
+## [0.26.0]
+
+### 新增
+
+- **每篇角色、场景和世界观笔记都可以带图库。** 三类表单在自定义字段之前新增**图库**字段，图片排成一排，当前的一张在最前面。字段名称旁的**添加**可以从仓库，或者从电脑、手机里选取图片。图片会复制到该种类的图库文件夹，比如 `20_角色/25_图库`，已经在那里的就不再复制。链接记在笔记新增的 `snowflake-gallery` 属性里。点击、滑动或者按左右方向键，就能把另一张换到前面，图片有三张或更多时，这一排会循环。最前面那张上的星号把它设为主图，记在 `snowflake-gallery-main` 里，垃圾桶则把它拿掉。拿掉的图片会移到回收站，除非还有其他笔记链接到它。删除笔记时，会提出把只有这篇笔记用到的图片一并移到回收站。文件已经不在的图片，字段里会写明。Bases 视图会把这两个属性显示为列。
+- **卡片看板有了更多视图。** 工具栏开头新增一个选择框，和其他工作区上的一样，决定看板上摆的是什么。除了**场景视图**，还有**角色视图**，每类世界观也各有一个视图，你自建的种类也不例外。这些卡片的用法和场景卡片一样：名称、进度、文字和颜色都直接在卡片上编辑，拖动可以调整次序，**+** 和添加按钮用来新建笔记。卡片上的文字，角色是一句话故事概述，其他笔记是描述。底部写着角色类型、时间点或时间段，其他笔记则写类别。搜索、漏斗和**显示**都按种类调整，角色还能按角色类型分组和筛选，时间还能按时间点或时间段。标签页会停在你选的视图上，每个视图各自记住卡片大小、分组和方向。项目里已经没有的种类，会退回场景视图。
+- **图库这一档卡片样式。** 卡片看板的**显示**在标准和扩展之间新增**图库**：卡片只留标题栏、笔记的主图和底部，不放文字。没有图片的笔记显示这一类的图标。角色和世界观笔记的**扩展**卡片把主图放在文字上方，场景的扩展卡片则仍然放出关联正文。把鼠标停在图片上，就能翻看笔记的图库、设定主图或者拿掉一张。
+- **自由画布上的实体卡片。** 放到画布上的角色和世界观笔记，现在就是卡片看板上的卡片，底部写着它的种类。它们的菜单新增**图库**和**扩展**，会显示笔记的主图，画布上的场景卡片也多了**图库**。颜色和进度仍然在卡片上设置，文字在笔记里改。
+- **加入已有实体作为别名。** 右键菜单在添加为实体下面多了这一项。它先问种类，再选一篇笔记，把选中的文字加进这篇笔记的别名。笔记已经用这几个字作名称或别名时，即使大小写不同，也不会重复添加。
+
+### 变更
+
+- **卡片看板。** 场景看板改名为卡片看板，因为它摆的不再只是场景，还有角色和世界观。英文名仍是 Corkboard。
+- **未保存的卡片文字。** 卡片上的文字无法保存时，保留它的对话框现在叫**未保存的卡片文字**，并写明每段文字来自哪个文本框，比如冲突或描述。
+- **仓库。** 界面里原来写 Vault 的地方，现在都用 Obsidian 自己的叫法“仓库”。
+- **卡片文字跟随排版。** 每张卡片上的文字现在都跟随排版里的对齐方式和首行缩进，和工作台里的文本框一样。在卡片上选中文字后，右键菜单也和别处一样。
+- **添加修订、添加伏笔。** 正文流右键菜单里的这两项改说添加，和旁边几项一致，原来是新建。
+
+### 修复
+
+- 自由画布上的卡片可以按住名称拖动了。名称原本是一个禁用的按钮，会吞掉按下的动作，所以只有卡片的其他部分能拖动节点。现在鼠标停在名称上也会显示抓手。
+
 ## [0.25.1]
 
 ### 修复
@@ -628,7 +672,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### 新增
 
-- **排版不再只属于正文流。** 排版一节的顶部新增**排版范围**设置，用来选择正文的排版用在哪里：只用于正文流，或者也用于雪花项目或整个 Vault。默认是雪花项目，所以在普通标签页中打开项目里的笔记，也会使用这套排版。字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式、连字符和背景底色都会跟随，编辑视图和阅读视图都一样。属性和区段标记保持 Obsidian 自己的大小，网格线只留在正文流里，空白章节的占位提示则采用这套排版。这样的笔记上方也有同一条工具栏，包括撤销与重做、标题级别、行内标记、排版弹窗、高亮菜单、导出这篇笔记的按钮、打字机滚动和专注模式。开启相应设置后，在这些笔记里按 Enter 也会另起一段，背景底色也会盖住笔记的标题栏。正文流始终使用这套排版。
+- **排版不再只属于正文流。** 排版一节的顶部新增**排版范围**设置，用来选择正文的排版用在哪里：只用于正文流，或者也用于雪花项目或整个仓库。默认是雪花项目，所以在普通标签页中打开项目里的笔记，也会使用这套排版。字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式、连字符和背景底色都会跟随，编辑视图和阅读视图都一样。属性和区段标记保持 Obsidian 自己的大小，网格线只留在正文流里，空白章节的占位提示则采用这套排版。这样的笔记上方也有同一条工具栏，包括撤销与重做、标题级别、行内标记、排版弹窗、高亮菜单、导出这篇笔记的按钮、打字机滚动和专注模式。开启相应设置后，在这些笔记里按 Enter 也会另起一段，背景底色也会盖住笔记的标题栏。正文流始终使用这套排版。
 - **项目笔记里的标记。** 用上排版的项目笔记，在编辑视图和阅读视图里都会显示正文流的标记：实体提及、敏感词、对话和自定义高亮规则。笔记上方的高亮菜单用来设置它们，和正文流里一样。右键点击标出的名字，可以转成链接、打开它的笔记或忽略它，阅读视图里直接点击也可以。角色自己的笔记不会标出这个角色的名字。不属于任何项目的笔记，高亮按钮显示为灰色。
 - **项目笔记里的专注模式。** 用上排版的项目笔记，上方工具栏在打字机滚动之后新增了专注模式按钮，用法和正文流里一样。正在写的段落以外的一切都会淡化，笔记的标题和属性、Obsidian 的其他部分也一样。「深度」一档还会淡化工作台，「仅正文」一档会全屏只显示这篇笔记。设置专注模式的命令在这里也能用。不属于任何项目的笔记，这个按钮显示为灰色。
 - **背景颜色可以铺得更远。** 两项背景颜色的上方新增**背景范围**设置，用来选择颜色铺到哪里。默认是**排版范围**，颜色只用于正文流和排版用到的笔记。选**雪花界面**，颜色还会铺满工作台、其他视图和它们的标签页，以及插件的对话框和弹窗。选**整个 Obsidian**，颜色会铺满整个应用，包括侧边栏和设置窗口。边框、按钮、代码块和浅色文字都会换成相配的深浅，在新的底色上保持原有的对比。
@@ -681,7 +725,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **沉浸模式。** 第二个按钮只显示你正在写的项目，其他行都被一道淡淡的横条盖住，其他文件夹也会折叠起来。切换到另一个项目的工作台、工作区或正文流时，显示会跟着切换。关掉后，文件夹会回到你离开时的样子。沉浸模式默认开启，不能和排列模式同时开启。
 - **排列模式。** 第三个按钮让你在文件夹内把文件和文件夹拖成任意顺序。每一行还会多出一个抓手，点开就有**上移**、**下移**等移动操作，在触屏上也很方便。排好的顺序保存在插件设置里，重命名和移动后依然有效。排好后按 Escape 或再按一次按钮即可退出。不在排列模式时，拖动文件和以前一样是移动文件。
 - **文件列表中的字数。** 第四个按钮在每篇笔记和每个文件夹旁显示字数，按你在数据统计里选的计数规则计算。文件夹的字数包括其中所有内容，子文件夹也算在内。插件生成的笔记，比如模板和便签，不计入字数，所以总数只算你自己写的内容。在设置里可以分别关闭笔记和文件夹的字数。
-- **文件列表设置。** 设置里新增一节，紧跟在“通用”之后，存放这四个按钮的设置。你可以选择它们只在雪花项目内生效还是在整个 Vault 内生效，整理视图隐藏哪些内容，以及在哪里显示字数。每个按钮也都有对应的命令，可以从命令面板运行，或者设置快捷键。
+- **文件列表设置。** 设置里新增一节，紧跟在“通用”之后，存放这四个按钮的设置。你可以选择它们只在雪花项目内生效还是在整个仓库内生效，整理视图隐藏哪些内容，以及在哪里显示字数。每个按钮也都有对应的命令，可以从命令面板运行，或者设置快捷键。
 - **隐藏滚动条。** “通用”里新增一项设置，默认开启，会隐藏 Obsidian 每个窗口里的所有滚动条。用鼠标滚轮、触控板或键盘滚动都和以前一样。想让滚动条回来，关掉这一项，或者使用新的**切换滚动条**命令。
 - **对话框支持 Ctrl+Enter。** 在任何用于创建或保存的对话框里，按 Ctrl+Enter（Mac 上是 Cmd+Enter）都相当于点击主按钮，无论光标在哪里。项目、角色、场景、任务、伏笔、时间线、节拍表、自由画布、种类、分类、模板和高亮规则的表单都适用。单独按 Enter 和 Shift+Enter 的作用和以前一样，比如在文本框里换行。
 
@@ -872,7 +916,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### 新增
 
-- **修订**，先在正文旁提出改动，再决定要不要落笔。点进一章，选中要改的文字，在右键菜单里选择**新建修订**。所选文字会成为一处替换，建议文本留空则成为一处删除。如果只放一个光标，就会在那里插入。将被改掉的文字会在原处划去，插入的位置用一道竖线标出。但这一章本身不会改变，在接受之前也不计入字数、分析与追踪。每一处修订都是章节右侧页边上的一张卡片，写着类型、原文、建议文本与备注。**接受**会把改动作为你自己的编辑写进这一章，所以可以撤销，也计入写作字数。**拒绝**会移除修订，正文保持原样。**编辑**可以修改建议文本与备注。一处删除填上文字后，又会变回替换。卡片上的箭头可以在整部正文的修订之间逐一跳转。修订会跟着它所指的文字走，你在它前后继续写作，或者拆分、合并章节，它都不会走失。如果你直接改动了它所指的文字，它会被标为冲突，只能丢弃，不能应用。两处修订不能覆盖同一段文字。所有修订都保存在项目任务管理文件夹下的同一个共享文件里，跟着 Vault 走。文件无法解析时，会被另存起来，而不会被读取。由更新版本的插件写入的文件，则会原样保留。
+- **修订**，先在正文旁提出改动，再决定要不要落笔。点进一章，选中要改的文字，在右键菜单里选择**新建修订**。所选文字会成为一处替换，建议文本留空则成为一处删除。如果只放一个光标，就会在那里插入。将被改掉的文字会在原处划去，插入的位置用一道竖线标出。但这一章本身不会改变，在接受之前也不计入字数、分析与追踪。每一处修订都是章节右侧页边上的一张卡片，写着类型、原文、建议文本与备注。**接受**会把改动作为你自己的编辑写进这一章，所以可以撤销，也计入写作字数。**拒绝**会移除修订，正文保持原样。**编辑**可以修改建议文本与备注。一处删除填上文字后，又会变回替换。卡片上的箭头可以在整部正文的修订之间逐一跳转。修订会跟着它所指的文字走，你在它前后继续写作，或者拆分、合并章节，它都不会走失。如果你直接改动了它所指的文字，它会被标为冲突，只能丢弃，不能应用。两处修订不能覆盖同一段文字。所有修订都保存在项目任务管理文件夹下的同一个共享文件里，跟着仓库走。文件无法解析时，会被另存起来，而不会被读取。由更新版本的插件写入的文件，则会原样保留。
 - **任务管理**，工作台新增的一个面板，用来打理写作之外的事务。其中的**修订**标签页列出每一处未处理的修订，包括类型、原文、建议文本、备注与位置。你可以按其中任何一项搜索。点击位置，就会跳到这处修订在正文中的所在之处。发生冲突的修订会在这里标出冲突，并附有丢弃按钮。**任务**、**伏笔**与**便签**三个标签页先占好了位置，等着放进各自的内容。
 - 有些文件夹，插件只在第一次有东西要放进去时才会创建，比如本版本之前创建的项目里的修订文件夹。健康检查现在认得这类文件夹，会以提示而不是受损的方式，提供立即创建的选项。
 
