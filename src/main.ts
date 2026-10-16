@@ -230,6 +230,7 @@ import {
 	type WritingCountScope,
 	isBeatSheetFilePath,
 	isFreeformFilePath,
+	isRelationshipGraphFilePath,
 	isStickyNotePath,
 	isTaskFilePath,
 	isTimelineFilePath,
@@ -665,6 +666,8 @@ export default class SnowflakeMethodPlugin
 	private readonly timelineBell = this.documentBell('a timeline workspace');
 	/** The beat sheet workspaces' bell, for a project's beat sheet file. */
 	private readonly beatSheetBell = this.documentBell('a beat sheet workspace');
+	/** The relationship graph workspaces' bell, for a project's relationship graph file. */
+	private readonly relationshipGraphBell = this.documentBell('a relationship graph workspace');
 	/** The freeform workspaces' bell, for any of a project's views. */
 	private readonly freeformBell = this.documentBell('a freeform workspace');
 	/** The writing count in the status bar, and the text span inside it. */
@@ -1120,6 +1123,13 @@ export default class SnowflakeMethodPlugin
 				onBeatSheetForeign: () => {
 					new Notice(this.projectT('beatSheet.newerSchema'));
 				},
+				// The relationship graph's file, told apart the same two ways.
+				onRelationshipGraphCorrupt: (path) => {
+					new Notice(this.projectT('relationshipGraph.corruptPreserved', { path }));
+				},
+				onRelationshipGraphForeign: () => {
+					new Notice(this.projectT('relationshipGraph.newerSchema'));
+				},
 				// A freeform view's file, told apart the same two ways.
 				onFreeformCorrupt: (path) => {
 					new Notice(this.projectT('freeformCanvas.corruptPreserved', { path }));
@@ -1482,6 +1492,7 @@ export default class SnowflakeMethodPlugin
 		this.taskBell.dispose();
 		this.timelineBell.dispose();
 		this.beatSheetBell.dispose();
+		this.relationshipGraphBell.dispose();
 		this.freeformBell.dispose();
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
@@ -7783,6 +7794,11 @@ export default class SnowflakeMethodPlugin
 		this.beatSheetBell.schedule(reconcile);
 	}
 
+	/** The relationship graph's file changed somewhere; the same, on its own bell. */
+	private scheduleRelationshipGraphNotify(reconcile = false): void {
+		this.relationshipGraphBell.schedule(reconcile);
+	}
+
 	/** A freeform view changed somewhere; the same, on the views' own bell. */
 	private scheduleFreeformNotify(reconcile = false): void {
 		this.freeformBell.schedule(reconcile);
@@ -10424,6 +10440,12 @@ export default class SnowflakeMethodPlugin
 			this.scheduleBeatSheetNotify();
 			return;
 		}
+		// And the relationship graph's file.
+		if (file instanceof TFile && isRelationshipGraphFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleRelationshipGraphNotify();
+			return;
+		}
 		// And a freeform file: a view's, of which a project may hold many, or the folder's own.
 		if (file instanceof TFile && isFreeformFilePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
@@ -10562,6 +10584,7 @@ export default class SnowflakeMethodPlugin
 		this.projects.tasks.evict(file.path);
 		this.projects.timeline.evict(file.path);
 		this.projects.beatSheet.evict(file.path);
+		this.projects.relationshipGraph.evict(file.path);
 		this.projects.freeform.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
@@ -10586,6 +10609,11 @@ export default class SnowflakeMethodPlugin
 		if (file instanceof TFile && isBeatSheetFilePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
 			this.scheduleBeatSheetNotify(true);
+			return;
+		}
+		if (file instanceof TFile && isRelationshipGraphFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleRelationshipGraphNotify(true);
 			return;
 		}
 		if (file instanceof TFile && isFreeformFilePath(file.path)) {
@@ -10777,6 +10805,7 @@ export default class SnowflakeMethodPlugin
 		for (const store of this.projects.marginRecords) store.evict(oldPath);
 		this.projects.timeline.evict(oldPath);
 		this.projects.beatSheet.evict(oldPath);
+		this.projects.relationshipGraph.evict(oldPath);
 		this.projects.freeform.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name. Carried
@@ -10850,6 +10879,14 @@ export default class SnowflakeMethodPlugin
 				this.invalidateProjectHealth(oldPath);
 				this.invalidateProjectHealth(file.path);
 				this.scheduleBeatSheetNotify(true);
+			}
+			// The relationship graph's file, likewise.
+			const wasRelationshipGraph = isRelationshipGraphFilePath(oldPath) && this.touchesProject(oldPath);
+			const isRelationshipGraph = isRelationshipGraphFilePath(file.path) && this.touchesProject(file.path);
+			if (wasRelationshipGraph || isRelationshipGraph) {
+				this.invalidateProjectHealth(oldPath);
+				this.invalidateProjectHealth(file.path);
+				this.scheduleRelationshipGraphNotify(true);
 			}
 			// A freeform view's file, likewise: renamed within its folder it is
 			// another view by another id, and moved out it is no view at all. The

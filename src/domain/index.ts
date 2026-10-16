@@ -33,6 +33,8 @@ export * from './sentences';
 export * from './steps';
 export * from './sticky-note';
 export * from './task';
+export * from './relationship-graph-document';
+export * from './relationship-graph-state';
 export * from './timeline';
 export * from './text-length';
 export * from './text-search';

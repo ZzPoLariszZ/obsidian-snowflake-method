@@ -458,6 +458,46 @@ describe("SnowflakeProjectService", () => {
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
   });
 
+  it("keeps its snapshot when the relationship graph file is written, and drops it when that file comes or goes", async () => {
+    // As with the timeline: the file keeps only how the graph is looked at,
+    // so a slider moved on the graph must not send the whole project to be
+    // read again.
+    const project = await service.createProject({ name: "Graph digest" });
+    const graphFile = `${project.rootPath}/70_Tool/73_Visualization/735_Relationship_Graph/relationship-graph.json`;
+    await fakeVault.seedFile(graphFile, '{"schemaVersion":1,"sceneManuscript":null}');
+    const first = await service.loadProject(project.projectFile);
+
+    fakeVault.write(
+      graphFile,
+      '{"schemaVersion":1,"sceneManuscript":null,"entities":{"display":{"arrows":false}}}',
+    );
+    expect(await service.loadProject(project.projectFile)).toBe(first);
+
+    fakeVault.delete(graphFile);
+    expect(await service.loadProject(project.projectFile)).not.toBe(first);
+  });
+
+  it("treats the relationship graph folder as made on demand as well", async () => {
+    const project = await service.createProject({ name: "Older layout" });
+    const graph = `${project.rootPath}/70_Tool/73_Visualization/735_Relationship_Graph`;
+    fakeVault.delete(graph);
+
+    const seen = await service.loadProject(project.projectFile);
+    const raised = seen.structureIssues.filter(
+      (issue) => issue.path === graph,
+    );
+    expect(raised).toEqual([
+      expect.objectContaining({
+        code: "missing-on-demand-directory",
+        path: graph,
+        stepIds: [],
+        repairable: true,
+        blocking: false,
+      }),
+    ]);
+    expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+  });
+
   it("keeps its snapshot when a freeform view is written, and drops it when a view comes or goes", async () => {
     // As with the timeline: nothing in a snapshot is read from a view, only
     // whether the views' folder stands, so a node dragged on a canvas must
@@ -561,7 +601,7 @@ describe("SnowflakeProjectService", () => {
 
     const seen = await service.loadProject(project.projectFile);
     expect(seen.structureIssues.map((issue) => issue.code)).toEqual(
-      Array.from({ length: 10 }, () => "missing-on-demand-directory"),
+      Array.from({ length: 11 }, () => "missing-on-demand-directory"),
     );
     expect(seen.structureIssues.some((issue) => issue.blocking)).toBe(false);
     expect(seen.structureIssues.every((issue) => issue.repairable)).toBe(true);
@@ -573,7 +613,7 @@ describe("SnowflakeProjectService", () => {
       timeline,
     );
     expect(fakeVault.nodes.has(timeline)).toBe(true);
-    expect(repaired.structureIssues).toHaveLength(9);
+    expect(repaired.structureIssues).toHaveLength(10);
   });
 
   it("offers every folder of the tool chain, and demands every other", () => {

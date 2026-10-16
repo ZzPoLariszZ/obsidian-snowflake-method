@@ -175,6 +175,8 @@ import { TimelineService } from "./timeline-service";
 import { isTimelineFilePath } from "./timeline-store";
 import { BeatSheetService } from "./beat-sheet-service";
 import { isBeatSheetFilePath } from "./beat-sheet-store";
+import { RelationshipGraphService } from "./relationship-graph-service";
+import { isRelationshipGraphFilePath } from "./relationship-graph-store";
 import { StickyNoteService } from "./sticky-note-service";
 import type { MarginRecordService } from "./margin-records";
 import { RevisionService } from "./revision-service";
@@ -420,6 +422,7 @@ export class SnowflakeProjectService {
   readonly timeline: TimelineService;
   /** Beat sheets and the templates saved from them: user data beside the timelines. */
   readonly beatSheet: BeatSheetService;
+  readonly relationshipGraph: RelationshipGraphService;
   /** Freeform views, each a file of its own: user data beside the beat sheets. */
   readonly freeform: FreeformService;
   /** The stores of records kept beside the manuscript, told of a chapter's fate as one. */
@@ -474,6 +477,9 @@ export class SnowflakeProjectService {
       /** And for the beat sheet file. */
       onBeatSheetCorrupt?: (path: string) => void;
       onBeatSheetForeign?: (path: string, version: number) => void;
+      /** And for the relationship graph's file. */
+      onRelationshipGraphCorrupt?: (path: string) => void;
+      onRelationshipGraphForeign?: (path: string, version: number) => void;
       /** And for a freeform view's file. */
       onFreeformCorrupt?: (path: string) => void;
       onFreeformForeign?: (path: string, version: number) => void;
@@ -556,6 +562,15 @@ export class SnowflakeProjectService {
       ...(analysis.onBeatSheetForeign === undefined
         ? {}
         : { onForeign: analysis.onBeatSheetForeign }),
+    });
+    this.relationshipGraph = new RelationshipGraphService(this.repository, {
+      now: analysis.now ?? ((): number => Date.now()),
+      ...(analysis.onRelationshipGraphCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onRelationshipGraphCorrupt }),
+      ...(analysis.onRelationshipGraphForeign === undefined
+        ? {}
+        : { onForeign: analysis.onRelationshipGraphForeign }),
     });
     this.freeform = new FreeformService(this.repository, {
       now: analysis.now ?? ((): number => Date.now()),
@@ -693,7 +708,7 @@ export class SnowflakeProjectService {
       // Keep their paths in the digest: creation, deletion and migration can
       // still change the structure report, including a formerly filed cache.
       eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path) || isBeatSheetFilePath(file.path) ||
-        isFreeformFilePath(file.path)
+        isRelationshipGraphFilePath(file.path) || isFreeformFilePath(file.path)
         ? file.path
         : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
     }
@@ -1278,6 +1293,7 @@ export class SnowflakeProjectService {
       freeform: new Set(),
       timeline: new Set(),
       beatSheet: new Set(),
+      relationshipGraph: new Set(),
       // Sticky notes are managed notes of their own type, owned and repaired
       // like members.
       stickyNotes: new Set(["sticky-note"]),
@@ -7065,6 +7081,7 @@ export class SnowflakeProjectService {
       freeform: [],
       timeline: [],
       beatSheet: [],
+      relationshipGraph: [],
       materials: [],
       archive: [],
     };

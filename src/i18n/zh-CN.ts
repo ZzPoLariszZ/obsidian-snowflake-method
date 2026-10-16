@@ -1211,6 +1211,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'timeline.pool.expand': '展开场景池',
 	'beatSheet.newerSchema': '节拍表文件由更新版本的插件写入，已保持原样。',
 	'beatSheet.corruptPreserved': '节拍表文件无法读取，已另存为 {path}。',
+	'relationshipGraph.newerSchema': '关系图文件由更新版本的插件写入，已保持原样。',
+	'relationshipGraph.corruptPreserved': '关系图文件无法读取，已另存为 {path}。',
 	'beatSheet.toolbar': '节拍表工具栏',
 	'beatSheet.search': '搜索此节拍表',
 	'beatSheet.search.none': '没有匹配项',

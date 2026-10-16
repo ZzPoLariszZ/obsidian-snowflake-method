@@ -69,6 +69,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "freeform",
   "timeline",
   "beatSheet",
+  "relationshipGraph",
   "materials",
   "archive",
 ] as const;
@@ -110,13 +111,14 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       revisions: "70_Tool/72_Task_Management/723_Revision",
       stickyNotes: "70_Tool/72_Task_Management/724_Sticky_Note",
       // The visualization chain, one entry per tenant like the two above:
-      // the freeform views, the timeline file and the beat sheet file, each
-      // in a folder of its own, numbered by their places in the workspace's
-      // strip. The corkboard stands first there and keeps no file, so the
-      // chain starts at the second.
+      // the freeform views, the timeline file, the beat sheet file and the
+      // relationship graph's file, each in a folder of its own, numbered by
+      // their places in the workspace's strip. The corkboard stands first
+      // there and keeps no file, so the chain starts at the second.
       freeform: "70_Tool/73_Visualization/732_Freeform",
       timeline: "70_Tool/73_Visualization/733_Timeline",
       beatSheet: "70_Tool/73_Visualization/734_Beat_Sheet",
+      relationshipGraph: "70_Tool/73_Visualization/735_Relationship_Graph",
       materials: "80_Material",
       archive: "90_Archive",
     },
@@ -147,6 +149,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       freeform: "70_工具/73_可视化/732_自由画布",
       timeline: "70_工具/73_可视化/733_时间线",
       beatSheet: "70_工具/73_可视化/734_节拍表",
+      relationshipGraph: "70_工具/73_可视化/735_关系图",
       materials: "80_素材",
       archive: "90_存档",
     },
@@ -357,8 +360,8 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  * of the folders whose absence costs nothing: each holds only what its own
  * writer puts there -- the sessions and the two statistics caches, the task,
  * foreshadowing and revision files, the sticky notes, the freeform views,
- * the timeline and the beat sheet -- and each of those writers ensures its
- * chain on the way to a write, so an absent folder is back the moment there
+ * the timeline, the beat sheet and the relationship graph -- and each of
+ * those writers ensures its chain on the way to a write, so an absent folder is back the moment there
  * is something to keep in it. No step reads one, and no note is filed by one.
  *
  * Demanding any of them would mark as damaged every project made before its
@@ -366,8 +369,8 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  * the red, its steps no longer reconciled, over folders nothing is waiting
  * for. The 711-713 folders were once told as damage on the ground that they
  * are part of the shape a project is built with; so are the rest, and all
- * ten are made, written and put back the same way, so all ten are told the
- * same way.
+ * eleven are made, written and put back the same way, so all eleven are
+ * told the same way.
  */
 export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
   new Set<ProjectDirectoryKey>([
@@ -381,6 +384,7 @@ export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
     "freeform",
     "timeline",
     "beatSheet",
+    "relationshipGraph",
   ]);
 
 /** A project-level contract problem that exists before marker inspection. */

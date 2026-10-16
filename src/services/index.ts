@@ -24,6 +24,8 @@ export * from "./revision-service";
 export * from "./sticky-note-service";
 export * from "./task-service";
 export * from "./task-store";
+export * from "./relationship-graph-service";
+export * from "./relationship-graph-store";
 export * from "./timeline-service";
 export * from "./timeline-store";
 export * from "./types";

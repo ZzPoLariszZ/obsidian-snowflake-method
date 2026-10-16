@@ -1315,6 +1315,10 @@ export const en = {
 		'The beat sheet file was written by a newer version of the plugin and has been left as it is.',
 	'beatSheet.corruptPreserved':
 		'The beat sheet file could not be read and has been set aside as {path}.',
+	'relationshipGraph.newerSchema':
+		'The relationship graph file was written by a newer version of the plugin and has been left as it is.',
+	'relationshipGraph.corruptPreserved':
+		'The relationship graph file could not be read and has been set aside as {path}.',
 	'beatSheet.toolbar': 'Beat sheet toolbar',
 	'beatSheet.search': 'Search this sheet',
 	'beatSheet.search.none': 'Nothing matches',
