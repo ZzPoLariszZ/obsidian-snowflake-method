@@ -40,8 +40,14 @@ export function galleryLinkTarget(raw: string): string | null {
 	return link === null || link.target.length === 0 ? null : link.target;
 }
 
-/** What a link is matched by: the path it names, or the words themselves where they are no link. */
-const galleryKeyOf = (raw: string): string => galleryLinkTarget(raw) ?? raw.trim();
+/**
+ * What a link is matched by: the path it names, or the words themselves
+ * where they are no link. Every place that asks whether two gallery links
+ * name one picture asks this: the pane, the save and the tidy after it.
+ */
+export function galleryKeyOf(raw: string): string {
+	return galleryLinkTarget(raw) ?? raw.trim();
+}
 
 /**
  * The entry of the list the stored main link names, matched by what it points

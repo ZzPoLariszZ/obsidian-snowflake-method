@@ -136,7 +136,7 @@ import {
 	type ChapterFollower,
 	type ChapterNumbering,
 	foldName,
-	galleryLinkTarget,
+	galleryKeyOf,
 	type ChapterNumberRule,
 	type ChapterNumberProposal,
 	type ChapterRemovalProposal,
@@ -2401,10 +2401,10 @@ export default class SnowflakeMethodPlugin
 		gallery: string[] | undefined,
 	): Promise<void> {
 		if (before === undefined || gallery === undefined) return;
-		const kept = new Set(gallery.map((link) => galleryLinkTarget(link) ?? link.trim()));
+		const kept = new Set(gallery.map(galleryKeyOf));
 		await this.tidyGallery(project, {
 			path: before.path,
-			gallery: before.gallery.filter((link) => !kept.has(galleryLinkTarget(link) ?? link.trim())),
+			gallery: before.gallery.filter((link) => !kept.has(galleryKeyOf(link))),
 		});
 	}
 

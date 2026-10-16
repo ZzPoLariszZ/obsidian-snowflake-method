@@ -16,7 +16,7 @@
 
 import { Keymap, Notice, setIcon, setTooltip, type App } from 'obsidian';
 
-import { PROGRESS_STATUSES, galleryCover, galleryLinkTarget, isProgressStatus, type MacaronColor, type ProgressStatus } from '../domain';
+import { PROGRESS_STATUSES, galleryCover, galleryKeyOf, isProgressStatus, type MacaronColor, type ProgressStatus } from '../domain';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import { CorkboardDraftModal, type RecoveredCorkboardDraft } from './corkboard-draft-modal';
 import { statusOptions, type CardSelectOption } from './corkboard-layout';
@@ -289,12 +289,11 @@ export interface MemberCardDeck<Member extends CardMember, Card extends MemberCa
 }
 
 /** Whether two gallery links name the same picture. */
-const sameGalleryTarget = (left: string, right: string): boolean =>
-	(galleryLinkTarget(left) ?? left.trim()) === (galleryLinkTarget(right) ?? right.trim());
+const sameGalleryTarget = (left: string, right: string): boolean => galleryKeyOf(left) === galleryKeyOf(right);
 
 /** The file name a gallery link ends in, for a picture that resolves to no file. */
 const galleryLinkName = (link: string): string => {
-	const target = galleryLinkTarget(link) ?? link.trim();
+	const target = galleryKeyOf(link);
 	return target.slice(target.lastIndexOf('/') + 1);
 };
 

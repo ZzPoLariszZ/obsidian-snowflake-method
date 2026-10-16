@@ -16,6 +16,7 @@ import { normalizePath, type TFile } from "obsidian";
 
 import {
   composeGallery,
+  galleryKeyOf,
   galleryLinkTarget,
   galleryPicks,
   safeFileName,
@@ -65,8 +66,6 @@ export interface GalleryCommit<T> {
 /** How long a save waits for the vault to let go of a trashed picture's name, in milliseconds, and how often it looks. */
 const FREED_NAME_WAIT_MS = 50;
 const FREED_NAME_LOOKS = 20;
-
-const targetOf = (raw: string): string => galleryLinkTarget(raw) ?? raw.trim();
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -308,10 +307,10 @@ export class GalleryService {
     // note's; only what the saved list no longer names is tidied. A name a
     // landed namesake waits for is the leaving picture's still.
     const settling = new Set(
-      landed.flatMap((entry) => (entry.settles === undefined ? [] : [targetOf(entry.link)])),
+      landed.flatMap((entry) => (entry.settles === undefined ? [] : [galleryKeyOf(entry.link)])),
     );
-    const kept = new Set(composed.gallery.map(targetOf).filter((target) => !settling.has(target)));
-    const removed = draft.removed.filter((raw) => !kept.has(targetOf(raw)));
+    const kept = new Set(composed.gallery.map(galleryKeyOf).filter((target) => !settling.has(target)));
+    const removed = draft.removed.filter((raw) => !kept.has(galleryKeyOf(raw)));
     const savedPath = notePathOf(result);
     // The note is excepted under both its paths: a save that renames it may
     // still be indexed under the old one, with the links it held before.
