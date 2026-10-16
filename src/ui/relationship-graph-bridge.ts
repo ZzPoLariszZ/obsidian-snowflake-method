@@ -7,7 +7,13 @@
 
 import type { App } from 'obsidian';
 
-import type { EntityGraphState, RelationshipGraphDocument } from '../domain';
+import type {
+	EntityGraphState,
+	GraphMember,
+	ProjectWorldbuildingKind,
+	RelationshipGraphDocument,
+	ResolveGraphTarget,
+} from '../domain';
 import type { RelationshipGraphWrite } from '../services';
 import type { Translate } from './modals';
 import type { SceneManuscriptOpening, SceneManuscriptWrite } from './scene-manuscript-graph';
@@ -27,6 +33,12 @@ export interface RelationshipGraphReading {
 	locale: 'en' | 'zh-CN';
 	/** The document held, shared with the store's memo: treated as immutable by everyone who reads it. */
 	held: RelationshipGraphDocument;
+	/** Every member whose relationships are drawn, kinds in the project's order. */
+	members: readonly GraphMember[];
+	/** The project's worldbuilding kinds in order, built-ins first. */
+	kinds: readonly ProjectWorldbuildingKind[];
+	/** Where a relationship's link leads from the note that holds it, within the project. */
+	resolveTarget: ResolveGraphTarget;
 	readOnly: boolean;
 }
 

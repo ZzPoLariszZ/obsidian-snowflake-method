@@ -15,6 +15,7 @@
 
 import { Notice } from 'obsidian';
 
+import { buildEntityGraph, EMPTY_ENTITY_GRAPH, type EntityGraph } from '../domain';
 import { buildOptionField, type OptionPicker } from './option-picker';
 import type {
 	RelationshipGraphControls,
@@ -50,6 +51,8 @@ export function renderRelationshipGraph(
 	};
 	let disposed = false;
 	let reading: RelationshipGraphReading | null = null;
+	/** The graph of the reading held, built once per reading. */
+	let graph: EntityGraph = EMPTY_ENTITY_GRAPH;
 
 	const root = container.createDiv({ cls: 'snowflake-method-relationship-graph' });
 
@@ -147,7 +150,9 @@ export function renderRelationshipGraph(
 		root.toggleClass('is-read-only', reading?.readOnly === true);
 		root.toggleClass('is-controls-open', memory.controlsOpen);
 		if (memory.view === 'entities') {
-			stage.createEl('p', { cls: 'snowflake-method-tab-planned', text: t('relationshipGraph.empty') });
+			if (reading !== null && graph.edges.length === 0) {
+				stage.createEl('p', { cls: 'snowflake-method-tab-planned', text: t('relationshipGraph.empty') });
+			}
 		} else if (reading !== null) {
 			renderSceneManuscriptPane(stage, {
 				t,
@@ -167,6 +172,7 @@ export function renderRelationshipGraph(
 		const next = await controls.bridge().read();
 		if (disposed) return;
 		reading = next;
+		graph = next === null ? EMPTY_ENTITY_GRAPH : buildEntityGraph(next.members, next.resolveTarget);
 		paintAll();
 	};
 	const unsubscribe = controls.bridge().subscribe(() => {

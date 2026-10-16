@@ -230,6 +230,7 @@ import {
 	type WritingCountScope,
 	isBeatSheetFilePath,
 	isFreeformFilePath,
+	graphMembersOf,
 	isRelationshipGraphFilePath,
 	isStickyNotePath,
 	isTaskFilePath,
@@ -5182,6 +5183,12 @@ export default class SnowflakeMethodPlugin
 					rootPath: project.rootPath,
 					locale: project.locale,
 					held: await graphs.read(project),
+					members: graphMembersOf(project),
+					kinds: project.worldbuildingKinds,
+					// Within the project's folder, as every other member link is read:
+					// a bare name that another project also uses is this project's.
+					resolveTarget: (link, sourcePath) =>
+						this.projects.repository.resolveLinkWithin(link, sourcePath, project.rootPath)?.path ?? null,
 					readOnly: project.readOnly,
 				};
 			},

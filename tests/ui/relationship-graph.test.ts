@@ -85,6 +85,9 @@ function mount(options: MountOptions = {}) {
 					1,
 				)!
 			: empty,
+		members: [],
+		kinds: [],
+		resolveTarget: () => null,
 		readOnly: options.readOnly ?? false,
 	};
 	const bridge = {

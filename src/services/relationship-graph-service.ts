@@ -4,12 +4,13 @@ import {
 	rememberSceneManuscriptOptions,
 	sameEntityGraphState,
 	type EntityGraphState,
+	type GraphMember,
 	type NativeGraphOptions,
 	type RelationshipGraphDocument,
 } from "../domain";
 import type { VaultRepository } from "../repository";
 import { RelationshipGraphStore } from "./relationship-graph-store";
-import type { ProjectRef } from "./types";
+import type { ProjectRef, ProjectSnapshot } from "./types";
 
 /** What a write came to: the document now says what was asked, or why not. */
 export type RelationshipGraphWrite = "written" | "absent" | "refused";
@@ -100,4 +101,49 @@ export class RelationshipGraphService {
 		});
 		return asked ? "written" : "refused";
 	}
+}
+
+/**
+ * A project's members as the entity graph reads them: every character,
+ * scene and worldbuilding note with its relationship lines, kinds in the
+ * project's order so the default colours fall the same way each time.
+ */
+export function graphMembersOf(project: ProjectSnapshot): GraphMember[] {
+	return [
+		...project.characters.map(
+			(character): GraphMember => ({
+				id: character.id,
+				group: 'character',
+				kind: 'character',
+				name: character.name,
+				aliases: character.aliases,
+				path: character.path,
+				relationships: character.relationships,
+			}),
+		),
+		...project.scenes.map(
+			(scene): GraphMember => ({
+				id: scene.id,
+				group: 'scene',
+				kind: 'scene',
+				name: scene.title,
+				aliases: scene.aliases,
+				path: scene.path,
+				relationships: scene.relationships,
+			}),
+		),
+		...project.worldbuildingKinds.flatMap((kind) =>
+			(project.worldbuilding[kind.id] ?? []).map(
+				(entity): GraphMember => ({
+					id: entity.id,
+					group: 'worldbuilding',
+					kind: entity.kind,
+					name: entity.name,
+					aliases: entity.aliases,
+					path: entity.path,
+					relationships: entity.relationships,
+				}),
+			),
+		),
+	];
 }
