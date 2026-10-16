@@ -44,6 +44,7 @@ function fakeEngine(): GraphHandle & { calls: string[] } {
 		focusNode: note('focusNode'),
 		focusedNode: () => 'alice',
 		centreOn: note('centreOn'),
+		screenPlaceOf: () => ({ x: 3, y: 4 }),
 		nudgeNode: note('nudgeNode'),
 		pinNode: note('pinNode'),
 		isPinned: () => true,
@@ -95,6 +96,7 @@ describe('the relationship graph mount', () => {
 		expect(handle.focusedNode()).toBeNull();
 		expect(handle.isPinned('bob')).toBe(false);
 		expect(handle.places().size).toBe(0);
+		expect(handle.screenPlaceOf('bob')).toBeNull();
 		root.arrive();
 		await settle();
 		expect(root.engine.calls.map((call) => call.slice(0, call.indexOf('(')))).toEqual([
@@ -108,6 +110,7 @@ describe('the relationship graph mount', () => {
 		expect(handle.focusedNode()).toBe('alice');
 		expect(handle.isPinned('bob')).toBe(true);
 		expect(handle.places().get('alice')).toEqual({ x: 1, y: 2, pinned: false });
+		expect(handle.screenPlaceOf('alice')).toEqual({ x: 3, y: 4 });
 		handle.zoomBy(2);
 		expect(root.engine.calls[root.engine.calls.length - 1]).toBe('zoomBy(2)');
 	});

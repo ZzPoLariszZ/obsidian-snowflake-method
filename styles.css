@@ -17906,8 +17906,28 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-toolbar .snowflake-method-toolbar-search,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-fit,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-reset-view,
-.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-controls {
+.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-controls,
+.snowflake-method-relationship-graph .snowflake-method-relationship-graph-zoom-in,
+.snowflake-method-relationship-graph .snowflake-method-relationship-graph-zoom-out,
+.snowflake-method-relationship-graph .snowflake-method-relationship-graph-more {
 	display: none;
+}
+
+/* A touch screen has no wheel and no right button: the zoom and the menu
+   stand on the toolbar there, spelled with the hiding rule's own selector,
+   since a media query adds no specificity of its own. */
+@media (pointer: coarse) {
+	.snowflake-method-relationship-graph.is-entities .snowflake-method-relationship-graph-zoom-in,
+	.snowflake-method-relationship-graph.is-entities .snowflake-method-relationship-graph-zoom-out,
+	.snowflake-method-relationship-graph.is-entities .snowflake-method-relationship-graph-more {
+		display: flex;
+	}
+}
+
+/* The ground holds the keyboard like any control, and shows that it does. */
+.snowflake-method-relationship-graph-canvas:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
 }
 
 /* The engine's ground fills the stage and outlives every repaint; the sheet

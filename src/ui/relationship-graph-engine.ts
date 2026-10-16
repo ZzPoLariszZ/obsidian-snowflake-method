@@ -454,6 +454,12 @@ class RelationshipGraphEngine implements GraphHandle {
 		this.applyView({ k, x: this.width / 2 - sim.x * k, y: this.height / 2 - sim.y * k }, true);
 	}
 
+	screenPlaceOf(id: string): Point | null {
+		const sim = this.byId.get(id);
+		if (sim === undefined || !placed(sim)) return null;
+		return toScreen(sim, this.view);
+	}
+
 	nudgeNode(id: string, dx: number, dy: number): void {
 		const sim = this.byId.get(id);
 		if (sim === undefined || !placed(sim)) return;

@@ -78,6 +78,8 @@ export interface GraphHandle {
 	focusedNode(): string | null;
 	/** Brings a node into the middle of the view at the zoom standing. */
 	centreOn(id: string): void;
+	/** Where a node's disc stands on the host, in screen pixels from its corner; null for a node not placed. */
+	screenPlaceOf(id: string): { x: number; y: number } | null;
 	/** Moves a node by screen pixels. */
 	nudgeNode(id: string, dx: number, dy: number): void;
 	pinNode(id: string, pinned: boolean): void;

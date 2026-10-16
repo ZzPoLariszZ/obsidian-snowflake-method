@@ -43,6 +43,11 @@ export const moment = { locale: (): string => 'en' };
 
 /** A desktop that is not a Mac, which is what the tests' chords are written for. */
 export const Platform = { isMacOS: false, isMobile: false, isDesktop: true };
+/** The app's reading of the modifier: Ctrl here, as off a Mac. */
+export const Keymap = {
+	isModEvent: (event?: { ctrlKey?: boolean; metaKey?: boolean } | null): 'tab' | false =>
+		event?.ctrlKey === true || event?.metaKey === true ? 'tab' : false,
+};
 
 export const editorEditorField = StateField.define<unknown>({
 	create: () => undefined,

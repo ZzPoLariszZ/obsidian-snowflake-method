@@ -53,6 +53,7 @@ export const relationshipGraphMount =
 			focusNode: (id) => run((inner) => inner.focusNode(id)),
 			focusedNode: () => engine?.focusedNode() ?? null,
 			centreOn: (id) => run((inner) => inner.centreOn(id)),
+			screenPlaceOf: (id) => engine?.screenPlaceOf(id) ?? null,
 			nudgeNode: (id, dx, dy) => run((inner) => inner.nudgeNode(id, dx, dy)),
 			pinNode: (id, pinned) => run((inner) => inner.pinNode(id, pinned)),
 			isPinned: (id) => engine?.isPinned(id) ?? false,

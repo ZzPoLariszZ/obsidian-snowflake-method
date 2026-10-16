@@ -3,12 +3,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
-const { viewFields, searches, notices, rows } = vi.hoisted(() => ({
+interface MenuRecord {
+	items: { title: string; icon: string; click: () => void }[];
+	shown: 'mouse' | 'position' | null;
+}
+
+const { viewFields, searches, notices, rows, menus } = vi.hoisted(() => ({
 	viewFields: [] as OptionFieldConfig[],
 	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
 	notices: vi.fn(),
 	/** The panel's rows, by name, as the runtime's Setting made them. */
 	rows: [] as { name: string; kind: string; component: { change(value: unknown): void; getValue(): unknown } }[],
+	/** Every menu built, with its items and how it was shown. */
+	menus: [] as MenuRecord[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -46,12 +53,28 @@ vi.mock('obsidian', async (importOriginal) => {
 		addSlider(build?: Build): this { return super.addSlider(this.record('slider', build)); }
 		addSearch(build?: Build): this { return super.addSearch(this.record('search', build)); }
 	}
+	class MenuItem {
+		readonly item = { title: '', icon: '', click: (): void => undefined };
+		setTitle(title: string): this { this.item.title = title; return this; }
+		setIcon(icon: string): this { this.item.icon = icon; return this; }
+		onClick(click: () => void): this { this.item.click = click; return this; }
+	}
+	class Menu implements MenuRecord {
+		readonly items: MenuRecord['items'] = [];
+		shown: MenuRecord['shown'] = null;
+		constructor() { menus.push(this); }
+		addItem(build: (item: MenuItem) => void): this { const item = new MenuItem(); build(item); this.items.push(item.item); return this; }
+		addSeparator(): this { return this; }
+		showAtMouseEvent(): this { this.shown = 'mouse'; return this; }
+		showAtPosition(): this { this.shown = 'position'; return this; }
+	}
 	return {
 		...runtime,
 		Notice: class { constructor(message: string) { notices(message); } },
 		getIcon: () => null,
 		SearchComponent,
 		Setting,
+		Menu,
 	};
 });
 
@@ -108,6 +131,10 @@ interface FakeEngine extends GraphHandle {
 	viewports: (GraphViewport | null)[];
 	calls: string[];
 	given: ReadonlyMap<string, GraphNodePlace>[];
+	focused: string | null;
+	pinned: Set<string>;
+	/** Where every node is said to stand on screen; null for off the picture. */
+	place: { x: number; y: number } | null;
 }
 
 function fakeEngine(host: CorkboardElement, port: GraphPort): FakeEngine {
@@ -118,24 +145,56 @@ function fakeEngine(host: CorkboardElement, port: GraphPort): FakeEngine {
 		viewports: [],
 		calls: [],
 		given: [],
+		focused: null,
+		pinned: new Set(),
+		place: { x: 5, y: 5 },
 		setScene: (scene) => { engine.scenes.push(scene); engine.calls.push('setScene'); },
 		setViewport: (view) => { engine.viewports.push(view); engine.calls.push('setViewport'); },
 		fit: () => { engine.calls.push('fit'); },
 		resetView: () => { engine.calls.push('resetView'); },
-		zoomBy: () => { engine.calls.push('zoomBy'); },
-		panBy: () => { engine.calls.push('panBy'); },
-		focusNode: (id) => { engine.calls.push(`focusNode:${id}`); },
-		focusedNode: () => null,
+		zoomBy: (factor) => { engine.calls.push(`zoomBy:${factor}`); },
+		panBy: (dx, dy) => { engine.calls.push(`panBy:${dx},${dy}`); },
+		focusNode: (id) => { engine.focused = id; engine.calls.push(`focusNode:${id}`); },
+		focusedNode: () => engine.focused,
 		centreOn: (id) => { engine.calls.push(`centreOn:${id}`); },
-		nudgeNode: () => { engine.calls.push('nudgeNode'); },
-		pinNode: () => { engine.calls.push('pinNode'); },
-		isPinned: () => false,
+		screenPlaceOf: () => engine.place,
+		nudgeNode: (id, dx, dy) => { engine.calls.push(`nudgeNode:${id}:${dx},${dy}`); },
+		pinNode: (id, on) => { if (on) engine.pinned.add(id); else engine.pinned.delete(id); engine.calls.push(`pinNode:${id}:${on}`); },
+		isPinned: (id) => engine.pinned.has(id),
 		places: () => new Map([['character-alice', { x: 10, y: 20, pinned: true }]]),
 		setPlaces: (places) => { engine.given.push(places); engine.calls.push('setPlaces'); },
 		remeasure: () => { engine.calls.push('remeasure'); },
 		dispose: () => { engine.calls.push('dispose'); },
 	};
 	return engine;
+}
+
+/** An event fired on one of the fake's elements, as the page would deliver it. */
+function fire(element: CorkboardElement, type: string, properties: Record<string, unknown>): void {
+	for (const listener of element.listeners.get(type) ?? []) {
+		listener({ target: element, preventDefault: () => undefined, stopPropagation: () => undefined, ...properties });
+	}
+}
+
+/** A key pressed on the graph's ground, as the page would deliver it. */
+function press(
+	root: CorkboardElement,
+	key: string,
+	mods: { shift?: boolean; ctrl?: boolean } = {},
+): { preventDefault: ReturnType<typeof vi.fn>; stopPropagation: ReturnType<typeof vi.fn> } {
+	const ground = root.querySelector('.snowflake-method-relationship-graph-canvas')! as unknown as {
+		listeners: Map<string, ((event: unknown) => void)[]>;
+	};
+	const event = {
+		key,
+		shiftKey: mods.shift ?? false,
+		ctrlKey: mods.ctrl ?? false,
+		metaKey: false,
+		preventDefault: vi.fn(),
+		stopPropagation: vi.fn(),
+	};
+	for (const listener of ground.listeners.get('keydown') ?? []) listener(event);
+	return event;
 }
 
 const line = (label: string, targetPath: string, targetName: string, value = ''): RecordLine => ({
@@ -166,6 +225,7 @@ function family(): GraphMember[] {
 }
 
 function mount(options: MountOptions = {}) {
+	menus.length = 0;
 	const dom = new CorkboardDom();
 	const memory = relationshipGraphMemory({ view: options.view ?? 'entities', controlsOpen: options.controlsOpen ?? true });
 	if (options.positions !== undefined) memory.positions = options.positions;
@@ -277,6 +337,9 @@ describe('the relationship graph workspace', () => {
 		]);
 		const end = toolbar.querySelector('.snowflake-method-toolbar-end')!;
 		expect(end.children.map((child) => child.getAttribute('aria-label'))).toEqual([
+			'relationshipGraph.zoomIn',
+			'relationshipGraph.zoomOut',
+			'relationshipGraph.menu',
 			'relationshipGraph.fit',
 			'relationshipGraph.resetView',
 			'relationshipGraph.controls',
@@ -462,17 +525,78 @@ describe('the entities view', () => {
 		expect(fixture.engines[0]!.viewports).toEqual([{ x: 5, y: 6, k: 2 }]);
 	});
 
-	it('lights what the search finds without narrowing or moving the view', async () => {
+	it('lights what the search finds without narrowing or moving the view, and counts it', async () => {
 		const fixture = mount({ members: family() });
 		await settle();
+		const engine = fixture.engines[0]!;
+		const count = (): string => fixture.root.querySelector('.snowflake-method-toolbar-count')!.textContent;
+		expect(count()).toBe('');
 		searches[searches.length - 1]!.type('alice');
 		fixture.dom.flushFrame();
-		const engine = fixture.engines[0]!;
 		expect(engine.scenes).toHaveLength(2);
 		const [whole, found] = engine.scenes as [GraphScene, GraphScene];
 		expect(found.picture.nodes.map((node) => node.id)).toEqual(whole.picture.nodes.map((node) => node.id));
 		expect(found.picture.matches).toEqual(new Set(['character-alice']));
 		expect(engine.viewports).toHaveLength(1);
+		expect(count()).toBe('freeformCanvas.search.matchesOne');
+		searches[searches.length - 1]!.type('nobody');
+		fixture.dom.flushFrame();
+		expect(engine.scenes[2]!.picture.matches).toEqual(new Set());
+		expect(count()).toBe('relationshipGraph.search.none');
+	});
+
+	it('steps through what the search found with Enter, centring each with the ring on it, and lets it go on Escape', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		const field = searches[searches.length - 1]!;
+		const input = field.inputEl as CorkboardElement;
+		const count = (): string => fixture.root.querySelector('.snowflake-method-toolbar-count')!.textContent;
+		fire(input, 'keydown', { key: 'Enter' });
+		expect(engine.calls).not.toContain('focusNode:character-alice');
+		field.type('kind:character');
+		fixture.dom.flushFrame();
+		expect(count()).toBe('freeformCanvas.search.matches');
+		// By name: Alice, then Bob, then round to Alice; Shift+Enter goes back.
+		fire(input, 'keydown', { key: 'Enter' });
+		expect(engine.calls.slice(-2)).toEqual(['focusNode:character-alice', 'centreOn:character-alice']);
+		expect(count()).toBe('freeformCanvas.search.position');
+		fire(input, 'keydown', { key: 'Enter' });
+		expect(engine.calls.slice(-2)).toEqual(['focusNode:character-bob', 'centreOn:character-bob']);
+		fire(input, 'keydown', { key: 'Enter' });
+		expect(engine.focused).toBe('character-alice');
+		fire(input, 'keydown', { key: 'Enter', shiftKey: true });
+		expect(engine.focused).toBe('character-bob');
+		// The words let go: nothing is marked, the count falls silent, and the ring the search put on comes off.
+		fire(input, 'keydown', { key: 'Escape' });
+		expect(fixture.memory.query).toBe('');
+		expect(engine.scenes[engine.scenes.length - 1]!.picture.matches).toBeNull();
+		expect(count()).toBe('');
+		expect(engine.focused).toBeNull();
+	});
+
+	it('takes its ring off when the words change, and leaves a ring the keys put on', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		const field = searches[searches.length - 1]!;
+		const input = field.inputEl as CorkboardElement;
+		field.type('alice');
+		fixture.dom.flushFrame();
+		fire(input, 'keydown', { key: 'Enter' });
+		expect(engine.focused).toBe('character-alice');
+		// Other words: the ring from the last search goes before the new one is stepped through.
+		field.type('bob');
+		fixture.dom.flushFrame();
+		expect(engine.focused).toBeNull();
+		fire(input, 'keydown', { key: 'Enter' });
+		expect(engine.focused).toBe('character-bob');
+		// Tab moves the ring on by hand, so it is the keyboard's now and the search's end leaves it.
+		press(fixture.root, 'Tab');
+		expect(engine.focused).toBe('entity-1');
+		fire(input, 'keydown', { key: 'Escape' });
+		expect(fixture.memory.query).toBe('');
+		expect(engine.focused).toBe('entity-1');
 	});
 
 	it('fits and resets the view from the toolbar', async () => {
@@ -738,5 +862,170 @@ describe('the controls panel in the workspace', () => {
 		expect(fixture.memory.focus).toBeNull();
 		expect(local.classes.has('is-hidden')).toBe(true);
 		expect(engine.scenes[engine.scenes.length - 1]!.picture.local).toBe(false);
+	});
+});
+
+describe('the keys and menus of the entities view', () => {
+	const lastCalls = (fixture: ReturnType<typeof mount>, count: number): string[] => fixture.engines[0]!.calls.slice(-count);
+	const menuTitles = (): string[] => menus[menus.length - 1]!.items.map((item) => item.title);
+	const clickItem = (title: string): void => {
+		menus[menus.length - 1]!.items.find((item) => item.title === title)!.click();
+	};
+
+	it('holds the keyboard on its ground, named for the view', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const ground = fixture.root.querySelector('.snowflake-method-relationship-graph-canvas')!;
+		expect(ground.getAttribute('tabindex')).toBe('0');
+		expect(ground.getAttribute('role')).toBe('application');
+		expect(ground.getAttribute('aria-label')).toBe('relationshipGraph.view.entities');
+	});
+
+	it('walks the shown nodes by name with Tab and back with Shift+Tab, centring one out of sight', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		fixture.dom.resize(800, 600);
+		const engine = fixture.engines[0]!;
+		const event = press(fixture.root, 'Tab');
+		expect(event.preventDefault).toHaveBeenCalled();
+		expect(engine.focused).toBe('character-alice');
+		expect(engine.calls).not.toContain('centreOn:character-alice');
+		press(fixture.root, 'Tab');
+		expect(engine.focused).toBe('character-bob');
+		press(fixture.root, 'Tab');
+		expect(engine.focused).toBe('entity-1');
+		press(fixture.root, 'Tab');
+		expect(engine.focused).toBe('character-alice');
+		press(fixture.root, 'Tab', { shift: true });
+		expect(engine.focused).toBe('entity-1');
+		engine.place = { x: -40, y: 10 };
+		press(fixture.root, 'Tab');
+		expect(lastCalls(fixture, 2)).toEqual(['focusNode:character-alice', 'centreOn:character-alice']);
+	});
+
+	it("opens the focused node's form on Enter and its note with the modifier", async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		press(fixture.root, 'Enter');
+		expect(fixture.host.openCharacterForm).not.toHaveBeenCalled();
+		press(fixture.root, 'Tab');
+		press(fixture.root, 'Enter');
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('character-alice', 'Demo/001_Project_Metadata.md');
+		press(fixture.root, 'Enter', { ctrl: true });
+		expect(fixture.host.openProjectFile).toHaveBeenCalledWith('Demo/20_Character/Alice.md');
+	});
+
+	it('nudges the focused node with the arrows, and pans the view as a camera without one', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		press(fixture.root, 'ArrowLeft');
+		press(fixture.root, 'ArrowUp', { shift: true });
+		expect(lastCalls(fixture, 2)).toEqual(['panBy:10,0', 'panBy:0,50']);
+		press(fixture.root, 'Tab');
+		press(fixture.root, 'ArrowRight');
+		press(fixture.root, 'ArrowDown', { shift: true });
+		expect(lastCalls(fixture, 2)).toEqual(['nudgeNode:character-alice:10,0', 'nudgeNode:character-alice:0,50']);
+	});
+
+	it('zooms, resets, fits and pins from the keys', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		press(fixture.root, '+');
+		press(fixture.root, '-');
+		press(fixture.root, '0');
+		press(fixture.root, 'f');
+		expect(lastCalls(fixture, 4)).toEqual(['zoomBy:1.25', 'zoomBy:0.8', 'resetView', 'fit']);
+		press(fixture.root, 'p');
+		expect(lastCalls(fixture, 1)).toEqual(['fit']);
+		press(fixture.root, 'Tab');
+		press(fixture.root, 'P');
+		press(fixture.root, 'p');
+		expect(lastCalls(fixture, 2)).toEqual(['pinNode:character-alice:true', 'pinNode:character-alice:false']);
+		const event = press(fixture.root, 'x');
+		expect(event.preventDefault).not.toHaveBeenCalled();
+	});
+
+	it('lets the focus go on Escape, and then the keyboard', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const ground = fixture.root.querySelector('.snowflake-method-relationship-graph-canvas')!;
+		ground.focus();
+		press(fixture.root, 'Tab');
+		press(fixture.root, 'Escape');
+		expect(fixture.engines[0]!.focused).toBeNull();
+		expect(fixture.dom.doc.activeElement).toBe(ground);
+		press(fixture.root, 'Escape');
+		expect(fixture.dom.doc.activeElement).toBe(fixture.dom.doc.body);
+	});
+
+	it('shows the node, line and ground menus where the engine points, every item with an icon', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const { port, scenes } = fixture.engines[0]!;
+		const event = {} as MouseEvent;
+		port.nodeMenu('character-alice', event);
+		expect(menus[menus.length - 1]!.shown).toBe('mouse');
+		expect(menuTitles()).toContain('common.open');
+		expect(menus[menus.length - 1]!.items.every((item) => item.icon.length > 0)).toBe(true);
+		clickItem('actions.edit');
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('character-alice', 'Demo/001_Project_Metadata.md');
+		clickItem('common.open');
+		expect(fixture.host.openProjectFile).toHaveBeenCalledWith('Demo/20_Character/Alice.md');
+		clickItem('relationshipGraph.node.pin');
+		expect(fixture.engines[0]!.pinned.has('character-alice')).toBe(true);
+		port.edgeMenu(scenes[0]!.picture.edges[0]!, event);
+		expect(menuTitles()).toEqual(['relationshipGraph.edge.edit', 'relationshipGraph.edge.open', 'relationshipGraph.edge.open']);
+		clickItem('relationshipGraph.edge.edit');
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledTimes(2);
+		port.backgroundMenu(event);
+		expect(menuTitles()).toContain('relationshipGraph.closeControls');
+		clickItem('relationshipGraph.closeControls');
+		expect(fixture.memory.controlsOpen).toBe(false);
+		clickItem('relationshipGraph.pan.up');
+		expect(lastCalls(fixture, 1)).toEqual(['panBy:0,50']);
+		const built = menus.length;
+		port.nodeMenu('nobody', event);
+		expect(menus).toHaveLength(built);
+	});
+
+	it('draws the local graph around a node from its menu, and the whole graph back', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		engine.port.nodeMenu('character-alice', {} as MouseEvent);
+		clickItem('relationshipGraph.local.show');
+		expect(fixture.memory.focus).toBe('character-alice');
+		expect(engine.scenes[engine.scenes.length - 1]!.picture.local).toBe(true);
+		engine.port.backgroundMenu({} as MouseEvent);
+		clickItem('relationshipGraph.local.whole');
+		expect(fixture.memory.focus).toBeNull();
+		expect(engine.scenes[engine.scenes.length - 1]!.picture.local).toBe(false);
+	});
+
+	it("shows the focused node's menu from the keyboard and the toolbar's symbol, and the ground's without one", async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		press(fixture.root, 'ContextMenu');
+		expect(menus[menus.length - 1]!.shown).toBe('position');
+		expect(menuTitles()).toContain('relationshipGraph.resetView');
+		press(fixture.root, 'Tab');
+		press(fixture.root, 'F10', { shift: true });
+		expect(menus[menus.length - 1]!.shown).toBe('position');
+		expect(menuTitles()).toContain('common.open');
+		const before = menus.length;
+		press(fixture.root, 'F10');
+		expect(menus).toHaveLength(before);
+		fixture.button('snowflake-method-relationship-graph-more').dispatch('click');
+		expect(menus[menus.length - 1]!.shown).toBe('mouse');
+		expect(menuTitles()).toContain('relationshipGraph.node.pin');
+	});
+
+	it('zooms from the toolbar, for a touch screen', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		fixture.button('snowflake-method-relationship-graph-zoom-in').dispatch('click');
+		fixture.button('snowflake-method-relationship-graph-zoom-out').dispatch('click');
+		expect(lastCalls(fixture, 2)).toEqual(['zoomBy:1.25', 'zoomBy:0.8']);
+		expect(fixture.button('snowflake-method-relationship-graph-more').getAttribute('aria-haspopup')).toBe('menu');
 	});
 });
