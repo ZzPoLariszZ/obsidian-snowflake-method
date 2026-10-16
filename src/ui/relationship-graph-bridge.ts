@@ -16,6 +16,7 @@ import type {
 } from '../domain';
 import type { RelationshipGraphWrite } from '../services';
 import type { Translate } from './modals';
+import type { MountRelationshipGraph } from './relationship-graph-port';
 import type { SceneManuscriptOpening, SceneManuscriptWrite } from './scene-manuscript-graph';
 import type { SceneManuscriptStanding } from './scene-manuscript-pane';
 import type { RelationshipGraphMemory } from './story-structure-state';
@@ -58,8 +59,11 @@ export interface RelationshipGraphBridge {
 	resetSceneManuscriptGraph: () => Promise<SceneManuscriptWrite>;
 }
 
-/** The host's own methods the workspace calls. */
-export type RelationshipGraphHost = Pick<DashboardHost, 'openStoryStructure' | 'translateForProject'>;
+/** The host's own methods the workspace calls: a node opens its form or its note. */
+export type RelationshipGraphHost = Pick<
+	DashboardHost,
+	'openStoryStructure' | 'translateForProject' | 'openCharacterForm' | 'openSceneForm' | 'openEntityForm' | 'openProjectFile'
+>;
 
 export interface RelationshipGraphControls {
 	app: App;
@@ -75,6 +79,8 @@ export interface RelationshipGraphControls {
 	refresh(): Promise<void>;
 	/** The bridge for the project standing now; asked for afresh, since a rename moves the path. */
 	bridge(): RelationshipGraphBridge;
+	/** Raises the drawing engine in a host; the engine's code comes when first asked for. */
+	canvas: MountRelationshipGraph;
 	memory: RelationshipGraphMemory;
 	/** Saves the tab layout, where the view and the panel's fold live. */
 	remember(): void;

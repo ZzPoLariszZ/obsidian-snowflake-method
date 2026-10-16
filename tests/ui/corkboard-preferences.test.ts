@@ -71,6 +71,7 @@ function workspaceView(store: ReturnType<typeof preferenceStore>) {
 		beatSheet: () => { throw new Error('The frame is stubbed in this test.'); },
 		freeform: () => { throw new Error('The frame is stubbed in this test.'); },
 		freeformCanvas: () => { throw new Error('The engine is stubbed in this test.'); },
+		relationshipGraphCanvas: () => { throw new Error('The engine is stubbed in this test.'); },
 		relationshipGraph: () => { throw new Error('The frame is stubbed in this test.'); },
 	});
 	// Keep the real view lifecycle, preference storage and board callbacks;

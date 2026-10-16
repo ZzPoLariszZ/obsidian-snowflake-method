@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	arrowAlpha,
 	arrowhead,
+	arrowSize,
+	arrowStandoff,
 	clampZoom,
 	curvePoint,
 	distanceToCurve,
@@ -10,14 +13,16 @@ import {
 	edgeControl,
 	edgeLabelAnchor,
 	fitViewport,
+	glideZoom,
 	homeViewport,
 	inBox,
 	laneOffset,
-	lineAlpha,
+	lineWidth,
 	nodeRadius,
 	textAlpha,
 	toScreen,
 	toWorld,
+	wheelZoomFactor,
 	zoomAbout,
 } from '../../src/ui/relationship-graph-layout';
 
@@ -33,6 +38,9 @@ describe('the native scalars', () => {
 		expect(drawnRadius(10, 1)).toBe(10);
 		expect(drawnRadius(10, 0.25)).toBe(5);
 		expect(drawnRadius(10, 4)).toBe(20);
+		// On a 2x display a world unit is half a CSS pixel: native zoom 1 at k 0.5.
+		expect(drawnRadius(10, 0.5, 2)).toBe(5);
+		expect(drawnRadius(10, 2, 2)).toBe(10);
 	});
 
 	it('fades labels a stop below zoom 1, moved by the threshold', () => {
@@ -42,14 +50,28 @@ describe('the native scalars', () => {
 		expect(textAlpha(0.5, -1)).toBe(1);
 		expect(textAlpha(2, 1)).toBe(1);
 		expect(textAlpha(1, 1)).toBe(0);
+		expect(textAlpha(0.5, 0, 2)).toBe(1);
+		expect(textAlpha(0.25, 0, 2)).toBe(0);
 	});
 
-	it('fades lines out between zoom 0.8 and 0.3', () => {
-		expect(lineAlpha(1)).toBe(1);
-		expect(lineAlpha(0.8)).toBe(1);
-		expect(lineAlpha(0.55)).toBeCloseTo(0.5, 6);
-		expect(lineAlpha(0.3)).toBe(0);
-		expect(lineAlpha(0.1)).toBe(0);
+	it('fades arrowheads out between native zoom 0.8 and 0.3', () => {
+		expect(arrowAlpha(1)).toBe(1);
+		expect(arrowAlpha(0.8)).toBe(1);
+		expect(arrowAlpha(0.55)).toBeCloseTo(0.5, 6);
+		expect(arrowAlpha(0.3)).toBe(0);
+		expect(arrowAlpha(0.1)).toBe(0);
+		expect(arrowAlpha(0.4, 2)).toBe(1);
+	});
+
+	it('draws lines and arrowheads in device pixels, as the native graph does', () => {
+		expect(lineWidth(1)).toBe(1);
+		expect(lineWidth(1, 2)).toBe(0.5);
+		expect(lineWidth(3, 2)).toBe(1.5);
+		expect(arrowSize(1)).toBe(8);
+		expect(arrowSize(4)).toBe(16);
+		expect(arrowSize(1, 2)).toBe(4);
+		expect(arrowStandoff(10, 1)).toBe(11);
+		expect(arrowStandoff(10, 0.5, 2)).toBe(5.5);
 	});
 
 	it('eases an alpha a tenth of the way, snapping when nearly there', () => {
@@ -61,6 +83,8 @@ describe('the native scalars', () => {
 		expect(clampZoom(100)).toBe(8);
 		expect(clampZoom(0)).toBe(1 / 128);
 		expect(clampZoom(2)).toBe(2);
+		expect(clampZoom(100, 2)).toBe(4);
+		expect(clampZoom(0, 2)).toBe(1 / 256);
 	});
 });
 
@@ -78,24 +102,61 @@ describe('the view', () => {
 		expect(zoomed.k).toBe(2);
 		expect(toScreen(toWorld(about, view), zoomed)).toEqual(about);
 		expect(zoomAbout({ x: 0, y: 0, k: 8 }, 2, about).k).toBe(8);
+		expect(zoomAbout({ x: 0, y: 0, k: 4 }, 2, about, 2).k).toBe(4);
 	});
 
-	it('fits every disc inside the box with a margin, never zooming in past 1', () => {
+	it('reads a wheel turn as the native graph does: one and a half per 120 pixels, lines and pages as pixels', () => {
+		expect(wheelZoomFactor(-120, 0)).toBeCloseTo(1.5);
+		expect(wheelZoomFactor(120, 0)).toBeCloseTo(1 / 1.5);
+		expect(wheelZoomFactor(-60, 0)).toBeCloseTo(Math.sqrt(1.5));
+		expect(wheelZoomFactor(-3, 1)).toBeCloseTo(1.5);
+		expect(wheelZoomFactor(-0.15, 2)).toBeCloseTo(1.5);
+		expect(wheelZoomFactor(0, 0)).toBe(1);
+	});
+
+	it('glides the zoom 15% of the way to its target a frame about a point that stays put, and stops within 1%', () => {
+		const view = { x: 100, y: 50, k: 1 };
+		const about = { x: 300, y: 200 };
+		const world = toWorld(about, view);
+		const step = glideZoom(view, 2, about);
+		expect(step.k).toBeCloseTo(1.15);
+		const kept = toScreen(world, step);
+		expect(kept.x).toBeCloseTo(about.x);
+		expect(kept.y).toBeCloseTo(about.y);
+		let current = view;
+		let frames = 0;
+		for (let next = glideZoom(current, 2, about); next !== current; next = glideZoom(current, 2, about)) {
+			current = next;
+			frames += 1;
+		}
+		expect(frames).toBe(25);
+		expect(current.k).toBeGreaterThan(1.98);
+		expect(current.k).toBeLessThan(2);
+		// Within 1% it stays where it is: no snap to the target.
+		expect(glideZoom(current, 2, about)).toBe(current);
+		expect(glideZoom(view, 1.005, about)).toBe(view);
+		// Out glides the same way.
+		expect(glideZoom(view, 0.5, about).k).toBeCloseTo(0.925);
+	});
+
+	it('fits every disc inside the box with a margin, never zooming in past native 1', () => {
 		const points = [
 			{ x: -100, y: 0 },
 			{ x: 100, y: 0 },
 		];
-		const fitted = fitViewport(points, [10, 10], 400, 300, 40);
+		const fitted = fitViewport(points, [10, 10], 400, 300, 1, 40);
 		// 220 wide with radii, 220 of room: zoom 1, centred.
 		expect(fitted.k).toBe(1);
 		expect(fitted).toEqual({ x: 200, y: 150, k: 1 });
-		const tight = fitViewport(points, [10, 10], 200, 300, 40);
+		const tight = fitViewport(points, [10, 10], 200, 300, 1, 40);
 		expect(tight.k).toBeCloseTo(120 / 220, 6);
 		expect(toScreen({ x: 0, y: 0 }, tight)).toEqual({ x: 100, y: 150 });
 		const close = fitViewport([{ x: 5, y: 5 }], [8], 800, 600);
 		expect(close.k).toBe(1);
 		expect(toScreen({ x: 5, y: 5 }, close)).toEqual({ x: 400, y: 300 });
 		expect(fitViewport([], [], 800, 600)).toEqual(homeViewport(800, 600));
+		expect(fitViewport([{ x: 5, y: 5 }], [8], 800, 600, 2).k).toBe(0.5);
+		expect(homeViewport(800, 600, 2)).toEqual({ x: 400, y: 300, k: 0.5 });
 	});
 
 	it('knows what is in the box', () => {
@@ -133,9 +194,11 @@ describe('the lines', () => {
 		expect(edgeLabelAnchor(source, control, target)).toEqual({ x: 100, y: 20 });
 	});
 
-	it('draws the arrowhead at the target’s rim, pointing along the curve', () => {
+	it('draws the arrowhead a standoff from the target, notched, pointing along the curve', () => {
 		const head = arrowhead(source, { x: 100, y: 0 }, target, 10, 8);
 		expect(head.tip).toEqual({ x: 190, y: 0 });
+		expect(head.notch.x).toBeCloseTo(184, 6);
+		expect(head.notch.y).toBeCloseTo(0, 6);
 		expect(head.left.x).toBeCloseTo(182, 6);
 		expect(head.right.x).toBeCloseTo(182, 6);
 		expect(Math.abs(head.left.y)).toBeCloseTo(4, 6);

@@ -66,6 +66,7 @@ export interface EntityGraphLocal {
 	readonly neighbours: boolean;
 }
 
+/** Where the view stands, in the native graph's units: a world unit is one device pixel at zoom 1. */
 export interface GraphViewport {
 	readonly x: number;
 	readonly y: number;

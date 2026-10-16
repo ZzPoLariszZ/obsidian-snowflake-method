@@ -17897,15 +17897,55 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	background-color: var(--background-primary);
 }
 
-.snowflake-method-relationship-graph-stage > .snowflake-method-tab-planned {
+.snowflake-method-relationship-graph-sheet > .snowflake-method-tab-planned {
 	margin: var(--size-4-4);
 }
 
 /* The search and the symbols that act on the drawn graph are put away while
    the tab stands in for Obsidian's own graph, which has its own. */
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-toolbar .snowflake-method-toolbar-search,
+.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-fit,
+.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-reset-view,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-controls {
 	display: none;
+}
+
+/* The engine's ground fills the stage and outlives every repaint; the sheet
+   of words stands in for it while there is nothing to draw, or while the tab
+   stands in for Obsidian's own graph. */
+.snowflake-method-relationship-graph-canvas {
+	position: absolute;
+	inset: 0;
+}
+
+.snowflake-method-relationship-graph-sheet {
+	height: 100%;
+}
+
+.snowflake-method-relationship-graph:not(.is-entities) .snowflake-method-relationship-graph-canvas,
+.snowflake-method-relationship-graph.is-empty .snowflake-method-relationship-graph-canvas,
+.snowflake-method-relationship-graph.is-entities:not(.is-empty) .snowflake-method-relationship-graph-sheet {
+	display: none;
+}
+
+/* The canvas the graph is drawn on: a hand to pan the ground, a finger over
+   a node or a line, a fist while a node is dragged. The browser's own touch
+   gestures are kept off it, since the engine reads every touch itself. */
+.snowflake-method-relationship-graph-surface {
+	display: block;
+	width: 100%;
+	height: 100%;
+	touch-action: none;
+	cursor: grab;
+}
+
+.snowflake-method-relationship-graph-surface.is-over-node,
+.snowflake-method-relationship-graph-surface.is-over-line {
+	cursor: pointer;
+}
+
+.snowflake-method-relationship-graph-surface.is-dragging {
+	cursor: grabbing;
 }
 
 /* The pane that stands in for Obsidian's own graph: a column of words at a

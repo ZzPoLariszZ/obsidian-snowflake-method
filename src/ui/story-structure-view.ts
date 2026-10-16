@@ -43,6 +43,7 @@ import type {
 	RelationshipGraphHandle,
 	RenderRelationshipGraph,
 } from './relationship-graph-bridge';
+import type { MountRelationshipGraph } from './relationship-graph-port';
 import { isEntityGroupField, type EntityFilters } from './entity-filters';
 import { clearSceneFilters, type SceneFilters } from './scene-filters';
 import {
@@ -102,6 +103,7 @@ export interface StoryStructureViewDeps {
 	/** Raises the freeform canvas's engine, whose code is not taken until a canvas is first shown. */
 	freeformCanvas: MountFreeformCanvas;
 	relationshipGraph: RenderRelationshipGraph;
+	relationshipGraphCanvas: MountRelationshipGraph;
 	/** Remains truthful for drafts from leaves that closed before the plugin unloads. */
 	unloading?(): boolean;
 }
@@ -715,6 +717,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			activateProject: () => this.activateProjectContext(),
 			refresh: () => this.refresh(),
 			bridge: () => this.relationshipGraphBridgeFor(),
+			canvas: this.deps.relationshipGraphCanvas,
 			memory: this.relationshipGraphMemory,
 			remember: () => {
 				this.app.workspace.requestSaveLayout();

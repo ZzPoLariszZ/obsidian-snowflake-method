@@ -47,13 +47,20 @@ vi.mock('../../src/ui/option-picker', async (importOriginal) => {
 	};
 });
 
-import { defaultRelationshipGraphDocument, rememberSceneManuscriptOptions } from '../../src/domain';
+import {
+	defaultRelationshipGraphDocument,
+	rememberSceneManuscriptOptions,
+	type GraphMember,
+	type GraphViewport,
+} from '../../src/domain';
+import type { RecordLine } from '../../src/templates/record-lines';
 import { buildSceneManuscriptPreset, SCENE_MANUSCRIPT_FALLBACK_COLORS } from '../../src/ui/native-graph';
 import { renderRelationshipGraph } from '../../src/ui/relationship-graph';
 import type {
 	RelationshipGraphControls,
 	RelationshipGraphReading,
 } from '../../src/ui/relationship-graph-bridge';
+import type { GraphHandle, GraphNodePlace, GraphPort, GraphScene } from '../../src/ui/relationship-graph-port';
 import { relationshipGraphMemory, type RelationshipGraphView } from '../../src/ui/story-structure-state';
 
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -66,28 +73,103 @@ interface MountOptions {
 	stored?: boolean;
 	available?: boolean;
 	open?: boolean;
+	members?: GraphMember[];
+	/** The view the file holds for the entities; absent for a file that holds none. */
+	viewport?: GraphViewport;
+	/** Where the nodes stood when the tab was last shown this session. */
+	positions?: Map<string, GraphNodePlace>;
+}
+
+/** An engine that only records what it is asked, and lets a test speak through its port. */
+interface FakeEngine extends GraphHandle {
+	host: CorkboardElement;
+	port: GraphPort;
+	scenes: GraphScene[];
+	viewports: (GraphViewport | null)[];
+	calls: string[];
+	given: ReadonlyMap<string, GraphNodePlace>[];
+}
+
+function fakeEngine(host: CorkboardElement, port: GraphPort): FakeEngine {
+	const engine: FakeEngine = {
+		host,
+		port,
+		scenes: [],
+		viewports: [],
+		calls: [],
+		given: [],
+		setScene: (scene) => { engine.scenes.push(scene); engine.calls.push('setScene'); },
+		setViewport: (view) => { engine.viewports.push(view); engine.calls.push('setViewport'); },
+		fit: () => { engine.calls.push('fit'); },
+		resetView: () => { engine.calls.push('resetView'); },
+		zoomBy: () => { engine.calls.push('zoomBy'); },
+		panBy: () => { engine.calls.push('panBy'); },
+		focusNode: (id) => { engine.calls.push(`focusNode:${id}`); },
+		focusedNode: () => null,
+		centreOn: (id) => { engine.calls.push(`centreOn:${id}`); },
+		nudgeNode: () => { engine.calls.push('nudgeNode'); },
+		pinNode: () => { engine.calls.push('pinNode'); },
+		isPinned: () => false,
+		places: () => new Map([['character-alice', { x: 10, y: 20, pinned: true }]]),
+		setPlaces: (places) => { engine.given.push(places); engine.calls.push('setPlaces'); },
+		remeasure: () => { engine.calls.push('remeasure'); },
+		dispose: () => { engine.calls.push('dispose'); },
+	};
+	return engine;
+}
+
+const line = (label: string, targetPath: string, targetName: string, value = ''): RecordLine => ({
+	label: { path: `Demo/20_Character/23_Relationship/${label}/${label}`, display: label },
+	value,
+	clauses: [{ kind: 'target', term: { kind: 'link', path: targetPath, name: targetName } }],
+});
+
+const member = (
+	id: string,
+	group: GraphMember['group'],
+	kind: string,
+	name: string,
+	path: string,
+	relationships: RecordLine[] = [],
+): GraphMember => ({ id, group, kind, name, aliases: [], path, relationships });
+
+/** Alice holds one line to Bob; a scene and a town stand by with none. */
+function family(): GraphMember[] {
+	return [
+		member('character-alice', 'character', 'character', 'Alice', 'Demo/20_Character/Alice.md', [
+			line('Family', 'Demo/20_Character/Bob', 'Bob', 'sister'),
+		]),
+		member('character-bob', 'character', 'character', 'Bob', 'Demo/20_Character/Bob.md'),
+		member('scene-1', 'scene', 'scene', 'Market', 'Demo/40_Scene/Market.md'),
+		member('entity-1', 'worldbuilding', 'location', 'Town', 'Demo/30_Worldbuilding/32_Location/Town.md'),
+	];
 }
 
 function mount(options: MountOptions = {}) {
 	const dom = new CorkboardDom();
 	const memory = relationshipGraphMemory({ view: options.view ?? 'entities', controlsOpen: options.controlsOpen ?? true });
+	if (options.positions !== undefined) memory.positions = options.positions;
 	const listeners = new Set<() => void>();
 	const empty = defaultRelationshipGraphDocument();
+	const stored = options.stored
+		? rememberSceneManuscriptOptions(
+				empty,
+				buildSceneManuscriptPreset({ rootPath: 'Demo', locale: 'en' }, SCENE_MANUSCRIPT_FALLBACK_COLORS),
+				'Demo',
+				1,
+			)!
+		: empty;
 	const reading: RelationshipGraphReading = {
 		projectPath: 'Demo/001_Project_Metadata.md',
 		rootPath: 'Demo',
 		locale: 'en',
-		held: options.stored
-			? rememberSceneManuscriptOptions(
-					empty,
-					buildSceneManuscriptPreset({ rootPath: 'Demo', locale: 'en' }, SCENE_MANUSCRIPT_FALLBACK_COLORS),
-					'Demo',
-					1,
-				)!
-			: empty,
-		members: [],
+		held:
+			options.viewport === undefined
+				? stored
+				: { ...stored, entities: { ...stored.entities, viewport: options.viewport } },
+		members: options.members ?? [],
 		kinds: [],
-		resolveTarget: () => null,
+		resolveTarget: (link) => `${link}.md`,
 		readOnly: options.readOnly ?? false,
 	};
 	const bridge = {
@@ -104,15 +186,38 @@ function mount(options: MountOptions = {}) {
 	};
 	const remember = vi.fn();
 	const refresh = vi.fn(() => Promise.resolve());
+	const engines: FakeEngine[] = [];
+	const workspaceHandlers = new Map<string, () => void>();
+	const app = {
+		workspace: {
+			on: vi.fn((name: string, handler: () => void) => {
+				workspaceHandlers.set(name, handler);
+				return { name };
+			}),
+			offref: vi.fn(),
+		},
+	};
+	const host = {
+		openCharacterForm: vi.fn(() => Promise.resolve()),
+		openSceneForm: vi.fn(() => Promise.resolve(null)),
+		openEntityForm: vi.fn(() => Promise.resolve(null)),
+		openProjectFile: vi.fn(() => Promise.resolve()),
+	};
+	const activateProject = vi.fn();
 	const controls = {
-		app: {},
-		host: {},
+		app,
+		host,
 		t: (key: string) => key,
 		model: () => null,
 		projectPath: () => 'P',
-		activateProject: vi.fn(),
+		activateProject,
 		refresh,
 		bridge: () => bridge,
+		canvas: (canvasHost: HTMLElement, port: GraphPort): GraphHandle => {
+			const engine = fakeEngine(canvasHost as unknown as CorkboardElement, port);
+			engines.push(engine);
+			return engine;
+		},
 		memory,
 		remember,
 	} as unknown as RelationshipGraphControls;
@@ -123,10 +228,16 @@ function mount(options: MountOptions = {}) {
 		root,
 		handle,
 		bridge,
+		reading,
 		memory,
 		remember,
 		refresh,
 		listeners,
+		engines,
+		host,
+		app,
+		activateProject,
+		workspaceHandlers,
 		viewField: (): OptionFieldConfig => viewFields[viewFields.length - 1]!,
 		button: (cls: string): CorkboardElement => root.querySelector(`.${cls}`)!,
 	};
@@ -146,6 +257,8 @@ describe('the relationship graph workspace', () => {
 		]);
 		const end = toolbar.querySelector('.snowflake-method-toolbar-end')!;
 		expect(end.children.map((child) => child.getAttribute('aria-label'))).toEqual([
+			'relationshipGraph.fit',
+			'relationshipGraph.resetView',
 			'relationshipGraph.controls',
 			'corkboard.refresh',
 		]);
@@ -291,5 +404,179 @@ describe('the relationship graph workspace', () => {
 		expect(fixture.listeners.size).toBe(0);
 		expect(fixture.dom.container.querySelector('.snowflake-method-relationship-graph')).toBeNull();
 		expect(fixture.handle.saveFocusedBody()).toBe(false);
+	});
+});
+
+describe('the entities view', () => {
+	it('raises the engine once there are lines to draw and hands it the picture and the file\'s view', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		expect(fixture.engines).toHaveLength(1);
+		const engine = fixture.engines[0]!;
+		expect(engine.host.classes.has('snowflake-method-relationship-graph-canvas')).toBe(true);
+		expect(engine.scenes).toHaveLength(1);
+		const scene = engine.scenes[0]!;
+		// Scenes start off; the town stands as an orphan, the line runs from Alice to Bob.
+		expect(scene.picture.nodes.map((node) => node.id).sort()).toEqual(['character-alice', 'character-bob', 'entity-1']);
+		expect(scene.picture.edges.map((edge) => [edge.source, edge.target, edge.label])).toEqual([
+			['character-alice', 'character-bob', 'Family'],
+		]);
+		expect(scene.display.labels).toBe('relationship');
+		expect(scene.colors.accents.purple).toBe('rgb(120, 82, 238)');
+		expect(engine.viewports).toEqual([null]);
+		expect(engine.given).toEqual([]);
+		expect(fixture.root.classes.has('is-empty')).toBe(false);
+	});
+
+	it('shows the empty line and raises no engine while the project has no relationships', async () => {
+		const fixture = mount({ members: family().map((one) => ({ ...one, relationships: [] })) });
+		await settle();
+		expect(fixture.engines).toHaveLength(0);
+		expect(fixture.root.classes.has('is-empty')).toBe(true);
+		expect(fixture.root.querySelector('.snowflake-method-tab-planned')!.textContent).toBe('relationshipGraph.empty');
+	});
+
+	it('hands the engine the view the file holds', async () => {
+		const fixture = mount({ members: family(), viewport: { x: 5, y: 6, k: 2 } });
+		await settle();
+		expect(fixture.engines[0]!.viewports).toEqual([{ x: 5, y: 6, k: 2 }]);
+	});
+
+	it('lights what the search finds without narrowing or moving the view', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		searches[searches.length - 1]!.type('alice');
+		fixture.dom.flushFrame();
+		const engine = fixture.engines[0]!;
+		expect(engine.scenes).toHaveLength(2);
+		const [whole, found] = engine.scenes as [GraphScene, GraphScene];
+		expect(found.picture.nodes.map((node) => node.id)).toEqual(whole.picture.nodes.map((node) => node.id));
+		expect(found.picture.matches).toEqual(new Set(['character-alice']));
+		expect(engine.viewports).toHaveLength(1);
+	});
+
+	it('fits and resets the view from the toolbar', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		fixture.button('snowflake-method-relationship-graph-fit').dispatch('click');
+		fixture.button('snowflake-method-relationship-graph-reset-view').dispatch('click');
+		expect(fixture.engines[0]!.calls.filter((call) => call === 'fit' || call === 'resetView')).toEqual(['fit', 'resetView']);
+	});
+
+	it('writes where the view was left after a pause, once for a run of moves', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		engine.port.viewportMoved({ x: 1, y: 2, k: 2 });
+		engine.port.viewportMoved({ x: 3, y: 4, k: 2 });
+		expect(fixture.bridge.updateEntities).not.toHaveBeenCalled();
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledWith({ viewport: { x: 3, y: 4, k: 2 } });
+	});
+
+	it('writes nothing for a read-only project', async () => {
+		const fixture = mount({ members: family(), readOnly: true });
+		await settle();
+		fixture.engines[0]!.port.viewportMoved({ x: 1, y: 2, k: 2 });
+		fixture.dom.flushFrame();
+		fixture.handle.dispose();
+		expect(fixture.bridge.updateEntities).not.toHaveBeenCalled();
+	});
+
+	it('settles a move still owed when the tab closes, and keeps where the nodes stand', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		engine.port.viewportMoved({ x: 7, y: 8, k: 1 });
+		fixture.handle.dispose();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledWith({ viewport: { x: 7, y: 8, k: 1 } });
+		expect(engine.calls[engine.calls.length - 1]).toBe('dispose');
+		expect(fixture.memory.positions.get('character-alice')).toEqual({ x: 10, y: 20, pinned: true });
+		expect(fixture.app.workspace.offref).toHaveBeenCalledWith({ name: 'css-change' });
+		// The timer was let go with the tab: nothing is written twice.
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves the view where it stands when the file echoes the engine\'s own move', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		engine.port.viewportMoved({ x: 3, y: 4, k: 2 });
+		fixture.dom.flushFrame();
+		fixture.reading.held = {
+			...fixture.reading.held,
+			entities: { ...fixture.reading.held.entities, viewport: { x: 3, y: 4, k: 2 } },
+		};
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(engine.scenes).toHaveLength(2);
+		expect(engine.viewports).toEqual([null]);
+	});
+
+	it('moves the view when the file changed it from outside', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		fixture.reading.held = {
+			...fixture.reading.held,
+			entities: { ...fixture.reading.held.entities, viewport: { x: 9, y: 9, k: 0.5 } },
+		};
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(engine.viewports).toEqual([null, { x: 9, y: 9, k: 0.5 }]);
+		// The same reading again moves nothing.
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(engine.viewports).toHaveLength(2);
+	});
+
+	it('opens a node\'s form by its group, its note with the modifier, and a line\'s holder', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const { port } = fixture.engines[0]!;
+		const projectPath = 'Demo/001_Project_Metadata.md';
+		port.nodeClicked('character-alice', { mod: false, shift: false });
+		expect(fixture.activateProject).toHaveBeenCalledTimes(1);
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('character-alice', projectPath);
+		port.nodeClicked('scene-1', { mod: false, shift: false });
+		expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'edit', id: 'scene-1' }, projectPath);
+		port.nodeClicked('entity-1', { mod: false, shift: false });
+		expect(fixture.host.openEntityForm).toHaveBeenCalledWith({ mode: 'edit', id: 'entity-1' }, projectPath);
+		port.nodeClicked('character-bob', { mod: true, shift: false });
+		expect(fixture.host.openProjectFile).toHaveBeenCalledWith('Demo/20_Character/Bob.md');
+		port.edgeClicked(fixture.engines[0]!.scenes[0]!.picture.edges[0]!);
+		expect(fixture.host.openCharacterForm).toHaveBeenLastCalledWith('character-alice', projectPath);
+		port.nodeClicked('nobody', { mod: false, shift: false });
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledTimes(2);
+	});
+
+	it('hands the engine where the nodes stood when the tab was last shown', async () => {
+		const positions = new Map<string, GraphNodePlace>([['character-bob', { x: 1, y: 2, pinned: false }]]);
+		const fixture = mount({ members: family(), positions });
+		await settle();
+		const engine = fixture.engines[0]!;
+		expect(engine.given).toEqual([positions]);
+		expect(engine.calls.indexOf('setPlaces')).toBeLessThan(engine.calls.indexOf('setScene'));
+	});
+
+	it('reads the colours again after a theme change', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		fixture.workspaceHandlers.get('css-change')!();
+		expect(engine.scenes).toHaveLength(2);
+		expect(engine.scenes[1]!.colors).not.toBe(engine.scenes[0]!.colors);
+		expect(engine.scenes[1]!.colors).toEqual(engine.scenes[0]!.colors);
+	});
+
+	it('centres a node and puts the keyboard on it when revealed', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		fixture.handle.reveal('character-bob');
+		expect(fixture.engines[0]!.calls.slice(-2)).toEqual(['centreOn:character-bob', 'focusNode:character-bob']);
+		fixture.handle.remeasure();
+		expect(fixture.engines[0]!.calls[fixture.engines[0]!.calls.length - 1]).toBe('remeasure');
 	});
 });

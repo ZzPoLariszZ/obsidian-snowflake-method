@@ -101,6 +101,7 @@ function workspaceView() {
 		beatSheet: () => { throw new Error('The frame is stubbed in this test.'); },
 		freeform: renderFreeform,
 		freeformCanvas,
+		relationshipGraphCanvas: () => { throw new Error('The engine is stubbed in this test.'); },
 		relationshipGraph: () => { throw new Error('The frame is stubbed in this test.'); },
 	});
 	const renderFrame = vi.fn();

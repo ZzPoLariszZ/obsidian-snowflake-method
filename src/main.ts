@@ -375,6 +375,7 @@ import { renderCorkboard } from './ui/corkboard';
 import { renderBeatSheet } from './ui/beat-sheet';
 import { renderFreeform } from './ui/freeform';
 import { renderRelationshipGraph } from './ui/relationship-graph';
+import { relationshipGraphMount } from './ui/relationship-graph-canvas';
 import { packRgbTriplet, SCENE_MANUSCRIPT_FALLBACK_COLORS } from './ui/native-graph';
 import {
 	SceneManuscriptGraphKeeper,
@@ -1341,6 +1342,7 @@ export default class SnowflakeMethodPlugin
 					// a project that never opens the canvas never runs a line of it.
 					freeformCanvas: freeformCanvasMount(() => import('./ui/freeform-canvas-root')),
 					relationshipGraph: renderRelationshipGraph,
+					relationshipGraphCanvas: relationshipGraphMount(() => import('./ui/relationship-graph-engine')),
 					unloading: () => this.unloading,
 				}),
 		);
