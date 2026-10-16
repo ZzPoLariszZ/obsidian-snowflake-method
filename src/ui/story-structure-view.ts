@@ -52,6 +52,7 @@ import {
 	freeformMemory,
 	isCorkboardGroupField,
 	mergeStoryStructureViewState,
+	namedCorkboardViews,
 	readCorkboardPreferences,
 	timelineMemory,
 	visualizationFamily,
@@ -189,6 +190,9 @@ export class SnowflakeStoryStructureView extends ItemView {
 		if (!this.stateDelivered || update.state.projectPath !== this.state.projectPath) {
 			this.preferencesProjectId = null;
 			this.restoredPreferences = {};
+			// The other views' settings the tab held were the project's it showed:
+			// the next starts them from what the state names, as the scene view does.
+			update.state.corkboard.views = namedCorkboardViews(candidate.corkboard);
 		}
 		this.restoredPreferences = {
 			...this.restoredPreferences,

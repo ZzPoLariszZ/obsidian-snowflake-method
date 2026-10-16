@@ -301,6 +301,19 @@ describe('workspace project ownership', () => {
 		expect(view).toMatchObject({ model: { path: secondProject } });
 	});
 
+	it('starts another project\'s character and kind views from that project, not from the views the tab held', async () => {
+		const { view } = workspaceView();
+		await view.setState({
+			projectPath: firstProject,
+			corkboard: { views: { character: { mode: 'extended', group: 'role' } } },
+		}, { history: false });
+		expect(view.getState()).toMatchObject({
+			corkboard: { views: { character: { mode: 'extended', group: 'role', reversed: false } } },
+		});
+		await view.setState({ projectPath: secondProject }, { history: false });
+		expect((view.getState() as { corkboard: { views: object } }).corkboard.views).toEqual({});
+	});
+
 	it('saves to the renamed project without replacing the open corkboard', async () => {
 		const { view, loadDashboardModel, renderFrame } = workspaceView();
 		const dom = new CorkboardDom();

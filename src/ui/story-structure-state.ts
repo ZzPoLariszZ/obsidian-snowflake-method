@@ -285,6 +285,15 @@ function mergeCorkboardTabSettings(current: CorkboardTabSettings, value: unknown
 }
 
 /**
+ * The other views' settings a state names, each over the defaults, and no
+ * others: what a tab moving to another project starts those views from, as
+ * the scene view starts from the state's own two and the project's defaults.
+ */
+export function namedCorkboardViews(value: unknown): Record<string, CorkboardViewSettings> {
+	return mergeCorkboardTabSettings(defaultStoryStructureState().corkboard, value).views;
+}
+
+/**
  * A restored state over the current one. A visualization this build knows
  * wins, a state naming none keeps the current, and one naming something
  * unknown lands on the corkboard, the family's first face. The
