@@ -83,8 +83,9 @@ Thank you for your support!
 | Freeform mode | Set the ten steps aside and work straight from characters, scenes, and worldbuilding. |
 | Worldbuilding | Track times, locations, and items beside characters and scenes. Add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
+| Gallery | Keep pictures on any character, scene or worldbuilding note, and choose the one its cards show. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
-| Story structure | See every scene as a card in narrative order, and reorder and edit it right on the card. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. |
+| Story structure | See every scene as a card in narrative order, or switch to your characters or a worldbuilding kind, and reorder and edit them right on the cards. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. Keep the look to the manuscript stream, or apply it to your Snowflake projects or the whole vault. |
 | Typewriter scrolling | Keep the line you are writing in the middle of the page. |
@@ -191,17 +192,21 @@ Every kind has three vocabularies that supply the words for those record lines: 
 
 Beyond the fields every member shares, a note can have **custom fields** of your own. Each one is a title and whatever you write under it. You edit them in the member's form, and they're saved in their own block in the note. Save a set of them as a template, and it becomes a note in that kind's template folder. It's then ready to use for the next character, scene, or faction you create. The custom field pane in the rail manages those templates. The export button on any form turns the fields you just typed into a template.
 
+A note can also keep a **gallery** of pictures, shown in its form as a row with one picture in front. **Add**, beside the field's name, brings pictures in from the vault or from your computer or phone. Each is copied into the kind's gallery folder, such as `20_Character/25_Gallery`, unless it's already there, and the note's properties keep the links. Click, swipe or press the arrow keys to bring another picture to the front. The star on the front picture makes it the main one, which the note's cards show, and the bin takes it off. A picture you take off goes to the trash, unless another note still links to it. Deleting the note offers to trash the pictures only it used.
+
 ### Story structure
 
 Scenes are easier to judge when you can see them all at once. The **Visualization workspace** has a tab of its own. You can open it from the row of links at the bottom of the dashboard's Creation tools, or from the Command palette. It brings together a family of views of the scenes you planned in steps 8 and 9. **Corkboard**, **Freeform**, **Timeline** and **Beat sheet** appear side by side in its tab strip, and each asks a different question about the same scenes.
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab: five scene cards in narrative order, each numbered and showing its progress status, its conflict, the manuscript chapters it links to and its point of view. One card is focused and shows the grip it is dragged by. A + between neighbors inserts a scene. Search, display, order, filter, refresh and Add scene are in the bar above." /></a></p>
 
-The corkboard lays out every scene as a numbered card in narrative order, and you work right on the card. Edit the name in place, and pick the point of view and the progress status from dropdowns. Type the conflict into its text box, and use the swatch to tint the card in one of eight colors. From the card you can also open the manuscript chapters its scene links to. While the board is in plain order, drag a card to move its scene. A **+** between two cards inserts a scene at exactly that point, and **Add scene** puts one at the end. The search box and the funnel filter the board. **Display** sets the size of the cards and groups them by any of eight fields. The direction button shows the whole board in reverse.
+The corkboard lays out every scene as a numbered card in narrative order, and you work right on the card. Edit the name in place, and pick the point of view and the progress status from dropdowns. Type the conflict into its text box, and use the swatch to tint the card in one of eight colors. From the card you can also open the manuscript chapters its scene links to. While the board is in plain order, drag a card to move its scene. A **+** between two cards inserts a scene at exactly that point, and **Add scene** puts one at the end. The search box and the funnel filter the board. **Display** sets the size of the cards and groups them by any of eight fields. Its **Gallery** option shows the scene's main picture in place of the conflict and links. The direction button shows the whole board in reverse.
+
+The field at the start of the bar chooses what the board shows. Besides **Scene view**, there's **Character view** and a view for each worldbuilding kind, including the ones you add. Their cards work like scene cards. You edit the name, status, text and tint in place, drag to reorder, and add a note with **+** or the add button. The text is a character's one-sentence storyline or a note's description. The foot names a character's role, a time's point or period, or another note's categories. Under **Display**, **Gallery** shows the main picture in place of the text, and **Extended** shows both. A note without pictures shows its kind's icon instead. On any card, hover over the picture to page through the gallery, star the main picture or take one off. Search, the funnel and **Display** follow the kind, so you can also group and filter characters by role, and times by point or period. The tab stays on the view you chose, and each view keeps its own card size, grouping and direction.
 
 <p align="center"><a href="assets/screenshots/workspace_freeform_en.png"><img src="assets/screenshots/workspace_freeform_en.png" width="100%" alt="The Visualization workspace on its Freeform tab. The view Main is chosen in the field above, with a search in the middle and Add node and Add view at the end. A frame titled Worldbuilding holds cards for the character Alice, Scene A, Time B, Location C and Item D. Lines run from them to a second frame titled Task Management Cards, which holds a task, a foreshadowing, a revision and a sticky note, and one line is labeled Both. A video file and an image file show as a player and a picture, with a text card, a canvas file card and a link card below them. A column of canvas controls is on the right, a strip of quick adds runs along the bottom, and the minimap is in the corner." /></a></p>
 
-**Freeform** drops the grid altogether. Each view is a blank canvas, and a project can have as many as you like. The project's own notes and records go onto it as cards: characters, scenes, times, places, items, tasks, foreshadowing, revisions and sticky notes. Each card looks the way it does in its own workspace. Beside them you can add text you type right on the canvas, any file in the project, and web links. Draw a line from one card to another to connect them. A line can have an arrow at either end and a solid, dashed, dotted or dash-dot stroke. A **frame** gathers whatever you drop into it and takes it along when you move the frame. Drag to move and resize, use the wheel to pan, and hold Ctrl or Cmd with the wheel to zoom. The quick-add bar along the bottom adds a card of any kind. Every gesture also has a menu item or a key that does the same, and undo covers every change. Double-click a card to open the note, record or file behind it. The canvas saves where things are placed and the text you type on it, never the words of your notes. The canvas button at the end of the toolbar writes the view you're looking at as an Obsidian Canvas file.
+**Freeform** drops the grid altogether. Each view is a blank canvas, and a project can have as many as you like. The project's own notes and records go onto it as cards: characters, scenes, times, places, items, tasks, foreshadowing, revisions and sticky notes. Each card looks the way it does in its own workspace. A character or worldbuilding card shows the note's main picture when it's set to **Gallery** or **Extended** in its menu. Beside them you can add text you type right on the canvas, any file in the project, and web links. Draw a line from one card to another to connect them. A line can have an arrow at either end and a solid, dashed, dotted or dash-dot stroke. A **frame** gathers whatever you drop into it and takes it along when you move the frame. Drag to move and resize, use the wheel to pan, and hold Ctrl or Cmd with the wheel to zoom. The quick-add bar along the bottom adds a card of any kind. Every gesture also has a menu item or a key that does the same, and undo covers every change. Double-click a card to open the note, record or file behind it. The canvas saves where things are placed and the text you type on it, never the words of your notes. The canvas button at the end of the toolbar writes the view you're looking at as an Obsidian Canvas file.
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_en.png"><img src="assets/screenshots/workspace_timeline_en.png" width="100%" alt="The Visualization workspace on its Timeline tab. A shared Time column on the left holds three times with their main descriptions, and three timelines are beside it. One of them is pinned, and one is bound to the character Alice and tinted as the active one. Sub-descriptions are written in each cell against an axis, with a node at every time it reaches. Scene cards are placed on those rows, and one stack reads 1 / 3. The scene pool on the right holds the two scenes this timeline has not placed." /></a></p>
 
@@ -225,11 +230,11 @@ In the manuscript stream, click any chapter and it switches to an editing view. 
 
 **Search and replace** reaches the whole manuscript. Press Ctrl+F, or Cmd+F on a Mac, and a bar like Obsidian's own opens above the page. It finds every match in every chapter, even the ones the stream hasn't loaded yet, and Enter takes you to the next one. Buttons in the box match case, match whole words or read the query as a regular expression. The arrow at the left, or Ctrl+Alt+F, opens the replace row. In the note you're writing in, Undo takes a replacement back. Replace all asks before it changes other notes, because those are saved straight away. Replacing text a revision or foreshadowing marks asks first too, since the mark would lose its place.
 
-**The right-click menu** has more for the words you select. It works in the manuscript stream, in your projects' notes, and in the text boxes of the dashboard and the plugin's dialogs. **Add as entity** asks which kind of note to make, from characters, scenes and your worldbuilding kinds. That kind's form then opens with the words as its name, while the page you're on stays in front. **Add as sticky note** puts the words on a new sticky note. The menu also exports the selected words as plain text, to a new numbered excerpt file each time. In a note it exports the whole note too, and in the manuscript stream the whole manuscript. In a text box, right-click words you've already selected to get this menu, with Cut, Copy and Paste at its top.
+**The right-click menu** has more for the words you select. It works in the manuscript stream, in your projects' notes, and in the text boxes of the dashboard, the plugin's dialogs and the visualization workspace's cards. **Add as entity** asks which kind of note to make, from characters, scenes and your worldbuilding kinds. That kind's form then opens with the words as its name, while the page you're on stays in front. **Add to existing entity as alias** asks for a kind and then a note, and adds the words to its aliases. **Add as sticky note** puts the words on a new sticky note. The menu also exports the selected words as plain text, to a new numbered excerpt file each time. In a note it exports the whole note too, and in the manuscript stream the whole manuscript. In a text box, right-click words you've already selected to get this menu, with Cut, Copy and Paste at its top.
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_en.png"><img src="assets/screenshots/manuscript_typography_en.png" width="100%" alt="A chapter set in a custom font on a tinted background, justified with automatic hyphenation. First lines are indented, dashed grid lines run behind the text, and focus mode keeps the paragraph being written at full contrast." /></a></p>
 
-**The page is yours to set.** Font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation are all settings. So are a background tint for light and dark mode and grid lines to write along. Reading and writing follow the same layout rules, so a chapter is laid out the same whether you're reading it or writing in it. The typography button in the toolbar opens the same controls right over the page. The same look can dress notes you open in a normal tab. Under **Typography scope**, keep it to the manuscript stream, or apply it to every note in your Snowflake projects or in the whole vault. Snowflake projects is the default. Those notes get the same toolbar above them. The export button there exports just that note. Focus mode works in your projects' notes too, and solo then shows only that note. The text boxes in the dashboard follow the alignment and first-line indent settings too, and those in the plugin's dialogs follow the alignment. The tabs above those pages take the background color too, and under **Background scope** it can also cover the whole Snowflake interface, or the whole app.
+**The page is yours to set.** Font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation are all settings. So are a background tint for light and dark mode and grid lines to write along. Reading and writing follow the same layout rules, so a chapter is laid out the same whether you're reading it or writing in it. The typography button in the toolbar opens the same controls right over the page. The same look can dress notes you open in a normal tab. Under **Typography scope**, keep it to the manuscript stream, or apply it to every note in your Snowflake projects or in the whole vault. Snowflake projects is the default. Those notes get the same toolbar above them. The export button there exports just that note. Focus mode works in your projects' notes too, and solo then shows only that note. The text boxes in the dashboard and on the visualization workspace's cards follow the alignment and first-line indent settings too. Those in the plugin's dialogs follow the alignment. The tabs above those pages take the background color too, and under **Background scope** it can also cover the whole Snowflake interface, or the whole app.
 
 **Word milestones** put the running word count in the margin, beside the line that reaches each interval. The interval is five hundred words by default. Milestones use the same counting rule as the status bar. They count across the whole manuscript in reading order, or start again in every chapter. They also follow your typing. As a chapter grows, its marks move, and in whole-manuscript mode so do the marks of every chapter after it. Switch them on under **Word milestone** in the settings.
 
@@ -249,11 +254,11 @@ The work around the writing has a pane of its own. The dashboard's **Task manage
 
 <p align="center"><a href="assets/screenshots/foreshadowing_en.png"><img src="assets/screenshots/foreshadowing_en.png" width="100%" alt="Two foreshadowing occurrences marked in a chapter of the manuscript stream. Each has a card in the right margin with its role and status, the thread's name and description, the marked words, a note, and Open, Edit and Delete." /></a></p>
 
-**Foreshadowing** follows one thread from its plant to its payoff. Click into a chapter of the manuscript stream, select the words that plant the thread, and choose **Create foreshadowing** from the right-click menu. Later passages join the same thread through **Add to existing foreshadowing**. Each passage is marked as a plant, a reinforcement or the payoff. The thread itself is planned, active, resolved or abandoned. Every occurrence is marked in the prose and has a card in the margin to the right of the chapter. The card shows the role, the thread's status, its name and description, the marked words and a note of your own. An occurrence stays with its words as you write above and around them. If you rewrite those words directly, the occurrence isn't lost. It becomes unresolved, and you can put it back on the passage that replaced them. The tab gives every occurrence a row. You can search the rows by name, and filter them by status, by role, or to show only the unresolved ones.
+**Foreshadowing** follows one thread from its plant to its payoff. Click into a chapter of the manuscript stream, select the words that plant the thread, and choose **Add foreshadowing** from the right-click menu. Later passages join the same thread through **Add to existing foreshadowing**. Each passage is marked as a plant, a reinforcement or the payoff. The thread itself is planned, active, resolved or abandoned. Every occurrence is marked in the prose and has a card in the margin to the right of the chapter. The card shows the role, the thread's status, its name and description, the marked words and a note of your own. An occurrence stays with its words as you write above and around them. If you rewrite those words directly, the occurrence isn't lost. It becomes unresolved, and you can put it back on the passage that replaced them. The tab gives every occurrence a row. You can search the rows by name, and filter them by status, by role, or to show only the unresolved ones.
 
 <p align="center"><a href="assets/screenshots/revision_en.png"><img src="assets/screenshots/revision_en.png" width="100%" alt="Three revisions beside a chapter in the manuscript stream: a replacement and a deletion struck through in the prose, an insertion marked by a bar, and a card for each with the original text, the proposed text, a comment, and Accept, Reject and Edit" /></a></p>
 
-**Revision** makes a change easier to judge before it is made. Select the words in question and choose **Create revision** from the same menu. The selection becomes a replacement, or a deletion if you leave the proposed text empty. With just the cursor and nothing selected, you get an insertion at that point. The words a proposal would take out are struck through in place. But the chapter itself doesn't change, and nothing is counted, analyzed or tracked until the proposal is accepted. Each proposal is a card in the margin, with the original text, the proposed text and a comment. **Accept** writes the change into the chapter as if you had typed it. **Reject** leaves the text as it was, and **Edit** changes the proposal or the comment. A proposal stays with its words as you write around them. If you change its words directly, it's shown as a conflict, and you can only discard it, not apply it.
+**Revision** makes a change easier to judge before it is made. Select the words in question and choose **Add revision** from the same menu. The selection becomes a replacement, or a deletion if you leave the proposed text empty. With just the cursor and nothing selected, you get an insertion at that point. The words a proposal would take out are struck through in place. But the chapter itself doesn't change, and nothing is counted, analyzed or tracked until the proposal is accepted. Each proposal is a card in the margin, with the original text, the proposed text and a comment. **Accept** writes the change into the chapter as if you had typed it. **Reject** leaves the text as it was, and **Edit** changes the proposal or the comment. A proposal stays with its words as you write around them. If you change its words directly, it's shown as a conflict, and you can only discard it, not apply it.
 
 <p align="center"><a href="assets/screenshots/sticky_note_en.png"><img src="assets/screenshots/sticky_note_en.png" width="100%" alt="The dashboard's Sticky notes tab with two colored cards and a collapsed archive, the same two notes as compact cards in the sidebar, and both floating as resizable panels over the workspace" /></a></p>
 
@@ -350,7 +355,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | New task | Add a task to the current project's board. |
 | Open beat sheet workspace | Open the visualization workspace to its beat sheet, with the scenes placed under its acts and beats. |
 | Open character base | Open the Bases view of the current project's characters. |
-| Open corkboard workspace | Open the visualization workspace to its corkboard, with the scenes shown as cards in narrative order. |
+| Open corkboard workspace | Open the visualization workspace to its corkboard, with scenes, characters or a worldbuilding kind shown as cards. |
 | Open freeform workspace | Open the visualization workspace to its freeform canvas, where notes, records, files and text become cards you can connect and frame. |
 | Open dashboard | Open the current project's dashboard, or bring it into view. |
 | Open health checker | Check the project's structure and fix any issues that are safe to fix. |
@@ -510,6 +515,8 @@ Each project is stored directly inside the project root you set. Its folders, fi
     │   │       └── Major.md
     │   ├── 24_Custom_Field/
     │   │   └── Age.md
+    │   ├── 25_Gallery/
+    │   │   └── Alice.png
     │   └── Characters.base
     ├── 30_Synopsis/
     ├── 40_Scene/
@@ -623,7 +630,8 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Hidden tooltips (0.25.0)
 - [x] Search and replace in the manuscript stream (0.25.0)
 - [x] Richer right-click menu (0.25.0)
-- [ ] Gallery and character cards: pictures for characters, scenes and worldbuilding, linked in note properties, and character cards that show them in a new character view on the corkboard, beside the scene view, and on the freeform canvas
+- [x] Gallery and corresponding card style (0.26.0)
+- [x] More views on the corkboard (0.26.0)
 - [ ] Graph view enhancement: different views of a project, such as how scenes connect to the manuscript, and relationships shown as labels on the lines between entities instead of as nodes of their own
 - [ ] Import and series: a project can import any part of a story's design from another Snowflake project, and books in the same series can share anything
 - [ ] Better display on tablets and phones
@@ -773,16 +781,17 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 自由模式 | 把十个步骤放到一边，直接从角色、场景与世界观入手。 |
 | 世界观 | 在角色与场景之外，还能管理时间、地点与物品，也可以自建种类。每类成员都可以配置类别、状态与关系。 |
 | 自定义字段 | 给任意笔记加上故事需要的字段，常用的一组字段可以存为该种类的模板。 |
+| 图库 | 给角色、场景和世界观笔记配上图片，并选出卡片上显示的那一张。 |
 | 项目归档 | 把暂时写完的项目收起来，需要时再取回。 |
-| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。 |
+| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。看板也可以换成角色或任一类世界观。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。 |
 | 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。 |
-| 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。这套版面可以只用在正文流，也可以用到雪花项目或整个 Vault 的笔记上。 |
+| 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。这套版面可以只用在正文流，也可以用到雪花项目或整个仓库的笔记上。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落以外的一切。 |
 | 查找和替换 | 在整部正文里查找，可以区分大小写、全字匹配或使用正则表达式，并替换其中一处或全部。 |
 | 字数里程碑 | 每隔若干字就在页边标出字数，可以在整部正文中连续累计，也可以按章节重新计数。 |
 | 自动章节编号 | 新章节接着前一章编号，样式可选中文、英文或自定义规则，后面的章节会随之顺延。 |
-| 纯文本导出 | 把整部正文、单独一章、任意一篇笔记或选中的文字导出为 Vault 里的纯文本文件，也可以把一章去掉所有标记后复制到剪贴板。 |
+| 纯文本导出 | 把整部正文、单独一章、任意一篇笔记或选中的文字导出为仓库里的纯文本文件，也可以把一章去掉所有标记后复制到剪贴板。 |
 | 写作时段 | 为每次写作计时，设定每日目标，回看字数与时间都花在了哪里。 |
 | 正文分析 | 从草稿中算出阅读时间、句数和对话占比，并找出你最常用的那些词。 |
 | 实体追踪 | 追踪每个角色、地点与物品在正文中的足迹，并在原处标出对它们的提及。 |
@@ -881,17 +890,21 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 除了每类成员共有的字段，笔记还可以带上你自己的**自定义字段**。每个字段由一个标题和标题下你写的内容组成，在成员表单里编辑，保存在笔记自己的区段里。把一组字段存为模板，它就会成为该种类模板文件夹里的一篇笔记，可以用来预填下一个角色、场景或门派。这些模板在侧栏的自定义字段面板里管理。任何表单上的导出按钮，都能把刚刚填好的字段直接存成模板。
 
+笔记还可以带一个**图库**，在表单里排成一排，当前的一张在最前面。字段名称旁的**添加**可以从仓库，或者从电脑、手机里选取图片。图片会复制到该种类的图库文件夹，比如 `20_角色/25_图库`，已经在那里的就不再复制，链接记在笔记的属性里。点击、滑动或者按左右方向键，就能把另一张换到前面。最前面那张上的星号把它设为主图，笔记的卡片显示的就是它，垃圾桶则把它拿掉。拿掉的图片会移到回收站，除非还有其他笔记链接到它。删除笔记时，也会提出把只有这篇笔记用到的图片一并移到回收站。
+
 ### 故事结构
 
-把所有场景摊开在眼前，才好判断它们的次序。**可视化工作区**会在单独的标签页中打开。你可以从工作台创作工具一组末尾的链接行进入，也可以用命令面板打开它。这里汇集了一组视图，展示的都是同一批场景，也就是你在第八步和第九步规划的那些。**场景看板**、**自由画布**、**时间线**与**节拍表**并列在标签栏上，每个视图都对这批场景提出一个不同的问题。
+把所有场景摊开在眼前，才好判断它们的次序。**可视化工作区**会在单独的标签页中打开。你可以从工作台创作工具一组末尾的链接行进入，也可以用命令面板打开它。这里汇集了一组视图，展示的都是同一批场景，也就是你在第八步和第九步规划的那些。**卡片看板**、**自由画布**、**时间线**与**节拍表**并列在标签栏上，每个视图都对这批场景提出一个不同的问题。
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的场景看板标签页。五张场景卡片按叙事顺序排列，每张都带有编号、进度、冲突、关联正文与视点人物。其中一张处于聚焦状态，露出用于拖动的握柄。相邻卡片之间有插入场景的加号。上方一栏是搜索、显示、排序、筛选、刷新与添加场景。" /></a></p>
 
-场景看板把每个场景摆成一张卡片，按叙事顺序编号。卡片本身就是编辑的地方：名称直接在卡片上修改，视点人物和进度用下拉框选择，冲突写在文本框里。色板可以给卡片涂上八种颜色之一，场景关联的正文章节也能从卡片上打开。看板按普通顺序排列时，拖动卡片就能移动场景。两张卡片之间的 **+** 会恰好在那个位置插入新场景，**添加场景**则把新场景加在末尾。搜索框和漏斗用来筛选看板。**显示**可以调整卡片大小，也可以按八个字段中的任意一个分组。方向按钮则把整块看板按倒序显示。
+卡片看板把每个场景摆成一张卡片，按叙事顺序编号。卡片本身就是编辑的地方：名称直接在卡片上修改，视点人物和进度用下拉框选择，冲突写在文本框里。色板可以给卡片涂上八种颜色之一，场景关联的正文章节也能从卡片上打开。看板按普通顺序排列时，拖动卡片就能移动场景。两张卡片之间的 **+** 会恰好在那个位置插入新场景，**添加场景**则把新场景加在末尾。搜索框和漏斗用来筛选看板。**显示**可以调整卡片大小，也可以按八个字段中的任意一个分组。选**图库**时，卡片用场景的主图代替冲突和关联正文。方向按钮则把整块看板按倒序显示。
+
+工具栏开头的选择框决定看板上摆的是什么。除了**场景视图**，还有**角色视图**，每类世界观也各有一个视图，你自建的种类也不例外。这些卡片的用法和场景卡片一样：名称、进度、文字和颜色都直接在卡片上编辑，拖动可以调整次序，**+** 和添加按钮用来新建笔记。卡片上的文字，角色是一句话故事概述，其他笔记是描述。底部写着角色类型、时间点或时间段，其他笔记则写类别。在**显示**里选**图库**，主图会代替文字，选**扩展**则两者都有。没有图片的笔记显示这一类的图标。在任何卡片上，把鼠标停在图片上，就能翻看图库、设定主图或者拿掉一张。搜索、漏斗和**显示**都按种类调整，角色还能按角色类型分组和筛选，时间还能按时间点或时间段。标签页会停在你选的视图上，每个视图各自记住卡片大小、分组和方向。
 
 <p align="center"><a href="assets/screenshots/workspace_freeform_cn.png"><img src="assets/screenshots/workspace_freeform_cn.png" width="100%" alt="可视化工作区的自由画布标签页。上方的选择框里选着主视图，中间是搜索，末尾是添加节点与添加视图。名为世界观的分组里，放着场景一、角色萧薰儿、时间一、地点云岚宗与物品戒指的卡片。几条连线从它们引向另一个名为任务管理的分组，里面放着一个任务、一个伏笔、一条修订和一张便签。有一条连线标着双向。右上方的视频文件与图片文件，分别显示为播放器和图片。它们下方是一张文本卡片、一张画布文件卡片和一张链接卡片。右侧一列是画布控制，底部一条是快捷添加，右下角是小地图。" /></a></p>
 
-**自由画布**则不再把卡片排成网格。一个视图就是一块空白画布，一个项目可以建任意多个。项目里的笔记与记录都能作为卡片放上去：角色、场景、时间、地点、物品、任务、伏笔、修订与便签。每种卡片都按它在自己工作区里的样子绘制。旁边还可以放直接在画布上输入的文字、项目里的任意文件，以及网页链接。从一张卡片拖到另一张，就连成一条线。线的两端都可以带箭头，线型有实线、虚线、点线与点划线。**分组**会把放进去的卡片收在一起，移动分组时，里面的卡片会跟着一起移动。拖动即可移动和调整大小。滚轮用来平移，按住 Ctrl 或 Cmd 再滚动则是缩放。底部一栏可以添加任何一种卡片。每个手势都有对应的菜单项或按键，每一步改动都可以撤销。双击卡片，就能打开它背后的笔记、记录或文件。画布只记下每样东西摆在哪里，以及你在画布上输入的文字，从不保存笔记的内容。工具栏末尾的白板按钮，会把当前视图导出为 Obsidian 白板文件。
+**自由画布**则不再把卡片排成网格。一个视图就是一块空白画布，一个项目可以建任意多个。项目里的笔记与记录都能作为卡片放上去：角色、场景、时间、地点、物品、任务、伏笔、修订与便签。每种卡片都按它在自己工作区里的样子绘制。角色或世界观卡片在菜单里设为**图库**或**扩展**时，会显示笔记的主图。旁边还可以放直接在画布上输入的文字、项目里的任意文件，以及网页链接。从一张卡片拖到另一张，就连成一条线。线的两端都可以带箭头，线型有实线、虚线、点线与点划线。**分组**会把放进去的卡片收在一起，移动分组时，里面的卡片会跟着一起移动。拖动即可移动和调整大小。滚轮用来平移，按住 Ctrl 或 Cmd 再滚动则是缩放。底部一栏可以添加任何一种卡片。每个手势都有对应的菜单项或按键，每一步改动都可以撤销。双击卡片，就能打开它背后的笔记、记录或文件。画布只记下每样东西摆在哪里，以及你在画布上输入的文字，从不保存笔记的内容。工具栏末尾的白板按钮，会把当前视图导出为 Obsidian 白板文件。
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_cn.png"><img src="assets/screenshots/workspace_timeline_cn.png" width="100%" alt="可视化工作区的时间线标签页。左侧共用的时间列里是三个时间，以及各自的主描述。旁边并列着三条时间线，其中一条已置顶，一条绑定了角色萧薰儿，作为当前时间线带有底色。各单元格里写着子描述，旁边的轴线在它到达的每个时间上点出一个节点。场景卡片落在这些行上，其中一处堆叠显示 1 / 3。右侧的场景池里，是这条时间线尚未放置的两个场景。" /></a></p>
 
@@ -915,17 +928,17 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 **查找和替换**覆盖整部正文。按 Ctrl+F（Mac 上是 Cmd+F），页面上方就会打开一个和 Obsidian 自带的一样的查找栏。它会找出每一章里的每一处匹配，正文流还没有载入的章节也不例外，按 Enter 就能跳到下一处。输入框里的按钮可以区分大小写、全字匹配，或者把查询当作正则表达式。点左侧的箭头或按 Ctrl+Alt+F，可以打开替换栏。在正在写的笔记里，替换可以撤销。全部替换要改动其他笔记时，会先请你确认，因为那些笔记会立即保存。替换修订或伏笔标记的文字时，也会先请你确认，因为标记会因此失效。
 
-**右键菜单**为选中的文字提供了更多操作，正文流、项目的笔记，以及工作台和插件对话框里的文本框都可以使用。**添加为实体**会先问要建哪一类实体，可以是角色、场景，也可以是你的任一类世界观，然后打开这一类的表单，并把选中的文字填作名称，你所在的页面保持不变。**添加为便签**会把这些文字写进一张新便签。菜单还能把选中的文字导出为纯文本，每次都写进一个新的带编号的节选文件。在笔记里还能导出整篇笔记，在正文流里还能导出整部正文。在文本框里，先选中文字再在上面点击右键，就会出现这个菜单，顶部仍有剪切、复制和粘贴。
+**右键菜单**为选中的文字提供了更多操作，正文流、项目的笔记，以及工作台、插件对话框和可视化工作区卡片上的文本框都可以使用。**添加为实体**会先问要建哪一类实体，可以是角色、场景，也可以是你的任一类世界观，然后打开这一类的表单，并把选中的文字填作名称，你所在的页面保持不变。**加入已有实体作为别名**会先问种类，再选一篇笔记，把选中的文字加进它的别名。**添加为便签**会把这些文字写进一张新便签。菜单还能把选中的文字导出为纯文本，每次都写进一个新的带编号的节选文件。在笔记里还能导出整篇笔记，在正文流里还能导出整部正文。在文本框里，先选中文字再在上面点击右键，就会出现这个菜单，顶部仍有剪切、复制和粘贴。
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_cn.png"><img src="assets/screenshots/manuscript_typography_cn.png" width="100%" alt="一章正文：自定义字体、带底色的纸面、两端对齐、首行缩进两字、文字后面的虚线网格，以及专注模式下只有正在写的那一段保持全黑" /></a></p>
 
-**版面由你来定。** 字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与自动连字符都可以设置。浅色和深色模式的背景底色可以分别指定，另外还有可以照着写的网格线。阅读和写作共用同一套排版，所以无论你是在读一章还是在写一章，版面都一样。工具栏里的排版按钮，会在正文上方直接打开同样的这些控件。这套版面也可以用在普通标签页里打开的笔记上。在**排版范围**里，可以只用于正文流，也可以用到雪花项目或整个 Vault 的每篇笔记上。默认是雪花项目。这些笔记上方也会出现同一条工具栏，其中的导出按钮只导出这篇笔记。项目里的笔记也能用专注模式，这时「仅正文」只显示这一篇笔记。工作台里的多行文本框也会跟随对齐方式和首行缩进的设置，插件对话框里的则跟随对齐方式。这些页面上方的标签页也会用上背景颜色。在**背景范围**里，背景颜色还可以铺满整个雪花界面，或者整个 Obsidian。
+**版面由你来定。** 字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与自动连字符都可以设置。浅色和深色模式的背景底色可以分别指定，另外还有可以照着写的网格线。阅读和写作共用同一套排版，所以无论你是在读一章还是在写一章，版面都一样。工具栏里的排版按钮，会在正文上方直接打开同样的这些控件。这套版面也可以用在普通标签页里打开的笔记上。在**排版范围**里，可以只用于正文流，也可以用到雪花项目或整个仓库的每篇笔记上。默认是雪花项目。这些笔记上方也会出现同一条工具栏，其中的导出按钮只导出这篇笔记。项目里的笔记也能用专注模式，这时「仅正文」只显示这一篇笔记。工作台里的多行文本框和可视化工作区卡片上的文本框也会跟随对齐方式和首行缩进的设置，插件对话框里的则跟随对齐方式。这些页面上方的标签页也会用上背景颜色。在**背景范围**里，背景颜色还可以铺满整个雪花界面，或者整个 Obsidian。
 
 **字数里程碑**会在页边标出累计字数，就标在达到每个间隔的那一行旁边，默认每五百字一处。它和状态栏使用同一套字数规则。可以按阅读顺序在整部正文中连续累计，也可以每章重新计数。里程碑会跟着你的写作走。一章变长时，它的里程碑随之移动。在整部正文模式下，后面每一章的里程碑也会一起移动。在设置的**字数里程碑**一节中开启。
 
 **自动章节编号**会给新章节接上前一章之后的编号。在**自动章节编号**一节中选择样式：`第一章`、`第 1 章`或`Chapter 1`。也可以自己写一条规则，用简化格式（如`第{nnnn}章`或`Chapter {n}:`）或正则表达式都行。开启样式后，命名表单有两个字段：编号已经填好，名称由你来写。表单里还有一个开关，可以把新章节之后所有带编号的章节顺延一号。把带编号的一章并入前一章时，会给出相反的选项：把后面的章节各减一号，让编号重新连续。规则读不出编号的章节保持不动，你改写过标题的章节也会保留你的标题。
 
-**纯文本导出**会把正文写入 Vault，并去掉所有 Markdown 与 Obsidian 标记。标题只留文字，链接只留显示文本，注释与块 ID 一并去除，HTML 实体还原成它所代表的字符。工具栏的导出按钮会导出整部正文。可以合成一个文件，章节之间用空行、一行短横线或三个星号分隔。也可以每章一个文件，放在按阅读顺序编号的文件夹里。每一章的标题栏各有两个按钮：一个只导出这一章，一个把同样的文本复制到剪贴板。普通标签页里笔记上方的工具栏，也能用同样的方式导出这篇笔记。单独导出的笔记会放进导出文件夹里以项目命名的子文件夹，不属于任何项目的笔记则直接放进导出文件夹。文件默认保存到项目旁的 `Snowflake Export`，除非你在设置里另外指定了文件夹。扩展名为 `.txt` 或 `.md`，两者内容相同。每一行文字都是一个段落，是否缩进由你选择，段落之间的空行也由你决定保留还是去掉。目标位置已有文件时，只有在你同意后才会覆盖。
+**纯文本导出**会把正文写入仓库，并去掉所有 Markdown 与 Obsidian 标记。标题只留文字，链接只留显示文本，注释与块 ID 一并去除，HTML 实体还原成它所代表的字符。工具栏的导出按钮会导出整部正文。可以合成一个文件，章节之间用空行、一行短横线或三个星号分隔。也可以每章一个文件，放在按阅读顺序编号的文件夹里。每一章的标题栏各有两个按钮：一个只导出这一章，一个把同样的文本复制到剪贴板。普通标签页里笔记上方的工具栏，也能用同样的方式导出这篇笔记。单独导出的笔记会放进导出文件夹里以项目命名的子文件夹，不属于任何项目的笔记则直接放进导出文件夹。文件默认保存到项目旁的 `Snowflake Export`，除非你在设置里另外指定了文件夹。扩展名为 `.txt` 或 `.md`，两者内容相同。每一行文字都是一个段落，是否缩进由你选择，段落之间的空行也由你决定保留还是去掉。目标位置已有文件时，只有在你同意后才会覆盖。
 
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境是一个超过 9000 篇笔记的库。其中两个项目各有 1500 章，每章都在 2000 个英文单词或汉字以上。另一个项目有 300 个角色、3000 个场景，以及另外 1500 章。
 
@@ -939,11 +952,11 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 <p align="center"><a href="assets/screenshots/foreshadowing_cn.png"><img src="assets/screenshots/foreshadowing_cn.png" width="100%" alt="正文流的一章里标出了两处伏笔落点。每处在右侧页边各有一张卡片，写着环节与状态、伏笔的名称与描述、所标的文字和备注，以及打开、编辑与删除按钮。" /></a></p>
 
-**伏笔**追踪一条线索，从埋设一直到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**新建伏笔**。之后的段落用**加入已有伏笔**并入同一条线索。每一处都标为埋设、强化或回收，线索本身的状态则是计划中、进行中、已回收或已放弃。每一处落点都会在正文原处标出，并在章节右侧的页边留下一张卡片。卡片上写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注。落点会跟着它所指的文字走，你在它前后继续写作，它也不会走丢。如果你直接改写了那段文字，它只是变成锚点失效，而不会丢失，之后还可以接到替换后的段落上。标签页里每一处落点各占一行，可以按名称搜索，也可以按状态、环节或「仅锚点失效」筛选。
+**伏笔**追踪一条线索，从埋设一直到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**添加伏笔**。之后的段落用**加入已有伏笔**并入同一条线索。每一处都标为埋设、强化或回收，线索本身的状态则是计划中、进行中、已回收或已放弃。每一处落点都会在正文原处标出，并在章节右侧的页边留下一张卡片。卡片上写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注。落点会跟着它所指的文字走，你在它前后继续写作，它也不会走丢。如果你直接改写了那段文字，它只是变成锚点失效，而不会丢失，之后还可以接到替换后的段落上。标签页里每一处落点各占一行，可以按名称搜索，也可以按状态、环节或「仅锚点失效」筛选。
 
 <p align="center"><a href="assets/screenshots/revision_cn.png"><img src="assets/screenshots/revision_cn.png" width="100%" alt="正文流中一章旁的三处修订。替换与删除在正文中划去，插入用一道竖线标出。每一处各有一张卡片，写着原文、建议文本与备注，以及接受、拒绝与编辑按钮。" /></a></p>
 
-**修订**让改动先摆在眼前看清楚，再落到纸上。选中要改的文字，在同一个右键菜单里选择**新建修订**。所选文字会成为一处替换，建议文本留空则成为一处删除，只放一个光标就在那里插入。将被改掉的文字会在原处划去，但这一章本身不会改变。在接受之前，这处修订也不计入字数、分析与追踪。每一处修订都是页边的一张卡片，写着原文、建议文本与备注。**接受**会把改动写进这一章，就像你亲手打出来的一样。**拒绝**会移除修订，让正文保持原样。**编辑**可以修改建议文本与备注。修订会跟着它所指的文字走。如果你直接改动了那段文字，它就会被标为冲突，只能丢弃，不能应用。
+**修订**让改动先摆在眼前看清楚，再落到纸上。选中要改的文字，在同一个右键菜单里选择**添加修订**。所选文字会成为一处替换，建议文本留空则成为一处删除，只放一个光标就在那里插入。将被改掉的文字会在原处划去，但这一章本身不会改变。在接受之前，这处修订也不计入字数、分析与追踪。每一处修订都是页边的一张卡片，写着原文、建议文本与备注。**接受**会把改动写进这一章，就像你亲手打出来的一样。**拒绝**会移除修订，让正文保持原样。**编辑**可以修改建议文本与备注。修订会跟着它所指的文字走。如果你直接改动了那段文字，它就会被标为冲突，只能丢弃，不能应用。
 
 <p align="center"><a href="assets/screenshots/sticky_note_cn.png"><img src="assets/screenshots/sticky_note_cn.png" width="100%" alt="工作台的便签标签页里有两张彩色卡片和折叠起来的归档。侧栏里是同样两张便签的紧凑卡片。工作区上方还悬浮着两个可调整大小的面板。" /></a></p>
 
@@ -973,7 +986,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 ## 安装
 
-除非有特别的理由，建议从社区插件市场安装。这样装上的是经过审核的发布版本，也能跟上 Obsidian 自身的更新。BRAT 和手动安装则留给测试版本，以及不自行安装任何东西的 Vault。
+除非有特别的理由，建议从社区插件市场安装。这样装上的是经过审核的发布版本，也能跟上 Obsidian 自身的更新。BRAT 和手动安装则留给测试版本，以及不自行安装任何东西的仓库。
 
 ### 社区插件市场（推荐）
 
@@ -1028,7 +1041,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 打开场景数据库 | 打开当前项目场景的 Bases 视图。 |
 | 打开世界观数据库 | 打开你选定的世界观种类的 Bases 视图。 |
 | 打开可视化工作区 | 在独立的工作区中打开当前项目的故事结构。 |
-| 打开场景看板工作区 | 打开可视化工作区的场景看板。每个场景是一张卡片，按叙事顺序排列。 |
+| 打开卡片看板工作区 | 打开可视化工作区的卡片看板。场景、角色或某一类世界观都摆成卡片。 |
 | 打开自由画布工作区 | 打开可视化工作区的自由画布。笔记、记录、文件和文字都作为卡片摆在上面，可以连线和分组。 |
 | 打开时间线工作区 | 打开可视化工作区的时间线。场景按发生的时间排开。 |
 | 打开节拍表工作区 | 打开可视化工作区的节拍表。场景归在各幕和各个节拍之下。 |
@@ -1086,7 +1099,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 | 设置 | 默认值 | 用途 |
 |---|---|---|
-| 项目根目录 | Vault 根目录 | 选择存放项目的父文件夹，路径相对于 Vault。 |
+| 项目根目录 | 仓库根目录 | 选择存放项目的父文件夹，路径相对于仓库。 |
 | 界面语言 | 跟随项目 | 跟随当前项目或 Obsidian，也可以固定为英文或简体中文。 |
 | 默认项目语言 | 系统语言 | 新建项目时，模板使用哪种语言。 |
 | 自由模式 | 关闭 | 隐藏十个步骤和进度。角色和场景会并入世界观列表。 |
@@ -1098,7 +1111,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 在表格中显示进度状态 | 关闭 | 在成员表格中，把每条笔记的进度状态显示在名称下方。 |
 | 在表格中显示操作列 | 开启 | 每一行的操作按钮都始终显示。 |
 | 从字段新建笔记 | 打开它的表单 | 从字段新建笔记时，选择先打开表单还是直接创建。 |
-| 增强范围 | 雪花项目 | 文件列表增强应用于雪花项目或整个 Vault，也可以关闭。 |
+| 增强范围 | 雪花项目 | 文件列表增强应用于雪花项目或整个仓库，也可以关闭。 |
 | 沉浸模式 | 开启 | 文件列表里只显示你正在写的项目。 |
 | 隐藏编号前缀 | 开启 | 把 `50_正文` 显示为 正文，不会重命名任何东西。 |
 | 隐藏插件管理的文件 | 开启 | 隐藏插件存放的 JSON 文件和便签。 |
@@ -1107,7 +1120,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 额外隐藏的文件夹 | 无 | 还要隐藏的文件夹，每行一个名称或路径，`*` 为通配符。 |
 | 在笔记上显示字数 | 开启 | 按你的字数规则显示每篇笔记的字数。 |
 | 在文件夹上显示字数 | 开启 | 显示每个文件夹的总字数，包括子文件夹。 |
-| 排版范围 | 雪花项目 | 排版只用于正文流，或者也用于雪花项目或整个 Vault。 |
+| 排版范围 | 雪花项目 | 排版只用于正文流，或者也用于雪花项目或整个仓库。 |
 | 字体 | 跟随主题 | 选择正文使用的字体。新装的字体要重启 Obsidian 后才能看到。 |
 | 字号 | 跟随主题 | 调整正文文字的大小。 |
 | 行高 | 跟随主题 | 调整正文行与行之间的间距。 |
@@ -1160,7 +1173,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 ## 隐私
 
-Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设置都留在你的 Vault 里，插件不会向外传送你的创作内容或配置。
+Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设置都留在你的仓库里，插件不会向外传送你的创作内容或配置。
 
 - 不需要注册账号、订阅，也不需要连接外部服务。
 - 插件不会发起网络请求，也不包含 AI 服务、遥测或数据分析。自由画布上的网页链接只显示网址，不会抓取任何内容。
@@ -1188,6 +1201,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
     │   │       └── 主角.md
     │   ├── 24_自定义字段/
     │   │   └── 年龄.md
+    │   ├── 25_图库/
+    │   │   └── 萧薰儿.png
     │   └── 角色总览.base
     ├── 30_大纲/
     ├── 40_场景/
@@ -1236,7 +1251,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 </details>
 
-写作时段按设备分开记录，这样同步时就不会有两台机器争着写同一个文件。实体追踪中写下的忽略规则、你提出的修订和你追踪的伏笔，各自存为一个共享文件，跟着 Vault 走。每张便签都是单独的一个 Markdown 文件。便签的悬浮面板停在哪里，按设备分别记住，不写进笔记。旁边的实体索引和正文统计是缓存，不是记录。它们缺失或过期时，插件都会从正文重新建立。所以就算删掉它们，代价最多也就是插件把全书重读一遍的时间。
+写作时段按设备分开记录，这样同步时就不会有两台机器争着写同一个文件。实体追踪中写下的忽略规则、你提出的修订和你追踪的伏笔，各自存为一个共享文件，跟着仓库走。每张便签都是单独的一个 Markdown 文件。便签的悬浮面板停在哪里，按设备分别记住，不写进笔记。旁边的实体索引和正文统计是缓存，不是记录。它们缺失或过期时，插件都会从正文重新建立。所以就算删掉它们，代价最多也就是插件把全书重读一遍的时间。
 
 归档一个项目，会把它的整个文件夹移进 `Snowflake Archive`。这个文件夹和各个项目放在同一层，不在任何项目里面。笔记本身不会有任何改动。项目的所有引用都在它自己的文件夹内，所以归档期间不会留下任何断链。项目管理器会列出归档里的项目，你随时可以取回。如果原来的名称已被占用，会给它换一个还没被用过的名称。手动把文件夹移进或移出，效果完全一样。归档只是一个存放位置，背后没有别的机制。
 
@@ -1299,7 +1314,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 隐藏工具提示 (0.25.0)
 - [x] 正文流中的查找和替换 (0.25.0)
 - [x] 更丰富的右键菜单 (0.25.0)
-- [ ] 图库与角色卡片：角色、场景和世界观的图片链接记在笔记属性里，场景看板改名为卡片看板，新增与场景视图并列的角色视图，角色卡片能显示图库里的图片，也能用在自由画布上
+- [x] 图库与对应的卡片样式 (0.26.0)
+- [x] 卡片看板的更多视图 (0.26.0)
 - [ ] 关系图增强：提供多种视图，比如场景与正文之间的联系，实体之间的关系显示为连线上的标签，不再作为单独的节点
 - [ ] 导入与系列：项目可以从其他雪花项目导入任何小说设计内容，也支持系列作品，同一系列的作品可以共享任何内容
 - [ ] 改进平板和手机上的显示
@@ -1310,7 +1326,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 - Node.js 20 或更高版本
 - 支持 lockfile 的 npm
-- 一个用来测试打包插件的独立开发 Vault，以及 Obsidian 1.13.0 或更高版本
+- 一个用来测试打包插件的独立开发仓库，以及 Obsidian 1.13.0 或更高版本
 
 目前的持续集成在 Ubuntu 上分别用 Node.js 20、22 和 24 验证项目。
 
@@ -1335,7 +1351,7 @@ npm ci
 | `npm run lint` | 对整个仓库运行 ESLint。 |
 | `npm run check` | 依次运行测试、生产构建和 lint，这三项是提交前必须通过的。 |
 
-所有准备提交审核的 commit，都应该先通过 `npm run check`。要在 Obsidian 中做本地测试，就把生成的 `main.js` 和 `manifest.json`、`styles.css` 一起放进 `<仓库>/.obsidian/plugins/snowflake-method/`，再重载 Obsidian。请使用单独的开发 Vault，不要直接用存放正式作品的 Vault。
+所有准备提交审核的 commit，都应该先通过 `npm run check`。要在 Obsidian 中做本地测试，就把生成的 `main.js` 和 `manifest.json`、`styles.css` 一起放进 `<仓库>/.obsidian/plugins/snowflake-method/`，再重载 Obsidian。请使用单独的开发仓库，不要直接用存放正式作品的仓库。
 
 ### 持续集成
 
@@ -1358,7 +1374,7 @@ npm ci
 衷心感谢以下 Obsidian 插件的作者，本插件的很多想法都受到了它们的启发。它们各有所长，都很值得一试。
 
 - [Longform](https://github.com/kevboh/longform)（Kevin Barrett）：用来写长篇小说、剧本和其他长篇作品。
-- [StoryLine](https://github.com/pixerojan/obsidian-storyline)（Jan Sandström）：把 Vault 变成写书的规划工具，有看板、时间线和情节线。
+- [StoryLine](https://github.com/pixerojan/obsidian-storyline)（Jan Sandström）：把仓库变成写书的规划工具，有看板、时间线和情节线。
 - [Chinese Novel Assistant](https://github.com/pingo8888/chinese-novel-assistant)（pingo8888）：辅助中文小说写作，提供一系列开箱即用的功能，比如设定库和关键字高亮。
 - [WebNovel Assistant](https://github.com/hatanochihiro/obsidian-webnovel-assistant)（HatanoChihiro）：为网络小说作者打造的一站式写作套件，有字数目标、故事时间线和伏笔管理。
 - [aDHL](https://github.com/tine-schreibt/aDHL)（tine-schreibt）：把搜索词和正则表达式变成高亮。
