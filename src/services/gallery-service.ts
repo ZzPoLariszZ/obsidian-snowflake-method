@@ -313,7 +313,10 @@ export class GalleryService {
     const kept = new Set(composed.gallery.map(targetOf).filter((target) => !settling.has(target)));
     const removed = draft.removed.filter((raw) => !kept.has(targetOf(raw)));
     const savedPath = notePathOf(result);
-    const { trashed, failed } = await this.trashOrphans(project, removed, savedPath, [savedPath]);
+    // The note is excepted under both its paths: a save that renames it may
+    // still be indexed under the old one, with the links it held before.
+    const except = notePath === undefined || notePath === savedPath ? [savedPath] : [savedPath, notePath];
+    const { trashed, failed } = await this.trashOrphans(project, removed, savedPath, except);
     const unsettled = await this.settle(landed, trashed);
     return { result, trashFailed: [...failed, ...unsettled] };
   }
