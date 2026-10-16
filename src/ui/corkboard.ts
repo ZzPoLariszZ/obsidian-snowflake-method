@@ -584,18 +584,15 @@ export function renderBoard<
 		}
 		memory.scrollTop = scroller.scrollTop;
 		paintWindow(true);
-		// The first render supplies the themed header/footer measurements; the
-		// gallery style stands the picture pane on them, as the metrics do.
+		// The first render supplies the themed header/footer measurements: the
+		// metrics are taken again over them, the pane standing on the measured
+		// card where the style has one, and a card drawn to another height is
+		// drawn once more.
 		const measuredHeight = compactHeight();
 		const drawn = layout;
-		const expectedHeight =
-			measuredHeight === undefined || drawn === null
-				? undefined
-				: memory.mode === 'gallery'
-					? measuredHeight - cardSides() + drawn.cardWidth
-					: measuredHeight;
-		if (expectedHeight !== undefined && drawn !== null && Math.abs(expectedHeight - drawn.cardHeight) > 0.5) {
-			paintAll({ keepFirst: true });
+		if (measuredHeight !== undefined && drawn !== null) {
+			const remeasured = corkboardMetrics(canvas.clientWidth, memory.mode, rem, measuredHeight, variant.columns, variant.gap, deal.cardHeight, deal.paned, cardSides());
+			if (Math.abs(cardHeightOf(remeasured, drawn.cardWidth) - drawn.cardHeight) > 0.5) paintAll({ keepFirst: true });
 		}
 	};
 
