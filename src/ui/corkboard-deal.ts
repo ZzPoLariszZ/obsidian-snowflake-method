@@ -7,15 +7,14 @@
  * are laid out, windowed or dragged reaches every view at once.
  */
 
-import type { RankRevisionChange, SceneMoveTarget } from '../services';
+import type { MemberMoveTarget, RankRevisionChange } from '../services';
 import type { GroupValue } from './corkboard-layout';
 import type { FilterRow } from './filter-rows';
 import type { CardMember, MemberCard, MemberCardDeck, MemberCardDeps, MemberCardPart } from './member-card';
 import type { CorkboardMode } from './story-structure-state';
 import type { ProjectDashboardModel } from './view-model';
 
-/** A position, or a relative destination resolved against the latest persisted order. */
-export type MemberMoveTarget = SceneMoveTarget;
+export type { MemberMoveTarget } from '../services';
 
 /** What the funnel and the search answer: a note and its place in the order. */
 export interface ShownMember<Member> {

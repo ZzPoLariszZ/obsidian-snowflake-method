@@ -184,6 +184,7 @@ import {
 	type EntityPatch,
 	type RankRevisionChange,
 	type ScenePatch,
+	type MemberMoveTarget,
 	type SceneMoveTarget,
 	sessionClockMs,
 	SnowflakeProjectService,
@@ -2668,7 +2669,7 @@ export default class SnowflakeMethodPlugin
 	async reorderEntity(
 		kind: WorldbuildingKindId,
 		entityId: string,
-		targetIndex: number,
+		targetIndex: MemberMoveTarget,
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void> {
@@ -3047,7 +3048,7 @@ export default class SnowflakeMethodPlugin
 
 	async reorderCharacter(
 		characterId: string,
-		targetIndex: number,
+		targetIndex: MemberMoveTarget,
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void> {

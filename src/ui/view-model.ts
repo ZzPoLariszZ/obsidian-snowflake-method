@@ -59,6 +59,7 @@ import type {
 	RankRevisionChange,
 	SaveCustomFieldTemplateResult,
 	ScenePatch,
+	MemberMoveTarget,
 	SceneMoveTarget,
 } from '../services';
 
@@ -849,7 +850,7 @@ export interface DashboardHost {
 	reorderEntity(
 		kind: WorldbuildingKindId,
 		entityId: string,
-		targetIndex: number,
+		targetIndex: MemberMoveTarget,
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void>;
@@ -968,7 +969,7 @@ export interface DashboardHost {
 	): Promise<void>;
 	reorderCharacter(
 		characterId: string,
-		targetIndex: number,
+		targetIndex: MemberMoveTarget,
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void>;

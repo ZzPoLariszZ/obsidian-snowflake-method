@@ -213,6 +213,7 @@ import {
   type RankRevisionChange,
   type SceneInput,
   type ScenePatch,
+  type MemberMoveTarget,
   type SceneMoveTarget,
   type SceneRecord,
   type EntityInput,
@@ -2309,12 +2310,16 @@ export class SnowflakeProjectService {
   async reorderCharacter(
     projectLocator: ProjectLocator,
     characterId: string,
-    targetIndex: number,
+    target: MemberMoveTarget,
     onRankWritten?: (change: RankRevisionChange) => void,
   ): Promise<CharacterRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const current = project.characters;
+    // Relative destinations are resolved from the persisted order, as a scene's are.
+    const targetIndex = typeof target === "number"
+      ? target : target(current.map((character) => character.characterId));
+    if (targetIndex === null) return current;
     await this.persistReorderedRanks(
       current,
       moveRanked(current, characterId, targetIndex),
@@ -5459,12 +5464,15 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     kind: WorldbuildingKindId,
     entityId: string,
-    targetIndex: number,
+    target: MemberMoveTarget,
     onRankWritten?: (change: RankRevisionChange) => void,
   ): Promise<WorldbuildingRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const current = entitiesOf(project, kind);
+    const targetIndex = typeof target === "number"
+      ? target : target(current.map((entity) => entity.entityId));
+    if (targetIndex === null) return current;
     await this.persistReorderedRanks(current, moveRanked(current, entityId, targetIndex), onRankWritten);
     return this.listEntities(project, kind);
   }

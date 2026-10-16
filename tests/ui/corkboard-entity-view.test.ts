@@ -46,7 +46,7 @@ vi.mock('../../src/ui/anchored-panel', async (importOriginal) => {
 	};
 });
 
-import type { CharacterPatch, EntityPatch } from '../../src/services';
+import type { CharacterPatch, EntityPatch, MemberMoveTarget } from '../../src/services';
 import { renderCorkboard } from '../../src/ui/corkboard';
 import type { CorkboardControls, CorkboardHandle } from '../../src/ui/corkboard-bridge';
 import { corkboardMemory, entityCorkboardMemory, type CorkboardView } from '../../src/ui/story-structure-state';
@@ -109,13 +109,16 @@ function board(view: CorkboardView, options: { characters?: CharacterViewModel[]
 			locations = locations.map((member) => (member.id === id ? { ...member, ...(patch.description === undefined ? {} : { description: patch.description }), revision } : member));
 			return Promise.resolve(revision);
 		}),
-		reorderCharacter: vi.fn((id: string, index: number, _path: string, adopt?: (change: { id: string; before: string; after: string }) => void) => {
-			characters = reorder(characters, id, index) as CharacterViewModel[];
+		// A relative destination is resolved here as the service resolves it: against the order as it stands when the move runs.
+		reorderCharacter: vi.fn((id: string, target: MemberMoveTarget, _path: string, adopt?: (change: { id: string; before: string; after: string }) => void) => {
+			const index = typeof target === 'number' ? target : target(characters.map((member) => member.id));
+			if (index !== null) characters = reorder(characters, id, index) as CharacterViewModel[];
 			adopt?.({ id, before: 'initial', after: 'ranked' });
 			return Promise.resolve();
 		}),
-		reorderEntity: vi.fn((_kind: string, id: string, index: number) => {
-			locations = reorder(locations, id, index) as WorldbuildingEntityViewModel[];
+		reorderEntity: vi.fn((_kind: string, id: string, target: MemberMoveTarget) => {
+			const index = typeof target === 'number' ? target : target(locations.map((member) => member.id));
+			if (index !== null) locations = reorder(locations, id, index) as WorldbuildingEntityViewModel[];
 			return Promise.resolve();
 		}),
 		openCreateCharacterForm: vi.fn(() => Promise.resolve(null)),

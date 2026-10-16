@@ -143,16 +143,12 @@ export function entityDeal(controls: CorkboardControls<EntityFilters>, kind: str
 			icon: (member) => kindIcon(model ?? { worldbuildingKinds: [] }, kindOf(member)),
 		}),
 		partClasses: ENTITY_CARD_PART_CLASSES,
-		reorder: async (id, target, projectPath, adopt) => {
-			// A relative destination is resolved against the order as it stands
-			// when the queued move runs, which is after every earlier write landed.
-			const current = controls.model();
-			const ids = current === null || current.path !== projectPath ? [] : membersOf(current).map((member) => member.id);
-			const index = typeof target === 'number' ? target : target(ids);
-			if (index === null) return;
-			if (character) await host.reorderCharacter(id, index, projectPath, adopt);
-			else await host.reorderEntity(kind, id, index, projectPath, adopt);
-		},
+		// A relative destination goes to the host as it is, resolved there against
+		// the persisted order as a scene's is, even once this board has closed.
+		reorder: (id, target, projectPath, adopt) =>
+			character
+				? host.reorderCharacter(id, target, projectPath, adopt)
+				: host.reorderEntity(kind, id, target, projectPath, adopt),
 		openCreate: (afterIndex, projectPath, onSaved) =>
 			character
 				? host.openCreateCharacterForm(afterIndex, projectPath, onSaved)
