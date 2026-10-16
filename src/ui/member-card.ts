@@ -124,6 +124,60 @@ export interface MemberCardPatch {
 	galleryMain?: string | null;
 }
 
+/** A note's own patch as the shared fields fill it: the two words under the kind's names, the rest under their own. */
+export type MemberPatchOf<Title extends string, Body extends string> = {
+	expectedRevision: string;
+	color?: MacaronColor | null;
+	progressStatus?: ProgressStatus;
+	gallery?: string[];
+	galleryMain?: string | null;
+} & Partial<Record<Title | Body, string>>;
+
+/**
+ * The fields a card writes, in the note's own words: the title and the body
+ * under the names the kind gives them, the rest the same for every kind. One
+ * mapping for the scene's, the character's and the worldbuilding note's
+ * patch, so a field added to the card is added once.
+ */
+export function memberPatchOf<Title extends string, Body extends string>(
+	fields: MemberCardPatch,
+	expectedRevision: string,
+	keys: { title: Title; body: Body },
+): MemberPatchOf<Title, Body> {
+	const words: Partial<Record<Title | Body, string>> = {};
+	if (fields.title !== undefined) words[keys.title] = fields.title;
+	if (fields.body !== undefined) words[keys.body] = fields.body;
+	return {
+		expectedRevision,
+		...words,
+		...(fields.color === undefined ? {} : { color: fields.color }),
+		...(fields.progressStatus === undefined ? {} : { progressStatus: fields.progressStatus }),
+		...(fields.gallery === undefined ? {} : { gallery: fields.gallery }),
+		...(fields.galleryMain === undefined ? {} : { galleryMain: fields.galleryMain }),
+	};
+}
+
+/** The note as the fields written leave it, before the model has caught up: the same mapping, laid over the note. */
+export function memberApplied<Member extends CardMember>(
+	member: Member,
+	fields: MemberCardPatch,
+	revision: string,
+	keys: { title: keyof Member & string; body: keyof Member & string },
+): Member {
+	const words: Partial<Record<keyof Member & string, string>> = {};
+	if (fields.title !== undefined) words[keys.title] = fields.title;
+	if (fields.body !== undefined) words[keys.body] = fields.body;
+	return {
+		...member,
+		...words,
+		...(fields.color === undefined ? {} : { color: fields.color }),
+		...(fields.progressStatus === undefined ? {} : { progressStatus: fields.progressStatus }),
+		...(fields.gallery === undefined ? {} : { gallery: fields.gallery }),
+		...(fields.galleryMain === undefined ? {} : { galleryMain: fields.galleryMain }),
+		revision,
+	};
+}
+
 /** Where a kind builds its own parts into the card: the elements the shared parts stand in. */
 export interface CardSlots {
 	el: HTMLElement;

@@ -11,10 +11,11 @@
 
 import type { App } from 'obsidian';
 
-import type { CharacterPatch, EntityPatch } from '../services';
 import {
 	MEMBER_CARD_PART_CLASSES,
 	createMemberCardDeck,
+	memberApplied,
+	memberPatchOf,
 	type CardKind,
 	type MemberCard,
 	type MemberCardDeck,
@@ -89,48 +90,16 @@ export type EntityCardDeck<Card extends EntityCard> = MemberCardDeck<EntityMembe
 export const entityBodyOf = (member: EntityMember): string =>
 	isCharacterMember(member) ? member.oneSentenceStoryline : member.description;
 
-/** A card's fields in a character's own words: the title is the name, the body the storyline. */
-function characterPatchOf(fields: MemberCardPatch, expectedRevision: string): CharacterPatch {
-	const patch: CharacterPatch = { expectedRevision };
-	if (fields.title !== undefined) patch.name = fields.title;
-	if (fields.body !== undefined) patch.oneSentenceStoryline = fields.body;
-	if (fields.color !== undefined) patch.color = fields.color;
-	if (fields.progressStatus !== undefined) patch.progressStatus = fields.progressStatus;
-	if (fields.gallery !== undefined) patch.gallery = fields.gallery;
-	if (fields.galleryMain !== undefined) patch.galleryMain = fields.galleryMain;
-	return patch;
-}
-
+/** The card's fields in a character's own words: the title is the name, the body the one-sentence storyline. */
+const CHARACTER_WORDS = { title: 'name', body: 'oneSentenceStoryline' } as const;
 /** And in a worldbuilding note's: the body is the description. */
-function entityPatchOf(fields: MemberCardPatch, expectedRevision: string): EntityPatch {
-	const patch: EntityPatch = { expectedRevision };
-	if (fields.title !== undefined) patch.name = fields.title;
-	if (fields.body !== undefined) patch.description = fields.body;
-	if (fields.color !== undefined) patch.color = fields.color;
-	if (fields.progressStatus !== undefined) patch.progressStatus = fields.progressStatus;
-	if (fields.gallery !== undefined) patch.gallery = fields.gallery;
-	if (fields.galleryMain !== undefined) patch.galleryMain = fields.galleryMain;
-	return patch;
-}
+const ENTITY_WORDS = { title: 'name', body: 'description' } as const;
 
 /** The note as the fields written leave it, before the model has caught up. */
 function entityApplied(member: EntityMember, fields: MemberCardPatch, revision: string): EntityMember {
-	const shared = {
-		...(fields.title === undefined ? {} : { name: fields.title }),
-		...(fields.color === undefined ? {} : { color: fields.color }),
-		...(fields.progressStatus === undefined ? {} : { progressStatus: fields.progressStatus }),
-		...(fields.gallery === undefined ? {} : { gallery: fields.gallery }),
-		...(fields.galleryMain === undefined ? {} : { galleryMain: fields.galleryMain }),
-		revision,
-	};
-	if (isCharacterMember(member)) {
-		const next: CharacterViewModel = { ...member, ...shared };
-		if (fields.body !== undefined) next.oneSentenceStoryline = fields.body;
-		return next;
-	}
-	const next: WorldbuildingEntityViewModel = { ...member, ...shared };
-	if (fields.body !== undefined) next.description = fields.body;
-	return next;
+	return isCharacterMember(member)
+		? memberApplied(member, fields, revision, CHARACTER_WORDS)
+		: memberApplied(member, fields, revision, ENTITY_WORDS);
 }
 
 function entityCardKind<Card extends EntityCard>(
@@ -146,8 +115,8 @@ function entityCardKind<Card extends EntityCard>(
 		cardClass: 'is-entity-card',
 		patch: (member, fields, expectedRevision, projectPath) =>
 			isCharacterMember(member)
-				? host.patchCharacter(member.id, characterPatchOf(fields, expectedRevision), projectPath)
-				: host.patchEntity(member.id, entityPatchOf(fields, expectedRevision), projectPath),
+				? host.patchCharacter(member.id, memberPatchOf(fields, expectedRevision, CHARACTER_WORDS), projectPath)
+				: host.patchEntity(member.id, memberPatchOf(fields, expectedRevision, ENTITY_WORDS), projectPath),
 		applied: entityApplied,
 		membersById: () => deps.membersById(),
 		taken: (name, ownId) => {

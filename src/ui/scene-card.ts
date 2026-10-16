@@ -10,17 +10,17 @@
 
 import { Menu, Notice, setIcon, setTooltip, type App } from 'obsidian';
 
-import type { ScenePatch } from '../services';
 import { titleTaken } from './corkboard-layout';
 import { linkedManuscriptPreview, orderManuscriptReferences } from './linked-manuscript';
 import {
 	MEMBER_CARD_PART_CLASSES,
 	createMemberCardDeck,
+	memberApplied,
+	memberPatchOf,
 	type CardKind,
 	type MemberCard,
 	type MemberCardDeck,
 	type MemberCardPart,
-	type MemberCardPatch,
 } from './member-card';
 import type { Translate } from './modals';
 import { renderEmptyLine } from './pane-parts';
@@ -105,29 +105,8 @@ export interface SceneCardDeps<Card extends SceneCard> {
 
 export type SceneCardDeck<Card extends SceneCard> = MemberCardDeck<SceneViewModel, Card, SceneCardPart>;
 
-/** A card's fields in the scene's own words: the card's body is the scene's conflict. */
-function scenePatchOf(fields: MemberCardPatch, expectedRevision: string): ScenePatch {
-	const patch: ScenePatch = { expectedRevision };
-	if (fields.title !== undefined) patch.title = fields.title;
-	if (fields.body !== undefined) patch.conflict = fields.body;
-	if (fields.color !== undefined) patch.color = fields.color;
-	if (fields.progressStatus !== undefined) patch.progressStatus = fields.progressStatus;
-	if (fields.gallery !== undefined) patch.gallery = fields.gallery;
-	if (fields.galleryMain !== undefined) patch.galleryMain = fields.galleryMain;
-	return patch;
-}
-
-/** The scene as the fields written leave it, before the model has caught up. */
-function sceneApplied(scene: SceneViewModel, fields: MemberCardPatch, revision: string): SceneViewModel {
-	const next: SceneViewModel = { ...scene, revision };
-	if (fields.title !== undefined) next.title = fields.title;
-	if (fields.body !== undefined) next.conflict = fields.body;
-	if (fields.color !== undefined) next.color = fields.color;
-	if (fields.progressStatus !== undefined) next.progressStatus = fields.progressStatus;
-	if (fields.gallery !== undefined) next.gallery = fields.gallery;
-	if (fields.galleryMain !== undefined) next.galleryMain = fields.galleryMain;
-	return next;
-}
+/** The card's fields in the scene's own words: the card's body is the scene's conflict. */
+const SCENE_WORDS = { title: 'title', body: 'conflict' } as const;
 
 function sceneCardKind<Card extends SceneCard>(
 	deps: SceneCardDeps<Card>,
@@ -192,8 +171,8 @@ function sceneCardKind<Card extends SceneCard>(
 		picture: (scene) => ({ gallery: scene.gallery, galleryMain: scene.galleryMain, path: scene.path, icon: 'clapperboard' }),
 		cardClass: 'is-scene-card',
 		patch: (scene, fields, expectedRevision, projectPath) =>
-			host.patchScene(scene.id, scenePatchOf(fields, expectedRevision), projectPath),
-		applied: sceneApplied,
+			host.patchScene(scene.id, memberPatchOf(fields, expectedRevision, SCENE_WORDS), projectPath),
+		applied: (scene, fields, revision) => memberApplied(scene, fields, revision, SCENE_WORDS),
 		membersById: () => deps.scenesById(),
 		taken: (name, ownId) => {
 			const model = deps.model();
