@@ -79,6 +79,8 @@ export interface EntityCardDeps<Card extends EntityCard> {
 	bodyReadOnly?: boolean;
 	/** The title is read on the card and never typed into there. */
 	titleReadOnly?: boolean;
+	/** Whether the surface's current style shows the picture pane; left out, the pane is dressed with every card. */
+	paneShown?: () => boolean;
 }
 
 export type EntityCardDeck<Card extends EntityCard> = MemberCardDeck<EntityMember, Card, EntityCardPart>;
@@ -191,5 +193,6 @@ export function createEntityCardDeck<Card extends EntityCard>(deps: EntityCardDe
 		...(deps.symbol === undefined ? {} : { symbol: deps.symbol }),
 		...(deps.bodyReadOnly === undefined ? {} : { bodyReadOnly: deps.bodyReadOnly }),
 		...(deps.titleReadOnly === undefined ? {} : { titleReadOnly: deps.titleReadOnly }),
+		...(deps.paneShown === undefined ? {} : { paneShown: deps.paneShown }),
 	});
 }

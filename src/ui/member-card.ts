@@ -214,6 +214,12 @@ export interface MemberCardDeps<Member extends CardMember, Extras extends object
 	bodyReadOnly?: boolean;
 	/** The title is read on the card and never typed into there: for a surface where a card changes only its tint and its standing. */
 	titleReadOnly?: boolean;
+	/**
+	 * Whether the surface's current style shows the picture pane; left out,
+	 * the pane is dressed with every card. A pane the style hides is left as
+	 * it was, and dressed when the style shows it again.
+	 */
+	paneShown?: () => boolean;
 }
 
 /** A text a card has written that its deck has not yet saved, or has saved and the model has not yet shown. */
@@ -733,7 +739,7 @@ export function createMemberCardDeck<
 		card.bodyBox.readOnly = !writable || deps.bodyReadOnly === true;
 		const bodyLabel = kind.words.bodyLabel(member);
 		if (card.body.getAttribute('aria-label') !== bodyLabel) card.body.setAttribute('aria-label', bodyLabel);
-		paintPicture(card, member, writable);
+		if (deps.paneShown?.() !== false) paintPicture(card, member, writable);
 		kind.dress(card, member);
 	};
 

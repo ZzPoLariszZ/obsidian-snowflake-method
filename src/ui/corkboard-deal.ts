@@ -29,7 +29,7 @@ export type BoardDeckDeps<
 	Card extends MemberCard<Member> & Extras,
 > = Pick<
 	MemberCardDeps<Member, Extras, Card>,
-	'app' | 't' | 'notice' | 'refresh' | 'projectPath' | 'readOnly' | 'unloading' | 'dragAllowed' | 'menu' | 'extend'
+	'app' | 't' | 'notice' | 'refresh' | 'projectPath' | 'readOnly' | 'unloading' | 'dragAllowed' | 'menu' | 'extend' | 'paneShown'
 >;
 
 /** The questions a view's funnel asks, and what they do to the order. */

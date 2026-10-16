@@ -352,6 +352,7 @@ export function renderBoard<
 		projectPath: () => projectPath,
 		readOnly: () => readOnly,
 		unloading: () => controls.unloading?.() === true,
+		paneShown: () => deal.paned.includes(memory.mode),
 		dragAllowed: (card) => mayDrag(card),
 		menu: (card, event) => {
 			openMenu(card, event);

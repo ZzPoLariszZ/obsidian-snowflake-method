@@ -99,6 +99,8 @@ export interface SceneCardDeps<Card extends SceneCard> {
 	bodyReadOnly?: boolean;
 	/** The title is read on the card and never typed into there. */
 	titleReadOnly?: boolean;
+	/** Whether the surface's current style shows the picture pane; left out, the pane is dressed with every card. */
+	paneShown?: () => boolean;
 }
 
 export type SceneCardDeck<Card extends SceneCard> = MemberCardDeck<SceneViewModel, Card, SceneCardPart>;
@@ -320,5 +322,6 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		...(deps.symbol === undefined ? {} : { symbol: deps.symbol }),
 		...(deps.bodyReadOnly === undefined ? {} : { bodyReadOnly: deps.bodyReadOnly }),
 		...(deps.titleReadOnly === undefined ? {} : { titleReadOnly: deps.titleReadOnly }),
+		...(deps.paneShown === undefined ? {} : { paneShown: deps.paneShown }),
 	});
 }
