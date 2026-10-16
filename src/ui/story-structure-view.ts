@@ -1,8 +1,8 @@
 /**
  * The Story Structure view: the family of visualizations a story's scenes
  * can be looked at through, each in a tab of the strip at the top: the
- * corkboard, the freeform canvas, the timeline and the beat sheet. A
- * main-area leaf that keeps its own project across dashboard switches and
+ * corkboard, the freeform canvas, the timeline, the beat sheet and the
+ * relationship graph. A main-area leaf that keeps its own project across dashboard switches and
  * reloads. Several projects may stand open at once: a modifier click on a
  * tab opens that visualization in a leaf of its own.
  */
@@ -37,6 +37,12 @@ import type {
 import type { MountFreeformCanvas } from './freeform-canvas-port';
 import type { Translate } from './modals';
 import { renderTabStrip } from './pane-parts';
+import type {
+	RelationshipGraphBridge,
+	RelationshipGraphControls,
+	RelationshipGraphHandle,
+	RenderRelationshipGraph,
+} from './relationship-graph-bridge';
 import { isEntityGroupField, type EntityFilters } from './entity-filters';
 import { clearSceneFilters, type SceneFilters } from './scene-filters';
 import {
@@ -54,6 +60,7 @@ import {
 	mergeStoryStructureViewState,
 	namedCorkboardViews,
 	readCorkboardPreferences,
+	relationshipGraphMemory,
 	timelineMemory,
 	visualizationFamily,
 	type BeatSheetMemory,
@@ -63,6 +70,7 @@ import {
 	type CorkboardViewSettings,
 	type CorkboardPreferences,
 	type FreeformMemory,
+	type RelationshipGraphMemory,
 	type StoryStructureViewStateSnapshot,
 	type StoryStructureVisualization,
 	type TimelineMemory,
@@ -93,6 +101,7 @@ export interface StoryStructureViewDeps {
 	freeform: RenderFreeform;
 	/** Raises the freeform canvas's engine, whose code is not taken until a canvas is first shown. */
 	freeformCanvas: MountFreeformCanvas;
+	relationshipGraph: RenderRelationshipGraph;
 	/** Remains truthful for drafts from leaves that closed before the plugin unloads. */
 	unloading?(): boolean;
 }
@@ -106,16 +115,19 @@ export class SnowflakeStoryStructureView extends ItemView {
 	/** The character and worldbuilding views' memories, each made when first shown, its settings the tab's and the project's. */
 	private readonly entityMemories = new Map<CorkboardView, CorkboardMemory<EntityFilters>>();
 	private model: ProjectDashboardModel | null = null;
-	private board: CorkboardHandle | TimelineHandle | BeatSheetHandle | FreeformHandle | null = null;
+	private board: CorkboardHandle | TimelineHandle | BeatSheetHandle | FreeformHandle | RelationshipGraphHandle | null = null;
 	private readonly timelineMemory: TimelineMemory = timelineMemory();
 	private readonly beatSheetMemory: BeatSheetMemory = beatSheetMemory();
 	private readonly freeformMemory: FreeformMemory = freeformMemory();
+	private readonly relationshipGraphMemory: RelationshipGraphMemory = relationshipGraphMemory();
 	/** The timeline bridge for the project's path, remade when a rename moves it. */
 	private timelineBridge: { path: string; bridge: TimelineBridge } | null = null;
 	/** The beat sheet's, kept the same way. */
 	private beatSheetBridge: { path: string; bridge: BeatSheetBridge } | null = null;
 	/** The freeform canvas's, kept the same way. */
 	private freeformBridge: { path: string; bridge: FreeformBridge } | null = null;
+	/** The relationship graph's, kept the same way. */
+	private relationshipGraphBridge: { path: string; bridge: RelationshipGraphBridge } | null = null;
 	/** What the frame on show was built for; null while nothing is drawn. */
 	private shownFrame: string | null = null;
 	private shownFingerprint: string | null = null;
@@ -223,6 +235,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.beatSheetMemory.beatsCollapsed = update.state.beatSheet.beatsCollapsed;
 		// Every switch the layout keeps, as one, so none is left behind.
 		Object.assign(this.freeformMemory, update.state.freeform);
+		this.relationshipGraphMemory.view = update.state.relationshipGraph.view;
+		this.relationshipGraphMemory.controlsOpen = update.state.relationshipGraph.controlsOpen;
 		await super.setState(state, result);
 		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first
@@ -283,6 +297,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 				snapObjects: this.freeformMemory.snapObjects,
 				readOnly: this.freeformMemory.readOnly,
 			},
+			relationshipGraph: {
+				view: this.relationshipGraphMemory.view,
+				controlsOpen: this.relationshipGraphMemory.controlsOpen,
+			},
 		};
 	}
 
@@ -305,6 +323,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 		// Which view is shown is kept: it is the saved layout's to say, and one
 		// that names no view of the project standing falls back by itself.
 		this.freeformMemory.viewports.clear();
+		// The graph's search, focus and positions were the project's it showed.
+		this.relationshipGraphMemory.query = '';
+		this.relationshipGraphMemory.focus = null;
+		this.relationshipGraphMemory.positions.clear();
 	}
 
 	async onOpen(): Promise<void> {
@@ -562,6 +584,12 @@ export class SnowflakeStoryStructureView extends ItemView {
 			this.board = this.deps.beatSheet(host, this.beatSheetControls());
 			return;
 		}
+		if (this.state.visualization === 'relationship-graph') {
+			body.addClass('is-self-scrolling');
+			const host = body.createDiv({ cls: 'snowflake-method-relationship-graph-host' });
+			this.board = this.deps.relationshipGraph(host, this.relationshipGraphControls());
+			return;
+		}
 		body.addClass('is-self-scrolling');
 		const host = body.createDiv({ cls: 'snowflake-method-freeform-host' });
 		this.board = this.deps.freeform(host, this.freeformControls());
@@ -675,6 +703,36 @@ export class SnowflakeStoryStructureView extends ItemView {
 			// The plugin's own window is the one its code was loaded in.
 			atHome: (element) => element.win === window,
 		};
+	}
+
+	private relationshipGraphControls(): RelationshipGraphControls {
+		return {
+			app: this.app,
+			host: this.deps.host,
+			t: this.t,
+			model: () => this.model,
+			projectPath: () => this.state.projectPath,
+			activateProject: () => this.activateProjectContext(),
+			refresh: () => this.refresh(),
+			bridge: () => this.relationshipGraphBridgeFor(),
+			memory: this.relationshipGraphMemory,
+			remember: () => {
+				this.app.workspace.requestSaveLayout();
+			},
+			unloading: () => this.unloading || this.deps.unloading?.() === true,
+		};
+	}
+
+	/** The relationship graph's bridge for the project's path as it stands now, remade when a rename moves it. */
+	private relationshipGraphBridgeFor(): RelationshipGraphBridge {
+		const path = this.state.projectPath ?? this.model?.path ?? '';
+		if (this.relationshipGraphBridge === null || this.relationshipGraphBridge.path !== path) {
+			this.relationshipGraphBridge = {
+				path,
+				bridge: this.deps.host.relationshipGraph({ projectPath: path, locale: this.model?.locale ?? null }),
+			};
+		}
+		return this.relationshipGraphBridge.bridge;
 	}
 
 	/** The freeform canvas's bridge for the project's path as it stands now, remade when a rename moves it. */

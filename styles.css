@@ -1403,7 +1403,7 @@
 	   fifteen, and a row that resizes with the project's language reads as
 	   two different designs. Wide enough for the longest label there is;
 	   anything longer still takes the room it needs. */
-	--snowflake-method-tab-width: 9.5rem;
+	--snowflake-method-tab-width: 11.5rem;
 	min-width: 0;
 	padding: var(--size-4-5);
 	border: 1px solid var(--background-modifier-border);
@@ -1655,7 +1655,7 @@
    filling the leaf. */
 .snowflake-method-story-structure {
 	--snowflake-method-tab-height: 2.75rem;
-	--snowflake-method-tab-width: 9.5rem;
+	--snowflake-method-tab-width: 11.5rem;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -13503,9 +13503,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 /* What a scene card needs from the surface it stands on, worn by the
-   corkboard root and by any other root that deals the same cards. Fallback
+   corkboard root and by any other root that deals the same cards, and by
+   the relationship graph's root for the view field's width alone. Fallback
    measures before a board's first paint; a board writes its own over them. */
-.snowflake-method-scene-cards {
+.snowflake-method-scene-cards,
+.snowflake-method-relationship-graph {
 	--snowflake-method-corkboard-action-size: calc(var(--icon-s) + 2 * var(--size-2-2));
 	--snowflake-method-corkboard-link-height: 1.5rem;
 	--snowflake-method-corkboard-card-width: 16rem;
@@ -17853,6 +17855,57 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	.snowflake-method-freeform-toolbar {
 		--snowflake-method-toolbar-start: 8rem;
 	}
+}
+
+/* == Relationship graph =================================================== */
+
+/* The workspace fills the field the tab opens onto: a toolbar of its own
+   riding the strip's row, as the timeline's does, then the stage the graph
+   is drawn on, or the pane that stands in for Obsidian's own graph. */
+.snowflake-method-relationship-graph-host,
+.snowflake-method-relationship-graph {
+	height: 100%;
+}
+
+.snowflake-method-relationship-graph {
+	/* Positioned, so the toolbar below finds the row above the workspace
+	   and not an ancestor's edge. */
+	position: relative;
+	display: flex;
+	flex-direction: column;
+}
+
+/* The toolbar takes the whole row: the view at its start, the search in the
+   middle, the symbols at the end. */
+.snowflake-method-relationship-graph-toolbar {
+	--snowflake-method-toolbar-start: var(--snowflake-method-view-field-width);
+	position: absolute;
+	inset-block-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
+	inset-inline: 0;
+	height: var(--snowflake-method-tab-height, 2.75rem);
+}
+
+/* The stage keeps what is drawn on it inside its own edges, framed as the
+   freeform canvas is; the controls panel stands in its corner. */
+.snowflake-method-relationship-graph-stage {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary);
+}
+
+.snowflake-method-relationship-graph-stage > .snowflake-method-tab-planned {
+	margin: var(--size-4-4);
+}
+
+/* The search and the symbols that act on the drawn graph are put away while
+   the tab stands in for Obsidian's own graph, which has its own. */
+.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-toolbar .snowflake-method-toolbar-search,
+.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-controls {
+	display: none;
 }
 
 /* == File explorer ======================================================== */

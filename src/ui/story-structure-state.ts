@@ -15,6 +15,7 @@ export const STORY_STRUCTURE_FAMILIES = [
 	'freeform',
 	'timeline',
 	'beat-sheet',
+	'relationship-graph',
 ] as const;
 export type StoryStructureFamily = (typeof STORY_STRUCTURE_FAMILIES)[number];
 
@@ -23,6 +24,7 @@ export const STORY_STRUCTURE_VISUALIZATIONS = [
 	'corkboard-freeform',
 	'timeline',
 	'beat-sheet',
+	'relationship-graph',
 ] as const;
 export type StoryStructureVisualization =
 	(typeof STORY_STRUCTURE_VISUALIZATIONS)[number];
@@ -46,6 +48,7 @@ export function visualizationFamily(
 			return 'freeform';
 		case 'timeline':
 		case 'beat-sheet':
+		case 'relationship-graph':
 			return key;
 	}
 }
@@ -198,6 +201,28 @@ export function defaultFreeformSettings(): FreeformSettings {
 	return { viewId: null, minimap: true, snap: false, snapObjects: false, readOnly: false };
 }
 
+/**
+ * The two views of the relationship graph tab: the project's entities drawn
+ * by the plugin, and its scenes and manuscript, which open in Obsidian's own
+ * graph in a tab of their own, this tab standing in for it.
+ */
+export const RELATIONSHIP_GRAPH_VIEWS = ['entities', 'scene-manuscript'] as const;
+export type RelationshipGraphView = (typeof RELATIONSHIP_GRAPH_VIEWS)[number];
+
+export function isRelationshipGraphView(value: unknown): value is RelationshipGraphView {
+	return (RELATIONSHIP_GRAPH_VIEWS as readonly unknown[]).includes(value);
+}
+
+/** How the relationship graph tab is set: the view it shows, and whether the controls panel stands open. */
+export interface RelationshipGraphSettings {
+	view: RelationshipGraphView;
+	controlsOpen: boolean;
+}
+
+export function defaultRelationshipGraphSettings(): RelationshipGraphSettings {
+	return { view: 'entities', controlsOpen: true };
+}
+
 export interface StoryStructureViewStateSnapshot {
 	projectPath: string | null;
 	visualization: StoryStructureVisualization;
@@ -205,6 +230,7 @@ export interface StoryStructureViewStateSnapshot {
 	timeline: TimelineSettings;
 	beatSheet: BeatSheetSettings;
 	freeform: FreeformSettings;
+	relationshipGraph: RelationshipGraphSettings;
 }
 
 export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
@@ -215,6 +241,7 @@ export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 		timeline: defaultTimelineSettings(),
 		beatSheet: defaultBeatSheetSettings(),
 		freeform: defaultFreeformSettings(),
+		relationshipGraph: defaultRelationshipGraphSettings(),
 	};
 }
 
@@ -375,7 +402,20 @@ export function mergeStoryStructureViewState(
 				? freeformCandidate.readOnly
 				: current.freeform.readOnly,
 	};
-	const state = { projectPath, visualization, corkboard, timeline, beatSheet, freeform };
+	const graphCandidate =
+		typeof candidate.relationshipGraph === 'object' && candidate.relationshipGraph !== null
+			? (candidate.relationshipGraph as Record<string, unknown>)
+			: {};
+	const relationshipGraph: RelationshipGraphSettings = {
+		view: isRelationshipGraphView(graphCandidate.view)
+			? graphCandidate.view
+			: current.relationshipGraph.view,
+		controlsOpen:
+			typeof graphCandidate.controlsOpen === 'boolean'
+				? graphCandidate.controlsOpen
+				: current.relationshipGraph.controlsOpen,
+	};
+	const state = { projectPath, visualization, corkboard, timeline, beatSheet, freeform, relationshipGraph };
 	return {
 		state,
 		changed:
@@ -394,7 +434,9 @@ export function mergeStoryStructureViewState(
 			state.freeform.minimap !== current.freeform.minimap ||
 			state.freeform.snap !== current.freeform.snap ||
 			state.freeform.snapObjects !== current.freeform.snapObjects ||
-			state.freeform.readOnly !== current.freeform.readOnly,
+			state.freeform.readOnly !== current.freeform.readOnly ||
+			state.relationshipGraph.view !== current.relationshipGraph.view ||
+			state.relationshipGraph.controlsOpen !== current.relationshipGraph.controlsOpen,
 	};
 }
 
@@ -521,4 +563,23 @@ export interface FreeformMemory extends FreeformSettings {
 
 export function freeformMemory(settings?: FreeformSettings): FreeformMemory {
 	return { ...(settings ?? defaultFreeformSettings()), viewports: new Map() };
+}
+
+/**
+ * What outlives a mount of the relationship graph: the settings the view
+ * persists, and what lasts the session -- the words searched for, the node
+ * a local graph is drawn about, and where every node was left, so a frame
+ * rebuilt for a language or a project reload draws the same picture rather
+ * than settling a new one.
+ */
+export interface RelationshipGraphMemory extends RelationshipGraphSettings {
+	query: string;
+	/** The node the local graph is drawn about, or null for the whole graph. */
+	focus: string | null;
+	/** Where each node stood, by id, and whether it was pinned there. */
+	positions: Map<string, { x: number; y: number; pinned: boolean }>;
+}
+
+export function relationshipGraphMemory(settings?: RelationshipGraphSettings): RelationshipGraphMemory {
+	return { ...(settings ?? defaultRelationshipGraphSettings()), query: '', focus: null, positions: new Map() };
 }

@@ -6152,6 +6152,7 @@ export class SnowflakeDashboardView extends ItemView {
 						freeform: 'layout-template',
 						timeline: 'gantt-chart',
 						'beat-sheet': 'list-ordered',
+						'relationship-graph': 'git-fork',
 					};
 					for (const family of STORY_STRUCTURE_FAMILIES) {
 						menu.addItem((item) =>

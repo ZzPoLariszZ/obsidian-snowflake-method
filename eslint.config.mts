@@ -105,6 +105,10 @@ export default defineConfig(
 						'English - Chapter 1',
 						// The rule dialog's example first number, a title too.
 						'Chapter 0001',
+						// The relationship graph names its two views as pairs, each half
+						// a title of its own, at the user's word.
+						'^Entity ↔ Entity$',
+						'^Scene ↔ Manuscript$',
 					],
 				},
 			],

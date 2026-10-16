@@ -28,6 +28,7 @@ export const en = {
 	'commands.openFreeform': 'Open freeform workspace',
 	'commands.openTimeline': 'Open timeline workspace',
 	'commands.openBeatSheet': 'Open beat sheet workspace',
+	'commands.openRelationshipGraph': 'Open relationship graph workspace',
 	'commands.openManuscriptStream': 'Open manuscript stream',
 	'commands.migrateMemberNotes': 'Update notes in older format',
 	'commands.splitManuscriptSegment': 'Split manuscript note at the cursor',
@@ -1168,10 +1169,12 @@ export const en = {
 	'storyStructure.family.freeform': 'Freeform',
 	'storyStructure.family.timeline': 'Timeline',
 	'storyStructure.family.beat-sheet': 'Beat sheet',
+	'storyStructure.family.relationship-graph': 'Relationship graph',
 	'storyStructure.titleFor.corkboard-ordered': '{project} · corkboard',
 	'storyStructure.titleFor.corkboard-freeform': '{project} · freeform',
 	'storyStructure.titleFor.timeline': '{project} · timeline',
 	'storyStructure.titleFor.beat-sheet': '{project} · beat sheet',
+	'storyStructure.titleFor.relationship-graph': '{project} · relationship graph',
 	'storyStructure.noProject':
 		'Open a Snowflake project to see its story structure.',
 	'storyStructure.loadFailed': 'The story structure could not be read.',
@@ -1315,6 +1318,16 @@ export const en = {
 		'The beat sheet file was written by a newer version of the plugin and has been left as it is.',
 	'beatSheet.corruptPreserved':
 		'The beat sheet file could not be read and has been set aside as {path}.',
+	'relationshipGraph.toolbar': 'Relationship graph toolbar',
+	'relationshipGraph.view': 'View',
+	'relationshipGraph.view.entities': 'Entity ↔ Entity',
+	'relationshipGraph.view.sceneManuscript': 'Scene ↔ Manuscript',
+	'relationshipGraph.search': 'Search entities',
+	'relationshipGraph.fit': 'Fit to screen',
+	'relationshipGraph.resetView': 'Reset view',
+	'relationshipGraph.controls': 'Controls',
+	'relationshipGraph.empty':
+		"No relationships yet. Add one in a character, scene or worldbuilding note's form.",
 	'relationshipGraph.newerSchema':
 		'The relationship graph file was written by a newer version of the plugin and has been left as it is.',
 	'relationshipGraph.corruptPreserved':

@@ -9,6 +9,7 @@ import {
 	corkboardMemory,
 	defaultBeatSheetSettings,
 	defaultFreeformSettings,
+	defaultRelationshipGraphSettings,
 	defaultStoryStructureState,
 	defaultTimelineSettings,
 	familyVisualization,
@@ -17,6 +18,7 @@ import {
 	isCorkboardMode,
 	isStoryStructureVisualization,
 	mergeStoryStructureViewState,
+	relationshipGraphMemory,
 	visualizationFamily,
 	corkboardViewAvailable,
 	entityCorkboardMemory,
@@ -31,6 +33,7 @@ const current: StoryStructureViewStateSnapshot = {
 	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
 	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false }, poolCollapsed: false, beatsCollapsed: true },
 	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false, snapObjects: false, readOnly: false },
+	relationshipGraph: { view: 'entities', controlsOpen: true },
 };
 
 describe('story structure restored state', () => {
@@ -48,6 +51,7 @@ describe('story structure restored state', () => {
 				timeline: defaultTimelineSettings(),
 				beatSheet: defaultBeatSheetSettings(),
 				freeform: defaultFreeformSettings(),
+				relationshipGraph: defaultRelationshipGraphSettings(),
 			},
 			changed: true,
 		});
@@ -71,6 +75,7 @@ describe('story structure restored state', () => {
 			timeline: current.timeline,
 			beatSheet: current.beatSheet,
 			freeform: current.freeform,
+			relationshipGraph: current.relationshipGraph,
 		});
 		expect(update.changed).toBe(true);
 	});
@@ -304,18 +309,43 @@ describe('story structure restored state', () => {
 		expect(JSON.stringify(current)).toBe(before);
 	});
 
+	it('restores the relationship graph view and the fold of its controls, and ignores what it does not know', () => {
+		expect(mergeStoryStructureViewState(current, { relationshipGraph: { view: 'scene-manuscript' } })).toEqual({
+			state: { ...current, relationshipGraph: { view: 'scene-manuscript', controlsOpen: true } },
+			changed: true,
+		});
+		expect(
+			mergeStoryStructureViewState(current, { relationshipGraph: { controlsOpen: false } }).state.relationshipGraph,
+		).toEqual({ view: 'entities', controlsOpen: false });
+		expect(mergeStoryStructureViewState(current, { relationshipGraph: { view: 'tags', controlsOpen: 'yes' } })).toEqual({
+			state: current,
+			changed: false,
+		});
+		expect(mergeStoryStructureViewState(current, { relationshipGraph: 7 })).toEqual({ state: current, changed: false });
+		expect(defaultStoryStructureState().relationshipGraph).toEqual({ view: 'entities', controlsOpen: true });
+		expect(relationshipGraphMemory({ view: 'scene-manuscript', controlsOpen: false })).toEqual({
+			view: 'scene-manuscript',
+			controlsOpen: false,
+			query: '',
+			focus: null,
+			positions: new Map(),
+		});
+	});
+
 	it('maps every saved visualization to its peer tab and back', () => {
 		expect(STORY_STRUCTURE_VISUALIZATIONS.map(visualizationFamily)).toEqual([
 			'corkboard',
 			'freeform',
 			'timeline',
 			'beat-sheet',
+			'relationship-graph',
 		]);
 		expect(STORY_STRUCTURE_FAMILIES.map((family) => familyVisualization(family))).toEqual([
 			'corkboard-ordered',
 			'corkboard-freeform',
 			'timeline',
 			'beat-sheet',
+			'relationship-graph',
 		]);
 		expect(STORY_STRUCTURE_FAMILIES.map(familyVisualization).map(visualizationFamily)).toEqual(
 			STORY_STRUCTURE_FAMILIES,

@@ -56,6 +56,7 @@ import type { BeatSheetControls } from '../../src/ui/beat-sheet-bridge';
 import type { FreeformControls } from '../../src/ui/freeform-bridge';
 import type { MountFreeformCanvas } from '../../src/ui/freeform-canvas-port';
 import type { TimelineControls } from '../../src/ui/timeline-bridge';
+import type { RelationshipGraphControls } from '../../src/ui/relationship-graph-bridge';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
 const firstProject = 'First/First.md';
@@ -79,6 +80,8 @@ function workspaceView() {
 	const beatSheet = vi.fn(() => beatSheetBridge);
 	const freeformBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
 	const freeform = vi.fn(() => freeformBridge);
+	const relationshipGraphBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
+	const relationshipGraph = vi.fn(() => relationshipGraphBridge);
 	const freeformHandle = {
 		refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn(),
 	};
@@ -87,7 +90,7 @@ function workspaceView() {
 	const view = new SnowflakeStoryStructureView({
 		app: { scope: {}, workspace },
 	} as unknown as WorkspaceLeaf, {
-		host: { loadDashboardModel, openStoryStructure, activateProject, timeline, beatSheet, freeform,
+		host: { loadDashboardModel, openStoryStructure, activateProject, timeline, beatSheet, freeform, relationshipGraph,
 			getRecentStep: () => 8 } as unknown as DashboardHost,
 		fingerprint: () => `en|${recent ?? ''}`,
 		recentProjectPath: () => recent,
@@ -98,6 +101,7 @@ function workspaceView() {
 		beatSheet: () => { throw new Error('The frame is stubbed in this test.'); },
 		freeform: renderFreeform,
 		freeformCanvas,
+		relationshipGraph: () => { throw new Error('The frame is stubbed in this test.'); },
 	});
 	const renderFrame = vi.fn();
 	// Preserve the real state lifecycle and project reads; rendering the
@@ -108,7 +112,7 @@ function workspaceView() {
 		renderError: (error: unknown) => { throw error; },
 	});
 	return { view, workspace, loadDashboardModel, openStoryStructure, activateProject, renderFrame, timelineBridge, beatSheetBridge,
-		freeformBridge, freeformHandle, freeformCanvas, renderFreeform,
+		freeformBridge, freeformHandle, freeformCanvas, renderFreeform, relationshipGraphBridge,
 		setRecent: (path: string | null) => { recent = path; } };
 }
 
@@ -684,6 +688,47 @@ describe('the timeline tab', () => {
 		expect(asked[asked.length - 1]).toBe(renamed);
 		release({ path: renamed, projectId: 'first', title: renamed, locale: 'en' } as ProjectDashboardModel);
 		await renaming;
+	});
+});
+
+describe('the relationship graph tab', () => {
+	it('mounts the graph workspace in its own host, refreshes it in place and disposes it on a switch', async () => {
+		const { view, relationshipGraphBridge } = workspaceView();
+		const dom = new CorkboardDom();
+		const handle = {
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
+		};
+		const relationshipGraph = vi.fn((_host: HTMLElement, _controls: RelationshipGraphControls) => handle);
+		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
+		Object.assign(deps, { relationshipGraph });
+		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });
+		delete (view as unknown as { renderFrame?: unknown }).renderFrame;
+		Object.assign(view, { contentEl: dom.container });
+		await view.setState({
+			projectPath: firstProject,
+			visualization: 'relationship-graph',
+			relationshipGraph: { view: 'scene-manuscript', controlsOpen: false },
+		}, { history: false });
+		await view.onOpen();
+		expect(relationshipGraph).toHaveBeenCalledOnce();
+		const host = dom.container.querySelector('.snowflake-method-relationship-graph-host')!;
+		expect(host.parent?.classes.has('is-self-scrolling')).toBe(true);
+		const controls = relationshipGraph.mock.calls[0]![1];
+		expect(controls.bridge()).toBe(relationshipGraphBridge);
+		expect(controls.bridge()).toBe(relationshipGraphBridge);
+		expect(controls.projectPath()).toBe(firstProject);
+		// The layout's view and fold reach the memory the workspace reads.
+		expect(controls.memory).toMatchObject({ view: 'scene-manuscript', controlsOpen: false, query: '', focus: null });
+		await view.refresh();
+		expect(handle.refresh).toHaveBeenCalledOnce();
+		expect(handle.dispose).not.toHaveBeenCalled();
+		// A choice the workspace writes on the memory is the layout's on the next save.
+		controls.memory.view = 'entities';
+		controls.remember();
+		expect(view.getState()).toMatchObject({ relationshipGraph: { view: 'entities', controlsOpen: false } });
+		view.showVisualization('corkboard-freeform');
+		expect(handle.dispose).toHaveBeenCalledOnce();
+		expect(dom.container.querySelector('.snowflake-method-relationship-graph-host')).toBeNull();
 	});
 });
 

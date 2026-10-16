@@ -316,6 +316,7 @@ import { STICKY_NOTE_HOVER_SOURCE } from './ui/sticky-note-card';
 import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/sticky-note-dialogs';
 import type { TaskBoardBridge } from './ui/task-bridge';
 import type { BeatSheetBridge } from './ui/beat-sheet-bridge';
+import type { RelationshipGraphBridge } from './ui/relationship-graph-bridge';
 import { DocumentBell } from './ui/document-bell';
 import type { FreeformBridge, FreeformContext } from './ui/freeform-bridge';
 import {
@@ -372,6 +373,7 @@ import {
 import { renderCorkboard } from './ui/corkboard';
 import { renderBeatSheet } from './ui/beat-sheet';
 import { renderFreeform } from './ui/freeform';
+import { renderRelationshipGraph } from './ui/relationship-graph';
 import { freeformCanvasMount } from './ui/freeform-canvas';
 import { renderTimeline } from './ui/timeline';
 import type {
@@ -1294,6 +1296,7 @@ export default class SnowflakeMethodPlugin
 					// The engine is React's, and its code is asked for only here:
 					// a project that never opens the canvas never runs a line of it.
 					freeformCanvas: freeformCanvasMount(() => import('./ui/freeform-canvas-root')),
+					relationshipGraph: renderRelationshipGraph,
 					unloading: () => this.unloading,
 				}),
 		);
@@ -5093,6 +5096,42 @@ export default class SnowflakeMethodPlugin
 			exportCanvas: (viewId) =>
 				this.runCanvasExport(panelProject(), (project, words) =>
 					this.projects.canvasExporter.planTimeline(project, viewId, words)),
+		};
+	}
+
+	/**
+	 * The bridge the relationship graph workspace reads its project's graph
+	 * file through and writes the entity view's state to, shaped as the
+	 * timeline's is: the document as the file holds it, a bell rung when that
+	 * file moves, and one write for the view's state. The write goes through
+	 * the gate, so a read-only project's graph is looked at and never written.
+	 */
+	relationshipGraph(context: SessionPanelContext = {}): RelationshipGraphBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		const graphs = this.projects.relationshipGraph;
+		const { write } = this.documentGates(this.relationshipGraphBell, panelProject);
+		return {
+			t,
+			read: async () => {
+				// resolveProject rather than the writable gate: a read-only
+				// project's graph is still there to look at.
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				return {
+					projectPath: project.projectFile,
+					locale: project.locale,
+					held: await graphs.read(project),
+					readOnly: project.readOnly,
+				};
+			},
+			subscribe: (listener) => this.relationshipGraphBell.subscribe(listener),
+			updateEntities: (patch) => write((project) => graphs.updateEntities(project, patch)),
 		};
 	}
 
@@ -9775,6 +9814,19 @@ export default class SnowflakeMethodPlugin
 				const available = this.settings.recentProjectPath !== null;
 				if (!checking && available) {
 					void this.openStoryStructure('beat-sheet').catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'open-relationship-graph',
+			name: this.globalT('commands.openRelationshipGraph'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openStoryStructure('relationship-graph').catch((error: unknown) => {
 						this.showError(error);
 					});
 				}
