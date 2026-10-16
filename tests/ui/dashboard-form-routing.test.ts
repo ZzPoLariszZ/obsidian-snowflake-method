@@ -368,8 +368,8 @@ describe('words added to a note as one of its aliases', () => {
 		expect(second.patchEntity).toHaveBeenCalledExactlyOnceWith('e1', { expectedRevision: 'r3', aliases: ['The Hall'] }, projectPath);
 	});
 
-	it('leaves words that already name the note, as its name or as an alias', async () => {
-		for (const words of ['Ash', 'The Tree']) {
+	it('leaves words that already name the note, as its name or as an alias, however they are cased or spaced', async () => {
+		for (const words of ['Ash', 'The Tree', 'ASH', 'the  tree']) {
 			const { plugin, patchCharacter, refreshDashboards } = picked({ group: 'character', option: { value: 'c1', label: 'Ash' } });
 			await plugin.addAliasFromText(projectPath, words);
 			expect(patchCharacter).not.toHaveBeenCalled();

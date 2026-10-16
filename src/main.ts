@@ -135,6 +135,7 @@ import {
 	type StickyNoteColor,
 	type ChapterFollower,
 	type ChapterNumbering,
+	foldName,
 	galleryLinkTarget,
 	type ChapterNumberRule,
 	type ChapterNumberProposal,
@@ -11858,7 +11859,9 @@ export default class SnowflakeMethodPlugin
 		if (picked === null) return;
 		const owner = this.aliasOwnerOf(project, picked);
 		if (owner === null) return;
-		if (owner.name === name || owner.aliases.includes(name)) {
+		// Matched as names are matched everywhere else, folded: a variant in case or spacing is the same name.
+		const folded = foldName(name);
+		if (foldName(owner.name) === folded || owner.aliases.some((alias) => foldName(alias) === folded)) {
 			new Notice(t('manuscript.menu.aliasExists', { alias: name, name: owner.name }));
 			return;
 		}
