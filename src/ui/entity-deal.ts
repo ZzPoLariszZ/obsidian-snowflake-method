@@ -7,11 +7,10 @@
  * and delete.
  */
 
-import { foldName } from '../domain';
 import { characterRoleName } from '../services';
 import type { CorkboardControls } from './corkboard-bridge';
 import type { CorkboardDeal } from './corkboard-deal';
-import { CHARACTER_DRAG_TYPE, ENTITY_DRAG_TYPE } from './corkboard-layout';
+import { CHARACTER_DRAG_TYPE, ENTITY_DRAG_TYPE, nameTaken } from './corkboard-layout';
 import {
 	ENTITY_CARD_PART_CLASSES,
 	createEntityCardDeck,
@@ -133,12 +132,7 @@ export function entityDeal(controls: CorkboardControls<EntityFilters>, kind: str
 			...deps,
 			host,
 			membersById: () => membersById,
-			nameTaken: (member, name) => {
-				const folded = foldName(name);
-				return [...membersById.values()].some(
-					(candidate) => candidate.id !== member.id && foldName(candidate.name) === folded,
-				);
-			},
+			nameTaken: (member, name) => nameTaken(name, member.id, [...membersById.values()], (candidate) => candidate.name),
 			footWord: (member) => boardFootWord(t, model?.locale ?? 'en', member),
 			icon: (member) => kindIcon(model ?? { worldbuildingKinds: [] }, kindOf(member)),
 		}),

@@ -670,14 +670,22 @@ export function statusOptions(
 	];
 }
 
-/** Whether another scene already holds the title, folded the way the form folds names. */
+/** Whether another note of the kind already bears the name, folded the way the form folds names. */
+export function nameTaken<Member extends { id: string }>(
+	name: string,
+	ownId: string,
+	members: readonly Member[],
+	nameOf: (member: Member) => string,
+): boolean {
+	const folded = foldName(name);
+	return members.some((member) => member.id !== ownId && foldName(nameOf(member)) === folded);
+}
+
+/** Whether another scene already holds the title. */
 export function titleTaken(
 	title: string,
 	ownId: string,
 	scenes: readonly { id: string; title: string }[],
 ): boolean {
-	const folded = foldName(title);
-	return scenes.some(
-		(scene) => scene.id !== ownId && foldName(scene.title) === folded,
-	);
+	return nameTaken(title, ownId, scenes, (scene) => scene.title);
 }
