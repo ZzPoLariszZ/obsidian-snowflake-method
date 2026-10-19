@@ -70,6 +70,25 @@ describe('projectedIndexAt', () => {
 	});
 });
 
+describe('projectProse closers', () => {
+	it('remembers the syntax that closes a run of prose', () => {
+		const source = 'A *word* and [a link](x "t") here.';
+		const { closers } = projectProse(source);
+		// The closing star, its own extent and no further.
+		const star = source.indexOf('* and');
+		expect(closers.get(star)).toEqual({ to: star + 1, reach: star + 1 });
+		// The opening star has the word after it and is not one.
+		expect(closers.has(source.indexOf('*'))).toBe(false);
+		// A link's tail chains from its `]` to the end of the link.
+		const bracket = source.indexOf(']');
+		expect(closers.get(bracket)).toEqual({
+			to: bracket + 1,
+			reach: source.indexOf(')') + 1,
+		});
+		expect(closers.has(source.indexOf('['))).toBe(false);
+	});
+});
+
 describe('projectProse entities', () => {
 	it('spells the entities the export spells, through the one table', () => {
 		expect(projectProse('5 &times; 3 &laquo;q&raquo;').text).toBe('5×3«q»');

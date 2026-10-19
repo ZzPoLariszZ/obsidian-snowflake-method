@@ -31,6 +31,75 @@ describe('projectProse', () => {
 	});
 });
 
+describe('findPassage on the side of the character before', () => {
+	it('answers the end of a paragraph, not the start of the next', () => {
+		const source = 'One two.\n\nThree four.';
+		// The page reads "One two.\nThree four."; the pointer stood past the
+		// full stop, where the browser's answer is the newline after it.
+		const passage = 'One two.\nThree four.';
+		expect(findPassage(source, passage, 8, 0, -1)).toBe(8);
+		// Read as the character after, the same click is the T of Three.
+		expect(findPassage(source, passage, 8, 0, 1)).toBe(10);
+	});
+
+	it('steps over the syntax that closes the last word', () => {
+		const source = 'She said *no.*\n\nNext line here.';
+		const passage = 'She said no.\nNext line here.';
+		// After the closing star, not between the full stop and it.
+		expect(findPassage(source, passage, 12, 0, -1)).toBe(
+			source.indexOf('*\n') + 1,
+		);
+		// The opening star of the next word is not stepped into: a click
+		// after "said" stays before the space.
+		expect(findPassage(source, passage, 9, 0, -1)).toBe(
+			source.indexOf('said') + 4,
+		);
+	});
+
+	it("steps over a link's target, title and all", () => {
+		const source =
+			'Open the [old door](notes/door.md "the door")\n\nAnd more words.';
+		const passage = 'Open the old door\nAnd more words.';
+		expect(findPassage(source, passage, 17, 0, -1)).toBe(
+			source.indexOf(')\n') + 1,
+		);
+	});
+
+	it("steps over a wikilink's closing brackets", () => {
+		const source = '那天晚上她去了[[Demo/Alice|小艾]]\n\n第二天早上她又去了一次。';
+		const passage = '那天晚上她去了小艾\n第二天早上她又去了一次。';
+		expect(findPassage(source, passage, 9, 0, -1)).toBe(
+			source.indexOf(']]') + 2,
+		);
+	});
+
+	it('stays before a hard break', () => {
+		const source = 'one two three\\\nfour five six';
+		const passage = 'one two three\nfour five six';
+		expect(findPassage(source, passage, 13, 0, -1)).toBe(
+			source.indexOf('\\'),
+		);
+	});
+
+	it('answers the end of a wrapped row at the space, not past it', () => {
+		const source = 'alpha beta gamma delta epsilon';
+		expect(findPassage(source, source, 10, 0, -1)).toBe(10);
+		expect(findPassage(source, source, 10, 0, 1)).toBe(11);
+	});
+
+	it('answers the end of the note past its last letter', () => {
+		const source = 'Only this much here.';
+		expect(findPassage(source, source, source.length, 0, -1)).toBe(
+			source.length,
+		);
+	});
+
+	it('falls back to the character after with nothing before the pointer', () => {
+		const source = 'Only this much here.';
+		expect(findPassage(source, source, 0, 0, -1)).toBe(0);
+	});
+});
+
 describe('findPassage', () => {
 	it('finds the words the reader was pointing at', () => {
 		const passage = 'and the road out was gone';

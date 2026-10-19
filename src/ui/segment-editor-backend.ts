@@ -366,15 +366,18 @@ export interface SegmentEditorHandle {
 	 * A rendered note and an editor showing the same note are not the same
 	 * height, so the words an author clicked are somewhere else by the time they
 	 * can type in them. Rather than chase two layouts into agreement, the caller
-	 * says which words those were, how far into them the pointer was, where on
-	 * the screen they were, and roughly how far through the note — and scrolls by
-	 * what comes back. Null when the passage cannot be found.
+	 * says which words those were, how far into them the pointer was, which
+	 * side of the pointer the caret belongs on (-1 the character before it, 1
+	 * the one after), where on the screen they were, and roughly how far
+	 * through the note — and scrolls by what comes back. Null when the passage
+	 * cannot be found.
 	 */
 	seek(
 		passage: string,
 		lead: number,
 		anchor: { rowTop: number; pointerY: number },
 		near: number,
+		side: -1 | 1,
 	): number | null;
 	/**
 	 * The mirror of `seek`: which words stand at a height on the screen, said
@@ -682,9 +685,10 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				lead: number,
 				anchor: { rowTop: number; pointerY: number },
 				near: number,
+				side: -1 | 1,
 			) => {
 				const source = view.state.doc.toString();
-				const found = findPassage(source, passage, lead, near);
+				const found = findPassage(source, passage, lead, near, side);
 				// Wherever the caret ends up it must be somewhere the reader can see,
 				// because focusing an editor scrolls the caret into view — and a caret
 				// left at the first character drags the page to the top of the note,
@@ -705,15 +709,23 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				// moving it, and typewriter scrolling must not answer it.
 				if (view.state.selection.main.head !== position) {
 					view.dispatch({
-						selection: EditorSelection.cursor(position),
+						// Leaning the way the click did, so a caret put at the end
+						// of a wrapped row is drawn there, not at the start of the
+						// row below.
+						selection: EditorSelection.cursor(
+							position,
+							found === null ? 0 : side,
+						),
 						annotations: FROM_ELSEWHERE.of(true),
 					});
 				}
 				if (found === null) return null;
 				// Measured from the top of the row the click was on, so the
 				// caller lands the row where it stood rather than a glyph lower,
-				// at the pointer's own height.
-				const coords = view.coordsAtPos(position);
+				// at the pointer's own height -- and on the click's own side of
+				// the position, which at a wrap is the difference between the
+				// row clicked and the one below.
+				const coords = view.coordsAtPos(position, side);
 				return coords === null ? null : coords.top - anchor.rowTop;
 			},
 			place: (screenY: number) => {

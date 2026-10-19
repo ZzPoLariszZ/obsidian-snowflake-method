@@ -4624,6 +4624,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			clicked.lead,
 			{ rowTop: clicked.rowTop, pointerY: clicked.screenY },
 			clicked.near,
+			clicked.side,
 		);
 		if (stream === null || gone === null || gone === undefined || gone === 0) {
 			return;

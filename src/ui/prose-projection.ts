@@ -35,6 +35,25 @@ export interface ProseProjection {
 	text: string;
 	/** Where projected character `i` sits in the source. */
 	sourceIndexOf: number[];
+	/**
+	 * The syntax that closes a run of prose -- the second half of an
+	 * emphasis, the target half of a link, a wikilink's closing brackets --
+	 * by the source position each piece starts at. A caret meant for the
+	 * end of the prose belongs after these, not between the last letter and
+	 * them.
+	 */
+	closers: ReadonlyMap<number, Closer>;
+}
+
+export interface Closer {
+	/** Where this piece of syntax ends. */
+	to: number;
+	/**
+	 * Where the construct it belongs to ends: a link's target may hold a
+	 * space before its title, and the walk over the closers steps over that
+	 * too, but never past here.
+	 */
+	reach: number;
 }
 
 const WHITESPACE = /\s/;
@@ -71,12 +90,15 @@ const SILENT = new Set([
  * A stretch of source the projection does not carry verbatim: markup, which
  * contributes nothing, or an escape or entity, which contributes the character
  * it stood for — recorded with the source position that character answers to.
+ * Markup remembers where the construct it belongs to ends, which is what tells
+ * its closing half from its opening half once the prose has been projected.
  */
 interface Elision {
 	from: number;
 	to: number;
 	emit?: string;
 	at?: number;
+	reach?: number;
 }
 
 /** Regions the page shows verbatim, wikilink syntax included. */
@@ -98,12 +120,24 @@ export function projectProse(source: string): ProseProjection {
 				codeRanges.push({ from: node.from, to: node.to });
 				return true;
 			}
-			if (MARKS.has(node.name) || SILENT.has(node.name)) {
+			if (MARKS.has(node.name)) {
+				elisions.push({
+					from: node.from,
+					to: node.to,
+					reach: node.node.parent?.to,
+				});
+				return false;
+			}
+			if (SILENT.has(node.name)) {
 				elisions.push({ from: node.from, to: node.to });
 				return false;
 			}
 			if (node.name === 'URL' && autolinks === 0) {
-				elisions.push({ from: node.from, to: node.to });
+				elisions.push({
+					from: node.from,
+					to: node.to,
+					reach: node.node.parent?.to,
+				});
 				return false;
 			}
 			if (node.name === 'Escape') {
@@ -165,7 +199,7 @@ export function projectProse(source: string): ProseProjection {
 				continue;
 			}
 			survivors.push({ from: link.from, to: link.visibleFrom });
-			survivors.push({ from: link.visibleTo, to: link.to });
+			survivors.push({ from: link.visibleTo, to: link.to, reach: link.to });
 		}
 		survivors.sort((left, right) => left.from - right.from);
 		elisions.length = 0;
@@ -200,23 +234,26 @@ export function projectProse(source: string): ProseProjection {
 		cursor = Math.max(cursor, elision.to);
 	}
 	keep(source.slice(cursor), (index) => cursor + index);
-	return { text: text.join(''), sourceIndexOf };
+
+	// The markup with nothing of its own construct left to show after it: the
+	// closing star of an emphasis, everything from a link's `]` to its `)`.
+	// Whatever opens a construct has that construct's text after it and is
+	// left out, so a caret put after a word never steps into the emphasis
+	// that begins at the word's next letter.
+	const closers = new Map<number, Closer>();
+	for (const elision of elisions) {
+		if (elision.reach === undefined) continue;
+		const following = sourceIndexOf[firstAtOrAfter(sourceIndexOf, elision.to)];
+		if (following === undefined || following >= elision.reach) {
+			closers.set(elision.from, { to: elision.to, reach: elision.reach });
+		}
+	}
+	return { text: text.join(''), sourceIndexOf, closers };
 }
 
 /** One projection kept, for the handful of seeks a single click asks for. */
 let memo: { source: string; projection: ProseProjection } | null = null;
 
-/**
- * The source position of the character the pointer was on, or null.
- *
- * `passage` is rendered text exactly as the DOM gave it, `lead` how far into
- * it the pointer was, and `near` roughly how far through the note — for
- * telling copies of the same wording apart, measured as a fraction because the
- * source and the page are different lengths. Only ever the whole passage: a
- * shorter prefix finds something almost anywhere in a chapter, and acting on
- * the wrong copy scrolls the page somewhere the author never was — worse than
- * the small shift of doing nothing.
- */
 function projectionOf(source: string): ProseProjection {
 	if (memo === null || memo.source !== source) {
 		memo = { source, projection: projectProse(source) };
@@ -246,13 +283,34 @@ export function projectedIndexAt(source: string, at: number): number | null {
 	return Math.min(firstAtOrAfter(sourceIndexOf, at), sourceIndexOf.length - 1);
 }
 
+/**
+ * The source position a click on rendered prose answers to, or null.
+ *
+ * `passage` is rendered text exactly as the DOM gave it, `lead` how far into
+ * it the pointer was, and `near` roughly how far through the note — for
+ * telling copies of the same wording apart, measured as a fraction because the
+ * source and the page are different lengths. Only ever the whole passage: a
+ * shorter prefix finds something almost anywhere in a chapter, and acting on
+ * the wrong copy scrolls the page somewhere the author never was — worse than
+ * the small shift of doing nothing.
+ *
+ * `side` says which of its two neighbours the click belongs to. The pointer
+ * stood between two characters, and the two are not always side by side:
+ * past the end of a paragraph, the one after is the first letter of the next
+ * paragraph, a row and a gap lower. A click on the side of the character
+ * before (-1) answers with the end of that character's prose -- after the
+ * letter itself and after whatever syntax closes it, so a caret put past an
+ * emphasised last word lands outside the emphasis. A click on the side of
+ * the character after (1) answers with that character's own position.
+ */
 export function findPassage(
 	source: string,
 	passage: string,
 	lead: number,
 	near: number,
+	side: -1 | 1 = 1,
 ): number | null {
-	const { text, sourceIndexOf } = projectionOf(source);
+	const { text, sourceIndexOf, closers } = projectionOf(source);
 
 	// The passage under the projection's own rule, and the pointer's place in
 	// it counted in surviving characters.
@@ -274,6 +332,24 @@ export function findPassage(
 		}
 	}
 	if (best === -1) return null;
+
+	const before = sourceIndexOf[best + soughtLead - 1];
+	if (side === -1 && soughtLead > 0 && before !== undefined) {
+		let end = before + 1;
+		let reach = end;
+		for (;;) {
+			const closer = closers.get(end);
+			if (closer !== undefined) {
+				end = closer.to;
+				reach = Math.max(reach, closer.reach);
+			} else if (end < reach && WHITESPACE.test(source.charAt(end))) {
+				end += 1;
+			} else {
+				break;
+			}
+		}
+		return end;
+	}
 
 	const found = sourceIndexOf[best + soughtLead];
 	if (found !== undefined) return found;

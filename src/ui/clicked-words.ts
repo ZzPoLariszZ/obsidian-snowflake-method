@@ -5,11 +5,24 @@
  * naming the rendered container it walks.
  */
 
+const WHITESPACE = /\s/;
+
+/** The vertical extent of a character's box on the page. */
+export interface GlyphBand {
+	top: number;
+	bottom: number;
+}
+
 export interface ClickedWords {
 	/** The prose the pointer was over, to be found again in the Markdown. */
 	passage: string;
 	/** How far into that passage the pointer itself was. */
 	lead: number;
+	/**
+	 * Which of its two neighbours the click belongs to: -1 the character
+	 * before the pointer, 1 the one after. See `clickedSide`.
+	 */
+	side: -1 | 1;
 	/** Where on the screen it was, so it can be put back there. */
 	screenY: number;
 	/**
@@ -63,6 +76,17 @@ export function clickedWords(
 	if (!met) return undefined;
 	const at = before + spot.offset;
 	const prose = container.textContent ?? '';
+	const text = spot.node.textContent ?? '';
+	const beforeBox = glyphBand(doc, spot.node, lastLetterBefore(text, spot.offset));
+	const afterBox = glyphBand(doc, spot.node, firstLetterFrom(text, spot.offset));
+	const side = clickedSide(
+		spot.offset,
+		text.length,
+		text.charAt(spot.offset),
+		beforeBox,
+		afterBox,
+		event.clientY,
+	);
 	// Reaching back from the click as well as forward, because clicking past the
 	// end of a line puts the caret at the end of that paragraph's text and leaves
 	// nothing in front of it to go looking for.
@@ -70,35 +94,105 @@ export function clickedWords(
 	return {
 		passage: prose.slice(from, at + 48),
 		lead: at - from,
+		side,
 		screenY: event.clientY,
-		rowTop: rowTopAt(doc, spot) ?? event.clientY,
+		rowTop: rowTopOf(beforeBox, afterBox, side, event.clientY) ?? event.clientY,
 		near: at / Math.max(1, prose.length),
 	};
 }
 
 /**
- * The top of the row a caret position stands on: the box of the character
- * after it, or, at the end of a text node where there is none, of the one
- * before. Null when neither has a box to measure.
+ * Which of its two neighbours a click between characters belongs to: -1 the
+ * character before the pointer, 1 the one after.
+ *
+ * The browser answers a click with a position between two characters, and
+ * the two are not always side by side on the page. Past the end of a
+ * paragraph the one after is the first letter of the next paragraph, a row
+ * and a gap lower; past the end of a wrapped row it is the first letter of
+ * the row below; after the last letter of a word it is the space. In each of
+ * these the pointer stood at the end of what came before, and that is where
+ * the caret belongs. Read as the character after, a click past a paragraph's
+ * last word put the caret at the start of the next paragraph, and the page
+ * moved by a row and a gap to put that paragraph's first row where the
+ * clicked row had been.
+ *
+ * The end of a text node is the end of its prose, whether a paragraph's or
+ * an emphasis's. Inside one, a pointer standing nearer the row of the
+ * character before than the row of the one after was at the end of a
+ * wrapped row -- measured against the middle of the band between the two,
+ * so a pointer in the leading just above a row still belongs to that row --
+ * and a pointer with a space after it was at the end of a word.
  */
-function rowTopAt(
-	doc: Document,
-	spot: { node: Node; offset: number },
-): number | null {
-	const length = spot.node.textContent?.length ?? 0;
-	const spans: [number, number][] = [
-		[spot.offset, spot.offset + 1],
-		[spot.offset - 1, spot.offset],
-	];
-	for (const [start, end] of spans) {
-		if (start < 0 || end > length || start >= end) continue;
-		const range = doc.createRange();
-		range.setStart(spot.node, start);
-		range.setEnd(spot.node, end);
-		const box = range.getBoundingClientRect();
-		if (box.height > 0) return box.top;
+export function clickedSide(
+	offset: number,
+	length: number,
+	after: string,
+	beforeBox: GlyphBand | null,
+	afterBox: GlyphBand | null,
+	pointerY: number,
+): -1 | 1 {
+	if (offset <= 0) return 1;
+	if (offset >= length) return -1;
+	if (
+		beforeBox !== null &&
+		afterBox !== null &&
+		beforeBox.bottom <= afterBox.top &&
+		pointerY < (beforeBox.bottom + afterBox.top) / 2
+	) {
+		return -1;
 	}
-	return null;
+	return WHITESPACE.test(after) ? -1 : 1;
+}
+
+/**
+ * The top of the row a click was on, from the boxes of the characters either
+ * side of it: the first, in the order the click's side puts them in, that
+ * spans the pointer's height, else the first there is. The character on the
+ * click's side comes first because the two can stand on different rows, and
+ * the caret goes to that one's row. Null when neither has a box.
+ */
+export function rowTopOf(
+	beforeBox: GlyphBand | null,
+	afterBox: GlyphBand | null,
+	side: -1 | 1,
+	pointerY: number,
+): number | null {
+	const ordered = side === -1 ? [beforeBox, afterBox] : [afterBox, beforeBox];
+	const boxes = ordered.filter((box): box is GlyphBand => box !== null);
+	const under = boxes.find(
+		(box) => pointerY >= box.top && pointerY < box.bottom,
+	);
+	return (under ?? boxes[0])?.top ?? null;
+}
+
+/** The index of the last character before `offset` that is not whitespace, or -1. */
+function lastLetterBefore(text: string, offset: number): number {
+	for (let index = Math.min(offset, text.length) - 1; index >= 0; index -= 1) {
+		if (!WHITESPACE.test(text.charAt(index))) return index;
+	}
+	return -1;
+}
+
+/** The index of the first character at or after `offset` that is not whitespace, or -1. */
+function firstLetterFrom(text: string, offset: number): number {
+	for (let index = Math.max(0, offset); index < text.length; index += 1) {
+		if (!WHITESPACE.test(text.charAt(index))) return index;
+	}
+	return -1;
+}
+
+/**
+ * The box of one character of a text node, or null where there is no such
+ * character or it has no box to measure.
+ */
+function glyphBand(doc: Document, node: Node, index: number): GlyphBand | null {
+	const length = node.textContent?.length ?? 0;
+	if (index < 0 || index >= length) return null;
+	const range = doc.createRange();
+	range.setStart(node, index);
+	range.setEnd(node, index + 1);
+	const box = range.getBoundingClientRect();
+	return box.height > 0 ? { top: box.top, bottom: box.bottom } : null;
 }
 
 /**

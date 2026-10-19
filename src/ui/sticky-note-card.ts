@@ -660,6 +660,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 				clicked.lead,
 				{ rowTop: clicked.rowTop, pointerY: clicked.screenY },
 				clicked.near,
+				clicked.side,
 			);
 			if (gone !== null && gone !== 0) this.bodyEl.scrollTop += gone;
 			frames += 1;
