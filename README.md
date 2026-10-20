@@ -24,7 +24,8 @@ A bilingual, Markdown-native fiction planning workspace for Obsidian. Your proje
 
 </div>
 
-https://github.com/user-attachments/assets/69e1a6c1-59a9-4ad8-bf82-377fe00e6383
+<p align="center"><a href="https://youtu.be/lZc-BsEMx70"><img src="assets/screenshots/promo_poster_en.png" width="100%" alt="Poster of the one-minute tour: the snowflake logo beside the words Snowflake Method and Obsidian novel-planning plugin on a parchment page, with a play button below them" /></a></p>
+<p align="center"><sub>Watch the one-minute tour on YouTube.</sub></p>
 
 ## What is the Snowflake Method?
 
@@ -745,7 +746,8 @@ The Freeform tab's canvas is built on [React Flow](https://reactflow.dev) (MIT, 
 
 </div>
 
-https://github.com/user-attachments/assets/7056fad2-9fe2-4c3d-89f0-1846a02051d7
+<p align="center"><a href="https://www.bilibili.com/video/BV1iVnN6hEsN"><img src="assets/screenshots/promo_poster_cn.png" width="100%" alt="一分钟导览的封面：羊皮纸色的页面上，雪花标志旁写着雪花写作法和 Obsidian 小说规划插件，下方有一个播放按钮" /></a></p>
+<p align="center"><sub>在哔哩哔哩观看一分钟导览。</sub></p>
 
 ## 什么是雪花写作法？
 
