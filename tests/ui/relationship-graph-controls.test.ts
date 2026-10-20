@@ -210,7 +210,7 @@ describe('the graph controls panel', () => {
 		const fixture = mountPanel();
 		const texts = fields.filter((field) => field.kind === 'text').map((field) => field.component.getValue());
 		const colors = fields.filter((field) => field.kind === 'color').map((field) => field.component.getValue());
-		expect(texts).toEqual(['kind:character', 'kind:scene', 'kind:location']);
+		expect(texts).toEqual(['kind:"character"', 'kind:"scene"', 'kind:"location"']);
 		expect(colors).toEqual(['#7852ee', '#ec7500', '#08b94e']);
 		const reset = fixture.el.querySelector('.snowflake-method-graph-groups-reset')!;
 		expect(reset.disabled).toBe(true);
@@ -218,8 +218,8 @@ describe('the graph controls panel', () => {
 		expect(fixture.lastChange()).toEqual({
 			groups: [
 				{ query: 'kind:character OR alice', color: '#7852ee' },
-				{ query: 'kind:scene', color: '#ec7500' },
-				{ query: 'kind:location', color: '#08b94e' },
+				{ query: 'kind:"scene"', color: '#ec7500' },
+				{ query: 'kind:"location"', color: '#08b94e' },
 			],
 		});
 		fixture.panel.refresh();
@@ -234,7 +234,7 @@ describe('the graph controls panel', () => {
 		expect(groups[3]).toEqual({ query: '', color: nextGroupColor(3) });
 		fixture.panel.refresh();
 		fixture.el.querySelector('.snowflake-method-graph-group-remove')!.dispatch('click');
-		expect(fixture.state().groups!.map((group) => group.query)).toEqual(['kind:scene', 'kind:location', '']);
+		expect(fixture.state().groups!.map((group) => group.query)).toEqual(['kind:"scene"', 'kind:"location"', '']);
 		fixture.panel.refresh();
 		fixture.el.querySelector('.snowflake-method-graph-groups-reset')!.dispatch('click');
 		expect(fixture.lastChange()).toEqual({ groups: null });

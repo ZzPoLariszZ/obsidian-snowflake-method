@@ -326,7 +326,8 @@ export function renderGraphControls(stage: HTMLElement, deps: GraphControlsDeps)
 	const groupsShown = (): EntityGraphGroup[] =>
 		state().groups?.slice() ??
 		deps.kinds().map((kind) => ({
-			query: `kind:${kind.id}`,
+			// Quoted, since a custom kind's id is its folder's name and may hold a space.
+			query: `kind:"${kind.id}"`,
 			color: deps.accentHex(defaultGraphColorName(kind.id, deps.customKinds())),
 		}));
 	let groupsKey = '';
