@@ -396,7 +396,7 @@ export function renderRelationshipGraph(
 	});
 	const refreshButton = iconButton('snowflake-method-relationship-graph-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
-		void controls.refresh().then(() => reload()).catch(notice);
+		void controls.refresh().catch(notice);
 	});
 	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 

@@ -303,6 +303,11 @@ function mount(options: MountOptions = {}) {
 		remember,
 	} as unknown as RelationshipGraphControls;
 	const handle = renderRelationshipGraph(dom.container as unknown as HTMLElement, controls);
+	// The view's refresh re-reads the model and hands it to the handle, which reads the file again.
+	refresh.mockImplementation(() => {
+		handle.refresh();
+		return Promise.resolve();
+	});
 	const root = dom.container.querySelector('.snowflake-method-relationship-graph')!;
 	return {
 		dom,
