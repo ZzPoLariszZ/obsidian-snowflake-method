@@ -19,6 +19,7 @@ export * from "./manuscript-analysis";
 export * from "./mention-index";
 export * from "./mention-store";
 export * from "./mirror-sync";
+export * from "./project-import-service";
 export * from "./project-service";
 export * from "./revision-store";
 export * from "./revision-service";

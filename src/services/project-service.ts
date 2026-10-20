@@ -170,6 +170,7 @@ import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { FreeformService } from "./freeform-service";
 import { ImportStore } from "./import-store";
+import { ProjectImportService } from "./project-import-service";
 import { isFreeformFilePath } from "./freeform-store";
 import { TaskService } from "./task-service";
 import { TimelineService } from "./timeline-service";
@@ -439,6 +440,8 @@ export class SnowflakeProjectService {
   readonly exporter: ManuscriptExportService;
   /** A workspace view as an Obsidian canvas, written beside the workspace's own file. */
   readonly canvasExporter: CanvasExportService;
+  /** Another project's design copied in: inspected, planned and written through the batch seams. */
+  readonly importer: ProjectImportService;
   /**
    * Definition node folders this service is raising right now. Making a
    * folder is what tells the vault watcher a node exists, so without this
@@ -607,6 +610,12 @@ export class SnowflakeProjectService {
       assertWritable: (project) => {
         this.assertProjectWritable(project);
       },
+    });
+    this.importer = new ProjectImportService(this.repository, this, {
+      definitionRootPath,
+      customFieldRootPath,
+      mint: (prefix) => createStableId(prefix),
+      now: analysis.now ?? ((): number => Date.now()),
     });
   }
 
@@ -6288,10 +6297,11 @@ export class SnowflakeProjectService {
       description: string;
       fields: readonly CustomField[];
     },
-    options: { previousName?: string; overwrite?: boolean } = {},
+    options: { previousName?: string; overwrite?: boolean; userInput?: boolean } = {},
   ): Promise<SaveCustomFieldTemplateResult> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
+    const userInput = options.userInput ?? true;
     const name = input.name.trim();
     if (name.length === 0 || safeFileName(name) !== name) {
       return { ok: false, code: "invalid-name" };
@@ -6353,14 +6363,14 @@ export class SnowflakeProjectService {
       const created = normalizePath(`${root}/${name}.md`);
       await this.repository.createManagedFile({
         path: created,
-        userInput: true,
+        userInput,
         template,
         frontmatter,
       });
       return { ok: true, path: created };
     }
     await this.repository.replaceManagedFile(path, template, frontmatter, {
-      userInput: true,
+      userInput,
     });
     return { ok: true, path };
   }

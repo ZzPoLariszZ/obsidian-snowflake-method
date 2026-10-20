@@ -711,7 +711,7 @@ export class ManuscriptService {
   }
 
   /** Where a note of this title is made, before any clash moves it along. */
-  plannedSegmentPath(project: ProjectRef, title: string): string {
+  plannedSegmentPath(project: Pick<ProjectRef, "rootPath" | "locale">, title: string): string {
     const name = title.trim();
     if (!name) throw new Error("Segment title is required.");
     const layout = getProjectPathLayout(project.locale);
