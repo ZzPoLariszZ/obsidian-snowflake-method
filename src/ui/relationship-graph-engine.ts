@@ -219,7 +219,7 @@ class RelationshipGraphEngine implements GraphHandle {
 				this.settledOnce = true;
 				if (this.fitPending) {
 					this.fitPending = false;
-					this.fit();
+					this.fit(false);
 				}
 			});
 
@@ -395,7 +395,7 @@ class RelationshipGraphEngine implements GraphHandle {
 		if (view === null) {
 			if (this.settledOnce) {
 				this.fitPending = false;
-				this.fit();
+				this.fit(false);
 				return;
 			}
 			this.fitPending = true;
@@ -406,7 +406,12 @@ class RelationshipGraphEngine implements GraphHandle {
 		this.applyView(this.viewFromNative(view), false);
 	}
 
-	fit(): void {
+	/**
+	 * Fits the graph to the box. A fit the engine does of itself, as the
+	 * layout settles or the box gets its size, is not announced: it is no
+	 * move of the user's to be kept as the view.
+	 */
+	fit(announce = true): void {
 		if (this.width === 0 || this.height === 0) {
 			this.fitPending = true;
 			return;
@@ -419,7 +424,7 @@ class RelationshipGraphEngine implements GraphHandle {
 			this.height,
 			this.dpr,
 		);
-		this.applyView(fitted, true);
+		this.applyView(fitted, announce);
 	}
 
 	resetView(): void {
@@ -528,7 +533,7 @@ class RelationshipGraphEngine implements GraphHandle {
 		if (width > 0 && height > 0 && this.fitPending) {
 			if (this.settledOnce) {
 				this.fitPending = false;
-				this.fit();
+				this.fit(false);
 			} else {
 				this.applyView(homeViewport(width, height, dpr), false);
 			}
