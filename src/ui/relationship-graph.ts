@@ -462,6 +462,10 @@ export function renderRelationshipGraph(
 			event.preventDefault();
 			event.stopPropagation();
 		};
+		// A chord with a modifier held is a hotkey's, Obsidian's or the user's
+		// own, and passes; only Enter keeps its modifier, which says how the
+		// node opens.
+		if ((event.metaKey || event.ctrlKey || event.altKey) && event.key !== 'Enter') return;
 		switch (event.key) {
 			case 'Tab': {
 				const order = tabOrder(lastPicture.nodes);
