@@ -122,4 +122,36 @@ describe('fillProjectSwitcherMenu', () => {
 		});
 		expect(greyed.rows.find((row) => row.title === 'actions.importFromProject')?.disabled).toBe(true);
 	});
+
+	it('offers Update from series after the import row only when there is a sibling to update from', () => {
+		const { menu, rows } = recordingMenu();
+		const onUpdate = vi.fn();
+		fillProjectSwitcherMenu(menu, {
+			projects: [project('A', { name: 'Saga', book: 1 })],
+			currentPath: 'A',
+			t: (key) => key,
+			onSelect: () => undefined,
+			onManage: () => undefined,
+			onImport: () => undefined,
+			onUpdate,
+			canImport: true,
+		});
+		expect(rows.map((row) => row.kind === 'separator' ? '---' : row.title)).toEqual([
+			'Saga', 'A', '---', 'actions.importFromProject', 'actions.updateFromSeries', 'dashboard.manageProjects',
+		]);
+		const updateRow = rows.find((row) => row.title === 'actions.updateFromSeries');
+		expect(updateRow).toMatchObject({ icon: 'refresh-cw', disabled: false });
+		updateRow?.click?.();
+		expect(onUpdate).toHaveBeenCalledOnce();
+		const without = recordingMenu();
+		fillProjectSwitcherMenu(without.menu, {
+			projects: [project('A', null)],
+			currentPath: 'A',
+			t: (key) => key,
+			onSelect: () => undefined,
+			onManage: () => undefined,
+			onImport: () => undefined,
+		});
+		expect(without.rows.some((row) => row.title === 'actions.updateFromSeries')).toBe(false);
+	});
 });

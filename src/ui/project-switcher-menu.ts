@@ -21,7 +21,9 @@ export interface ProjectSwitcherMenuConfig {
 	onManage: () => void;
 	/** Opens the import dialog on the project shown; the row is left out when absent. */
 	onImport?: () => void;
-	/** False while the project shown cannot be written to, which greys the row. */
+	/** Opens the update dialog on the project shown; given only while a sibling has been imported from. */
+	onUpdate?: () => void;
+	/** False while the project shown cannot be written to, which greys the rows. */
 	canImport?: boolean;
 }
 
@@ -63,6 +65,18 @@ export function fillProjectSwitcherMenu(
 				.setDisabled(config.canImport === false)
 				.onClick(() => {
 					onImport();
+				}),
+		);
+	}
+	const onUpdate = config.onUpdate;
+	if (onUpdate !== undefined) {
+		menu.addItem((item) =>
+			item
+				.setTitle(config.t('actions.updateFromSeries'))
+				.setIcon('refresh-cw')
+				.setDisabled(config.canImport === false)
+				.onClick(() => {
+					onUpdate();
 				}),
 		);
 	}

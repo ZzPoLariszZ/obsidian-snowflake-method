@@ -90,7 +90,7 @@ function report(target: Ref, overrides: Partial<ImportReport> = {}): ImportRepor
 	} as unknown as ImportReport;
 }
 
-function pluginWith(active: Ref[], archived: Ref[] = []) {
+function pluginWith(active: Ref[], archived: Ref[] = [], imported: Record<string, string[]> = {}) {
 	const importer = {
 		inspectSource: vi.fn(() => Promise.resolve({ parts: [] })),
 		plan: vi.fn(() => ({ entries: [] })),
@@ -106,6 +106,16 @@ function pluginWith(active: Ref[], archived: Ref[] = []) {
 		}),
 		listArchivedProjects: vi.fn(() => Promise.resolve(archived)),
 		importer,
+		// The import record of each project: which source ids its copies came from.
+		imports: {
+			readDocument: vi.fn((project: Ref) =>
+				Promise.resolve({
+					entries: (imported[project.id] ?? []).map((sourceProjectId) => ({ sourceProjectId })),
+					lastChoices: {},
+					strays: { entries: [], keys: {} },
+				}),
+			),
+		},
 	};
 	const plugin = Object.create(SnowflakeMethodPlugin.prototype) as SnowflakeMethodPlugin;
 	const refreshDashboards = vi.fn(() => Promise.resolve());
@@ -196,8 +206,55 @@ describe('openImportDialog', () => {
 	});
 });
 
+describe('openUpdateFromSeries', () => {
+	it('says when the project is in no series, and when no book of its series has been imported from', async () => {
+		const loose = pluginWith([ref('Book 1'), ref('Book 2')]);
+		await loose.plugin.openUpdateFromSeries('Root/Book 2/Project.md');
+		expect(notices[notices.length - 1]?.message).toBe('zh-CN:modal.import.notInSeries');
+		expect(dialogs).toHaveLength(0);
+		const fresh = pluginWith([
+			ref('Book 1', { series: { name: 'Saga', book: 1 } }),
+			ref('Book 2', { series: { name: 'Saga', book: 2 } }),
+		]);
+		await fresh.plugin.openUpdateFromSeries('Root/Book 2/Project.md');
+		expect(notices[notices.length - 1]?.message).toBe('zh-CN:modal.import.noSiblings');
+		expect(dialogs).toHaveLength(0);
+		expect(fresh.projects.imports.readDocument).toHaveBeenCalledOnce();
+	});
+
+	it('opens the update dialog on the books of the series imported from, lowest first, and no other', async () => {
+		const { plugin } = pluginWith(
+			[
+				ref('Book 3', { series: { name: 'Saga', book: 3 } }),
+				ref('Book 1', { series: { name: 'saga', book: 1 } }),
+				ref('Book 2', { series: { name: 'Saga', book: 2 } }),
+				ref('Other', { series: { name: 'Other', book: 1 } }),
+				ref('Loose'),
+			],
+			[],
+			{ 'Book 3': ['Book 2', 'Book 1', 'Other', 'Loose'] },
+		);
+		await plugin.openUpdateFromSeries('Root/Book 3/Project.md');
+		const dialog = lastDialog();
+		const config = dialog.config as { mode: string; target: { path: string }; sources: { title: string; archived: boolean }[] };
+		expect(config.mode).toBe('update');
+		expect(config.target.path).toBe('Root/Book 3/Project.md');
+		expect(config.sources.map((source) => source.title)).toEqual(['Book 1', 'Book 2']);
+		expect(config.sources.every((source) => !source.archived)).toBe(true);
+	});
+
+	it('refuses a target that cannot be written', async () => {
+		const { plugin } = pluginWith([ref('Book 2', { readOnly: true, series: { name: 'Saga', book: 2 } })]);
+		await expect(plugin.openUpdateFromSeries('Root/Book 2/Project.md')).rejects.toThrow('zh-CN:errors.readOnly');
+	});
+});
+
 describe('runImport', () => {
-	const choice = { sourcePath: 'Root/Book 1/Project.md', selection: { parts: new Set(['character:c1']), clashPolicy: 'skip' } };
+	const choice = {
+		sourcePath: 'Root/Book 1/Project.md',
+		selection: { parts: new Set(['character:c1']), clashPolicy: 'skip' as const },
+		mode: 'import' as const,
+	};
 
 	it('pauses the reconcile pass for the run, counts it in one notice, then tells the caches and the dashboards', async () => {
 		const target = ref('Book 2');
@@ -235,6 +292,44 @@ describe('runImport', () => {
 			'zh-CN:messages.importDone{"source":"Book 1","summary":"zh-CN:modal.import.summary.notesOne{\\"count\\":1}"}',
 		);
 		expect(reports).toHaveLength(0);
+	});
+
+	it('counts an update in its own words and says what was updated', async () => {
+		const target = ref('Book 2', { series: { name: 'Saga', book: 2 } });
+		const { plugin, importer } = pluginWith(
+			[ref('Book 1', { series: { name: 'Saga', book: 1 } }), target],
+			[],
+			{ 'Book 2': ['Book 1'] },
+		);
+		importer.runImport.mockImplementationOnce(async (_source, _target, _selection, options?: { onProgress?: (p: unknown) => void }) => {
+			options?.onProgress?.({ phase: 'members', done: 1, total: 2 });
+			expect(notices[notices.length - 1]?.message).toBe('zh-CN:modal.import.updating{"done":1,"total":2}');
+			await Promise.resolve();
+			return report(target, {
+				replaced: [{ kind: 'character', key: 'character:c1', name: 'Alice', targetName: 'Alice', targetPath: null }],
+			});
+		});
+		await plugin.openUpdateFromSeries('Root/Book 2/Project.md');
+		await lastDialog().onSubmit({ ...choice, selection: { ...choice.selection, clashPolicy: 'replace' }, mode: 'update' });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(notices[notices.length - 1]?.message).toBe(
+			'zh-CN:messages.updateDone{"source":"Book 1","summary":"zh-CN:modal.import.summary.notesOne{\\"count\\":1}"}',
+		);
+	});
+
+	it('says everything is up to date when a run wrote nothing and had nothing to report', async () => {
+		const target = ref('Book 2');
+		const { plugin, importer } = pluginWith([ref('Book 1'), target]);
+		importer.runImport.mockResolvedValueOnce(
+			report(target, {
+				skipped: [{ kind: 'character', key: 'character:c1', name: 'Alice', targetName: 'Alice', targetPath: null, reason: 'unchanged' }],
+			}),
+		);
+		await plugin.openImportDialog('Root/Book 2/Project.md');
+		await lastDialog().onSubmit(choice);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(reports).toHaveLength(0);
+		expect(notices[notices.length - 1]?.message).toBe('zh-CN:messages.importUpToDate{"source":"Book 1"}');
 	});
 
 	it('opens the report instead of the notice when something was skipped, dropped or failed', async () => {

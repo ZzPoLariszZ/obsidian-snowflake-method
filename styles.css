@@ -4373,9 +4373,12 @@ textarea.snowflake-method-corkboard-recovered-text {
 	padding: var(--size-2-2) var(--size-4-2);
 }
 
-.snowflake-method-import-fold {
+/* Named with the dialog: Obsidian's own button rule is a class deep and would
+   keep the button's face and centre its words. */
+.snowflake-method-import-modal button.snowflake-method-import-fold {
 	display: flex;
 	align-items: center;
+	justify-content: flex-start;
 	gap: var(--size-2-2);
 	min-width: 0;
 	height: auto;
@@ -4389,8 +4392,9 @@ textarea.snowflake-method-corkboard-recovered-text {
 	cursor: var(--cursor);
 }
 
-.snowflake-method-import-fold:hover {
+.snowflake-method-import-modal button.snowflake-method-import-fold:hover {
 	background: var(--background-modifier-hover);
+	box-shadow: none;
 }
 
 .snowflake-method-import-chevron {
@@ -4455,6 +4459,29 @@ textarea.snowflake-method-corkboard-recovered-text {
 	white-space: nowrap;
 }
 
+/* The update dialog says what kind of thing each row is before its name,
+   in the quieter voice, and a row gone from the sibling keeps the toggle's
+   column empty so the names still line up. */
+.snowflake-method-import-row-prefix {
+	color: var(--text-muted);
+}
+
+.snowflake-method-import-row-blank {
+	width: var(--toggle-width);
+}
+
+.snowflake-method-import-row.is-gone .snowflake-method-import-row-name {
+	color: var(--text-muted);
+	cursor: default;
+}
+
+.snowflake-method-import-note {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
 .snowflake-method-import-row-mark:empty {
 	display: none;
 }
@@ -4481,10 +4508,12 @@ textarea.snowflake-method-corkboard-recovered-text {
 	opacity: 0.55;
 }
 
-/* The summary takes the start of the footer; the buttons keep the end. */
+/* The summary takes the start of the footer; the buttons keep the end. A
+   zero basis lets a long summary wrap its own words instead of pushing the
+   buttons down one at a time. */
 .snowflake-method-import-summary {
-	flex: 1 1 auto;
-	min-width: 0;
+	flex: 1 1 0;
+	min-width: 12rem;
 	margin-inline-end: auto;
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
@@ -4495,7 +4524,7 @@ textarea.snowflake-method-corkboard-recovered-text {
 	color: var(--text-faint);
 }
 
-.snowflake-method-import-select-linked {
+.snowflake-method-import-modal button.snowflake-method-import-select-linked {
 	height: auto;
 	padding: 0;
 	border: 0;
@@ -4507,7 +4536,9 @@ textarea.snowflake-method-corkboard-recovered-text {
 	cursor: var(--cursor);
 }
 
-.snowflake-method-import-select-linked:hover {
+.snowflake-method-import-modal button.snowflake-method-import-select-linked:hover {
+	background: transparent;
+	box-shadow: none;
 	text-decoration: underline;
 }
 
@@ -4515,6 +4546,16 @@ textarea.snowflake-method-corkboard-recovered-text {
 .snowflake-method-import-report-modal {
 	width: min(34rem, calc(100vw - 2rem));
 	max-width: 34rem;
+}
+
+/* The report borrows the repair callout's face, not its three columns: its
+   summary, headings and lists stand one under the other. */
+.snowflake-method-repair-callout.snowflake-method-import-report {
+	display: block;
+}
+
+.snowflake-method-import-report p {
+	margin: 0;
 }
 
 .snowflake-method-import-report h3 {

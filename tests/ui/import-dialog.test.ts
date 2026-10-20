@@ -113,7 +113,9 @@ import {
 	importReportSummary,
 	importReportWanted,
 	importTree,
+	updateTree,
 	type ImportChoice,
+	type ImportDialogConfig,
 } from '../../src/ui/import-dialog';
 import type { Translate } from '../../src/ui/modals';
 
@@ -346,7 +348,7 @@ describe('the summary words', () => {
 				'modal.import.summary.tasksOne{"count":1}',
 				'modal.import.summary.foreshadowingOne{"count":1}',
 				'modal.import.summary.stickyNotesOne{"count":1}',
-			].join(', '),
+			].join('modal.import.summary.separator'),
 		);
 		expect(words.clauses).toEqual([]);
 		expect(words.unselected).toBe(1);
@@ -361,6 +363,21 @@ describe('the summary words', () => {
 		expect(importPlanWords(t, fakePlan(held, { parts: new Set(), clashPolicy: 'skip' }), 0).units).toBe(
 			'modal.import.summary.nothing',
 		);
+		// Ticks that all stand here unchanged are not "nothing selected".
+		const base = fakePlan(held, model.selection('replace'));
+		const settled: ImportPlan = {
+			...base,
+			counts: Object.fromEntries(
+				Object.keys(base.counts).map((kind) => [kind, { create: 0, replace: 0, skip: 1 }]),
+			) as ImportPlan['counts'],
+			entries: base.entries.map((entry) => ({ ...entry, action: 'skip' as const, reason: 'unchanged' as const })),
+			droppedLinks: [],
+			unselectedLinks: [],
+		};
+		const settledWords = importPlanWords(t, settled, model.count());
+		expect(settledWords.units).toBe('modal.import.summary.nothingToImport');
+		expect(settledWords.clauses).toEqual([`modal.import.summary.upToDate{"count":${base.entries.length}}`]);
+		expect(settledWords.unselected).toBe(0);
 	});
 
 	it('sums a report the same way, and wants a report only for a skip, a dropped link or a failure', () => {
@@ -424,10 +441,14 @@ const groupTitles = (dialog: DialogLike): string[] =>
 	dialog.contentEl.querySelectorAll('.snowflake-method-import-group-title').map((title) => title.textContent);
 const rows = (dialog: DialogLike): CorkboardElement[] =>
 	dialog.contentEl.querySelectorAll('.snowflake-method-import-row');
+/** The row's name as written: the fake keeps each element's own text, and the name sits in the last span. */
+const labelOf = (row: CorkboardElement): string => {
+	const name = row.querySelector('.snowflake-method-import-row-name');
+	if (name === null) return '';
+	return name.children[name.children.length - 1]?.textContent ?? name.textContent;
+};
 const rowNamed = (dialog: DialogLike, name: string): CorkboardElement => {
-	const row = rows(dialog).find(
-		(candidate) => candidate.querySelector('.snowflake-method-import-row-name')?.textContent === name,
-	);
+	const row = rows(dialog).find((candidate) => labelOf(candidate) === name);
 	if (row === undefined) throw new Error(`no row ${name}`);
 	return row;
 };
@@ -501,11 +522,26 @@ describe('ImportProjectModal', () => {
 		expect(inspect).toHaveBeenCalledExactlyOnceWith('Other/Project.md');
 	});
 
+	it('marks a copy that still matches its source as up to date, which no policy replaces', async () => {
+		const { dialog } = await openDialog(
+			inspection(parts(), [['character:c1', { kind: 'unchanged', targetId: 'x1', targetPath: 'Book 2/Characters/Alice.md', targetName: 'Alice' }]]),
+		);
+		openGroup(dialog, 'modal.import.group.characters');
+		const alice = rowNamed(dialog, 'Alice');
+		expect(alice.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.upToDate');
+		const select = dialog.contentEl.querySelector('select');
+		if (select === null) throw new Error('no policy dropdown');
+		select.value = 'replace';
+		select.dispatch('change');
+		const still = rowNamed(dialog, 'Alice');
+		expect(still.classes.has('is-replaced')).toBe(false);
+		expect(still.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.upToDate');
+	});
+
 	it('draws the rows of a group when it opens, marks a note already here, and the policy turns the mark', async () => {
 		const { dialog } = await openDialog();
 		openGroup(dialog, 'modal.import.group.characters');
-		const names = rows(dialog).map((row) => row.querySelector('.snowflake-method-import-row-name')?.textContent);
-		expect(names).toEqual(['Alice', 'Bob', 'modal.import.row.pictures']);
+		expect(rows(dialog).map(labelOf)).toEqual(['Alice', 'Bob', 'modal.import.row.pictures']);
 		const alice = rowNamed(dialog, 'Alice');
 		expect(alice.classes.has('is-here')).toBe(true);
 		expect(alice.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.here');
@@ -557,7 +593,7 @@ describe('ImportProjectModal', () => {
 		expect(toggleOf(headers(dialog)[1] as CorkboardElement).classes.has('is-enabled')).toBe(false);
 		search(dialog, 'bob');
 		expect(groupTitles(dialog)).toEqual(['modal.import.group.characters']);
-		expect(rows(dialog).map((row) => row.querySelector('.snowflake-method-import-row-name')?.textContent)).toEqual(['Bob']);
+		expect(rows(dialog).map(labelOf)).toEqual(['Bob']);
 		toggleOf(headers(dialog)[0] as CorkboardElement).dispatch('click');
 		search(dialog, '');
 		openGroup(dialog, 'modal.import.group.characters');
@@ -647,6 +683,210 @@ describe('ImportProjectModal', () => {
 	});
 });
 
+// ---- Update mode -------------------------------------------------------------------
+
+/** Book 2 against Book 1: Alice changed there, Bob changed in both, Carol new, Dave gone, the Harbor as it was. */
+function updateInspection(): ImportInspection {
+	const held = [
+		part({ key: 'step:1', kind: 'step', name: 'Step 1' }),
+		part({ key: 'character:c1', kind: 'character', name: 'Alice', group: 'character' }),
+		part({ key: 'character:c2', kind: 'character', name: 'Bob', group: 'character' }),
+		part({ key: 'character:c3', kind: 'character', name: 'Carol', group: 'character' }),
+		part({ key: 'worldbuilding:w1', kind: 'worldbuilding', name: 'Harbor', group: 'location' }),
+		part({ key: 'vocabulary:character/category/Hero', kind: 'vocabulary', name: 'Hero', bucket: 'character/category' }),
+		part({ key: 'scene:s1', kind: 'scene', name: 'Opening', group: 'scene' }),
+		part({ key: 'chapter:Book 1/Draft/Chapter 1.md', kind: 'chapter', name: 'Chapter 1', defaultSelected: false }),
+		part({ key: 'task:t1', kind: 'task', name: 'Fix the ending' }),
+	];
+	const copy = (kind: Exclude<ImportStanding['kind'], 'new'>, name: string): ImportStanding => ({
+		kind,
+		targetId: `t-${name}`,
+		targetPath: `Book 2/${name}.md`,
+		targetName: name,
+	});
+	return {
+		parts: held,
+		standing: new Map<string, ImportStanding>([
+			['step:1', copy('update', 'Step 1')],
+			['character:c1', copy('update', 'Alice')],
+			['character:c2', copy('conflict', 'Bob')],
+			['worldbuilding:w1', copy('unchanged', 'Harbor')],
+			['vocabulary:character/category/Hero', copy('unchanged', 'Hero')],
+			['scene:s1', copy('existing', 'Opening')],
+			['task:t1', copy('unchanged', 'Fix the ending')],
+		]),
+		gone: [
+			{ kind: 'character', name: 'Dave', targetId: 't-Dave', targetPath: 'Book 2/Dave.md' },
+			{ kind: 'chapter', name: 'Old chapter', targetId: null, targetPath: 'Book 2/Draft/Old.md' },
+		],
+		source: { project: { kinds: [{ id: 'location' }] } },
+	} as unknown as ImportInspection;
+}
+
+describe('updateTree', () => {
+	it('sorts the design parts by their standing, ticks the sibling’s own changes, counts what matches and names the gone', () => {
+		const tree = updateTree(updateInspection(), t, 'Book 1');
+		expect(tree.groups.map((group) => [group.id, group.title])).toEqual([
+			['changed', 'modal.import.update.changed{"book":"Book 1"}'],
+			['conflict', 'modal.import.update.conflict'],
+			['new', 'modal.import.update.new{"book":"Book 1"}'],
+			['gone', 'modal.import.update.gone{"book":"Book 1"}'],
+		]);
+		const rows = (id: string) => tree.groups.find((group) => group.id === id)?.rows ?? [];
+		expect(rows('changed').map((row) => `${row.prefix ?? ''} · ${row.label}`)).toEqual([
+			'modal.import.group.summary · steps.1.title',
+			'freeform.character · Alice',
+		]);
+		expect(rows('conflict').map((row) => [row.label, row.note])).toEqual([['Bob', 'edited']]);
+		expect(rows('new').map((row) => [row.label, row.note])).toEqual([
+			['Carol', null],
+			['Opening', 'here'],
+		]);
+		// The chapter gone from the sibling is a one-shot kind, and not the update's business.
+		expect(rows('gone').map((row) => [row.label, row.note, row.keys.length, row.prefix])).toEqual([
+			['Dave', 'gone', 0, 'freeform.character'],
+		]);
+		expect([...tree.initial]).toEqual(['step:1', 'character:c1']);
+		expect(tree.unchanged).toBe(2);
+	});
+});
+
+async function openUpdate(
+	held: ImportInspection = updateInspection(),
+	overrides: Partial<ImportDialogConfig> = {},
+): Promise<{ dialog: DialogLike; inspect: ReturnType<typeof vi.fn>; onSubmit: ReturnType<typeof vi.fn>; title: () => string }> {
+	const inspect = vi.fn(() => Promise.resolve(held));
+	const onSubmit = vi.fn(() => Promise.resolve());
+	const modal = new ImportProjectModal(
+		app,
+		t,
+		{
+			mode: 'update',
+			target: { path: 'Book 3/Project.md', title: 'Book 3', series: { name: 'Saga', book: 3 } },
+			sources: [
+				{ path: 'Book 2/Project.md', title: 'Book 2', series: { name: 'Saga', book: 2 }, archived: false },
+				{ path: 'Book 1/Project.md', title: 'Book 1', series: { name: 'Saga', book: 1 }, archived: false },
+			],
+			bridge: { inspect, plan: fakePlan },
+			...overrides,
+		},
+		onSubmit,
+	);
+	modal.open();
+	await flush();
+	const dialog = modal as unknown as DialogLike;
+	dialog.dom.flushFrame();
+	return { dialog, inspect, onSubmit, title: () => (modal as unknown as { title: string }).title };
+}
+
+describe('ImportProjectModal in update mode', () => {
+	it('opens on the lowest book under that book’s name, without a policy row, the note under From', async () => {
+		const { dialog, inspect, title } = await openUpdate();
+		expect(title()).toBe('modal.import.updateTitle{"book":"Book 1"}');
+		expect(inspect).toHaveBeenCalledExactlyOnceWith('Book 1/Project.md');
+		expect(dialog.modalEl.classes.has('is-updating')).toBe(true);
+		expect(dialog.contentEl.querySelector('select')).toBeNull();
+		expect(dialog.contentEl.querySelector('.snowflake-method-import-note')?.textContent).toBe(
+			'modal.import.updateNote{"book":"Book 1"}',
+		);
+		expect(dialog.modalEl.querySelectorAll('button').map((button) => button.textContent)).toContain(
+			'modal.import.updateSubmit',
+		);
+		const named = await openUpdate(updateInspection(), { initialSource: 'Book 2/Project.md' });
+		expect(named.title()).toBe('modal.import.updateTitle{"book":"Book 2"}');
+	});
+
+	it('draws the four sections, the sibling’s changes ticked, the gone rows without a toggle, and sums it at the foot', async () => {
+		const { dialog } = await openUpdate();
+		expect(groupTitles(dialog)).toEqual([
+			'modal.import.update.changed{"book":"Book 1"}',
+			'modal.import.update.conflict',
+			'modal.import.update.new{"book":"Book 1"}',
+			'modal.import.update.gone{"book":"Book 1"}',
+		]);
+		const counts = dialog.contentEl
+			.querySelectorAll('.snowflake-method-import-group-count')
+			.map((count) => count.textContent);
+		expect(counts).toEqual([
+			'modal.import.groupCount{"selected":2,"count":2}',
+			'modal.import.groupCount{"selected":0,"count":1}',
+			'modal.import.groupCount{"selected":0,"count":2}',
+			'1',
+		]);
+		expect(headers(dialog).map((header) => header.querySelector('.checkbox-container') !== null)).toEqual([
+			true,
+			true,
+			true,
+			false,
+		]);
+		openGroup(dialog, 'modal.import.update.gone{"book":"Book 1"}');
+		const dave = rowNamed(dialog, 'Dave');
+		expect(dave.classes.has('is-gone')).toBe(true);
+		expect(dave.querySelector('.checkbox-container')).toBeNull();
+		expect(dave.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.kept');
+		openGroup(dialog, 'modal.import.update.new{"book":"Book 1"}');
+		const opening = rowNamed(dialog, 'Opening');
+		expect(opening.classes.has('is-here')).toBe(true);
+		expect(opening.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.here');
+		openGroup(dialog, 'modal.import.update.changed{"book":"Book 1"}');
+		expect(rowNamed(dialog, 'Alice').querySelector('.snowflake-method-import-row-prefix')?.textContent).toBe(
+			'freeform.character · ',
+		);
+		expect(toggleOf(rowNamed(dialog, 'Alice')).classes.has('is-enabled')).toBe(true);
+		expect(summaryText(dialog)).toBe(
+			'modal.import.update.summary{"count":2} · modal.import.update.unchanged{"count":2}',
+		);
+	});
+
+	it('confirms only for a ticked copy this book has edited, and hands the ticks over as a replace', async () => {
+		const { dialog, onSubmit } = await openUpdate();
+		await flush();
+		expect(await dialog.submit()).toBe(true);
+		expect(opened).toHaveLength(1);
+		const choice = onSubmit.mock.calls[0]?.[0] as ImportChoice;
+		expect(choice).toMatchObject({ sourcePath: 'Book 1/Project.md', mode: 'update' });
+		expect(choice.selection.clashPolicy).toBe('replace');
+		expect([...choice.selection.parts]).toEqual(['step:1', 'character:c1']);
+
+		const second = await openUpdate();
+		openGroup(second.dialog, 'modal.import.update.conflict');
+		toggleOf(rowNamed(second.dialog, 'Bob')).dispatch('click');
+		expect(rowNamed(second.dialog, 'Bob').classes.has('is-replaced')).toBe(true);
+		second.dialog.dom.flushFrame();
+		expect(summaryText(second.dialog)).toBe(
+			'modal.import.update.summary{"count":3} · modal.import.update.editedOne{"count":1} · modal.import.update.unchanged{"count":2}',
+		);
+		const submitting = second.dialog.submit();
+		await flush();
+		const confirm = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
+		expect(confirm.title).toBe('modal.importReplace.titleOne{"count":1}');
+		expect(confirm.contentEl.querySelectorAll('li').map((item) => item.textContent)).toEqual(['Bob']);
+		confirm.contentEl.querySelectorAll('button')[1]?.dispatch('click');
+		expect(await submitting).toBe(true);
+		expect([...(second.onSubmit.mock.calls[0]?.[0] as ImportChoice).selection.parts]).toEqual([
+			'step:1',
+			'character:c1',
+			'character:c2',
+		]);
+	});
+
+	it('says everything is up to date when nothing differs', async () => {
+		const held = {
+			...updateInspection(),
+			parts: [part({ key: 'worldbuilding:w1', kind: 'worldbuilding', name: 'Harbor', group: 'location' })],
+			gone: [],
+		} as unknown as ImportInspection;
+		const { dialog } = await openUpdate(held);
+		expect(groupTitles(dialog)).toEqual([]);
+		expect(dialog.contentEl.querySelector('.snowflake-method-import-status')?.textContent).toBe(
+			'modal.import.update.nothing{"book":"Book 1"}',
+		);
+		expect(summaryText(dialog)).toBe('modal.import.update.nothing{"book":"Book 1"}');
+		expect(await dialog.submit()).toBe(false);
+		expect(notices).toHaveBeenLastCalledWith('modal.import.summary.nothing');
+	});
+});
+
 describe('ImportReportModal', () => {
 	it('sums the run and lists what was skipped, dropped and failed, each with its reason', () => {
 		const item = { kind: 'character' as const, key: 'character:c1', name: 'Alice', targetName: 'Alice', targetPath: null };
@@ -660,7 +900,10 @@ describe('ImportReportModal', () => {
 					{ ...item, name: 'Carol', reason: 'unchanged' },
 					{ ...item, name: 'Revision 1', kind: 'revision', reason: 'no-chapter' },
 				],
-				droppedLinks: [{ owner: item, field: 'cast', target: 'Dave' }],
+				droppedLinks: [
+					{ owner: item, field: 'cast', target: 'Dave' },
+					{ owner: item, field: 'file', target: '80_Material/Figure.png' },
+				],
 				failed: [{ ...item, name: 'Eve', message: 'disk full' }],
 			}),
 		);
@@ -682,8 +925,17 @@ describe('ImportReportModal', () => {
 			'Bob | modal.importReport.reason.exists',
 			'Revision 1 | modal.importReport.reason.noChapter',
 			'Alice → Dave | modal.importReport.reason.missingTarget',
+			'Alice → 80_Material/Figure.png | modal.importReport.reason.missingFile',
 			'Eve | disk full',
 		]);
 		expect(content.querySelectorAll('button').map((button) => button.textContent)).toEqual(['common.close']);
+	});
+
+	it('says that nothing was imported rather than counting nothing', () => {
+		const item = { kind: 'character' as const, key: 'character:c1', name: 'Bob', targetName: 'Bob', targetPath: null };
+		const modal = new ImportReportModal(app, t, report({ skipped: [{ ...item, reason: 'name-taken' }] }));
+		modal.open();
+		const content = (modal as unknown as { contentEl: CorkboardElement }).contentEl;
+		expect(content.querySelector('p')?.textContent).toBe('modal.importReport.nothing{"source":"Book 1"}');
 	});
 });

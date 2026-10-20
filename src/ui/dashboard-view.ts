@@ -1708,6 +1708,16 @@ export class SnowflakeDashboardView extends ItemView {
 						.openImportDialog(model.path)
 						.catch((error: unknown) => this.renderError(error));
 				},
+				// Offered only once a sibling has been imported from: before
+				// that there is nothing to update, and the row would only ask.
+				onUpdate:
+					model.series !== null && model.updatableFrom.length > 0
+						? () => {
+								void this.host
+									.openUpdateFromSeries(model.path)
+									.catch((error: unknown) => this.renderError(error));
+							}
+						: undefined,
 				canImport: !model.readOnly,
 			});
 			projectControl.setAttribute('aria-expanded', 'true');

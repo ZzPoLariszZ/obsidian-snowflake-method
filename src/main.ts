@@ -1801,6 +1801,96 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * The books of the project's series it has imported from, lowest book
+	 * first: the ones an update can come from. One read of the project's
+	 * import record, then the discovered projects as they stand.
+	 */
+	private async updatableSiblings(project: ProjectRef): Promise<ProjectRef[]> {
+		const series = project.series;
+		if (series === null) return [];
+		const held = await this.projects.imports.readDocument(project);
+		const sourceIds = new Set(held.entries.map((entry) => entry.sourceProjectId));
+		if (sourceIds.size === 0) return [];
+		const name = foldName(series.name);
+		const siblings = (await this.discoverProjects()).filter(
+			(candidate) =>
+				candidate.id !== project.id &&
+				!candidate.readOnly &&
+				candidate.series !== null &&
+				foldName(candidate.series.name) === name &&
+				sourceIds.has(candidate.id),
+		);
+		siblings.sort(
+			(a, b) =>
+				(a.series?.book ?? Number.POSITIVE_INFINITY) -
+					(b.series?.book ?? Number.POSITIVE_INFINITY) ||
+				a.title.localeCompare(b.title),
+		);
+		return siblings;
+	}
+
+	/**
+	 * Opens the update dialog on a book of a series, or says why it cannot:
+	 * the project is in no series, or no book of its series has been
+	 * imported from yet. The dialog opens on the lowest of those books.
+	 */
+	async openUpdateFromSeries(targetPath: string): Promise<void> {
+		const target = await this.projects.loadProject(targetPath);
+		const t: Translate = (key, vars) =>
+			this.translateForProject(target.locale, key, vars);
+		if (target.readOnly) throw new Error(t('errors.readOnly'));
+		if (target.series === null) {
+			new Notice(t('modal.import.notInSeries'));
+			return;
+		}
+		const siblings = await this.updatableSiblings(target);
+		if (siblings.length === 0) {
+			new Notice(t('modal.import.noSiblings'));
+			return;
+		}
+		new ImportProjectModal(
+			this.app,
+			t,
+			{
+				mode: 'update',
+				target: {
+					path: target.projectFile,
+					title: target.title,
+					series: target.series,
+				},
+				sources: siblings.map((sibling) => ({
+					path: sibling.projectFile,
+					title: sibling.title,
+					series: sibling.series,
+					archived: false,
+				})),
+				bridge: {
+					inspect: async (path) => {
+						try {
+							return await this.projects.importer.inspectSource(
+								path,
+								target.projectFile,
+							);
+						} catch (error) {
+							this.rethrowLocalizedMutationError(error);
+						}
+					},
+					plan: (inspection, selection) =>
+						this.projects.importer.plan(inspection, selection),
+				},
+			},
+			(choice) => {
+				void this.runImport(target.projectFile, choice, t).catch(
+					(error: unknown) => {
+						this.showError(error);
+					},
+				);
+				return Promise.resolve();
+			},
+		).open();
+	}
+
+	/**
 	 * Runs an import the dialog settled, one notice counting it in. The
 	 * reconcile pass is paused as it is for a migration: every note lands
 	 * saying what its properties say, and the burst of creates would else
@@ -1814,10 +1904,9 @@ export default class SnowflakeMethodPlugin
 		choice: ImportChoice,
 		t: Translate,
 	): Promise<void> {
-		const notice = new Notice(
-			t('modal.import.progress', { done: 0, total: 0 }),
-			0,
-		);
+		const updating = choice.mode === 'update';
+		const progressKey = updating ? 'modal.import.updating' : 'modal.import.progress';
+		const notice = new Notice(t(progressKey, { done: 0, total: 0 }), 0);
 		this.fieldsReconcilePaused = true;
 		let report: ImportReport;
 		try {
@@ -1828,7 +1917,7 @@ export default class SnowflakeMethodPlugin
 				{
 					onProgress: (progress) => {
 						notice.setMessage(
-							t('modal.import.progress', {
+							t(progressKey, {
 								done: progress.done,
 								total: progress.total,
 							}),
@@ -1850,11 +1939,16 @@ export default class SnowflakeMethodPlugin
 			new ImportReportModal(this.app, t, report).open();
 			return;
 		}
+		// A run that wrote nothing skipped only copies that still match their
+		// source: there is no report to show, and "imported nothing" misleads.
+		const brought = report.created.length + report.replaced.length > 0;
 		new Notice(
-			t('messages.importDone', {
-				source: report.source.title,
-				summary: importReportSummary(t, report),
-			}),
+			brought
+				? t(updating ? 'messages.updateDone' : 'messages.importDone', {
+						source: report.source.title,
+						summary: importReportSummary(t, report),
+					})
+				: t(updating ? 'messages.updateUpToDate' : 'messages.importUpToDate', { source: report.source.title }),
 		);
 	}
 
@@ -2398,6 +2492,11 @@ export default class SnowflakeMethodPlugin
 				? projectT('dashboard.readOnlySchema')
 				: null,
 			series: project.series,
+			updatableFrom: (await this.updatableSiblings(project)).map((sibling) => ({
+				path: sibling.projectFile,
+				title: sibling.title,
+				book: sibling.series?.book ?? null,
+			})),
 			lastManuscriptNote: this.lastManuscriptNote(project.id),
 			steps: STEP_DEFINITIONS.map((definition) => ({
 				id: definition.id,
@@ -9882,6 +9981,20 @@ export default class SnowflakeMethodPlugin
 				if (path === null) return false;
 				if (!checking) {
 					void this.openImportDialog(path).catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'update-from-series',
+			name: this.globalT('commands.updateFromSeries'),
+			checkCallback: (checking) => {
+				const path = this.settings.recentProjectPath;
+				if (path === null) return false;
+				if (!checking) {
+					void this.openUpdateFromSeries(path).catch((error: unknown) => {
 						this.showError(error);
 					});
 				}

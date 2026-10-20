@@ -117,6 +117,13 @@ export interface ProjectOption {
 	hasMarkerIssues: boolean;
 }
 
+/** A sibling in the series that copies here came from. */
+export interface UpdatableSource {
+	path: string;
+	title: string;
+	book: number | null;
+}
+
 export interface CreatedProject {
 	path: string;
 	projectId: string;
@@ -271,6 +278,8 @@ export interface ProjectDashboardModel {
 	readOnlyReason: string | null;
 	/** The series the project is a book of, for the switcher's offers. */
 	series: ProjectSeries | null;
+	/** The books of the series this one has imported from, lowest first, for the update offer. */
+	updatableFrom: UpdatableSource[];
 	steps: StepViewModel[];
 	stepFields: Partial<Record<StepId, StepFields>>;
 	stepRevisions: Partial<Record<StepId, string>>;
@@ -797,6 +806,8 @@ export interface DashboardHost {
 	importSources(targetPath: string | null): Promise<ImportSourceOption[]>;
 	/** Opens the import dialog on the project, on the source named when one is. */
 	openImportDialog(targetPath: string, sourcePath?: string | null): Promise<void>;
+	/** Opens the update dialog on the project, or says why it cannot: no series, or nothing imported from one. */
+	openUpdateFromSeries(targetPath: string): Promise<void>;
 	getDefaultProjectLocale(): 'en' | 'zh-CN';
 	syncCertificateCelebration(
 		projectId: string,
