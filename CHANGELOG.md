@@ -8,6 +8,17 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0]
+
+### Added
+
+- **Relationship graph.** The Visualization workspace has a fifth tab, with two views of the project. **Entity ↔ Entity** draws every character and worldbuilding note as a disc colored by kind, and every relationship recorded in a note's form as a line from that note to its target, with the relationship's word on the line and an arrow for its direction. The vocabulary notes themselves never appear. Scenes join when **Scenes** is turned on under Filters, and a target no note answers to shows as a faint disc of its own. Hover lights up a disc's lines and dims the rest. Drag, pan and wheel zoom work as in Obsidian's graph, and every gesture has a menu item or a key. A disc opens the note's form, or the note with Ctrl or Cmd held, and a line opens the holder's form at that relationship's card. The panel in the corner holds Filters, Groups, Display, Forces and Local graph. The search box lights up the notes that match by name, `kind:` or `relationship:` and dims the rest, and Enter steps through them. Everything but the positions is kept in `70_Tool/73_Visualization/735_Relationship_Graph/relationship-graph.json`, made when first needed. The command **Open relationship graph workspace** opens the tab. With 2,300 notes and 10,000 relationships the picture settles in about eight seconds and then stays still.
+- **Scene ↔ Manuscript.** The second view opens Obsidian's own graph in a tab of its own, set to the project: only the scene and manuscript notes are shown, scenes in orange and chapters in blue, with an arrow from each scene to the chapters it links to. Bases, canvases, tags, attachments and unresolved links are hidden. Settings changed in that tab are kept in the same file and applied next time, and **Reset to project defaults** lets them go. Obsidian keeps one set of graph settings for every graph tab, so yours are set aside while the project's tab is open and put back when it closes. The command **Open scenes and manuscript graph** opens the tab straight away.
+
+### Fixed
+
+- Clicking past the end of a paragraph in the manuscript stream puts the caret at the end of that paragraph. The click used to be read as the first letter of the next paragraph, so the caret went there and the page jumped by a row and a gap to bring that row up to the pointer. A click past an emphasised or linked last word lands after its closing marks, and a click at the end of a wrapped row keeps that row. The sticky note cards open the same way.
+
 ## [0.26.0]
 
 ### Added
@@ -638,6 +649,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.27.0]
+
+### 新增
+
+- **关系图。** 可视化工作区多了第五个标签页，提供项目的两个视图。**实体 ↔ 实体**视图把每篇角色和世界观笔记画成一个圆点，按种类着色。在笔记表单里记下的每条关系，都成为从这篇笔记指向对象的一条连线，关系的名称写在线上，箭头标出方向。关系词表里的笔记本身不会出现在图里。在筛选里打开**场景**，场景才会加入。找不到对应笔记的对象，会显示成一个浅色的圆点。把鼠标停在圆点上，它的连线会亮起来，其余的则变暗。拖动、平移和滚轮缩放都和 Obsidian 的关系图谱一样，每个手势都有对应的菜单项或按键。点一下圆点打开这篇笔记的表单，按住 Ctrl 或 Cmd 再点则打开笔记。点一下连线，会打开持有这条关系的笔记的表单，并翻到那条关系的卡片。角落里的面板有筛选、颜色组、外观、力度和局部关系图，搜索框可以按名称查找，也可以用 `kind:` 和 `relationship:`。除了圆点的位置，这些设置都记在 `70_工具/73_可视化/735_关系图/relationship-graph.json` 里，首次需要时才会创建。命令**打开关系图工作区**可以直接打开这个标签页。在 2300 篇笔记、10000 条关系的项目里，图在大约八秒内稳定下来，之后不再移动。
+- **场景 ↔ 正文。** 第二个视图会在单独的标签页里打开 Obsidian 自带的关系图谱，并设置为本项目：只显示场景和正文笔记，场景是橙色，章节是蓝色，每个场景都有一条带箭头的线指向它关联的章节。Bases、画布、标签、附件和无法解析的链接都会隐藏。你在那个标签页里改动的设置记在同一个文件里，下次打开时照旧，**恢复项目默认设置**则把它们清掉。Obsidian 的所有关系图谱标签页共用一组设置，所以本项目的标签页打开期间，你自己的设置会先收起来，关闭后再放回去。命令**打开场景与正文关系图**可以直接打开那个标签页。
+
+### 修复
+
+- 在正文流里点击一段末尾之后的位置，光标会落在这一段的末尾。以前这一下会被当作下一段的第一个字，光标跑到那里，页面也跟着跳动一行加一个段距，好把那一行拉到指针下面。点在带强调或链接的最后一个词后面，光标会落在收尾符号之后。点在换行处的行尾，光标留在这一行。便签卡片也是如此。
 
 ## [0.26.0]
 
