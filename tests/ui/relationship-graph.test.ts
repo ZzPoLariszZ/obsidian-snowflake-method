@@ -290,7 +290,7 @@ function mount(options: MountOptions = {}) {
 		host,
 		t: (key: string) => key,
 		model: () => null,
-		projectPath: () => 'P',
+		projectPath: () => 'Demo/001_Project_Metadata.md',
 		activateProject,
 		refresh,
 		bridge: () => bridge,

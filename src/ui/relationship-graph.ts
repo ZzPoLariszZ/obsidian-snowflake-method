@@ -726,7 +726,9 @@ export function renderRelationshipGraph(
 			searchField.dispose();
 			viewField.destroy();
 			if (engine !== null) {
-				memory.positions = engine.places();
+				// The places are the reading's project's, and the memory is the
+				// controls' project's: not the same once a tab has moved on.
+				if (reading !== null && reading.projectPath === controls.projectPath()) memory.positions = engine.places();
 				engine.dispose();
 				engine = null;
 			}
