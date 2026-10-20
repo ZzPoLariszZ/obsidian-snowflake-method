@@ -3869,6 +3869,70 @@ textarea.snowflake-method-corkboard-recovered-text {
 	font-weight: var(--font-medium);
 }
 
+/* A numbered book's number, before its name on the row. */
+.snowflake-method-project-manager-project-book {
+	display: inline-block;
+	margin-inline-end: var(--size-2-2);
+	padding: 0 var(--size-2-2);
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	line-height: 1.6;
+	vertical-align: 1px;
+}
+
+/* The books of a series stand together under its name, and the projects in
+	none under a heading of their own once a series stands beside them. The
+	heading takes the rows' transparent edge, so the names line up, and its
+	count keeps the more-button's column, as the archive's does. */
+.snowflake-method-project-manager-series {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-project-manager-series + .snowflake-method-project-manager-series {
+	margin-block-start: var(--size-4-2);
+}
+
+.snowflake-method-project-manager-series-heading {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	min-width: 0;
+	padding: var(--size-2-1) 0 var(--size-2-1) var(--size-4-3);
+	border-inline-start: 3px solid transparent;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-project-manager-series-name {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-project-manager-series-count {
+	display: inline-grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: var(--snowflake-method-row-action-size);
+	height: var(--snowflake-method-row-action-size);
+	margin-inline-start: auto;
+	margin-inline-end: calc(
+		var(--size-4-2) +
+			max(
+				0px,
+				var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-3)
+			)
+	);
+}
+
 .snowflake-method-project-manager-project-path {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
@@ -4132,6 +4196,24 @@ textarea.snowflake-method-corkboard-recovered-text {
    the row reads as one of the page's rather than as the odd one out. */
 .setting-item-control > .snowflake-method-root-field {
 	max-width: 250px;
+}
+
+/* In the project form the series field fills its row like every other
+	control there, and the book number beside it fills its own. */
+.snowflake-method-project-form
+	> .setting-item
+	> .setting-item-control
+	> .snowflake-method-series-field {
+	max-width: none;
+}
+
+.snowflake-method-project-form
+	> .setting-item
+	> .setting-item-control
+	> input[type='number'] {
+	flex: 1 1 auto;
+	width: 100%;
+	min-width: 0;
 }
 
 .snowflake-method-root-field-selector {

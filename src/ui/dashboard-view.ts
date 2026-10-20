@@ -75,6 +75,8 @@ import {
 	type MemberFormContext,
 	type Translate,
 } from './modals';
+import { fillProjectSwitcherMenu } from './project-switcher-menu';
+import { seriesNames } from './series';
 import {
 	STATISTICS_TABS,
 	TASKS_TABS,
@@ -1687,29 +1689,21 @@ export class SnowflakeDashboardView extends ItemView {
 		projectControl.addEventListener('click', () => {
 			const menu = new Menu();
 			menu.setParentElement(projectFooter);
-			for (const project of projects) {
-				menu.addItem((item) => {
-					item.setTitle(project.title);
-					if (project.hasStructureIssues || project.hasMarkerIssues) {
-						item.setIcon('triangle-alert');
-					}
-					return item.setChecked(project.path === model.path).onClick(() => {
-							void this.host
-								.selectProject(project.path)
-								.catch((error: unknown) => this.renderError(error));
-						});
-				});
-			}
-			menu.addSeparator();
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('dashboard.manageProjects'))
-					.onClick(() => {
-						void this.host
-							.openProjectManager(this.projectLocale)
-							.catch((error: unknown) => this.renderError(error));
-					}),
-			);
+			fillProjectSwitcherMenu(menu, {
+				projects,
+				currentPath: model.path,
+				t: this.t,
+				onSelect: (path) => {
+					void this.host
+						.selectProject(path)
+						.catch((error: unknown) => this.renderError(error));
+				},
+				onManage: () => {
+					void this.host
+						.openProjectManager(this.projectLocale)
+						.catch((error: unknown) => this.renderError(error));
+				},
+			});
 			projectControl.setAttribute('aria-expanded', 'true');
 			menu.onHide(() => {
 				projectControl.setAttribute('aria-expanded', 'false');
@@ -1771,6 +1765,7 @@ export class SnowflakeDashboardView extends ItemView {
 				t,
 				locale,
 				existing.map((project) => project.title),
+				seriesNames(existing),
 				async (request) => {
 					const project = await this.host.createProject(request);
 					await this.host.selectProject(project.path);

@@ -98,6 +98,12 @@ export const FRONTMATTER_KEYS = {
 	stepStatuses: 'snowflake-step-status',
 	reviewedFingerprints: 'snowflake-reviewed-fingerprints',
 	draft: 'snowflake-draft',
+	// The series a book belongs to and its number in it, both on the metadata
+	// note and both optional. A series is a label the books share rather than
+	// a folder they are kept in, so discovery reads nothing new and a book
+	// joins or leaves by its own note alone.
+	series: 'snowflake-series',
+	seriesBook: 'snowflake-series-book',
 	// On the metadata note of a project filed in the archive folder, where the
 	// location is what hides the project and the key is for anyone reading the
 	// folder by hand, removed on the way back. And on a sticky note set aside,

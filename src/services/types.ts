@@ -233,6 +233,17 @@ export { FRONTMATTER_KEYS } from "../domain";
 
 export type ProjectLocator = string | ProjectRef | ProjectSnapshot;
 
+/**
+ * Where a project stands among the books of a series: the series by name,
+ * and the book's number in it when the author gave one. Standing together
+ * shares nothing by itself; what the books share, they import from one
+ * another, and the series is how the dialogs know which to offer first.
+ */
+export interface ProjectSeries {
+  name: string;
+  book: number | null;
+}
+
 export interface ProjectRef {
   projectFile: string;
   rootPath: string;
@@ -240,6 +251,8 @@ export interface ProjectRef {
   title: string;
   locale: ProjectLanguage;
   readOnly: boolean;
+  /** The series the project is a book of, or null for one on its own. */
+  series: ProjectSeries | null;
   /**
    * Every worldbuilding kind the project has, built-ins first, then the
    * registered custom kinds in registry order. Read off the metadata note, so
@@ -499,6 +512,8 @@ export interface CreateProjectOptions {
   rootPath?: string;
   locale?: ProjectLanguage;
   language?: ProjectLanguage;
+  /** The series the new project is born into, written with its first note. */
+  series?: ProjectSeries | null;
 }
 
 export interface RepairResult {

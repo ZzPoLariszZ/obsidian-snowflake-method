@@ -57,6 +57,7 @@ import type {
 	EntityPatch,
 	KindMutationResult,
 	MemberUsage,
+	ProjectSeries,
 	ProjectStructureIssueCode,
 	RankRevisionChange,
 	SaveCustomFieldTemplateResult,
@@ -110,6 +111,7 @@ export interface ProjectOption {
 	projectId: string;
 	title: string;
 	readOnly: boolean;
+	series: ProjectSeries | null;
 	hasStructureIssues: boolean;
 	hasMarkerIssues: boolean;
 }

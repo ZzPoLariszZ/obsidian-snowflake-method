@@ -209,6 +209,7 @@ import {
   type ProjectDirectoryKey,
   type ProjectLocator,
   type ProjectRef,
+  type ProjectSeries,
   type ProjectSnapshot,
   type ProjectStructureIssue,
   type RepairResult,
@@ -883,6 +884,7 @@ export class SnowflakeProjectService {
         projectId,
         title,
         locale,
+        options.series ?? null,
       ),
     });
 
@@ -941,6 +943,31 @@ export class SnowflakeProjectService {
   }
 
   /**
+   * Puts a project in a series, moves it to another, or takes it out: the
+   * two keys on its metadata note and nothing else, since a series is a
+   * label the books share rather than a place they are kept. Null clears
+   * both; a series without a book number keeps the name alone.
+   */
+  async setSeries(
+    projectLocator: ProjectLocator,
+    series: ProjectSeries | null,
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    if (
+      series !== null &&
+      series.book !== null &&
+      !(Number.isSafeInteger(series.book) && series.book >= 1)
+    ) {
+      throw new Error("A book number is a whole number above zero.");
+    }
+    await this.repository.updateFrontmatter(
+      project.projectFile,
+      seriesFrontmatter(series),
+    );
+  }
+
+  /**
    * Moves a whole project into the archive folder beside the projects, where
    * the one-level discovery scan never looks. A project is the one thing the
    * plugin archives: every reference it holds travels inside its own folder,
@@ -981,6 +1008,7 @@ export class SnowflakeProjectService {
       title: project.title,
       locale: project.locale,
       readOnly: project.readOnly,
+      series: project.series,
       worldbuildingKinds: project.worldbuildingKinds,
     };
   }
@@ -1129,7 +1157,7 @@ export class SnowflakeProjectService {
           `${rootPath}/${layout.directories.system}/${layout.projectFileName}`,
         ),
         template: projectTemplate(title, "en"),
-        frontmatter: projectFrontmatter(projectId, title, "en"),
+        frontmatter: projectFrontmatter(projectId, title, "en", null),
         uniqueOnConflict: true,
         userInput: false,
       });
@@ -6847,6 +6875,7 @@ export class SnowflakeProjectService {
         asOptionalString(record.frontmatter[FRONTMATTER_KEYS.projectName]) ?? basename(rootPath),
       locale,
       readOnly: record.readOnly,
+      series: readProjectSeries(record.frontmatter),
       worldbuildingKinds: this.readWorldbuildingKinds(
         record.frontmatter,
         rootPath,
@@ -6937,6 +6966,7 @@ export class SnowflakeProjectService {
         basename(rootPath),
       locale,
       readOnly: record.readOnly,
+      series: readProjectSeries(record.frontmatter),
       worldbuildingKinds: this.readWorldbuildingKinds(
         record.frontmatter,
         rootPath,
@@ -8697,6 +8727,7 @@ function projectFrontmatter(
   projectId: string,
   name: string,
   locale: ProjectLanguage,
+  series: ProjectSeries | null,
 ): ManagedFrontmatter {
   return {
     ...commonFrontmatter("project-metadata", projectId),
@@ -8705,7 +8736,47 @@ function projectFrontmatter(
     [FRONTMATTER_KEYS.stepStatuses]: createDefaultStepStatuses(),
     [FRONTMATTER_KEYS.reviewedFingerprints]: {},
     [FRONTMATTER_KEYS.draft]: "",
+    ...seriesFrontmatter(series),
   };
+}
+
+/**
+ * The two series keys as a note carries them: both when the project is a
+ * book of a series, the name alone when it has no number, and neither when
+ * it stands on its own. Spread into a note's frontmatter, or handed to the
+ * frontmatter updater, where an undefined value takes the key away.
+ */
+function seriesFrontmatter(
+  series: ProjectSeries | null,
+): Record<string, string | number | undefined> {
+  const name = series?.name.trim() ?? "";
+  const book = name.length > 0 && series !== null ? series.book : null;
+  return {
+    [FRONTMATTER_KEYS.series]: name.length === 0 ? undefined : name,
+    [FRONTMATTER_KEYS.seriesBook]: book ?? undefined,
+  };
+}
+
+/**
+ * The series a metadata note names, read as leniently as the rest of the
+ * note: a name that is not a non-empty string is no series, and a book
+ * number that is not a whole number above zero is no number. Neither is
+ * ever damage, because a hand can leave either half-written and the project
+ * loses nothing by it.
+ */
+function readProjectSeries(frontmatter: ManagedFrontmatter): ProjectSeries | null {
+  const name = asOptionalString(frontmatter[FRONTMATTER_KEYS.series])?.trim() ?? "";
+  if (name.length === 0) return null;
+  const stored = frontmatter[FRONTMATTER_KEYS.seriesBook];
+  const number =
+    typeof stored === "number"
+      ? stored
+      : typeof stored === "string" && /^\d+$/u.test(stored.trim())
+        ? Number(stored.trim())
+        : null;
+  const book =
+    number !== null && Number.isSafeInteger(number) && number >= 1 ? number : null;
+  return { name, book };
 }
 
 function commonFrontmatter(documentType: DocumentType, projectId: string): ManagedFrontmatter {

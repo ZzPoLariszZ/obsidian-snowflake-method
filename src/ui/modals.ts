@@ -53,7 +53,7 @@ import {
 	type HighlightDecoration,
 	type HighlightRuleKind,
 } from '../domain';
-import type { MemberUsage } from '../services';
+import type { MemberUsage, ProjectSeries } from '../services';
 import { FieldSuggest } from './field-suggest';
 import { GalleryField, galleryFieldState, type GalleryFieldState, type GallerySource } from './gallery-field';
 import { submitOnModEnter } from './modal-keys';
@@ -89,6 +89,8 @@ import {
 	normalizeProjectRoot,
 } from '../project-root';
 import type { ProjectLocale } from '../settings';
+import { groupBySeries, seriesNames } from './series';
+import { buildSeriesField, type SeriesField } from './series-field';
 import {
 	buildOptionField,
 	buildOptionPicker,
@@ -124,6 +126,8 @@ export type Translate = (
 export interface CreateProjectRequest {
 	title: string;
 	locale: ProjectLocale;
+	/** The series the project is born into, or null for one on its own. */
+	series: ProjectSeries | null;
 }
 
 export interface ManageProjectOption {
@@ -132,8 +136,14 @@ export interface ManageProjectOption {
 	projectId: string;
 	title: string;
 	readOnly: boolean;
+	series: ProjectSeries | null;
 	hasStructureIssues: boolean;
 	hasMarkerIssues: boolean;
+}
+
+/** What the series dialog answers: a series, or null to leave one. */
+export interface SeriesChoice {
+	series: ProjectSeries | null;
 }
 
 /**
@@ -867,6 +877,8 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 	private title = '';
 	private locale: ProjectLocale;
 	private name: UniqueNameField;
+	private readonly series: SeriesFields = { name: '', book: '' };
+	private seriesField: SeriesField | null = null;
 
 	constructor(
 		app: App,
@@ -874,12 +886,20 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 		defaultLocale: ProjectLocale,
 		/** The names the other projects under the same root already answer to. */
 		private readonly takenNames: readonly string[],
+		/** The series those projects stand in, for the field that offers them. */
+		private readonly seriesNames: readonly string[],
 		onSubmit: SubmitHandler<CreateProjectRequest>,
 	) {
 		super(app, t, t('modal.project.title'), onSubmit);
 		this.modalEl.addClass('snowflake-method-project-modal');
 		this.locale = defaultLocale;
 		this.name = this.uniqueName();
+	}
+
+	onClose(): void {
+		this.seriesField?.destroy();
+		this.seriesField = null;
+		super.onClose();
 	}
 
 	/**
@@ -925,6 +945,16 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 						this.renderForm();
 					}),
 			);
+
+		this.seriesField?.destroy();
+		this.seriesField = buildSeriesRows(
+			this.app,
+			this.t,
+			this.contentEl,
+			this.series,
+			this.seriesNames,
+			{},
+		);
 	}
 
 	protected collectValue(): CreateProjectRequest | null {
@@ -938,12 +968,83 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 			new Notice(objection);
 			return null;
 		}
+		const series = collectSeries(this.series, this.t);
+		if (series === false) return null;
 
 		return {
 			title,
 			locale: this.locale,
+			series,
 		};
 	}
+}
+
+/** What the two series rows hold, as typed: the book stays a string until it is read. */
+interface SeriesFields {
+	name: string;
+	book: string;
+}
+
+/**
+ * The two rows that put a project in a series, drawn the same in the create
+ * form and the series dialog: the series by name, offered from the names the
+ * other projects use, and the book's number, which has nothing to say until
+ * a series is named and so stays disabled until one is.
+ */
+function buildSeriesRows(
+	app: App,
+	t: Translate,
+	container: HTMLElement,
+	fields: SeriesFields,
+	names: readonly string[],
+	descriptions: { name?: string; book?: string },
+): SeriesField {
+	let bookInput: HTMLInputElement | null = null;
+	const series = new Setting(container).setName(t('modal.project.series'));
+	if (descriptions.name !== undefined) series.setDesc(descriptions.name);
+	const field = buildSeriesField(app, series.controlEl, {
+		label: t('modal.project.series'),
+		placeholder: t('modal.project.seriesPlaceholder'),
+		names,
+		value: fields.name,
+		onChange: (name) => {
+			fields.name = name;
+			if (bookInput !== null) bookInput.disabled = name.trim().length === 0;
+		},
+	});
+	const book = new Setting(container).setName(t('modal.project.book'));
+	if (descriptions.book !== undefined) book.setDesc(descriptions.book);
+	book.addText((text) => {
+		bookInput = text.inputEl;
+		text.inputEl.type = 'number';
+		text.inputEl.min = '1';
+		text.inputEl.step = '1';
+		text.inputEl.disabled = fields.name.trim().length === 0;
+		text.setValue(fields.book).onChange((value) => {
+			fields.book = value;
+		});
+	});
+	return field;
+}
+
+/**
+ * What the rows add up to: null for a project in no series, the series with
+ * or without a number, or false, said in a notice, when the number is not a
+ * whole number above zero.
+ */
+function collectSeries(
+	fields: SeriesFields,
+	t: Translate,
+): ProjectSeries | null | false {
+	const name = fields.name.trim();
+	if (name.length === 0) return null;
+	if (fields.book.trim().length === 0) return { name, book: null };
+	const book = positiveInteger(fields.book);
+	if (book === null) {
+		new Notice(t('modal.project.bookInvalid'));
+		return false;
+	}
+	return { name, book };
 }
 
 /**
@@ -1133,6 +1234,12 @@ export class ManageProjectsModal extends Modal {
 		private readonly onTrashArchivedProject: (
 			project: ManageProjectOption,
 		) => Promise<ManageProjectLists | null>,
+		// Both lists again: a series is a label, so the change moves no
+		// project, but the active list regroups around it.
+		private readonly onSetSeries: (
+			project: ManageProjectOption,
+			series: ProjectSeries | null,
+		) => Promise<ManageProjectLists>,
 	) {
 		super(app);
 		this.modalEl.addClass(DIALOG_CLASS);
@@ -1196,10 +1303,13 @@ export class ManageProjectsModal extends Modal {
 		const projectList = sidebar.createDiv({
 			cls: 'snowflake-method-project-manager-list',
 		});
-		for (const project of this.projects) {
+		const renderActiveRow = (
+			list: HTMLElement,
+			project: ManageProjectOption,
+		): void => {
 			const hasHealthIssues =
 				project.hasStructureIssues || project.hasMarkerIssues;
-			this.renderProjectRow(projectList, project, {
+			this.renderProjectRow(list, project, {
 				modifier: hasHealthIssues ? ' has-health-issues' : '',
 				warn: hasHealthIssues,
 				open: (item) => {
@@ -1209,6 +1319,29 @@ export class ManageProjectsModal extends Modal {
 					this.showProjectMenu(project, trigger);
 				},
 			});
+		};
+		// The books of a series stand together under its name, and the
+		// projects in none get a heading of their own only once there is a
+		// series to tell them from: a list of lone projects stays a list.
+		const grouping = groupBySeries(this.projects);
+		for (const group of grouping.series) {
+			const section = this.renderSeriesSection(
+				projectList,
+				group.name,
+				group.books.length,
+			);
+			for (const project of group.books) renderActiveRow(section, project);
+		}
+		if (grouping.series.length === 0) {
+			for (const project of grouping.loose) renderActiveRow(projectList, project);
+		} else if (grouping.loose.length > 0) {
+			const section = this.renderSeriesSection(
+				projectList,
+				this.t('modal.projectManager.noSeries'),
+				grouping.loose.length,
+			);
+			section.addClass('is-loose');
+			for (const project of grouping.loose) renderActiveRow(section, project);
 		}
 
 		if (this.archived.length > 0) {
@@ -1454,6 +1587,13 @@ export class ManageProjectsModal extends Modal {
 				.setDisabled(project.readOnly)
 				.onClick(() => this.openRenameProject(project)),
 		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.setSeries'))
+				.setIcon('book-copy')
+				.setDisabled(project.readOnly)
+				.onClick(() => this.openSetSeries(project)),
+		);
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
@@ -1522,6 +1662,20 @@ export class ManageProjectsModal extends Modal {
 		);
 		const rect = trigger.getBoundingClientRect();
 		menu.showAtPosition({ x: rect.right, y: rect.bottom });
+	}
+
+	private openSetSeries(project: ManageProjectOption): void {
+		new SetSeriesModal(
+			this.app,
+			this.t,
+			project.series,
+			// Every series in the root, archived books included: a book may
+			// rejoin a series whose other books are put away.
+			seriesNames([...this.projects, ...this.archived]),
+			async ({ series }) => {
+				this.applyLists(await this.onSetSeries(project, series));
+			},
+		).open();
 	}
 
 	private openRenameProject(project: ManageProjectOption): void {
@@ -1619,6 +1773,32 @@ export class ManageProjectsModal extends Modal {
 	 * folder, and the menu that stands at the end. A row that can be opened
 	 * makes the name a button; one that cannot leaves it a plain block.
 	 */
+	/** One series of the list: its name and count above, its books below. */
+	private renderSeriesSection(
+		list: HTMLElement,
+		name: string,
+		count: number,
+	): HTMLElement {
+		const section = list.createDiv({
+			cls: 'snowflake-method-project-manager-series',
+			attr: { role: 'group', 'aria-label': name },
+		});
+		const heading = section.createDiv({
+			cls: 'snowflake-method-project-manager-series-heading',
+		});
+		heading.createSpan({
+			cls: 'snowflake-method-project-manager-series-name',
+			text: name,
+		});
+		paintCount(
+			heading
+				.createSpan({ cls: 'snowflake-method-project-manager-series-count' })
+				.createSpan({ cls: 'snowflake-method-step-indicator' }),
+			count,
+		);
+		return section;
+	}
+
 	private renderProjectRow(
 		list: HTMLElement,
 		project: ManageProjectOption,
@@ -1645,10 +1825,18 @@ export class ManageProjectsModal extends Modal {
 		// any other. The tooltip is the row's name to a screen reader as well,
 		// so it says all the row shows: two projects can share a title.
 		setTooltip(item, `${project.title}\n${project.rootPath}`);
-		item.createSpan({
+		const title = item.createSpan({
 			cls: 'snowflake-method-project-manager-project-title',
-			text: project.title,
 		});
+		// A numbered book wears its number before its name, so the order the
+		// series lists it in can be read off the row.
+		if (project.series !== null && project.series.book !== null) {
+			title.createSpan({
+				cls: 'snowflake-method-project-manager-project-book',
+				text: this.t('dashboard.seriesBook', { book: project.series.book }),
+			});
+		}
+		title.createSpan({ text: project.title });
 		item.createSpan({
 			cls: 'snowflake-method-project-manager-project-path',
 			text: project.rootPath,
@@ -1850,6 +2038,62 @@ class RenameProjectModal extends SnowflakeFormModal<string> {
 			return null;
 		}
 		return value;
+	}
+}
+
+/**
+ * Puts a project in a series, or takes it out: the same two rows the create
+ * form carries, on their own, with an emptied series meaning none.
+ */
+export class SetSeriesModal extends SnowflakeFormModal<SeriesChoice> {
+	private readonly fields: SeriesFields;
+	private seriesField: SeriesField | null = null;
+
+	constructor(
+		app: App,
+		t: Translate,
+		current: ProjectSeries | null,
+		/** The series the projects under the root stand in. */
+		private readonly names: readonly string[],
+		onSubmit: SubmitHandler<SeriesChoice>,
+	) {
+		super(app, t, t('modal.series.title'), onSubmit, 'common.save');
+		this.fields = {
+			name: current?.name ?? '',
+			book: current?.book == null ? '' : String(current.book),
+		};
+		this.modalEl.addClass(
+			'snowflake-method-compact-form-modal',
+			'snowflake-method-series-modal',
+		);
+	}
+
+	onClose(): void {
+		this.seriesField?.destroy();
+		this.seriesField = null;
+		super.onClose();
+	}
+
+	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form');
+		this.seriesField?.destroy();
+		this.seriesField = buildSeriesRows(
+			this.app,
+			this.t,
+			this.contentEl,
+			this.fields,
+			this.names,
+			{
+				name: this.t('modal.series.nameDesc'),
+				book: this.t('modal.series.bookDesc'),
+			},
+		);
+	}
+
+	protected collectValue(): SeriesChoice | null {
+		const series = collectSeries(this.fields, this.t);
+		if (series === false) return null;
+		return { series };
 	}
 }
 

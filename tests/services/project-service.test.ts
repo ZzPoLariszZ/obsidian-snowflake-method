@@ -6997,3 +6997,112 @@ describe("SnowflakeProjectService", () => {
     });
   });
 });
+
+describe("project series", () => {
+  let service: SnowflakeProjectService;
+
+  beforeEach(() => {
+    const environment = createFakeEnvironment();
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+  });
+
+  it("writes the series with the first note and reads it back on discovery", async () => {
+    const book = await service.createProject({
+      title: "Book One",
+      locale: "en",
+      series: { name: "Saga", book: 1 },
+    });
+    expect(book.series).toEqual({ name: "Saga", book: 1 });
+    const frontmatter = await service.readManagedFrontmatter(book.projectFile);
+    expect(frontmatter[FRONTMATTER_KEYS.series]).toBe("Saga");
+    expect(frontmatter[FRONTMATTER_KEYS.seriesBook]).toBe(1);
+
+    const lone = await service.createProject({ title: "Lone", locale: "zh-CN" });
+    const lonely = await service.readManagedFrontmatter(lone.projectFile);
+    expect(lonely).not.toHaveProperty(FRONTMATTER_KEYS.series);
+    expect(lonely).not.toHaveProperty(FRONTMATTER_KEYS.seriesBook);
+
+    const discovered = await service.discoverProjects();
+    expect(discovered.map((project) => [project.title, project.series])).toEqual([
+      ["Book One", { name: "Saga", book: 1 }],
+      ["Lone", null],
+    ]);
+  });
+
+  it("moves a project between series, drops the number alone, and takes it out", async () => {
+    const project = await service.createProject({ title: "Book", locale: "en" });
+    await service.setSeries(project.projectFile, { name: "Saga", book: 2 });
+    expect((await service.loadProject(project.projectFile)).series).toEqual({
+      name: "Saga",
+      book: 2,
+    });
+
+    await service.setSeries(project.projectFile, { name: " Epic ", book: null });
+    const unnumbered = await service.readManagedFrontmatter(project.projectFile);
+    expect(unnumbered[FRONTMATTER_KEYS.series]).toBe("Epic");
+    expect(unnumbered).not.toHaveProperty(FRONTMATTER_KEYS.seriesBook);
+
+    await service.setSeries(project.projectFile, null);
+    const cleared = await service.readManagedFrontmatter(project.projectFile);
+    expect(cleared).not.toHaveProperty(FRONTMATTER_KEYS.series);
+    expect(cleared).not.toHaveProperty(FRONTMATTER_KEYS.seriesBook);
+    expect((await service.loadProject(project.projectFile)).series).toBeNull();
+  });
+
+  it("refuses a book number that is not a whole number above zero", async () => {
+    const project = await service.createProject({ title: "Book", locale: "en" });
+    await expect(
+      service.setSeries(project.projectFile, { name: "Saga", book: 0 }),
+    ).rejects.toThrow();
+    await expect(
+      service.setSeries(project.projectFile, { name: "Saga", book: 1.5 }),
+    ).rejects.toThrow();
+    expect((await service.loadProject(project.projectFile)).series).toBeNull();
+  });
+
+  it("reads a hand-edited note leniently: a bad number is no number, a bad name no series", async () => {
+    const project = await service.createProject({ title: "Book", locale: "en" });
+    await service.repository.updateFrontmatter(project.projectFile, {
+      [FRONTMATTER_KEYS.series]: "Saga",
+      [FRONTMATTER_KEYS.seriesBook]: "3",
+    });
+    expect((await service.loadProject(project.projectFile)).series).toEqual({
+      name: "Saga",
+      book: 3,
+    });
+
+    await service.repository.updateFrontmatter(project.projectFile, {
+      [FRONTMATTER_KEYS.seriesBook]: 0,
+    });
+    expect((await service.loadProject(project.projectFile)).series).toEqual({
+      name: "Saga",
+      book: null,
+    });
+
+    await service.repository.updateFrontmatter(project.projectFile, {
+      [FRONTMATTER_KEYS.series]: "   ",
+      [FRONTMATTER_KEYS.seriesBook]: 2,
+    });
+    const loaded = await service.loadProject(project.projectFile);
+    expect(loaded.series).toBeNull();
+    expect(loaded.structureIssues).toEqual([]);
+  });
+
+  it("keeps the series on an archived project's ref", async () => {
+    const project = await service.createProject({
+      title: "Book",
+      locale: "en",
+      series: { name: "Saga", book: 1 },
+    });
+    const archived = await service.archiveProject(project.projectFile);
+    expect(archived.series).toEqual({ name: "Saga", book: 1 });
+    expect((await service.listArchivedProjects())[0]?.series).toEqual({
+      name: "Saga",
+      book: 1,
+    });
+  });
+});

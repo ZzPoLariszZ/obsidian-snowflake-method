@@ -221,6 +221,7 @@ import {
 	type NoteCountOptions,
 	type SensitiveTermAggregate,
 	type ProjectRef,
+	type ProjectSeries,
 	type ProjectSnapshot,
 	type FreeformTransacted,
 	type GalleryWrite,
@@ -280,6 +281,7 @@ import {
 	SnowflakeDashboardView,
 } from './ui/dashboard-view';
 import { entityGroupLabel, entityGroupsOf } from './ui/entity-form';
+import { seriesNames } from './ui/series';
 import {
 	MANUSCRIPT_EDITING_HOVER_SOURCE,
 	MANUSCRIPT_READING_HOVER_SOURCE,
@@ -1674,7 +1676,34 @@ export default class SnowflakeMethodPlugin
 			async (project) => this.archiveManagedProject(project),
 			async (project) => this.restoreManagedProject(project),
 			async (project) => this.trashArchivedProject(project),
+			async (project, series) => this.setManagedProjectSeries(project, series),
 		).open();
+	}
+
+	/**
+	 * Writes a project's series and tells every switcher: the manager and
+	 * the dashboards group by it, and the discovery cache carries it.
+	 */
+	private async setManagedProjectSeries(
+		option: ManageProjectOption,
+		series: ProjectSeries | null,
+	): Promise<ManageProjectLists> {
+		try {
+			await this.projects.setSeries(option.path, series);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+		this.invalidateProjectDiscovery();
+		await this.refreshDashboards({ streams: false });
+		new Notice(
+			series === null
+				? this.t('messages.seriesCleared', { name: option.title })
+				: this.t('messages.seriesSet', {
+						name: option.title,
+						series: series.name,
+					}),
+		);
+		return this.manageProjectLists();
 	}
 
 	getDefaultProjectLocale(): 'en' | 'zh-CN' {
@@ -1704,6 +1733,7 @@ export default class SnowflakeMethodPlugin
 				projectId: project.id,
 				title: project.title,
 				readOnly: project.readOnly,
+				series: project.series,
 				...(await this.projectHealthFlags(project)),
 			})),
 		);
@@ -2010,6 +2040,7 @@ export default class SnowflakeMethodPlugin
 			projectId: project.id,
 			title: project.title,
 			readOnly: project.readOnly,
+			series: project.series,
 			hasStructureIssues: false,
 			hasMarkerIssues: false,
 		}));
@@ -2392,6 +2423,7 @@ export default class SnowflakeMethodPlugin
 				title: request.title,
 				rootPath: this.settings.projectRoot,
 				locale: request.locale,
+				series: request.series,
 			});
 		} catch (error) {
 			if (error instanceof ProjectCreationInterruptedError) {
@@ -11907,6 +11939,7 @@ export default class SnowflakeMethodPlugin
 				t,
 				defaultLocale,
 				existing.map((project) => project.title),
+				seriesNames(existing),
 				async (request) => {
 					const vaultWasEmpty = (await this.discoverProjects()).length === 0;
 					const project = await this.createProject(request);
