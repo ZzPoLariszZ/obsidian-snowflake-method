@@ -155,8 +155,8 @@ export function homeViewport(width: number, height: number, dpr = 1): GraphViewp
 
 /**
  * The view that shows every given point with its radius inside a box, with
- * a margin, zoomed in no further than native 1 so a small graph is not
- * blown up.
+ * a margin on each side and each axis fitted on its own, zoomed in no
+ * further than native 1 so a small graph is not blown up.
  */
 export function fitViewport(
 	points: readonly Point[],
@@ -180,8 +180,9 @@ export function fitViewport(
 	});
 	const spanX = Math.max(maxX - minX, 1);
 	const spanY = Math.max(maxY - minY, 1);
-	const room = Math.max(1, Math.min(width, height) - 2 * margin);
-	const k = clampZoom(Math.min(room / Math.max(spanX, spanY), Math.max(width, height) / Math.max(spanX, spanY), 1 / dpr), dpr);
+	const roomX = Math.max(1, width - 2 * margin);
+	const roomY = Math.max(1, height - 2 * margin);
+	const k = clampZoom(Math.min(roomX / spanX, roomY / spanY, 1 / dpr), dpr);
 	const centreX = (minX + maxX) / 2;
 	const centreY = (minY + maxY) / 2;
 	return { k, x: width / 2 - centreX * k, y: height / 2 - centreY * k };
