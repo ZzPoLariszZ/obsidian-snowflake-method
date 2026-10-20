@@ -148,6 +148,9 @@ export class CorkboardElement {
 		for (const cls of value.split(' ').filter(Boolean)) this.classes.add(cls);
 	}
 	disabled = false;
+	/** A box's two states, as the app sets them; the fake never flips them on a click. */
+	checked = false;
+	indeterminate = false;
 	tabIndex = -1;
 	readOnly = false;
 	scrollLeft = 0;

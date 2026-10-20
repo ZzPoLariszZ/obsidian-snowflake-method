@@ -4363,11 +4363,11 @@ textarea.snowflake-method-corkboard-recovered-text {
 	border-top: 1px solid var(--background-modifier-border);
 }
 
-/* The fold button, the live count and the group's toggle on one line: the
+/* The group's box, the fold button and the live count on one line: the
    button takes the room, the two controls keep theirs. */
 .snowflake-method-import-group-header {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
+	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--size-4-2);
 	padding: var(--size-2-2) var(--size-4-2);
@@ -4431,7 +4431,7 @@ textarea.snowflake-method-corkboard-recovered-text {
 	padding: 0 var(--size-4-2) var(--size-2-2);
 }
 
-/* A row: the toggle, the name, and the mark at the end of the line. */
+/* A row: the box, the name, and the mark at the end of the line. */
 .snowflake-method-import-row {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr) auto;
@@ -4460,14 +4460,38 @@ textarea.snowflake-method-corkboard-recovered-text {
 }
 
 /* The update dialog says what kind of thing each row is before its name,
-   in the quieter voice, and a row gone from the sibling keeps the toggle's
-   column empty so the names still line up. */
+   in the quieter voice, and a row gone from the sibling keeps the box's
+   column empty so the names still line up, as the group it stands in does. */
 .snowflake-method-import-row-prefix {
 	color: var(--text-muted);
 }
 
-.snowflake-method-import-row-blank {
-	width: var(--toggle-width);
+.snowflake-method-import-tick-blank {
+	width: var(--checkbox-size);
+}
+
+/* Obsidian draws the box; the dash for a group of which some are ticked is
+   drawn here, the way the tick is, since the app leaves that state bare. */
+.snowflake-method-import-modal input.snowflake-method-import-tick {
+	position: relative;
+	flex: 0 0 auto;
+	margin: 0;
+}
+
+.snowflake-method-import-modal input.snowflake-method-import-tick:indeterminate {
+	border-color: var(--checkbox-color);
+	background-color: var(--checkbox-color);
+}
+
+.snowflake-method-import-modal input.snowflake-method-import-tick:indeterminate::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	width: 50%;
+	height: 2px;
+	margin: auto;
+	border-radius: 1px;
+	background-color: var(--checkbox-marker-color);
 }
 
 .snowflake-method-import-row.is-gone .snowflake-method-import-row-name {
@@ -4502,30 +4526,37 @@ textarea.snowflake-method-corkboard-recovered-text {
 	cursor: default;
 }
 
-/* A toggle standing for a group of which some are ticked: on, but faded,
-   so the tick reads as a part rather than the whole. */
-.snowflake-method-import-modal .checkbox-container.is-mixed {
-	opacity: 0.55;
-}
-
-/* The summary takes the start of the footer; the buttons keep the end. A
-   zero basis lets a long summary wrap its own words instead of pushing the
-   buttons down one at a time. */
+/* The summary takes a line of the footer to itself, the full width of the
+   dialog, and the buttons wrap under it to the end as the footer lets them:
+   the units in the full voice on the first line, then each clause on a line
+   of its own in the quieter one. It keeps the height of its two lines
+   whatever it says, empty included, so the tree above never changes size
+   as the words under it come and go. */
 .snowflake-method-import-summary {
-	flex: 1 1 0;
-	min-width: 12rem;
-	margin-inline-end: auto;
+	display: flex;
+	flex: 1 1 100%;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-width: 0;
+	min-height: calc(2.8em + var(--size-2-1));
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	line-height: 1.4;
 }
 
-.snowflake-method-import-summary-divider {
-	color: var(--text-faint);
+.snowflake-method-import-summary-units {
+	color: var(--text-normal);
 }
 
+.snowflake-method-import-summary-clauses {
+	display: flex;
+	flex-direction: column;
+}
+
+/* The offer stands in brackets after the count, a word's space away. */
 .snowflake-method-import-modal button.snowflake-method-import-select-linked {
 	height: auto;
+	margin-inline-start: var(--size-4-1);
 	padding: 0;
 	border: 0;
 	background: transparent;

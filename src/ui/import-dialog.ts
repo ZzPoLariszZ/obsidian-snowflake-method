@@ -4,7 +4,6 @@ import {
 	Notice,
 	SearchComponent,
 	Setting,
-	ToggleComponent,
 	setIcon,
 } from 'obsidian';
 
@@ -373,7 +372,13 @@ function counted(t: Translate, key: string, count: number): string {
 	return t(count === 1 ? `${key}One` : key, { count });
 }
 
-const UNITS: readonly { readonly key: string; readonly kinds: readonly ImportPartKind[] }[] = [
+interface ImportUnit {
+	readonly key: string;
+	readonly kinds: readonly ImportPartKind[];
+}
+
+/** The units a report counts in, one for each kind of thing that lands. */
+const UNITS: readonly ImportUnit[] = [
 	{ key: 'notes', kinds: ['character', 'scene', 'worldbuilding'] },
 	{ key: 'pictures', kinds: ['picture'] },
 	{ key: 'chapters', kinds: ['chapter'] },
@@ -386,15 +391,34 @@ const UNITS: readonly { readonly key: string; readonly kinds: readonly ImportPar
 	{ key: 'stickyNotes', kinds: ['sticky-note'] },
 ];
 
-/** The non-zero units in their fixed order: "14 notes, 3 pictures, 2 timelines". */
-export function importUnits(t: Translate, countOf: (kind: ImportPartKind) => number): string[] {
+/**
+ * The units the dialog's foot counts in, few enough to take in at a glance:
+ * the tree counts every kind by its group already, so the foot sums the
+ * notes, the pictures, the manuscript and the tool records.
+ */
+const FOOT_UNITS: readonly ImportUnit[] = [
+	{ key: 'notes', kinds: ['character', 'scene', 'worldbuilding'] },
+	{ key: 'pictures', kinds: ['picture'] },
+	{ key: 'chapters', kinds: ['chapter'] },
+	{
+		key: 'toolRecords',
+		kinds: ['timeline', 'beat-sheet', 'freeform-view', 'task', 'foreshadowing', 'revision', 'sticky-note'],
+	},
+];
+
+function unitsOf(units: readonly ImportUnit[], t: Translate, countOf: (kind: ImportPartKind) => number): string[] {
 	const words: string[] = [];
-	for (const unit of UNITS) {
+	for (const unit of units) {
 		let count = 0;
 		for (const kind of unit.kinds) count += countOf(kind);
 		if (count > 0) words.push(counted(t, `modal.import.summary.${unit.key}`, count));
 	}
 	return words;
+}
+
+/** The non-zero units in their fixed order: "14 notes, 3 pictures, 2 timelines". */
+export function importUnits(t: Translate, countOf: (kind: ImportPartKind) => number): string[] {
+	return unitsOf(UNITS, t, countOf);
 }
 
 /** The kinds the replace confirmation names: each is a note of the target's. */
@@ -410,34 +434,23 @@ const NOTE_KINDS: ReadonlySet<ImportPartKind> = new Set<ImportPartKind>([
 export interface ImportPlanWords {
 	/** The units, or the sentence for nothing selected. */
 	units: string;
-	/** What follows the units, clause by clause. */
-	clauses: string[];
 	/** How many linked parts stand outside the selection, for the offer to select them. */
 	unselected: number;
 }
 
-/** What a plan comes to, as the dialog's summary line says it. */
+/**
+ * What a plan comes to, as the dialog's foot says it: what lands, in the
+ * foot's few units, and how many linked notes stand outside the ticks. What
+ * is skipped, replaced or dropped is not repeated here: each row's mark
+ * says what becomes of it, and the report after the run lists the rest.
+ */
 export function importPlanWords(t: Translate, plan: ImportPlan, ticked: number): ImportPlanWords {
-	if (ticked === 0) return { units: t('modal.import.summary.nothing'), clauses: [], unselected: 0 };
-	const units = importUnits(t, (kind) => plan.counts[kind].create + plan.counts[kind].replace);
-	const clauses: string[] = [];
-	let skipped = 0;
-	let replaced = 0;
-	let upToDate = 0;
-	for (const entry of plan.entries) {
-		if (entry.action === 'replace') replaced += 1;
-		else if (entry.action === 'skip' && (entry.reason === 'name-taken' || entry.reason === 'file-name-taken')) skipped += 1;
-		else if (entry.action === 'skip' && entry.reason === 'unchanged') upToDate += 1;
-	}
-	if (skipped > 0) clauses.push(counted(t, 'modal.import.summary.skipped', skipped));
-	if (replaced > 0) clauses.push(counted(t, 'modal.import.summary.replaced', replaced));
-	if (upToDate > 0) clauses.push(counted(t, 'modal.import.summary.upToDate', upToDate));
-	if (plan.droppedLinks.length > 0) clauses.push(counted(t, 'modal.import.summary.dropped', plan.droppedLinks.length));
+	if (ticked === 0) return { units: t('modal.import.summary.nothing'), unselected: 0 };
+	const units = unitsOf(FOOT_UNITS, t, (kind) => plan.counts[kind].create + plan.counts[kind].replace);
 	return {
 		// Ticks that come to nothing are not "nothing selected": every one
-		// of them is already here as it stands, and the clause says so.
+		// of them is already here as it stands, which its row's mark says.
 		units: units.length === 0 ? t('modal.import.summary.nothingToImport') : units.join(t('modal.import.summary.separator')),
-		clauses,
 		unselected: plan.unselectedLinks.length,
 	};
 }
@@ -484,7 +497,11 @@ export interface ImportDialogConfig {
 	mode?: ImportDialogMode;
 	target: { path: string; title: string; locale: ProjectLanguage; series: ProjectSeries | null };
 	sources: readonly ImportSourceOption[];
-	/** The source to open on, else the lowest book of the target's series, else the first offered. */
+	/**
+	 * The source to open on: the author's own pick, so one in another language
+	 * is pointed out as it is read. Without one an import opens on no source,
+	 * and an update on the lowest book of the series.
+	 */
 	initialSource?: string | null;
 	bridge: ImportDialogBridge;
 }
@@ -497,12 +514,24 @@ export interface ImportChoice {
 }
 
 function initialSourceOf(config: ImportDialogConfig): string | null {
-	return (
-		config.initialSource ??
-		defaultImportSource(config.sources, config.target.series)?.path ??
-		config.sources[0]?.path ??
-		null
-	);
+	if (config.initialSource !== undefined && config.initialSource !== null) return config.initialSource;
+	if ((config.mode ?? 'import') !== 'update') return null;
+	return defaultImportSource(config.sources, config.target.series)?.path ?? config.sources[0]?.path ?? null;
+}
+
+/**
+ * A native checkbox, drawn by Obsidian: ticked for the whole, a dash for a
+ * part. A change hands over what the browser just made of it, so a dash
+ * goes to a tick as a dash does everywhere.
+ */
+function tickBox(parent: HTMLElement, state: 'none' | 'some' | 'all', label: string): HTMLInputElement {
+	const box = parent.createEl('input', {
+		cls: 'snowflake-method-import-tick',
+		attr: { type: 'checkbox', 'aria-label': label },
+	});
+	box.checked = state === 'all';
+	box.indeterminate = state === 'some';
+	return box;
 }
 
 function sourceTitleOf(config: ImportDialogConfig, path: string | null): string {
@@ -524,7 +553,7 @@ const SUMMARY_DELAY_MS = 150;
 /**
  * Import from project: a source, a policy for notes already here, a search
  * over the parts and the tree of them, with a summary of what the ticks come
- * to standing at the foot. Words in the target project's language. A source
+ * to standing above the buttons. Words in the target project's language. A source
  * in another language is pointed out before it is read, and every run is
  * confirmed on submit, since none can be undone; a refusal keeps the dialog.
  */
@@ -537,7 +566,6 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 	private model: ImportSelectionModel | null = null;
 	private groups: readonly ImportTreeGroup[] = [];
 	/** In update mode, how many design parts stand here as the sibling has them. */
-	private unchanged = 0;
 	private readonly unfolded = new Set<string>();
 	private treeEl: HTMLElement | null = null;
 	private statusEl: HTMLElement | null = null;
@@ -642,7 +670,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		box.setValue(this.query);
 		box.onChange((value) => {
 			this.query = value;
-			this.paintTree();
+			this.paintTree('top');
 		});
 		// Escape clears a search before it closes the dialog: the key is
 		// taken here, on the box, so the dialog's own handler never sees it.
@@ -652,7 +680,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 			event.stopPropagation();
 			box.setValue('');
 			this.query = '';
-			this.paintTree();
+			this.paintTree('top');
 		});
 
 		this.treeEl = this.contentEl.createDiv({
@@ -730,15 +758,18 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 	// ---- Loading ------------------------------------------------------------------
 
 	/**
-	 * The first read, of the source the dialog opened on. One in another
-	 * language is pointed out before it is read, as one picked later is, and
-	 * declining leaves From empty. The notice waits a turn so the dialog has
-	 * finished opening and the notice stands on top of it.
+	 * The first read, of the source the dialog opened on. One the author
+	 * picked, in Start from, is pointed out before it is read when it is in
+	 * another language, as one picked in From is, and declining leaves From
+	 * empty; one the dialog chose for an update is read without a word. The
+	 * notice waits a turn so the dialog has finished opening and the notice
+	 * stands on top of it.
 	 */
 	private async openSource(): Promise<void> {
 		await Promise.resolve();
 		const path = this.sourcePath;
-		if (path !== null && this.otherLanguage(path) && !(await this.confirmLanguage(path))) {
+		const picked = path !== null && path === (this.config.initialSource ?? null);
+		if (picked && this.otherLanguage(path) && !(await this.confirmLanguage(path))) {
 			this.sourcePath = null;
 			this.sourceField?.refresh();
 		}
@@ -799,7 +830,6 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 			const tree = updateTree(inspection, this.t, this.book());
 			this.model = new ImportSelectionModel(inspection.parts, tree.initial);
 			this.groups = tree.groups;
-			this.unchanged = tree.unchanged;
 		} else {
 			this.model = new ImportSelectionModel(inspection.parts);
 			this.groups = importTree(inspection, this.t);
@@ -810,10 +840,13 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 
 	// ---- The tree ---------------------------------------------------------------
 
-	private paintTree(): void {
+	private paintTree(scroll: 'keep' | 'top' = 'keep'): void {
 		const tree = this.treeEl;
 		const status = this.statusEl;
 		if (tree === null || status === null) return;
+		// The tree is rebuilt whole on every change, and the reader's place
+		// in it is kept, unless the rows now answer different words.
+		const scrollTop = scroll === 'keep' ? tree.scrollTop : 0;
 		tree.empty();
 		status.empty();
 		const model = this.model;
@@ -842,6 +875,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 			this.paintGroup(tree, model, group, rows, searching || this.unfolded.has(group.id));
 		}
 		if (shown === 0) status.setText(this.t('modal.import.noMatches'));
+		tree.scrollTop = scrollTop;
 	}
 
 	private paintGroup(
@@ -858,6 +892,27 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		});
 		groupEl.toggleClass('is-open', opened);
 		const header = groupEl.createDiv({ cls: 'snowflake-method-import-group-header' });
+		const keys = group.rows.flatMap((row) => row.keys);
+		const selected = keys.filter((key) => model.has(key)).length;
+		// A group that only reports, as the gone one does, counts its rows and
+		// has no box: there is nothing in it to take.
+		const reporting = keys.length === 0;
+		if (reporting) {
+			header.createSpan({ cls: 'snowflake-method-import-tick-blank' });
+		} else {
+			// The group's box stands for every row the group shows now that can
+			// be ticked: a search narrows that to what it found, and a revision
+			// out of reach until a chapter is ticked is left out, or the box
+			// would show a dash it could never clear.
+			const shownKeys = rows.flatMap((row) => row.keys).filter((key) => model.available(key));
+			const state = model.state(shownKeys);
+			const box = tickBox(header, state, t('modal.import.takeAll', { name: group.title }));
+			box.addEventListener('change', () => {
+				model.tick(shownKeys, state !== 'all');
+				this.paintTree();
+				this.scheduleSummary();
+			});
+		}
 		const fold = header.createEl('button', {
 			cls: 'snowflake-method-import-fold',
 			attr: { type: 'button', 'aria-expanded': String(opened), 'aria-label': group.title },
@@ -870,30 +925,12 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 			else this.unfolded.add(group.id);
 			this.paintTree();
 		});
-		const keys = group.rows.flatMap((row) => row.keys);
-		const selected = keys.filter((key) => model.has(key)).length;
-		// A group that only reports, as the gone one does, counts its rows and
-		// has no toggle: there is nothing in it to take.
-		const reporting = keys.length === 0;
 		header.createSpan({
 			cls: 'snowflake-method-import-group-count',
 			text: reporting
 				? String(group.rows.length)
 				: t('modal.import.groupCount', { selected, count: keys.length }),
 		});
-		if (!reporting) {
-			// The group's toggle takes every tickable row the group shows now:
-			// a search narrows what it takes to what it found.
-			const shownKeys = rows.flatMap((row) => row.keys);
-			const state = model.state(shownKeys);
-			const toggle = new ToggleComponent(header).setValue(state !== 'none').onChange((on) => {
-				model.tick(shownKeys, on);
-				this.paintTree();
-				this.scheduleSummary();
-			});
-			toggle.toggleEl.toggleClass('is-mixed', state === 'some');
-			toggle.toggleEl.setAttribute('aria-label', t('modal.import.takeAll', { name: group.title }));
-		}
 		if (!opened) return;
 		// The rows are made when the fold opens and unmade when it closes,
 		// so a project of thousands of scenes costs nine headers until asked.
@@ -915,7 +952,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		if (row.note === 'gone') {
 			// Gone from the source and kept here: nothing to tick, only to know.
 			rowEl.addClass('is-gone');
-			rowEl.createSpan({ cls: 'snowflake-method-import-row-blank' });
+			rowEl.createSpan({ cls: 'snowflake-method-import-tick-blank' });
 			paintName();
 			rowEl.createSpan({ cls: 'snowflake-method-import-row-mark', text: t('modal.import.mark.kept') });
 			return;
@@ -933,22 +970,21 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		rowEl.toggleClass('is-unavailable', !available);
 		rowEl.toggleClass('is-here', (updating ? row.note === 'here' : here) && !replacing);
 		rowEl.toggleClass('is-replaced', replacing);
-		const flip = (on: boolean): void => {
-			model.tick(row.keys, on);
+		const flip = (): void => {
+			model.tick(row.keys, state !== 'all');
 			this.paintTree();
 			this.scheduleSummary();
 		};
-		const toggle = new ToggleComponent(rowEl).setValue(state !== 'none').onChange(flip);
-		toggle.setDisabled(!available);
-		toggle.toggleEl.toggleClass('is-mixed', state === 'some');
-		toggle.toggleEl.setAttribute('aria-label', t('modal.import.take', { name: row.label }));
+		const box = tickBox(rowEl, state, t('modal.import.take', { name: row.label }));
+		box.disabled = !available;
+		box.addEventListener('change', flip);
 		paintName();
 		const name = rowEl.querySelector('.snowflake-method-import-row-name');
 		// The words are part of the control, as a checkbox's label is: a
-		// click on them does what a click on the toggle does. The tree is
+		// click on them does what a click on the box does. The tree is
 		// repainted on every change, so the state read here is current.
 		name?.addEventListener('click', () => {
-			if (available) flip(state === 'none');
+			if (available) flip();
 		});
 		const mark = rowEl.createSpan({ cls: 'snowflake-method-import-row-mark' });
 		if (!available) mark.setText(t('modal.import.mark.needsManuscript'));
@@ -993,33 +1029,55 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		}
 		const plan = this.config.bridge.plan(this.inspection, model.selection(this.policy));
 		const words = importPlanWords(this.t, plan, model.count());
-		summary.createSpan({ text: words.units });
-		for (const clause of words.clauses) {
-			summary.createSpan({ cls: 'snowflake-method-import-summary-divider', text: ' · ' });
-			summary.createSpan({ text: clause });
-		}
-		if (words.unselected > 0) {
-			summary.createSpan({ cls: 'snowflake-method-import-summary-divider', text: ' · ' });
-			summary.createSpan({ text: counted(this.t, 'modal.import.summary.unselectedLinks', words.unselected) });
-			summary.createSpan({ text: ' ' });
-			const select = summary.createEl('button', {
-				cls: 'snowflake-method-import-select-linked',
-				text: this.t('modal.import.selectLinked'),
-				attr: { type: 'button' },
-			});
-			select.addEventListener('click', () => {
-				model.tick(plan.unselectedLinks, true);
-				this.paintTree();
-				this.paintSummary();
-			});
-		}
+		const offer =
+			words.unselected > 0
+				? {
+						text: counted(this.t, 'modal.import.summary.unselectedLinks', words.unselected),
+						select: (): void => {
+							model.tick(plan.unselectedLinks, true);
+							this.paintTree();
+							this.paintSummary();
+						},
+					}
+				: null;
+		this.paintSummaryLines(summary, words.units, [], offer);
 	}
 
-	/** What an update comes to: the notes taken, those of them this book had edited, and what already matches. */
+	/**
+	 * The units on a line of their own, in the full voice, and under them
+	 * each clause on a line of its own in the quieter one, so nothing runs
+	 * together and no line opens on a divider. The offer to select the
+	 * linked notes ends the clause that counts them.
+	 */
+	private paintSummaryLines(
+		summary: HTMLElement,
+		units: string,
+		clauses: readonly string[],
+		offer: { text: string; select: () => void } | null,
+	): void {
+		summary.createDiv({ cls: 'snowflake-method-import-summary-units', text: units });
+		if (clauses.length === 0 && offer === null) return;
+		const lines = summary.createDiv({ cls: 'snowflake-method-import-summary-clauses' });
+		const clause = (text: string): HTMLElement => {
+			const el = lines.createDiv({ cls: 'snowflake-method-import-summary-clause' });
+			el.createSpan({ text });
+			return el;
+		};
+		for (const text of clauses) clause(text);
+		if (offer === null) return;
+		const select = clause(offer.text).createEl('button', {
+			cls: 'snowflake-method-import-select-linked',
+			text: this.t('modal.import.selectLinked'),
+			attr: { type: 'button' },
+		});
+		select.addEventListener('click', offer.select);
+	}
+
+	/** What an update comes to: the notes taken, and those of them this book had edited. */
 	private paintUpdateSummary(summary: HTMLElement, inspection: ImportInspection, model: ImportSelectionModel): void {
 		const t = this.t;
 		if (this.groups.length === 0) {
-			summary.createSpan({ text: t('modal.import.update.nothing', { book: this.book() }) });
+			this.paintSummaryLines(summary, t('modal.import.update.nothing', { book: this.book() }), [], null);
 			return;
 		}
 		const ticked = model.count();
@@ -1028,16 +1086,14 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 			const standing = inspection.standing.get(key)?.kind;
 			if (standing === 'conflict' || standing === 'existing') edited += 1;
 		}
-		summary.createSpan({
-			text: ticked === 0 ? t('modal.import.summary.nothing') : counted(t, 'modal.import.update.summary', ticked),
-		});
 		const clauses: string[] = [];
 		if (edited > 0) clauses.push(counted(t, 'modal.import.update.edited', edited));
-		if (this.unchanged > 0) clauses.push(counted(t, 'modal.import.update.unchanged', this.unchanged));
-		for (const clause of clauses) {
-			summary.createSpan({ cls: 'snowflake-method-import-summary-divider', text: ' · ' });
-			summary.createSpan({ text: clause });
-		}
+		this.paintSummaryLines(
+			summary,
+			ticked === 0 ? t('modal.import.summary.nothing') : counted(t, 'modal.import.update.summary', ticked),
+			clauses,
+			null,
+		);
 	}
 }
 
@@ -1052,6 +1108,7 @@ class ConfirmImportReplaceModal extends ConfirmModal {
 	) {
 		super(app, t, { label: t('modal.importReplace.confirm'), style: 'mod-warning' }, onResolve);
 		this.setTitle(counted(t, 'modal.importReplace.title', names.length));
+		this.proceedOnModEnter();
 	}
 
 	protected renderBody(body: HTMLElement): void {
@@ -1094,11 +1151,11 @@ class ConfirmImportRunModal extends ConfirmModal {
 		);
 		this.keys = mode === 'update' ? 'modal.updateConfirm' : 'modal.importConfirm';
 		this.setTitle(t(`${this.keys}.title`, { source }));
+		this.proceedOnModEnter();
 	}
 
 	protected renderBody(body: HTMLElement): void {
-		body.createEl('p', { text: this.t(`${this.keys}.question`, { source: this.source }) });
-		body.createEl('p', { text: this.t(`${this.keys}.consequence`) });
+		body.createEl('p', { text: this.t(`${this.keys}.note`, { source: this.source }) });
 	}
 }
 
@@ -1121,11 +1178,13 @@ class ConfirmImportLanguageModal extends ConfirmModal {
 	) {
 		super(app, t, { label: t('modal.importLanguage.confirm'), style: 'mod-cta' }, onResolve);
 		this.setTitle(t('modal.importLanguage.title'));
+		this.proceedOnModEnter();
 	}
 
+	// One line, which is all the notice has to say: which language the
+	// source is written in, and which this project is.
 	protected renderBody(body: HTMLElement): void {
 		body.createEl('p', { text: this.t('modal.importLanguage.note', this.words) });
-		body.createEl('p', { text: this.t('modal.importLanguage.translated') });
 	}
 }
 

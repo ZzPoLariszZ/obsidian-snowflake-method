@@ -2875,15 +2875,27 @@ export abstract class ConfirmModal extends Modal {
 			attr: { type: 'button' },
 		});
 		cancel.addEventListener('click', () => this.close());
-		const proceed = actions.createEl('button', {
+		const yes = actions.createEl('button', {
 			cls: this.confirm.style,
 			text: this.confirm.label,
 			attr: { type: 'button' },
 		});
-		proceed.addEventListener('click', () => {
-			this.confirmed = true;
-			this.close();
-		});
+		yes.addEventListener('click', () => this.proceed());
+	}
+
+	/** Says yes, as the proceed button does. */
+	protected proceed(): void {
+		this.confirmed = true;
+		this.close();
+	}
+
+	/**
+	 * Mod+Enter says yes, as it submits the dialogs: a confirmation that
+	 * stands in a dialog's way asks for this, so the chord that sent the
+	 * dialog carries on through it. A confirmation of a deletion does not.
+	 */
+	protected proceedOnModEnter(): void {
+		submitOnModEnter(this, () => this.proceed());
 	}
 
 	onClose(): void {

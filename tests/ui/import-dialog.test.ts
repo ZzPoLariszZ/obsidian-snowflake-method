@@ -61,29 +61,11 @@ vi.mock('obsidian', async (importOriginal) => {
 			return this;
 		}
 	}
-	class ToggleComponent {
-		readonly toggleEl: CorkboardElement;
-		private value = false;
-		private handler: ((on: boolean) => void) | null = null;
-		constructor(container: CorkboardElement) {
-			this.toggleEl = container.createDiv({ cls: 'checkbox-container' });
-			this.toggleEl.addEventListener('click', () => {
-				if (this.toggleEl.disabled) return;
-				this.setValue(!this.value);
-				this.handler?.(this.value);
-			});
-		}
-		setValue(on: boolean): this { this.value = on; this.toggleEl.toggleClass('is-enabled', on); return this; }
-		getValue(): boolean { return this.value; }
-		setDisabled(disabled: boolean): this { this.toggleEl.disabled = disabled; return this; }
-		onChange(handler: (on: boolean) => void): this { this.handler = handler; return this; }
-	}
 	return {
 		...runtime,
 		Modal,
 		Setting,
 		SearchComponent,
-		ToggleComponent,
 		Notice: class {
 			constructor(message: string) { notices(message); }
 		},
@@ -91,6 +73,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import type { App } from 'obsidian';
+import type { KeymapEventHandler } from '../helpers/obsidian-runtime';
 
 import {
 	linkedParts,
@@ -334,31 +317,25 @@ describe('importTree', () => {
 // ---- The words ---------------------------------------------------------------------
 
 describe('the summary words', () => {
-	it('counts the units in their order, then what is skipped, replaced, dropped and left unselected', () => {
+	it('counts the units in their order, few enough for the foot, and what is left unselected', () => {
 		const held = inspection();
 		const model = new ImportSelectionModel(held.parts);
 		model.tick(['character:c1'], false);
 		const words = importPlanWords(t, fakePlan(held, model.selection('skip')), model.count());
+		// The six tool records are one unit: the tree counts each kind already.
 		expect(words.units).toBe(
-			[
-				'modal.import.summary.notes{"count":3}',
-				'modal.import.summary.timelinesOne{"count":1}',
-				'modal.import.summary.beatSheetsOne{"count":1}',
-				'modal.import.summary.viewsOne{"count":1}',
-				'modal.import.summary.tasksOne{"count":1}',
-				'modal.import.summary.foreshadowingOne{"count":1}',
-				'modal.import.summary.stickyNotesOne{"count":1}',
-			].join('modal.import.summary.separator'),
+			['modal.import.summary.notes{"count":3}', 'modal.import.summary.toolRecords{"count":6}'].join(
+				'modal.import.summary.separator',
+			),
 		);
-		expect(words.clauses).toEqual([]);
 		expect(words.unselected).toBe(1);
 		model.tick(['character:c1'], true);
+		// Alice stands here already: skipped she is not counted, replaced she is.
 		const skipping = importPlanWords(t, fakePlan(held, model.selection('skip')), model.count());
-		expect(skipping.clauses).toEqual(['modal.import.summary.skippedOne{"count":1}']);
+		expect(skipping.units).toContain('modal.import.summary.notes{"count":3}');
 		expect(skipping.unselected).toBe(0);
 		const replacing = importPlanWords(t, fakePlan(held, model.selection('replace')), model.count());
 		expect(replacing.units).toContain('modal.import.summary.notes{"count":4}');
-		expect(replacing.clauses).toEqual(['modal.import.summary.replacedOne{"count":1}']);
 		expect(importReplacedNames(t, fakePlan(held, model.selection('replace')))).toEqual(['Alice']);
 		expect(importPlanWords(t, fakePlan(held, { parts: new Set(), clashPolicy: 'skip' }), 0).units).toBe(
 			'modal.import.summary.nothing',
@@ -376,7 +353,6 @@ describe('the summary words', () => {
 		};
 		const settledWords = importPlanWords(t, settled, model.count());
 		expect(settledWords.units).toBe('modal.import.summary.nothingToImport');
-		expect(settledWords.clauses).toEqual([`modal.import.summary.upToDate{"count":${base.entries.length}}`]);
 		expect(settledWords.unselected).toBe(0);
 	});
 
@@ -404,6 +380,14 @@ interface DialogLike {
 	close(): void;
 }
 
+/** Strikes Mod+Enter on a dialog's own scope, as the app's keymap would. */
+const strikeModEnter = (modal: unknown): void => {
+	const handler = (modal as { scope: { keys: KeymapEventHandler[] } }).scope.keys.find(
+		(held) => held.key === 'Enter' && held.modifiers?.length === 1 && held.modifiers[0] === 'Mod',
+	);
+	if (handler === undefined) throw new Error('the dialog carries no Mod+Enter handler');
+	handler.func({ isComposing: false, repeat: false } as KeyboardEvent, {});
+};
 const flush = async (): Promise<void> => {
 	for (let i = 0; i < 4; i += 1) await Promise.resolve();
 };
@@ -414,6 +398,8 @@ async function openDialog(
 ): Promise<{ dialog: DialogLike; inspect: ReturnType<typeof vi.fn>; onSubmit: ReturnType<typeof vi.fn> }> {
 	const inspect = vi.fn(() => Promise.resolve(held));
 	const onSubmit = vi.fn(options.onSubmit ?? (() => Promise.resolve()));
+	// Handed Book 1 unless the test says otherwise: an import opens on no source of its own.
+	const initialSource = 'initialSource' in options ? options.initialSource : 'Book 1/Project.md';
 	const modal = new ImportProjectModal(
 		app,
 		t,
@@ -424,7 +410,7 @@ async function openDialog(
 				{ path: 'Book 1/Project.md', title: 'Book 1', series: { name: 'Saga', book: 1 }, locale: 'en', archived: false },
 				{ path: 'Far/Project.md', title: '远方', series: null, locale: 'zh-CN', archived: false },
 			],
-			initialSource: options.initialSource,
+			initialSource,
 			bridge: { inspect, plan: fakePlan },
 		},
 		onSubmit,
@@ -453,10 +439,11 @@ const rowNamed = (dialog: DialogLike, name: string): CorkboardElement => {
 	if (row === undefined) throw new Error(`no row ${name}`);
 	return row;
 };
+/** The row's or the group's box. A change is what a click leaves behind in a browser, and the fake has only the change. */
 const toggleOf = (element: CorkboardElement): CorkboardElement => {
-	const toggle = element.querySelector('.checkbox-container');
-	if (toggle === null) throw new Error('no toggle');
-	return toggle;
+	const box = element.querySelector('.snowflake-method-import-tick');
+	if (box === null) throw new Error('no box');
+	return box;
 };
 const openGroup = (dialog: DialogLike, title: string): void => {
 	const fold = dialog.contentEl
@@ -465,10 +452,15 @@ const openGroup = (dialog: DialogLike, title: string): void => {
 	if (fold === undefined) throw new Error(`no group ${title}`);
 	fold.dispatch('click');
 };
+/** The summary read back as one line: the units, then each clause, which stands on a line of its own. */
 const summaryText = (dialog: DialogLike): string => {
 	const summary = dialog.modalEl.querySelector('.snowflake-method-import-summary');
 	if (summary === null) throw new Error('no summary');
-	return summary.children.map((child) => child.textContent).join('');
+	const units = summary.querySelector('.snowflake-method-import-summary-units')?.textContent ?? '';
+	const clauses = summary
+		.querySelectorAll('.snowflake-method-import-summary-clause')
+		.map((clause) => clause.children.map((child) => child.textContent).join(' '));
+	return [units, ...clauses].join(' · ');
 };
 /** The source From shows, which is the title of the one held, or nothing. */
 const fromValue = (dialog: DialogLike): string =>
@@ -484,7 +476,17 @@ const search = (dialog: DialogLike, query: string): void => {
 };
 
 describe('ImportProjectModal', () => {
-	it('opens on the series’ lowest book, reads the source, and draws the groups folded with their counts', async () => {
+	it('opens on no source of its own, so no project is read unasked', async () => {
+		const { dialog, inspect } = await openDialog(inspection(), { initialSource: null });
+		expect(inspect).not.toHaveBeenCalled();
+		expect(fromValue(dialog)).toBe('');
+		expect(groupTitles(dialog)).toEqual([]);
+		expect(dialog.contentEl.querySelector('.snowflake-method-import-status')?.textContent).toBe('');
+		expect(summaryText(dialog)).toBe('');
+		expect(opened).toHaveLength(1);
+	});
+
+	it('reads the source it opens on, and draws the groups folded with their counts', async () => {
 		const { dialog, inspect } = await openDialog();
 		expect(inspect).toHaveBeenCalledExactlyOnceWith('Book 1/Project.md');
 		expect(dialog.modalEl.classes.has('snowflake-method-import-modal')).toBe(true);
@@ -506,12 +508,15 @@ describe('ImportProjectModal', () => {
 			.map((count) => count.textContent);
 		expect(counts[1]).toBe('modal.import.groupCount{"selected":2,"count":3}');
 		expect(counts[6]).toBe('modal.import.groupCount{"selected":0,"count":2}');
-		// Alice stands here already and the policy skips her, which the foot says.
+		// Alice stands here already and the policy skips her: the foot counts
+		// the three notes that come, and her row's mark says why not four.
 		expect(summaryText(dialog)).toContain('modal.import.summary.notes{"count":3}');
-		expect(summaryText(dialog)).toContain(' · modal.import.summary.skippedOne{"count":1}');
+		expect(summaryText(dialog)).not.toContain('skipped');
+		const summary = dialog.modalEl.querySelector('.snowflake-method-import-summary');
+		expect(summary?.children.map((line) => [...line.classes][0])).toEqual(['snowflake-method-import-summary-units']);
 	});
 
-	it('opens on the source it was handed, and the first offered when the target is in no series', async () => {
+	it('opens on the source it was handed, and on none when handed none, even with one project offered', async () => {
 		const named = await openDialog(inspection(), { initialSource: 'Other/Project.md' });
 		expect(named.inspect).toHaveBeenCalledExactlyOnceWith('Other/Project.md');
 		const inspect = vi.fn(() => Promise.resolve(inspection()));
@@ -526,7 +531,7 @@ describe('ImportProjectModal', () => {
 			() => Promise.resolve(),
 		).open();
 		await flush();
-		expect(inspect).toHaveBeenCalledExactlyOnceWith('Other/Project.md');
+		expect(inspect).not.toHaveBeenCalled();
 	});
 
 	it('marks a copy that still matches its source as up to date, which no policy replaces', async () => {
@@ -552,7 +557,7 @@ describe('ImportProjectModal', () => {
 		const alice = rowNamed(dialog, 'Alice');
 		expect(alice.classes.has('is-here')).toBe(true);
 		expect(alice.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.here');
-		expect(toggleOf(alice).classes.has('is-enabled')).toBe(true);
+		expect(toggleOf(alice).checked).toBe(true);
 		const select = dialog.contentEl.querySelector('select');
 		if (select === null) throw new Error('no policy dropdown');
 		select.value = 'replace';
@@ -561,11 +566,11 @@ describe('ImportProjectModal', () => {
 		expect(replaced.classes.has('is-replaced')).toBe(true);
 		expect(replaced.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.replace');
 		// The policy moved no tick.
-		expect(toggleOf(replaced).classes.has('is-enabled')).toBe(true);
+		expect(toggleOf(replaced).checked).toBe(true);
 		const policyRow = select.closest('.setting-item');
 		expect(policyRow?.classes.has('is-replacing')).toBe(true);
 		dialog.dom.flushFrame();
-		expect(summaryText(dialog)).toContain('modal.import.summary.replacedOne{"count":1}');
+		expect(summaryText(dialog)).toContain('modal.import.summary.notes{"count":4}');
 	});
 
 	it('keeps a revision out of reach until a chapter is ticked, and lets the name flip a row', async () => {
@@ -579,34 +584,41 @@ describe('ImportProjectModal', () => {
 		);
 		openGroup(dialog, 'manuscript.title');
 		rowNamed(dialog, 'Chapter 1').querySelector('.snowflake-method-import-row-name')?.dispatch('click');
-		expect(toggleOf(rowNamed(dialog, 'Chapter 1')).classes.has('is-enabled')).toBe(true);
+		expect(toggleOf(rowNamed(dialog, 'Chapter 1')).checked).toBe(true);
 		expect(rowNamed(dialog, 'tasks.tab.revision').classes.has('is-unavailable')).toBe(false);
-		toggleOf(rowNamed(dialog, 'tasks.tab.revision')).dispatch('click');
-		expect(toggleOf(rowNamed(dialog, 'tasks.tab.revision')).classes.has('is-enabled')).toBe(true);
+		toggleOf(rowNamed(dialog, 'tasks.tab.revision')).dispatch('change');
+		expect(toggleOf(rowNamed(dialog, 'tasks.tab.revision')).checked).toBe(true);
 		rowNamed(dialog, 'Chapter 1').querySelector('.snowflake-method-import-row-name')?.dispatch('click');
-		expect(toggleOf(rowNamed(dialog, 'tasks.tab.revision')).classes.has('is-enabled')).toBe(false);
+		expect(toggleOf(rowNamed(dialog, 'tasks.tab.revision')).checked).toBe(false);
 		dialog.dom.flushFrame();
 		expect(summaryText(dialog)).not.toContain('chapters');
 	});
 
-	it('takes a group whole or lets it go, and a search narrows what the group’s toggle takes', async () => {
+	it('takes a group whole or lets it go, and a search narrows what the group’s box takes', async () => {
 		const { dialog } = await openDialog();
 		const characters = headers(dialog)[1];
 		if (characters === undefined) throw new Error('no characters header');
-		toggleOf(characters).dispatch('click');
+		// Two of three ticked: the box shows a dash, and a change on a dash takes the whole.
+		expect(toggleOf(characters).indeterminate).toBe(true);
+		toggleOf(characters).dispatch('change');
+		expect(headers(dialog)[1]?.querySelector('.snowflake-method-import-group-count')?.textContent).toBe(
+			'modal.import.groupCount{"selected":3,"count":3}',
+		);
+		expect(toggleOf(headers(dialog)[1] as CorkboardElement).checked).toBe(true);
+		toggleOf(headers(dialog)[1] as CorkboardElement).dispatch('change');
 		expect(headers(dialog)[1]?.querySelector('.snowflake-method-import-group-count')?.textContent).toBe(
 			'modal.import.groupCount{"selected":0,"count":3}',
 		);
-		expect(toggleOf(headers(dialog)[1] as CorkboardElement).classes.has('is-enabled')).toBe(false);
+		expect(toggleOf(headers(dialog)[1] as CorkboardElement).checked).toBe(false);
 		search(dialog, 'bob');
 		expect(groupTitles(dialog)).toEqual(['modal.import.group.characters']);
 		expect(rows(dialog).map(labelOf)).toEqual(['Bob']);
-		toggleOf(headers(dialog)[0] as CorkboardElement).dispatch('click');
+		toggleOf(headers(dialog)[0] as CorkboardElement).dispatch('change');
 		search(dialog, '');
 		openGroup(dialog, 'modal.import.group.characters');
-		expect(toggleOf(rowNamed(dialog, 'Bob')).classes.has('is-enabled')).toBe(true);
-		expect(toggleOf(rowNamed(dialog, 'Alice')).classes.has('is-enabled')).toBe(false);
-		expect(toggleOf(headers(dialog)[1] as CorkboardElement).classes.has('is-mixed')).toBe(true);
+		expect(toggleOf(rowNamed(dialog, 'Bob')).checked).toBe(true);
+		expect(toggleOf(rowNamed(dialog, 'Alice')).checked).toBe(false);
+		expect(toggleOf(headers(dialog)[1] as CorkboardElement).indeterminate).toBe(true);
 		search(dialog, 'nothing of the kind');
 		expect(groupTitles(dialog)).toEqual([]);
 		expect(dialog.contentEl.querySelector('.snowflake-method-import-status')?.textContent).toBe('modal.import.noMatches');
@@ -615,27 +627,31 @@ describe('ImportProjectModal', () => {
 	it('offers to select the notes the ticked ones point at, one hop at a time', async () => {
 		const { dialog } = await openDialog();
 		openGroup(dialog, 'modal.import.group.characters');
-		toggleOf(rowNamed(dialog, 'Alice')).dispatch('click');
+		toggleOf(rowNamed(dialog, 'Alice')).dispatch('change');
 		dialog.dom.flushFrame();
 		expect(summaryText(dialog)).toContain('modal.import.summary.unselectedLinksOne{"count":1}');
 		const select = dialog.modalEl.querySelector('.snowflake-method-import-select-linked');
 		if (select === null) throw new Error('no select-them button');
 		select.dispatch('click');
-		expect(toggleOf(rowNamed(dialog, 'Alice')).classes.has('is-enabled')).toBe(true);
+		expect(toggleOf(rowNamed(dialog, 'Alice')).checked).toBe(true);
 		expect(summaryText(dialog)).not.toContain('unselectedLinks');
 	});
 
 	it('refuses to submit nothing, and hands over the source and the ticks with the policy', async () => {
 		const { dialog, onSubmit } = await openDialog();
-		for (const header of headers(dialog)) {
-			if (toggleOf(header).classes.has('is-enabled')) toggleOf(header).dispatch('click');
+		// The tree is repainted on every change, so each header is read afresh;
+		// a box with a dash goes to a tick first, as the browser's does.
+		for (let i = 0; i < headers(dialog).length; i += 1) {
+			const box = (): CorkboardElement => toggleOf(headers(dialog)[i] as CorkboardElement);
+			if (box().indeterminate) box().dispatch('change');
+			if (box().checked) box().dispatch('change');
 		}
 		expect(await dialog.submit()).toBe(false);
 		expect(notices).toHaveBeenLastCalledWith('modal.import.summary.nothing');
 		expect(onSubmit).not.toHaveBeenCalled();
 		expect(opened).toHaveLength(1);
 		openGroup(dialog, 'modal.import.group.scenes');
-		toggleOf(rowNamed(dialog, 'Opening')).dispatch('click');
+		toggleOf(rowNamed(dialog, 'Opening')).dispatch('change');
 		const submitting = dialog.submit();
 		await flush();
 		const confirm = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
@@ -686,8 +702,7 @@ describe('ImportProjectModal', () => {
 		expect(confirm).not.toBe(dialog);
 		expect(confirm.title).toBe('modal.importConfirm.title{"source":"Book 1"}');
 		expect(confirm.contentEl.querySelectorAll('p').map((line) => line.textContent)).toEqual([
-			'modal.importConfirm.question{"source":"Book 1"}',
-			'modal.importConfirm.consequence',
+			'modal.importConfirm.note{"source":"Book 1"}',
 		]);
 		const buttons = confirm.contentEl.querySelectorAll('button');
 		expect(buttons.map((button) => button.textContent)).toEqual(['common.cancel', 'modal.import.submit']);
@@ -708,7 +723,6 @@ describe('ImportProjectModal', () => {
 		expect(notice.title).toBe('modal.importLanguage.title');
 		expect(notice.contentEl.querySelectorAll('p').map((line) => line.textContent)).toEqual([
 			'modal.importLanguage.note{"source":"远方","language":"modal.importLanguage.zh-CN","own":"modal.importLanguage.en"}',
-			'modal.importLanguage.translated',
 		]);
 		const buttons = notice.contentEl.querySelectorAll('button');
 		expect(buttons.map((button) => button.textContent)).toEqual(['common.cancel', 'modal.importLanguage.confirm']);
@@ -748,6 +762,36 @@ describe('ImportProjectModal', () => {
 		expect(opened).toHaveLength(2);
 	});
 
+	it('answers Mod+Enter in its confirmations as the dialog does', async () => {
+		const { dialog, inspect, onSubmit } = await openDialog();
+		// The language notice: the chord is Continue.
+		const accepted = pickerOf(dialog).chooseSource('Far/Project.md');
+		await flush();
+		strikeModEnter(opened[opened.length - 1]);
+		await accepted;
+		expect(inspect).toHaveBeenLastCalledWith('Far/Project.md');
+		expect(fromValue(dialog)).toBe('远方');
+		// The run confirmation: the chord is Import.
+		const submitting = dialog.submit();
+		await flush();
+		expect((opened[opened.length - 1] as { title: string }).title).toBe('modal.importConfirm.title{"source":"远方"}');
+		strikeModEnter(opened[opened.length - 1]);
+		expect(await submitting).toBe(true);
+		expect(onSubmit).toHaveBeenCalledOnce();
+		// The replace confirmation: the chord is Replace.
+		const second = await openDialog();
+		const select = second.dialog.contentEl.querySelector('select');
+		if (select === null) throw new Error('no policy dropdown');
+		select.value = 'replace';
+		select.dispatch('change');
+		const replacing = second.dialog.submit();
+		await flush();
+		expect((opened[opened.length - 1] as { title: string }).title).toBe('modal.importReplace.titleOne{"count":1}');
+		strikeModEnter(opened[opened.length - 1]);
+		expect(await replacing).toBe(true);
+		expect((second.onSubmit.mock.calls[0]?.[0] as ImportChoice).selection.clashPolicy).toBe('replace');
+	});
+
 	it('tells of a source that could not be read, and an empty one', async () => {
 		const inspect = vi.fn(() => Promise.reject(new Error('cannot read')));
 		new ImportProjectModal(
@@ -756,6 +800,7 @@ describe('ImportProjectModal', () => {
 			{
 				target: { path: 'Book 2/Project.md', title: 'Book 2', locale: 'en', series: null },
 				sources: [{ path: 'Other/Project.md', title: 'Other', series: null, locale: 'en', archived: false }],
+				initialSource: 'Other/Project.md',
 				bridge: { inspect, plan: fakePlan },
 			},
 			() => Promise.resolve(),
@@ -897,7 +942,7 @@ describe('ImportProjectModal in update mode', () => {
 			'modal.import.groupCount{"selected":0,"count":2}',
 			'1',
 		]);
-		expect(headers(dialog).map((header) => header.querySelector('.checkbox-container') !== null)).toEqual([
+		expect(headers(dialog).map((header) => header.querySelector('.snowflake-method-import-tick') !== null)).toEqual([
 			true,
 			true,
 			true,
@@ -906,7 +951,8 @@ describe('ImportProjectModal in update mode', () => {
 		openGroup(dialog, 'modal.import.update.gone{"book":"Book 1"}');
 		const dave = rowNamed(dialog, 'Dave');
 		expect(dave.classes.has('is-gone')).toBe(true);
-		expect(dave.querySelector('.checkbox-container')).toBeNull();
+		expect(dave.querySelector('.snowflake-method-import-tick')).toBeNull();
+		expect(dave.querySelector('.snowflake-method-import-tick-blank')).not.toBeNull();
 		expect(dave.querySelector('.snowflake-method-import-row-mark')?.textContent).toBe('modal.import.mark.kept');
 		openGroup(dialog, 'modal.import.update.new{"book":"Book 1"}');
 		const opening = rowNamed(dialog, 'Opening');
@@ -916,10 +962,19 @@ describe('ImportProjectModal in update mode', () => {
 		expect(rowNamed(dialog, 'Alice').querySelector('.snowflake-method-import-row-prefix')?.textContent).toBe(
 			'freeform.character · ',
 		);
-		expect(toggleOf(rowNamed(dialog, 'Alice')).classes.has('is-enabled')).toBe(true);
-		expect(summaryText(dialog)).toBe(
-			'modal.import.update.summary{"count":2} · modal.import.update.unchanged{"count":2}',
-		);
+		expect(toggleOf(rowNamed(dialog, 'Alice')).checked).toBe(true);
+		expect(summaryText(dialog)).toBe('modal.import.update.summary{"count":2}');
+	});
+
+	it('reads a sibling in the other language without a word when it chose that sibling itself', async () => {
+		const { inspect } = await openUpdate(updateInspection(), {
+			sources: [
+				{ path: 'Book 2/Project.md', title: 'Book 2', series: { name: 'Saga', book: 2 }, locale: 'en', archived: false },
+				{ path: 'Book 1/Project.md', title: '第一卷', series: { name: 'Saga', book: 1 }, locale: 'zh-CN', archived: false },
+			],
+		});
+		expect(opened).toHaveLength(1);
+		expect(inspect).toHaveBeenCalledExactlyOnceWith('Book 1/Project.md');
 	});
 
 	it('confirms the update, names the edited copies only when they are ticked, and hands the ticks over as a replace', async () => {
@@ -931,11 +986,11 @@ describe('ImportProjectModal in update mode', () => {
 		const asked = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
 		expect(asked.title).toBe('modal.updateConfirm.title{"source":"Book 1"}');
 		expect(asked.contentEl.querySelectorAll('p').map((line) => line.textContent)).toEqual([
-			'modal.updateConfirm.question{"source":"Book 1"}',
-			'modal.updateConfirm.consequence',
+			'modal.updateConfirm.note{"source":"Book 1"}',
 		]);
 		expect(asked.contentEl.querySelectorAll('button')[1]?.textContent).toBe('modal.import.updateSubmit');
-		asked.contentEl.querySelectorAll('button')[1]?.dispatch('click');
+		// The chord answers an update's confirmation as it answers an import's.
+		strikeModEnter(asked);
 		expect(await updating).toBe(true);
 		const choice = onSubmit.mock.calls[0]?.[0] as ImportChoice;
 		expect(choice).toMatchObject({ sourcePath: 'Book 1/Project.md', mode: 'update' });
@@ -944,11 +999,11 @@ describe('ImportProjectModal in update mode', () => {
 
 		const second = await openUpdate();
 		openGroup(second.dialog, 'modal.import.update.conflict');
-		toggleOf(rowNamed(second.dialog, 'Bob')).dispatch('click');
+		toggleOf(rowNamed(second.dialog, 'Bob')).dispatch('change');
 		expect(rowNamed(second.dialog, 'Bob').classes.has('is-replaced')).toBe(true);
 		second.dialog.dom.flushFrame();
 		expect(summaryText(second.dialog)).toBe(
-			'modal.import.update.summary{"count":3} · modal.import.update.editedOne{"count":1} · modal.import.update.unchanged{"count":2}',
+			'modal.import.update.summary{"count":3} · modal.import.update.editedOne{"count":1}',
 		);
 		const submitting = second.dialog.submit();
 		await flush();
