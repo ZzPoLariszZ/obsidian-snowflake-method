@@ -27,10 +27,12 @@ export const relationshipGraphMount =
 		host.addClass(RELATIONSHIP_GRAPH_CANVAS_CLASS);
 		let engine: GraphHandle | null = null;
 		let disposed = false;
+		/** The engine's code never came: nothing will run what is asked, so nothing is kept. */
+		let failed = false;
 		/** What was asked before the engine stood, run in order once it does. */
 		const owed: ((engine: GraphHandle) => void)[] = [];
 		const run = (work: (engine: GraphHandle) => void): void => {
-			if (disposed) return;
+			if (disposed || failed) return;
 			if (engine === null) owed.push(work);
 			else work(engine);
 		};
@@ -42,6 +44,8 @@ export const relationshipGraphMount =
 			})
 			.catch((error: unknown) => {
 				console.error('Snowflake: the relationship graph engine could not be loaded', error);
+				failed = true;
+				owed.length = 0;
 			});
 		return {
 			setScene: (scene) => run((inner) => inner.setScene(scene)),
