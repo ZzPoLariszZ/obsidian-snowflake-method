@@ -4739,7 +4739,7 @@ export class SnowflakeProjectService {
         created.push(made[made.length - 1] ?? check.segments.join("/"));
         continue;
       }
-      const taxonomy = taxonomyPathFromTarget(standing, rootPath) ?? check.segments.join("/");
+      const taxonomy = taxonomyPathFromFolder(standing, rootPath) ?? check.segments.join("/");
       existing.push(taxonomy);
       if (!options.replaceDescriptions) continue;
       const selfPath = this.standingNodeNotePath(standing);

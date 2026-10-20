@@ -900,13 +900,8 @@ export function catalogImportParts(contents: ImportProjectContents): ImportPart[
 			depthOf(left.taxonomyPath) - depthOf(right.taxonomyPath) ||
 			left.taxonomyPath.localeCompare(right.taxonomyPath),
 	);
-	const seenNodes = new Set<string>();
 	for (const node of nodes) {
-		// A folder named after its parent reads as the parent's path twice
-		// over; one part per path, or the counts and the plan hold a twin.
 		const key = importPartKey('vocabulary', `${node.kind}/${node.id}/${node.taxonomyPath}`);
-		if (seenNodes.has(key)) continue;
-		seenNodes.add(key);
 		const segments = node.taxonomyPath.split('/');
 		const parent = segments.length > 1 ? keyByNode.get(nodeKey(node.kind, node.id, segments.slice(0, -1).join('/'))) : undefined;
 		parts.push({

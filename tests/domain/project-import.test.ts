@@ -540,15 +540,20 @@ describe('catalogImportParts', () => {
 		return found;
 	};
 
-	it('offers one part where a folder named after its parent reads as the same path twice', () => {
-		const twice = contents(ZH, {
+	it('offers a folder named after its parent as its own part, one level down', () => {
+		const chain = contents(ZH, {
 			vocabulary: [
+				node(ZH, 'character', 'category', '主角/主角', '主角中的主角'),
 				node(ZH, 'character', 'category', '主角', '故事的中心'),
-				node(ZH, 'character', 'category', '主角', ''),
 			],
 		});
-		const keys = catalogImportParts(twice).map((candidate) => candidate.key);
-		expect(keys.filter((key) => key.startsWith('vocabulary:'))).toEqual(['vocabulary:character/category/主角']);
+		const offered = catalogImportParts(chain).filter((candidate) => candidate.kind === 'vocabulary');
+		expect(offered.map((candidate) => candidate.key)).toEqual([
+			'vocabulary:character/category/主角',
+			'vocabulary:character/category/主角/主角',
+		]);
+		expect(offered[1]?.requires).toEqual(['vocabulary:character/category/主角']);
+		expect(offered[1]?.sourcePath).toMatch(/\/主角\/主角\/主角\.md$/u);
 	});
 
 	it('offers no step that says nothing', () => {
