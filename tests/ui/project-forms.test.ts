@@ -128,8 +128,8 @@ afterEach(() => {
 
 describe('CreateProjectModal', () => {
 	const sources = [
-		{ path: 'Root/Other/Project.md', title: 'Other', series: null, archived: false },
-		{ path: 'Root/Saga 1/Project.md', title: 'Saga 1', series: { name: 'Saga', book: 1 }, archived: false },
+		{ path: 'Root/Other/Project.md', title: 'Other', series: null, locale: 'en' as const, archived: false },
+		{ path: 'Root/Saga 1/Project.md', title: 'Saga 1', series: { name: 'Saga', book: 1 }, locale: 'en' as const, archived: false },
 	];
 	const open = (names: string[] = ['Saga'], offered = sources): FormLike<CreateProjectRequest> => {
 		const form = new CreateProjectModal(app, t, 'en', ['Taken'], names, offered, () => Promise.resolve());

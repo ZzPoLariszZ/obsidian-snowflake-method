@@ -159,8 +159,8 @@ describe('importSources', () => {
 			[ref('Old'), ref('Frozen', { readOnly: true })],
 		);
 		expect(await plugin.importSources('Root/Book 2/Project.md')).toEqual([
-			{ path: 'Root/Book 1/Project.md', title: 'Book 1', series: { name: 'Saga', book: 1 }, archived: false },
-			{ path: 'Root/Old/Project.md', title: 'Old', series: null, archived: true },
+			{ path: 'Root/Book 1/Project.md', title: 'Book 1', locale: 'zh-CN', series: { name: 'Saga', book: 1 }, archived: false },
+			{ path: 'Root/Old/Project.md', title: 'Old', locale: 'zh-CN', series: null, archived: true },
 		]);
 		expect((await plugin.importSources(null)).map((source) => source.title)).toEqual(['Book 1', 'Book 2', 'Old']);
 	});
@@ -194,7 +194,12 @@ describe('openImportDialog', () => {
 			initialSource: string | null;
 			bridge: { inspect(path: string): Promise<unknown>; plan(i: unknown, s: unknown): unknown };
 		};
-		expect(config.target).toEqual({ path: 'Root/Book 2/Project.md', title: 'Book 2', series: { name: 'Saga', book: 2 } });
+		expect(config.target).toEqual({
+			path: 'Root/Book 2/Project.md',
+			title: 'Book 2',
+			locale: 'zh-CN',
+			series: { name: 'Saga', book: 2 },
+		});
 		expect(config.sources.map((source) => source.path)).toEqual(['Root/Book 1/Project.md']);
 		expect(config.initialSource).toBe('Root/Book 1/Project.md');
 		await config.bridge.inspect('Root/Book 1/Project.md');

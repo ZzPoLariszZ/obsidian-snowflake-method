@@ -82,6 +82,7 @@ describe('importSourceOptions', () => {
 		path: `Root/${title}/Project.md`,
 		title,
 		series: name === null ? null : { name, book: number },
+		locale: 'en' as const,
 		archived,
 	});
 

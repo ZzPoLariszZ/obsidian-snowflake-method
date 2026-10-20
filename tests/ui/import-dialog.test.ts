@@ -418,10 +418,11 @@ async function openDialog(
 		app,
 		t,
 		{
-			target: { path: 'Book 2/Project.md', title: 'Book 2', series: { name: 'Saga', book: 2 } },
+			target: { path: 'Book 2/Project.md', title: 'Book 2', locale: 'en', series: { name: 'Saga', book: 2 } },
 			sources: [
-				{ path: 'Other/Project.md', title: 'Other', series: null, archived: false },
-				{ path: 'Book 1/Project.md', title: 'Book 1', series: { name: 'Saga', book: 1 }, archived: false },
+				{ path: 'Other/Project.md', title: 'Other', series: null, locale: 'en', archived: false },
+				{ path: 'Book 1/Project.md', title: 'Book 1', series: { name: 'Saga', book: 1 }, locale: 'en', archived: false },
+				{ path: 'Far/Project.md', title: '远方', series: null, locale: 'zh-CN', archived: false },
 			],
 			initialSource: options.initialSource,
 			bridge: { inspect, plan: fakePlan },
@@ -469,6 +470,12 @@ const summaryText = (dialog: DialogLike): string => {
 	if (summary === null) throw new Error('no summary');
 	return summary.children.map((child) => child.textContent).join('');
 };
+/** The source From shows, which is the title of the one held, or nothing. */
+const fromValue = (dialog: DialogLike): string =>
+	dialog.contentEl.querySelector('.snowflake-method-option-picker-input')?.value ?? '';
+/** The dialog's own way in for a pick in From, which the fake list cannot make. */
+const pickerOf = (dialog: DialogLike): { chooseSource(path: string): Promise<void> } =>
+	dialog as unknown as { chooseSource(path: string): Promise<void> };
 const search = (dialog: DialogLike, query: string): void => {
 	const box = dialog.contentEl.querySelector('.search-input');
 	if (box === null) throw new Error('no search box');
@@ -512,8 +519,8 @@ describe('ImportProjectModal', () => {
 			app,
 			t,
 			{
-				target: { path: 'Book 2/Project.md', title: 'Book 2', series: null },
-				sources: [{ path: 'Other/Project.md', title: 'Other', series: null, archived: false }],
+				target: { path: 'Book 2/Project.md', title: 'Book 2', locale: 'en', series: null },
+				sources: [{ path: 'Other/Project.md', title: 'Other', series: null, locale: 'en', archived: false }],
 				bridge: { inspect, plan: fakePlan },
 			},
 			() => Promise.resolve(),
@@ -626,9 +633,15 @@ describe('ImportProjectModal', () => {
 		expect(await dialog.submit()).toBe(false);
 		expect(notices).toHaveBeenLastCalledWith('modal.import.summary.nothing');
 		expect(onSubmit).not.toHaveBeenCalled();
+		expect(opened).toHaveLength(1);
 		openGroup(dialog, 'modal.import.group.scenes');
 		toggleOf(rowNamed(dialog, 'Opening')).dispatch('click');
-		expect(await dialog.submit()).toBe(true);
+		const submitting = dialog.submit();
+		await flush();
+		const confirm = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
+		expect(confirm.title).toBe('modal.importConfirm.title{"source":"Book 1"}');
+		confirm.contentEl.querySelectorAll('button')[1]?.dispatch('click');
+		expect(await submitting).toBe(true);
 		expect(onSubmit).toHaveBeenCalledOnce();
 		const choice = onSubmit.mock.calls[0]?.[0] as ImportChoice;
 		expect(choice.sourcePath).toBe('Book 1/Project.md');
@@ -664,14 +677,85 @@ describe('ImportProjectModal', () => {
 		expect(closed).toHaveBeenCalled();
 	});
 
+	it('confirms every import, since none can be undone, and a refusal keeps the dialog open', async () => {
+		const { dialog, onSubmit } = await openDialog();
+		const closed = vi.spyOn(dialog, 'close');
+		const submitting = dialog.submit();
+		await flush();
+		const confirm = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
+		expect(confirm).not.toBe(dialog);
+		expect(confirm.title).toBe('modal.importConfirm.title{"source":"Book 1"}');
+		expect(confirm.contentEl.querySelectorAll('p').map((line) => line.textContent)).toEqual([
+			'modal.importConfirm.question{"source":"Book 1"}',
+			'modal.importConfirm.consequence',
+		]);
+		const buttons = confirm.contentEl.querySelectorAll('button');
+		expect(buttons.map((button) => button.textContent)).toEqual(['common.cancel', 'modal.import.submit']);
+		expect(buttons[1]?.classes.has('mod-cta')).toBe(true);
+		buttons[0]?.dispatch('click');
+		expect(await submitting).toBe(false);
+		expect(onSubmit).not.toHaveBeenCalled();
+		expect(closed).not.toHaveBeenCalled();
+	});
+
+	it('points out a source in the other language when it is picked, and declining keeps the one held', async () => {
+		const { dialog, inspect } = await openDialog();
+		expect(fromValue(dialog)).toBe('Book 1');
+		const declined = pickerOf(dialog).chooseSource('Far/Project.md');
+		await flush();
+		const notice = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
+		expect(notice).not.toBe(dialog);
+		expect(notice.title).toBe('modal.importLanguage.title');
+		expect(notice.contentEl.querySelectorAll('p').map((line) => line.textContent)).toEqual([
+			'modal.importLanguage.note{"source":"远方","language":"modal.importLanguage.zh-CN","own":"modal.importLanguage.en"}',
+			'modal.importLanguage.translated',
+		]);
+		const buttons = notice.contentEl.querySelectorAll('button');
+		expect(buttons.map((button) => button.textContent)).toEqual(['common.cancel', 'modal.importLanguage.confirm']);
+		buttons[0]?.dispatch('click');
+		await declined;
+		expect(inspect).toHaveBeenCalledExactlyOnceWith('Book 1/Project.md');
+		expect(fromValue(dialog)).toBe('Book 1');
+
+		const accepted = pickerOf(dialog).chooseSource('Far/Project.md');
+		await flush();
+		(opened[opened.length - 1] as { contentEl: CorkboardElement }).contentEl.querySelectorAll('button')[1]?.dispatch('click');
+		await accepted;
+		expect(inspect).toHaveBeenLastCalledWith('Far/Project.md');
+		expect(fromValue(dialog)).toBe('远方');
+
+		// A source in this project's own language is read without a word.
+		const count = opened.length;
+		await pickerOf(dialog).chooseSource('Other/Project.md');
+		expect(opened).toHaveLength(count);
+		expect(inspect).toHaveBeenLastCalledWith('Other/Project.md');
+		expect(fromValue(dialog)).toBe('Other');
+	});
+
+	it('points out a source in the other language the dialog opens on, and declining leaves From empty', async () => {
+		const { dialog, inspect } = await openDialog(inspection(), { initialSource: 'Far/Project.md' });
+		const notice = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
+		expect(notice).not.toBe(dialog);
+		expect(notice.title).toBe('modal.importLanguage.title');
+		expect(inspect).not.toHaveBeenCalled();
+		notice.contentEl.querySelectorAll('button')[0]?.dispatch('click');
+		await flush();
+		expect(inspect).not.toHaveBeenCalled();
+		expect(fromValue(dialog)).toBe('');
+		expect(dialog.contentEl.querySelector('.snowflake-method-import-status')?.textContent).toBe('');
+		expect(await dialog.submit()).toBe(false);
+		expect(notices).toHaveBeenLastCalledWith('modal.import.chooseSource');
+		expect(opened).toHaveLength(2);
+	});
+
 	it('tells of a source that could not be read, and an empty one', async () => {
 		const inspect = vi.fn(() => Promise.reject(new Error('cannot read')));
 		new ImportProjectModal(
 			app,
 			t,
 			{
-				target: { path: 'Book 2/Project.md', title: 'Book 2', series: null },
-				sources: [{ path: 'Other/Project.md', title: 'Other', series: null, archived: false }],
+				target: { path: 'Book 2/Project.md', title: 'Book 2', locale: 'en', series: null },
+				sources: [{ path: 'Other/Project.md', title: 'Other', series: null, locale: 'en', archived: false }],
 				bridge: { inspect, plan: fakePlan },
 			},
 			() => Promise.resolve(),
@@ -762,10 +846,10 @@ async function openUpdate(
 		t,
 		{
 			mode: 'update',
-			target: { path: 'Book 3/Project.md', title: 'Book 3', series: { name: 'Saga', book: 3 } },
+			target: { path: 'Book 3/Project.md', title: 'Book 3', locale: 'en', series: { name: 'Saga', book: 3 } },
 			sources: [
-				{ path: 'Book 2/Project.md', title: 'Book 2', series: { name: 'Saga', book: 2 }, archived: false },
-				{ path: 'Book 1/Project.md', title: 'Book 1', series: { name: 'Saga', book: 1 }, archived: false },
+				{ path: 'Book 2/Project.md', title: 'Book 2', series: { name: 'Saga', book: 2 }, locale: 'en', archived: false },
+				{ path: 'Book 1/Project.md', title: 'Book 1', series: { name: 'Saga', book: 1 }, locale: 'en', archived: false },
 			],
 			bridge: { inspect, plan: fakePlan },
 			...overrides,
@@ -838,11 +922,21 @@ describe('ImportProjectModal in update mode', () => {
 		);
 	});
 
-	it('confirms only for a ticked copy this book has edited, and hands the ticks over as a replace', async () => {
+	it('confirms the update, names the edited copies only when they are ticked, and hands the ticks over as a replace', async () => {
 		const { dialog, onSubmit } = await openUpdate();
 		await flush();
-		expect(await dialog.submit()).toBe(true);
-		expect(opened).toHaveLength(1);
+		const updating = dialog.submit();
+		await flush();
+		expect(opened).toHaveLength(2);
+		const asked = opened[opened.length - 1] as { contentEl: CorkboardElement; title: string };
+		expect(asked.title).toBe('modal.updateConfirm.title{"source":"Book 1"}');
+		expect(asked.contentEl.querySelectorAll('p').map((line) => line.textContent)).toEqual([
+			'modal.updateConfirm.question{"source":"Book 1"}',
+			'modal.updateConfirm.consequence',
+		]);
+		expect(asked.contentEl.querySelectorAll('button')[1]?.textContent).toBe('modal.import.updateSubmit');
+		asked.contentEl.querySelectorAll('button')[1]?.dispatch('click');
+		expect(await updating).toBe(true);
 		const choice = onSubmit.mock.calls[0]?.[0] as ImportChoice;
 		expect(choice).toMatchObject({ sourcePath: 'Book 1/Project.md', mode: 'update' });
 		expect(choice.selection.clashPolicy).toBe('replace');

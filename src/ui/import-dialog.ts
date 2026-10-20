@@ -20,6 +20,7 @@ import {
 	type ImportPartKind,
 	type ImportPlan,
 	type ImportSelection,
+	type ProjectLanguage,
 } from '../domain';
 import type { ImportReport, ProjectSeries } from '../services';
 import { memberMatches } from './dashboard-state';
@@ -481,7 +482,7 @@ export type ImportDialogMode = 'import' | 'update';
 export interface ImportDialogConfig {
 	/** Import, the default, offers everything; update offers what changed in a sibling of the series. */
 	mode?: ImportDialogMode;
-	target: { path: string; title: string; series: ProjectSeries | null };
+	target: { path: string; title: string; locale: ProjectLanguage; series: ProjectSeries | null };
 	sources: readonly ImportSourceOption[];
 	/** The source to open on, else the lowest book of the target's series, else the first offered. */
 	initialSource?: string | null;
@@ -512,13 +513,20 @@ function dialogTitle(t: Translate, mode: ImportDialogMode, book: string): string
 	return mode === 'update' ? t('modal.import.updateTitle', { book }) : t('modal.import.title');
 }
 
+/** The name of each project language, said in the words of the dialog's own. */
+const LANGUAGE_WORDS: Readonly<Record<ProjectLanguage, string>> = {
+	en: 'modal.importLanguage.en',
+	'zh-CN': 'modal.importLanguage.zh-CN',
+};
+
 const SUMMARY_DELAY_MS = 150;
 
 /**
  * Import from project: a source, a policy for notes already here, a search
  * over the parts and the tree of them, with a summary of what the ticks come
- * to standing at the foot. Words in the target project's language. Replacing
- * is confirmed on submit, and a refusal there keeps the dialog open.
+ * to standing at the foot. Words in the target project's language. A source
+ * in another language is pointed out before it is read, and every run is
+ * confirmed on submit, since none can be undone; a refusal keeps the dialog.
  */
 export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 	private readonly mode: ImportDialogMode;
@@ -535,6 +543,8 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 	private statusEl: HTMLElement | null = null;
 	private summaryEl: HTMLElement | null = null;
 	private sourceField: OptionPicker | null = null;
+	/** In update mode, the line under From that says what an update does. */
+	private noteEl: HTMLElement | null = null;
 	private loadSequence = 0;
 	private summaryTimer: number | null = null;
 	private summarySequence = 0;
@@ -593,20 +603,15 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 			value: () => this.sourcePath ?? '',
 			choose: (value) => {
 				if (value === this.sourcePath) return;
-				this.sourcePath = value;
-				if (this.mode === 'update') {
-					this.setTitle(dialogTitle(t, this.mode, this.book()));
-					note?.setText(t('modal.import.updateNote', { book: this.book() }));
-				}
-				void this.loadSource();
+				void this.chooseSource(value);
 			},
 		});
 
-		let note: HTMLElement | null = null;
+		this.noteEl = null;
 		if (this.mode === 'update') {
 			// Under From, since it is about the source chosen there: what an
 			// update does to the copies, and what it leaves alone.
-			note = this.contentEl.createDiv({
+			this.noteEl = this.contentEl.createDiv({
 				cls: 'snowflake-method-import-note',
 				text: t('modal.import.updateNote', { book: this.book() }),
 			});
@@ -656,7 +661,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		});
 		this.statusEl = this.contentEl.createDiv({ cls: 'snowflake-method-import-status' });
 		if (this.inspection === null) {
-			void this.loadSource();
+			void this.openSource();
 		} else {
 			this.paintTree();
 		}
@@ -672,7 +677,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 
 	protected collectValue(): ImportChoice | null {
 		if (this.sourcePath === null || this.inspection === null || this.model === null) {
-			new Notice(this.t('modal.import.noSources'));
+			new Notice(this.t(this.config.sources.length === 0 ? 'modal.import.noSources' : 'modal.import.chooseSource'));
 			return null;
 		}
 		if (this.model.count() === 0) {
@@ -685,9 +690,10 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 	}
 
 	/**
-	 * Confirms what a replace writes over before the base closes and runs;
-	 * declining keeps the dialog. An update asks only for the copies edited
-	 * here, and for a note that stands here on its own: the copies this book
+	 * Confirms the run before the base closes and starts it, since no run
+	 * can be undone; declining keeps the dialog. A run that writes over
+	 * notes names them instead. An update names only the copies edited
+	 * here, and a note that stands here on its own: the copies this book
 	 * has not touched are what the update is for.
 	 */
 	protected async submit(): Promise<boolean> {
@@ -697,7 +703,11 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 			this.mode === 'update'
 				? this.editedHere()
 				: importReplacedNames(this.t, this.config.bridge.plan(this.inspection, choice.selection));
-		if (names.length > 0 && !(await confirmImportReplace(this.app, this.t, names))) return false;
+		const agreed =
+			names.length > 0
+				? await confirmImportReplace(this.app, this.t, names)
+				: await confirmImportRun(this.app, this.t, this.mode, this.book());
+		if (!agreed) return false;
 		return super.submit();
 	}
 
@@ -718,6 +728,54 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 	}
 
 	// ---- Loading ------------------------------------------------------------------
+
+	/**
+	 * The first read, of the source the dialog opened on. One in another
+	 * language is pointed out before it is read, as one picked later is, and
+	 * declining leaves From empty. The notice waits a turn so the dialog has
+	 * finished opening and the notice stands on top of it.
+	 */
+	private async openSource(): Promise<void> {
+		await Promise.resolve();
+		const path = this.sourcePath;
+		if (path !== null && this.otherLanguage(path) && !(await this.confirmLanguage(path))) {
+			this.sourcePath = null;
+			this.sourceField?.refresh();
+		}
+		await this.loadSource();
+	}
+
+	/** A source picked in From: one in another language is pointed out first, and declining keeps the one held. */
+	private async chooseSource(path: string): Promise<void> {
+		if (this.otherLanguage(path) && !(await this.confirmLanguage(path))) return;
+		this.sourcePath = path;
+		this.sourceField?.refresh();
+		if (this.mode === 'update') {
+			this.setTitle(dialogTitle(this.t, this.mode, this.book()));
+			this.noteEl?.setText(this.t('modal.import.updateNote', { book: this.book() }));
+		}
+		await this.loadSource();
+	}
+
+	private sourceOf(path: string): ImportSourceOption | undefined {
+		return this.config.sources.find((source) => source.path === path);
+	}
+
+	/** True when the source is written in a language other than this project's. */
+	private otherLanguage(path: string): boolean {
+		const source = this.sourceOf(path);
+		return source !== undefined && source.locale !== this.config.target.locale;
+	}
+
+	private confirmLanguage(path: string): Promise<boolean> {
+		const t = this.t;
+		const locale = this.sourceOf(path)?.locale ?? this.config.target.locale;
+		return confirmImportLanguage(this.app, t, {
+			source: sourceTitleOf(this.config, path),
+			language: t(LANGUAGE_WORDS[locale]),
+			own: t(LANGUAGE_WORDS[this.config.target.locale]),
+		});
+	}
 
 	private async loadSource(): Promise<void> {
 		const sequence = ++this.loadSequence;
@@ -760,7 +818,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		status.empty();
 		const model = this.model;
 		if (model === null) {
-			status.setText(this.inspection === null && this.sourcePath === null ? this.t('modal.import.noSources') : '');
+			status.setText(this.config.sources.length === 0 ? this.t('modal.import.noSources') : '');
 			return;
 		}
 		if (this.groups.length === 0) {
@@ -1012,6 +1070,73 @@ class ConfirmImportReplaceModal extends ConfirmModal {
 export function confirmImportReplace(app: App, t: Translate, names: readonly string[]): Promise<boolean> {
 	return new Promise((resolve) => {
 		new ConfirmImportReplaceModal(app, t, names, resolve).open();
+	});
+}
+
+// ---- Confirming a run ----------------------------------------------------------
+
+/** What an import or an update does, and that it cannot be undone, before it runs. */
+class ConfirmImportRunModal extends ConfirmModal {
+	private readonly keys: string;
+
+	constructor(
+		app: App,
+		t: Translate,
+		mode: ImportDialogMode,
+		private readonly source: string,
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(
+			app,
+			t,
+			{ label: t(mode === 'update' ? 'modal.import.updateSubmit' : 'modal.import.submit'), style: 'mod-cta' },
+			onResolve,
+		);
+		this.keys = mode === 'update' ? 'modal.updateConfirm' : 'modal.importConfirm';
+		this.setTitle(t(`${this.keys}.title`, { source }));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t(`${this.keys}.question`, { source: this.source }) });
+		body.createEl('p', { text: this.t(`${this.keys}.consequence`) });
+	}
+}
+
+/** True when the author agreed to run the import, or the update, from the source named. */
+export function confirmImportRun(app: App, t: Translate, mode: ImportDialogMode, source: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmImportRunModal(app, t, mode, source, resolve).open();
+	});
+}
+
+// ---- A source in another language ---------------------------------------------
+
+/** What crosses translated and what crosses as it is, before a source in another language is read. */
+class ConfirmImportLanguageModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly words: { source: string; language: string; own: string },
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(app, t, { label: t('modal.importLanguage.confirm'), style: 'mod-cta' }, onResolve);
+		this.setTitle(t('modal.importLanguage.title'));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t('modal.importLanguage.note', this.words) });
+		body.createEl('p', { text: this.t('modal.importLanguage.translated') });
+	}
+}
+
+/** True when the author went on with a source written in another language. */
+export function confirmImportLanguage(
+	app: App,
+	t: Translate,
+	words: { source: string; language: string; own: string },
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmImportLanguageModal(app, t, words, resolve).open();
 	});
 }
 

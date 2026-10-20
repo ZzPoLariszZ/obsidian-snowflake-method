@@ -109,6 +109,8 @@ export default defineConfig(
 						// a title of its own, at the user's word.
 						'^Entity ↔ Entity$',
 						'^Scene ↔ Manuscript$',
+						// The name of a language, which keeps its capital anywhere.
+						'^Simplified Chinese$',
 					],
 				},
 			],

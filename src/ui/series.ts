@@ -1,4 +1,4 @@
-import { foldName } from '../domain';
+import { foldName, type ProjectLanguage } from '../domain';
 import type { ProjectSeries } from '../services';
 import type { PickerOption } from './option-picker';
 
@@ -105,6 +105,8 @@ export function defaultImportSource<T extends SeriesMember>(
 /** A project an import may read: a book the root holds, or one put away in the archive. */
 export interface ImportSourceOption extends SeriesMember {
 	path: string;
+	/** The language the project's folders and starter words are written in. */
+	locale: ProjectLanguage;
 	archived: boolean;
 }
 

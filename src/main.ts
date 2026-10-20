@@ -1736,6 +1736,7 @@ export default class SnowflakeMethodPlugin
 		const option = (project: ProjectRef, isArchived: boolean): ImportSourceOption => ({
 			path: project.projectFile,
 			title: project.title,
+			locale: project.locale,
 			series: project.series,
 			archived: isArchived,
 		});
@@ -1770,6 +1771,7 @@ export default class SnowflakeMethodPlugin
 				target: {
 					path: target.projectFile,
 					title: target.title,
+					locale: target.locale,
 					series: target.series,
 				},
 				sources,
@@ -1856,11 +1858,13 @@ export default class SnowflakeMethodPlugin
 				target: {
 					path: target.projectFile,
 					title: target.title,
+					locale: target.locale,
 					series: target.series,
 				},
 				sources: siblings.map((sibling) => ({
 					path: sibling.projectFile,
 					title: sibling.title,
+					locale: sibling.locale,
 					series: sibling.series,
 					archived: false,
 				})),
