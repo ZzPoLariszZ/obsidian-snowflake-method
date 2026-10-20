@@ -66,7 +66,11 @@ export type SceneManuscriptOpening =
 	| 'revealed'
 	/** The graph core plugin is turned off. */
 	| 'disabled'
-	/** A graph tab opened, but its view is not one the keeper knows; it stands as a plain graph. */
+	/**
+	 * A graph tab opened, but its view is not one the keeper knows, or the
+	 * options as they stood could not be read to be given back; it stands
+	 * as a plain graph.
+	 */
 	| 'unavailable';
 
 export interface SceneManuscriptKeeperDeps {
@@ -230,7 +234,14 @@ export class SceneManuscriptGraphKeeper {
 		}
 		const { options, kept } = await this.projectOptions(project);
 		if (this.held.length === 0 && this.before === null) {
-			this.before = readNativeGraphOptions(instance.options);
+			// The user's own options, to be given back when the loan ends: where
+			// they cannot be read, nothing is borrowed, and a plain graph opens.
+			const before = readNativeGraphOptions(instance.options);
+			if (before === null) {
+				await this.deps.app.workspace.getLeaf('tab').setViewState({ type: 'graph', active: true });
+				return 'unavailable';
+			}
+			this.before = before;
 		}
 		// A graph view takes the plugin's options as it loads, so they are the
 		// project's before the tab opens: it draws the project from its first
