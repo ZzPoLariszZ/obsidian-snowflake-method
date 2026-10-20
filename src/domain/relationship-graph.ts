@@ -309,15 +309,20 @@ function parse(tokens: Token[]): QueryNode | null {
 		}
 		return parts.length === 0 ? null : parts.length === 1 ? parts[0]! : { type: 'or', parts };
 	};
-	const result = parseOr();
-	// A stray closing parenthesis ends a group that was never opened; what follows still counts.
+	const first = parseOr();
+	const parts: QueryNode[] = first === null ? [] : [first];
+	// A stray closing parenthesis ends a group that was never opened; what
+	// follows still counts, however many there are.
 	while (at < tokens.length) {
-		if (peek()?.type === 'close') at += 1;
+		if (peek()?.type === 'close') {
+			at += 1;
+			continue;
+		}
 		const more = parseOr();
 		if (more === null) break;
-		return result === null ? more : { type: 'and', parts: [result, more] };
+		parts.push(more);
 	}
-	return result;
+	return parts.length === 0 ? null : parts.length === 1 ? parts[0]! : { type: 'and', parts };
 }
 
 const fold = (text: string): string => foldName(text).toLowerCase();
