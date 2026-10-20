@@ -84,6 +84,7 @@ import {
   nodeLink,
   nodeSelfPath,
   parseDefinitionValue,
+  taxonomyPathFromFolder,
   taxonomyPathFromTarget,
   taxonomyPathFromValue,
   type AppendPathResult,
@@ -4216,7 +4217,7 @@ export class SnowflakeProjectService {
 
   private walkDefinitionTree(rootPath: string): string[] {
     return this.definitionNodeFolders(rootPath).map(
-      (folderPath) => taxonomyPathFromTarget(folderPath, rootPath) ?? "",
+      (folderPath) => taxonomyPathFromFolder(folderPath, rootPath) ?? "",
     );
   }
 
@@ -4351,7 +4352,7 @@ export class SnowflakeProjectService {
     const startDepth =
       start === rootPath
         ? 0
-        : (taxonomyPathFromTarget(start, rootPath)?.split("/").length ?? 0);
+        : (taxonomyPathFromFolder(start, rootPath)?.split("/").length ?? 0);
     const visit = (folderPath: string, depth: number): void => {
       if (depth >= MAX_DEFINITION_DEPTH) return;
       const children = [...this.repository.listDirectFolders(folderPath)].sort(
@@ -4835,7 +4836,7 @@ export class SnowflakeProjectService {
     { userInput }: { userInput: boolean },
   ): Promise<boolean> {
     const path = normalizePath(`${folderPath}/${basename(folderPath)}.md`);
-    const taxonomyPath = taxonomyPathFromTarget(folderPath, rootPath) ?? "";
+    const taxonomyPath = taxonomyPathFromFolder(folderPath, rootPath) ?? "";
     const offered = description.trim();
     // A note the node already has under an earlier name -- the leaf a
     // renamed folder used to answer to, standing alone -- is this node's
@@ -5038,12 +5039,14 @@ export class SnowflakeProjectService {
   ): Promise<void> {
     const oldPrefix = `${oldFolder}/`;
     const oldNote = `${oldFolder}/${basename(oldFolder)}`;
+    const newNote = `${newFolder}/${basename(newFolder)}`;
     const moved = (target: string): string => {
       const cleaned = normalizePath(target.trim());
-      // The renamed node's own note carried the old leaf twice. Only the
-      // folder survives the move here; the canonical link written below
-      // puts the new note segment back on.
-      if (cleaned === oldFolder || cleaned === oldNote) return newFolder;
+      // The renamed node's own note carried the old leaf twice and carries
+      // the new one twice now. Handed back as the note rather than the bare
+      // folder, because a folder named after its parent would read as the
+      // parent below, and the link would walk up a level.
+      if (cleaned === oldFolder || cleaned === oldNote) return newNote;
       return cleaned.startsWith(oldPrefix)
         ? `${newFolder}/${cleaned.slice(oldPrefix.length)}`
         : cleaned;

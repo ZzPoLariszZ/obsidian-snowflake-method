@@ -4727,6 +4727,138 @@ describe("SnowflakeProjectService", () => {
     ).toEqual(["Major", "Minor", "Race", "Race/Elf", "Supporting"]);
   });
 
+  it("reads a folder named after its parent as its own node, one level down", async () => {
+    const project = await service.createProject({ name: "Chain" });
+    const categoryRoot = `${project.rootPath}/20_Character/21_Category`;
+
+    // Four folders, each a node, where the second and the fourth wear the
+    // name of the folder above them: a walk that stripped a leaf for
+    // matching its parent read each of those as the parent, twice over.
+    const added = await service.addDefinitionPath(
+      project,
+      "character",
+      "category",
+      "aaab/aaab/aaaa/aaaa",
+      "The deepest.",
+    );
+    expect(added).toEqual({
+      ok: true,
+      createdPaths: [
+        "aaab",
+        "aaab/aaab",
+        "aaab/aaab/aaaa",
+        "aaab/aaab/aaaa/aaaa",
+      ],
+    });
+    expect(
+      await service.listDefinitionPaths(project, "character", "category"),
+    ).toEqual([
+      "aaab",
+      "aaab/aaab",
+      "aaab/aaab/aaaa",
+      "aaab/aaab/aaaa/aaaa",
+      "Major",
+      "Minor",
+      "Supporting",
+    ]);
+    // Every note names its own folder's path, and the description landed on
+    // the node it was given to.
+    for (const [note, path] of [
+      ["aaab/aaab.md", "aaab"],
+      ["aaab/aaab/aaab.md", "aaab/aaab"],
+      ["aaab/aaab/aaaa/aaaa.md", "aaab/aaab/aaaa"],
+      ["aaab/aaab/aaaa/aaaa/aaaa.md", "aaab/aaab/aaaa/aaaa"],
+    ] as const) {
+      const text = fakeVault.contents.get(`${categoryRoot}/${note}`) ?? "";
+      expect(readMarkedSection(text, "definition-fields")).toContain(
+        `> **Name**: ${path}`,
+      );
+    }
+    const deepest =
+      fakeVault.contents.get(`${categoryRoot}/aaab/aaab/aaaa/aaaa/aaaa.md`) ??
+      "";
+    expect(
+      parseMarkdownFrontmatter(deepest).frontmatter[
+        FRONTMATTER_KEYS.description
+      ],
+    ).toBe("The deepest.");
+
+    // A member on the middle node is counted on that node, which stands in
+    // the forest rather than reading as a hole beside a twin of its parent.
+    await service.createCharacter(project, {
+      name: "Middle",
+      categoryPaths: ["aaab/aaab"],
+    });
+    const forest = await service.listDefinitionForest(
+      project.projectFile,
+      "category",
+    );
+    expect(
+      forest.character!.nodes.map((node) => [
+        node.taxonomyPath,
+        node.depth,
+        node.missing,
+      ]),
+    ).toEqual([
+      ["aaab", 1, false],
+      ["aaab/aaab", 2, false],
+      ["aaab/aaab/aaaa", 3, false],
+      ["aaab/aaab/aaaa/aaaa", 4, false],
+      ["Major", 1, false],
+      ["Minor", 1, false],
+      ["Supporting", 1, false],
+    ]);
+    expect(
+      forest.character!.nodes.find((node) => node.taxonomyPath === "aaab/aaab"),
+    ).toMatchObject({
+      selfPath: `${categoryRoot}/aaab/aaab/aaab.md`,
+      missingSelf: false,
+      usage: { listed: ["Middle"], records: [] },
+    });
+  });
+
+  it("renames a node to its parent's name without walking its links up a level", async () => {
+    const project = await service.createProject({ name: "Renamed twin" });
+    const categoryRoot = `${project.rootPath}/20_Character/21_Category`;
+    await service.addDefinitionPath(
+      project,
+      "character",
+      "category",
+      "Race/Elf",
+      "Pointy.",
+    );
+    const elf = await service.createCharacter(project, {
+      name: "Elfy",
+      categoryPaths: ["Race/Elf"],
+    });
+    expect(elf.categories).toEqual([`[[${categoryRoot}/Race/Elf/Elf|Race/Elf]]`]);
+
+    const renamed = await service.renameDefinitionNode(
+      project,
+      "character",
+      "category",
+      "Race/Elf",
+      "Race",
+    );
+    expect(renamed).toEqual({ ok: true, taxonomyPath: "Race/Race" });
+    // The link follows the node to Race/Race's own note, not to Race's.
+    const refreshed = await service.loadProject(project.projectFile);
+    expect(
+      refreshed.characters.find((character) => character.name === "Elfy")
+        ?.categories,
+    ).toEqual([`[[${categoryRoot}/Race/Race/Race|Race/Race]]`]);
+    const note = fakeVault.contents.get(`${categoryRoot}/Race/Race/Race.md`) ?? "";
+    expect(readMarkedSection(note, "definition-fields")).toContain(
+      "> **Name**: Race/Race",
+    );
+    expect(
+      parseMarkdownFrontmatter(note).frontmatter[FRONTMATTER_KEYS.description],
+    ).toBe("Pointy.");
+    expect(
+      await service.listDefinitionPaths(project, "character", "category"),
+    ).toEqual(["Major", "Minor", "Race", "Race/Race", "Supporting"]);
+  });
+
   it("scopes definition vocabularies to the kind that owns the tree", async () => {
     const project = await service.createProject({ name: "Scoped vocab" });
 

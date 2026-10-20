@@ -15,6 +15,7 @@ import {
   nodeNameFromValue,
   nodeSelfPath,
   parseDefinitionValue,
+  taxonomyPathFromFolder,
   taxonomyPathFromTarget,
   taxonomyPathFromValue,
 } from "../../src/services/definition-files";
@@ -89,6 +90,23 @@ describe("node links", () => {
     );
     expect(taxonomyPathFromTarget("Elsewhere/Race/Race", root)).toBeNull();
     expect(taxonomyPathFromTarget(root, root)).toBeNull();
+  });
+
+  it("reads a folder by where it stands, so one named after its parent is its own node", () => {
+    expect(taxonomyPathFromFolder(`${root}/Race`, root)).toBe("Race");
+    expect(taxonomyPathFromFolder(`${root}/Race/Race`, root)).toBe("Race/Race");
+    expect(
+      taxonomyPathFromFolder(`${root}/aaab/aaab/aaaa/aaaa`, root),
+    ).toBe("aaab/aaab/aaaa/aaaa");
+    expect(taxonomyPathFromFolder(`${root}/`, root)).toBeNull();
+    expect(taxonomyPathFromFolder(root, root)).toBeNull();
+    expect(taxonomyPathFromFolder("Elsewhere/Race/Race", root)).toBeNull();
+    // The same spelling as a link target is the parent's own note, because
+    // a target carries the note segment and a folder never does.
+    expect(taxonomyPathFromTarget(`${root}/Race/Race`, root)).toBe("Race");
+    expect(taxonomyPathFromTarget(`${root}/Race/Race/Race`, root)).toBe(
+      "Race/Race",
+    );
   });
 
   it("reads a stored value target first and alias second", () => {

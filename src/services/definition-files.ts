@@ -133,24 +133,54 @@ function popNodeNoteSegment(segments: string[]): void {
 }
 
 /**
- * The taxonomy path a target names below a root: the segments between the
- * two, with the node note stripped off the end. Null when the target is not
- * under the root, which is what makes the caller fall back to the alias.
+ * The segments a path spells below a root, trimmed, empties dropped; null
+ * when the path is not under the root at all.
+ */
+function segmentsBelowRoot(path: string, rootPath: string): string[] | null {
+  const prefix = `${rootPath.trim().replace(/\/+$/u, "")}/`;
+  if (!path.startsWith(prefix)) return null;
+  return path
+    .slice(prefix.length)
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+/**
+ * The taxonomy path a link target names below a root: the segments between
+ * the two, with the node note stripped off the end. Null when the target is
+ * not under the root, which is what makes the caller fall back to the alias.
+ * For targets only: a folder path carries no note segment, and one named
+ * after its parent would lose its own leaf to the strip, so a walk over
+ * folders asks `taxonomyPathFromFolder` instead.
  */
 export function taxonomyPathFromTarget(
   target: string,
   rootPath: string,
 ): string | null {
-  const cleaned = target.trim().replace(/\.md$/u, "");
-  const prefix = `${rootPath.trim().replace(/\/+$/u, "")}/`;
-  if (!cleaned.startsWith(prefix)) return null;
-  const segments = cleaned
-    .slice(prefix.length)
-    .split("/")
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0);
+  const segments = segmentsBelowRoot(
+    target.trim().replace(/\.md$/u, ""),
+    rootPath,
+  );
+  if (segments === null) return null;
   popNodeNoteSegment(segments);
   return segments.length === 0 ? null : segments.join("/");
+}
+
+/**
+ * The taxonomy path a node folder stands at: one segment per level between
+ * the root and the folder, nothing read off the folder's name. Where it
+ * stands is the whole answer, so a folder named after its parent is its
+ * own node, one level down, and never the parent. Null for the root itself
+ * and for a folder outside it.
+ */
+export function taxonomyPathFromFolder(
+  folderPath: string,
+  rootPath: string,
+): string | null {
+  const segments = segmentsBelowRoot(folderPath.trim(), rootPath);
+  if (segments === null || segments.length === 0) return null;
+  return segments.join("/");
 }
 
 /** A stored definition value taken apart. */
