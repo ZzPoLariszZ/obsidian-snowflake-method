@@ -85,7 +85,7 @@ Thank you for your support!
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
 | Gallery | Keep pictures on any character, scene or worldbuilding note, and choose the one its cards show. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
-| Story structure | See every scene as a card in narrative order, or switch to your characters or a worldbuilding kind, and reorder and edit them right on the cards. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. |
+| Story structure | See every scene as a card in narrative order, or switch to your characters or a worldbuilding kind, and reorder and edit them right on the cards. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. The relationship graph draws the relationships you recorded as labeled lines between your characters and worldbuilding notes, and opens Obsidian's own graph on the scenes and their chapters. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. Keep the look to the manuscript stream, or apply it to your Snowflake projects or the whole vault. |
 | Typewriter scrolling | Keep the line you are writing in the middle of the page. |
@@ -196,7 +196,7 @@ A note can also keep a **gallery** of pictures, shown in its form as a row with 
 
 ### Story structure
 
-Scenes are easier to judge when you can see them all at once. The **Visualization workspace** has a tab of its own. You can open it from the row of links at the bottom of the dashboard's Creation tools, or from the Command palette. It brings together a family of views of the scenes you planned in steps 8 and 9. **Corkboard**, **Freeform**, **Timeline** and **Beat sheet** appear side by side in its tab strip, and each asks a different question about the same scenes.
+Scenes are easier to judge when you can see them all at once. The **Visualization workspace** has a tab of its own. You can open it from the row of links at the bottom of the dashboard's Creation tools, or from the Command palette. It brings together a family of views of the scenes you planned in steps 8 and 9. **Corkboard**, **Freeform**, **Timeline**, **Beat sheet** and **Relationship graph** appear side by side in its tab strip, and each asks a different question about the same project.
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab: five scene cards in narrative order, each numbered and showing its progress status, its conflict, the manuscript chapters it links to and its point of view. One card is focused and shows the grip it is dragged by. A + between neighbors inserts a scene. Search, display, order, filter, refresh and Add scene are in the bar above." /></a></p>
 
@@ -217,6 +217,10 @@ The field at the start of the bar chooses what the board shows. Besides **Scene 
 **Beat sheet** asks a third question: what each scene is for in the shape of the story. You can have as many sheets in a project as you like, and you see one at a time. A new sheet starts blank or from a template. Three Act, Kishōtenketsu, Story Circle, Save the Cat, Hero's Journey and Romancing the Beat are built in. Each comes with its acts, its beats and a line on what every beat is there to do. Acts are numbered by their order, and you can give any of them a label. A beat has no note behind it, so its name and description are kept in the sheet itself. Under a beat you write sub-descriptions and place scenes from the pool, just as on a timeline. Acts, beats, rows and scenes all move by drag or by menu. The toolbar can hide the sub-descriptions, stack the scenes, and show the last act first. It can also save the sheet you're viewing as a template of your own. The canvas button writes the sheet as an Obsidian Canvas file.
 
 **Export as Obsidian Canvas** writes the view you're looking at as a `.canvas` file that Obsidian's own Canvas opens. The file goes next to the workspace's own file: `732_Freeform/<view name>.canvas`, `733_Timeline/<view name>.canvas` or `734_Beat_Sheet/<sheet name>.canvas`. Notes become file cards and keep their colors. Frames, timelines and acts become groups. The text you typed, the sub-descriptions and the beats become text cards. The toolbar's display switches, which hide the words, stack the scenes or reverse the order, change only the screen. The canvas always writes the words, puts the scenes beside them and keeps the stored order. Tasks, foreshadowing and revisions are not notes, so each becomes a text card that names it, and every line between cards is kept with its arrows and label. The canvas opens as soon as it's written. If a file of that name is already there and differs, you're asked before it's replaced. If it says the same, nothing is written and the canvas just opens. The file is a copy that the plugin never reads back, so you can rearrange it in Canvas or delete it without changing the workspace.
+
+<p align="center"><a href="assets/screenshots/workspace_relationship_graph_en.png"><img src="assets/screenshots/workspace_relationship_graph_en.png" width="100%" alt="The Visualization workspace on its Relationship graph tab, with Entity ↔ Entity chosen in the field above and a search box in the middle. Discs for Alice, Bob and Eve in purple, Time A, Time B and Time C in cyan, Location C in green and Item D in yellow are spread over the canvas, each named below it. A line labeled Family runs from Alice to Bob and a line labeled Own from Bob to Item D, each with an arrow at its end. The panel in the corner shows the Filters section: a search box, toggles for Characters, Scenes, Time, Location, Item, Existing notes only and Orphans with Scenes turned off, and a Relationships list with Family and Own. Groups, Display and Forces are folded below." /></a></p>
+
+**Relationship graph** asks who is tied to whom, and has two views. **Entity ↔ Entity** draws every character and worldbuilding note as a disc colored by kind, and every relationship you recorded in a note's form as a line from that note to its target, with the relationship's word on the line and an arrow for its direction. The vocabulary notes themselves never appear. Scenes stay out of the picture until you turn them on under Filters, and a target no note answers to shows as a faint disc of its own. Hover over a disc to light up its lines and dim the rest. Drag a disc to move it, drag the background to pan, and roll the wheel to zoom. Click a disc to open the note's form, and click a line to open the form at that relationship's card. The panel in the corner has filters, color groups, display options and forces, as Obsidian's own graph does, and every gesture has a menu item or a key. **Scene ↔ Manuscript** is the other view. It opens Obsidian's own graph in a tab of its own, set to the project: only its scenes and chapters are shown, in orange and blue, with an arrow from each scene to the chapters it links to. Your own graph settings come back when that tab closes.
 
 ### Manuscript stream
 
@@ -361,7 +365,9 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Open health checker | Check the project's structure and fix any issues that are safe to fix. |
 | Open manuscript stream | Open the manuscript at the note you last wrote in. |
 | Open project manager | Create, rename, open, archive, or trash projects. |
+| Open relationship graph workspace | Open the visualization workspace to its relationship graph, with your characters and worldbuilding notes joined by the relationships you recorded. |
 | Open scene base | Open the Bases view of the current project's scenes. |
+| Open scenes and manuscript graph | Open Obsidian's own graph in a tab of its own, set to the project's scenes and the manuscript chapters they link to. |
 | Open sticky note sidebar | Open the current project's sticky notes in their own sidebar. |
 | Open timeline workspace | Open the visualization workspace to its timeline, with each scene placed at the time it happens. |
 | Open visualization workspace | Open the current project's story structure in its own workspace. |
@@ -557,9 +563,11 @@ Each project is stored directly inside the project root you set. Its folders, fi
     │       ├── 733_Timeline/
     │       │   ├── timeline.json
     │       │   └── <view name>.canvas
-    │       └── 734_Beat_Sheet/
-    │           ├── beat-sheet.json
-    │           └── <sheet name>.canvas
+    │       ├── 734_Beat_Sheet/
+    │       │   ├── beat-sheet.json
+    │       │   └── <sheet name>.canvas
+    │       └── 735_Relationship_Graph/
+    │           └── relationship-graph.json
     └── ...
 ```
 
@@ -632,7 +640,7 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Richer right-click menu (0.25.0)
 - [x] Gallery and corresponding card style (0.26.0)
 - [x] More views on the corkboard (0.26.0)
-- [ ] Graph view enhancement: different views of a project, such as how scenes connect to the manuscript, and relationships shown as labels on the lines between entities instead of as nodes of their own
+- [x] Relationship graph (0.27.0)
 - [ ] Import and series: a project can import any part of a story's design from another Snowflake project, and books in the same series can share anything
 - [ ] Better display on tablets and phones
 
@@ -705,7 +713,7 @@ Many thanks to the authors of these Obsidian plugins, which inspired much of thi
 
 [MIT License](LICENSE). The Snowflake Method name and source material belong to their respective owners.
 
-The Freeform tab's canvas is built on [React Flow](https://reactflow.dev) (MIT, webkid GmbH), [React](https://react.dev) (MIT, Meta) and the [d3](https://d3js.org) modules React Flow uses (ISC, Mike Bostock). The word cloud in Data statistics uses [d3-cloud](https://github.com/jasondavies/d3-cloud) (BSD-3-Clause, Jason Davies). Their notices come with their packages.
+The Freeform tab's canvas is built on [React Flow](https://reactflow.dev) (MIT, webkid GmbH), [React](https://react.dev) (MIT, Meta) and the [d3](https://d3js.org) modules React Flow uses (ISC, Mike Bostock). The Relationship graph tab's Entities view is laid out by d3-force and d3-quadtree and moved by d3-zoom and d3-drag, from the same d3 (ISC, Mike Bostock). The word cloud in Data statistics uses [d3-cloud](https://github.com/jasondavies/d3-cloud) (BSD-3-Clause, Jason Davies). Their notices come with their packages.
 
 ---
 
@@ -783,7 +791,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 自定义字段 | 给任意笔记加上故事需要的字段，常用的一组字段可以存为该种类的模板。 |
 | 图库 | 给角色、场景和世界观笔记配上图片，并选出卡片上显示的那一张。 |
 | 项目归档 | 把暂时写完的项目收起来，需要时再取回。 |
-| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。看板也可以换成角色或任一类世界观。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。 |
+| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。看板也可以换成角色或任一类世界观。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。关系图把你记下的关系画成角色与世界观笔记之间带标签的连线，场景与正文章节的联系则交给 Obsidian 自带的关系图谱来显示。 |
 | 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。这套版面可以只用在正文流，也可以用到雪花项目或整个仓库的笔记上。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
@@ -894,7 +902,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 ### 故事结构
 
-把所有场景摊开在眼前，才好判断它们的次序。**可视化工作区**会在单独的标签页中打开。你可以从工作台创作工具一组末尾的链接行进入，也可以用命令面板打开它。这里汇集了一组视图，展示的都是同一批场景，也就是你在第八步和第九步规划的那些。**卡片看板**、**自由画布**、**时间线**与**节拍表**并列在标签栏上，每个视图都对这批场景提出一个不同的问题。
+把所有场景摊开在眼前，才好判断它们的次序。**可视化工作区**会在单独的标签页中打开。你可以从工作台创作工具一组末尾的链接行进入，也可以用命令面板打开它。这里汇集了一组视图，展示的都是同一批场景，也就是你在第八步和第九步规划的那些。**卡片看板**、**自由画布**、**时间线**、**节拍表**与**关系图**并列在标签栏上，每个视图都对同一个项目提出一个不同的问题。
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的场景看板标签页。五张场景卡片按叙事顺序排列，每张都带有编号、进度、冲突、关联正文与视点人物。其中一张处于聚焦状态，露出用于拖动的握柄。相邻卡片之间有插入场景的加号。上方一栏是搜索、显示、排序、筛选、刷新与添加场景。" /></a></p>
 
@@ -915,6 +923,10 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 **节拍表**问的是第三个问题：每个场景在故事的整体结构里起什么作用。一个项目可以保存任意多张节拍表，每次显示一张。新的节拍表可以从空白开始，也可以从模板开始。内置的模板有三幕式、起承转合、故事圈、救猫咪、英雄之旅和言情节拍。每个模板都带着幕和节拍，还有一句话说明每个节拍是做什么用的。幕按次序自动编号，你愿意的话，还可以再给它一个标签。节拍背后没有笔记，所以它的名称与描述就保存在节拍表里。在节拍下面，同样可以写子描述，并从场景池里放入场景，和时间线上完全一样。幕、节拍、子描述和场景都可以拖动，也都可以用菜单移动。工具栏可以隐藏子描述、堆叠场景、让最后一幕排在最前，还能把当前的节拍表存为你自己的模板。白板按钮会把当前节拍表导出为 Obsidian 白板文件。
 
 **导出为 Obsidian 白板**会把你正在看的视图写成一个 `.canvas` 文件，用 Obsidian 自带的白板打开。文件放在工作区自己的文件旁边：`732_自由画布/<视图名称>.canvas`、`733_时间线/<视图名称>.canvas` 或 `734_节拍表/<节拍表名称>.canvas`。笔记会变成文件卡片，并保留各自的颜色。分组、时间线与幕会变成白板的分组。画布上输入的文字、子描述与节拍则变成文本卡片。工具栏上隐藏子描述、堆叠场景与倒序这几个开关只改变屏幕上的显示。白板里始终写出子描述，把场景放在它们旁边，并保持原本的顺序。任务、伏笔与修订不是笔记，所以各自变成一张写着名称的文本卡片，卡片之间的连线连同箭头与标签都会保留。写入后白板会立即打开。如果同名文件已经存在且内容不同，会先征求你的同意再替换。内容相同时不会重复写入，只会直接打开白板。这个文件是一份副本，插件不会读取它。你可以在白板里随意调整或删除它，工作区不受影响。
+
+<p align="center"><a href="assets/screenshots/workspace_relationship_graph_cn.png"><img src="assets/screenshots/workspace_relationship_graph_cn.png" width="100%" alt="可视化工作区的关系图标签页。上方的选择框里选着实体 ↔ 实体，中间是搜索框。画布上散布着圆点，名称写在各自下方：萧炎、纳兰嫣然、云韵等角色是紫色，三个时间是青色，云岚宗、加玛帝国与乌坦城是绿色，戒指是黄色，斗气是粉色。萧炎与纳兰嫣然之间有一条标着前未婚妻的连线，云岚宗、加玛帝国、乌坦城与云韵之间的连线标着隶属、宗主和徒弟。右上角的面板展开着筛选一节：搜索框，角色、场景、时间、地点、物品、其他设定、仅显示已创建的笔记和孤立文件的开关，其中场景是关着的，关系一栏列出前未婚妻、徒弟、成员/宗主和隶属。颜色组、外观和力度折叠在下面。" /></a></p>
+
+**关系图**问的是谁和谁有牵连，它有两个视图。**实体 ↔ 实体**视图把每篇角色和世界观笔记画成一个圆点，按种类着色。你在笔记表单里记下的每条关系，都成为从这篇笔记指向对象的一条连线，关系的名称写在线上，箭头标出方向。关系词表里的笔记本身不会出现在图里。场景也不会出现，除非你在筛选里把它们打开。找不到对应笔记的对象，会显示成一个浅色的圆点。把鼠标停在圆点上，它的连线会亮起来，其余的则变暗。拖动圆点可以移动它，拖动背景可以平移，滚轮用来缩放。点一下圆点，就打开这篇笔记的表单。点一下连线，表单会直接翻到那条关系的卡片。角落里的面板和 Obsidian 自带的关系图谱一样，有筛选、颜色组、外观和力度，每个手势都有对应的菜单项或按键。**场景 ↔ 正文**是另一个视图。它会在单独的标签页里打开 Obsidian 自带的关系图谱，只显示本项目的场景和正文章节，场景是橙色，章节是蓝色，每个场景都有一条带箭头的线指向它关联的章节。关闭那个标签页后，你自己的关系图谱设置会恢复。
 
 ### 正文流
 
@@ -1045,6 +1057,8 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 打开自由画布工作区 | 打开可视化工作区的自由画布。笔记、记录、文件和文字都作为卡片摆在上面，可以连线和分组。 |
 | 打开时间线工作区 | 打开可视化工作区的时间线。场景按发生的时间排开。 |
 | 打开节拍表工作区 | 打开可视化工作区的节拍表。场景归在各幕和各个节拍之下。 |
+| 打开关系图工作区 | 打开可视化工作区的关系图。角色和世界观笔记由你记下的关系连在一起。 |
+| 打开场景与正文关系图 | 在单独的标签页里打开 Obsidian 自带的关系图谱，只显示项目的场景和它们关联的正文章节。 |
 | 打开正文流 | 打开正文，并定位到你上次写作的那篇笔记。 |
 | 关闭正文流 | 关闭当前分栏中的正文流。 |
 | 前往上一篇正文笔记 | 在正文中跳到前一篇。 |
@@ -1243,9 +1257,11 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
     │       ├── 733_时间线/
     │       │   ├── timeline.json
     │       │   └── <视图名称>.canvas
-    │       └── 734_节拍表/
-    │           ├── beat-sheet.json
-    │           └── <节拍表名称>.canvas
+    │       ├── 734_节拍表/
+    │       │   ├── beat-sheet.json
+    │       │   └── <节拍表名称>.canvas
+    │       └── 735_关系图/
+    │           └── relationship-graph.json
     └── ...
 ```
 
@@ -1316,7 +1332,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 更丰富的右键菜单 (0.25.0)
 - [x] 图库与对应的卡片样式 (0.26.0)
 - [x] 卡片看板的更多视图 (0.26.0)
-- [ ] 关系图增强：提供多种视图，比如场景与正文之间的联系，实体之间的关系显示为连线上的标签，不再作为单独的节点
+- [x] 关系图 (0.27.0)
 - [ ] 导入与系列：项目可以从其他雪花项目导入任何小说设计内容，也支持系列作品，同一系列的作品可以共享任何内容
 - [ ] 改进平板和手机上的显示
 
@@ -1387,4 +1403,4 @@ npm ci
 
 源代码采用 [MIT License](LICENSE)。「雪花写作法」这一名称及原始方法资料的相关权利，归各自的权利人所有。
 
-自由画布标签页的画布基于 [React Flow](https://reactflow.dev)（MIT，webkid GmbH）和 [React](https://react.dev)（MIT，Meta）构建。它还用到了 React Flow 所依赖的 [d3](https://d3js.org) 模块（ISC，Mike Bostock）。数据统计中的词云用的是 [d3-cloud](https://github.com/jasondavies/d3-cloud)（BSD-3-Clause，Jason Davies）。它们的许可声明随各自的软件包一同分发。
+自由画布标签页的画布基于 [React Flow](https://reactflow.dev)（MIT，webkid GmbH）和 [React](https://react.dev)（MIT，Meta）构建。它还用到了 React Flow 所依赖的 [d3](https://d3js.org) 模块（ISC，Mike Bostock）。关系图标签页的实体视图用 d3-force 和 d3-quadtree 布局，用 d3-zoom 和 d3-drag 操作，同样来自 d3（ISC，Mike Bostock）。数据统计中的词云用的是 [d3-cloud](https://github.com/jasondavies/d3-cloud)（BSD-3-Clause，Jason Davies）。它们的许可声明随各自的软件包一同分发。
