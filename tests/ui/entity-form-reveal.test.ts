@@ -236,35 +236,51 @@ describe('a record card revealed from outside', () => {
 	function cardsEditor(count: number) {
 		const editor = Object.create(RecordCardsEditor.prototype) as RecordCardsEditor;
 		const block = { scrollIntoView: vi.fn() };
+		/** The document's focus listeners by type: the mark comes off on a focus that lands outside the card. */
+		const docListeners = new Map<string, (event: { target: unknown }) => void>();
+		const doc = {
+			addEventListener: vi.fn((type: string, listener: (event: { target: unknown }) => void) => {
+				docListeners.set(type, listener);
+			}),
+			removeEventListener: vi.fn((type: string) => {
+				docListeners.delete(type);
+			}),
+		};
 		const cards = Array.from({ length: count }, () => {
-			const listeners = new Map<string, () => void>();
 			const classes = new Set<string>();
+			const valueEl = { focus: vi.fn() };
 			const el = {
 				classes,
+				doc,
 				addClass: (cls: string): void => { classes.add(cls); },
 				removeClass: (cls: string): void => { classes.delete(cls); },
+				contains: (node: unknown): boolean => node === valueEl,
 				scrollIntoView: vi.fn(),
-				addEventListener: vi.fn((type: string, listener: () => void) => { listeners.set(type, listener); }),
 			};
-			return { el, valueEl: { focus: vi.fn() }, listeners };
+			return { el, valueEl };
 		});
 		Object.assign(editor, { cards, blockEl: block });
-		return { editor, block, cards };
+		return { editor, block, cards, doc, docListeners };
 	}
 
-	it('marks the card, puts the caret in its text and scrolls it to the middle, until the focus moves on', () => {
-		const { editor, block, cards } = cardsEditor(2);
+	it('marks the card, puts the caret in its text and scrolls it to the middle, until the focus lands elsewhere', () => {
+		const { editor, block, cards, doc, docListeners } = cardsEditor(2);
 		editor.revealCard(1);
 		const [first, second] = cards;
 		expect(second!.el.classes.has('is-revealed')).toBe(true);
 		expect(second!.valueEl.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
 		expect(second!.el.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'center' });
-		expect(second!.el.addEventListener).toHaveBeenCalledWith('focusout', expect.any(Function), { once: true });
+		expect(doc.addEventListener).toHaveBeenCalledExactlyOnceWith('focusin', expect.any(Function));
 		expect(first!.el.classes.size).toBe(0);
 		expect(first!.valueEl.focus).not.toHaveBeenCalled();
 		expect(block.scrollIntoView).not.toHaveBeenCalled();
-		second!.listeners.get('focusout')!();
+		// A focus within the card keeps the mark; one anywhere else takes it off, and the listener with it.
+		docListeners.get('focusin')!({ target: second!.valueEl });
+		expect(second!.el.classes.has('is-revealed')).toBe(true);
+		expect(doc.removeEventListener).not.toHaveBeenCalled();
+		docListeners.get('focusin')!({ target: first!.valueEl });
 		expect(second!.el.classes.has('is-revealed')).toBe(false);
+		expect(doc.removeEventListener).toHaveBeenCalledExactlyOnceWith('focusin', expect.any(Function));
 	});
 
 	it('brings the block itself into view for no record, or one the form no longer holds', () => {

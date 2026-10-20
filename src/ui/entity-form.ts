@@ -984,13 +984,18 @@ export class RecordCardsEditor {
 			return;
 		}
 		card.el.addClass('is-revealed');
-		card.el.addEventListener(
-			'focusout',
-			() => {
-				card.el.removeClass('is-revealed');
-			},
-			{ once: true },
-		);
+		// Until the focus lands somewhere else: a move between the card's own
+		// fields keeps the mark, and a focus that never landed in the card (its
+		// text disabled, the form not yet in the document) leaves it to the
+		// next focus that lands anywhere, rather than to a focusout that never
+		// comes.
+		const doc = card.el.doc;
+		const unmark = (event: FocusEvent): void => {
+			if (card.el.contains(event.target as Node | null)) return;
+			card.el.removeClass('is-revealed');
+			doc.removeEventListener('focusin', unmark);
+		};
+		doc.addEventListener('focusin', unmark);
 		card.valueEl.focus({ preventScroll: true });
 		card.el.scrollIntoView({ block: 'center' });
 	}
