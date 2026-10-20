@@ -3819,6 +3819,34 @@ describe("SnowflakeProjectService", () => {
     ).not.toBeNull();
   });
 
+  it("seeds the character vocabulary without crediting its words", async () => {
+    const writes: Array<{ path: string; userInput: boolean }> = [];
+    service.repository.onBodyWrite = (path, _before, _after, userInput) => {
+      writes.push({ path, userInput });
+    };
+    const project = await service.createProject({ name: "Seeded quietly" });
+
+    // Every starter note reached the hook, so the hook is what guards it.
+    const characterFolder = `${project.rootPath}/20_Character`;
+    const starterNotes = (
+      [
+        ["21_Category", ["Major", "Supporting", "Minor"]],
+        ["22_World_Status", ["Injured", "Missing", "Deceased"]],
+        ["23_Relationship", ["Ally", "Enemy", "Friend", "Family", "Member"]],
+      ] as const
+    ).flatMap(([folder, names]) =>
+      names.map((name) => `${characterFolder}/${folder}/${name}/${name}.md`),
+    );
+    const reported = new Set(writes.map((write) => write.path));
+    expect(starterNotes.filter((path) => !reported.has(path))).toEqual([]);
+    // The one write credited is the metadata note, which carries the title
+    // the author typed. The seeded notes are the template's words: a callout,
+    // a label and a name, and none of them is anyone's writing.
+    expect(
+      writes.filter((write) => write.userInput).map((write) => write.path),
+    ).toEqual([project.projectFile]);
+  });
+
   it("keeps an edited base when the project is repaired again", async () => {
     const project = await service.createProject({ name: "Edited Base" });
     const charactersBase = `${project.rootPath}/20_Character/Characters.base`;
@@ -5530,8 +5558,18 @@ describe("SnowflakeProjectService", () => {
         repairable: true,
       }),
     );
+    const writes: Array<{ path: string; userInput: boolean }> = [];
+    service.repository.onBodyWrite = (path, _before, _after, userInput) => {
+      writes.push({ path, userInput });
+    };
     await service.repairMissingStructureItem(project.projectFile, ada.path);
     expect(fakeVault.contents.has(`${categoryRoot}/Ghost/Ghost.md`)).toBe(true);
+    // The repair made the node as the plugin's own write: a mended link
+    // credits nobody.
+    expect(writes.map((write) => write.path)).toContain(
+      `${categoryRoot}/Ghost/Ghost.md`,
+    );
+    expect(writes.filter((write) => write.userInput)).toEqual([]);
   });
 
   it("stamps schema 2 across the project when migrating and restores the worldbuilding tree", async () => {

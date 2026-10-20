@@ -1718,8 +1718,17 @@ export class SnowflakeProjectService {
         // Counted by what the ensure actually made: a repair that made
         // nothing has repaired nothing, and says so below rather than
         // reporting a success the next check would take straight back.
+        // Raised as the plugin's own write: a repair makes what a link
+        // already named, and nobody typed it.
         created += (
-          await this.ensureDefinitionNodes(project, kind, root.id, check.segments)
+          await this.ensureDefinitionNodes(
+            project,
+            kind,
+            root.id,
+            check.segments,
+            "",
+            false,
+          )
         ).length;
       };
       for (const raw of member.categories) {
@@ -5217,8 +5226,10 @@ export class SnowflakeProjectService {
     const existed = this.repository.getFolder(rootPath) !== null;
     await this.repository.ensureFolder(rootPath);
     if (existed || kind !== "character") return;
+    // The seed is the plugin's own writing, reported as a mechanical write:
+    // a session never credits the author with words nobody typed.
     for (const starter of characterStarterNames(project.locale, id)) {
-      await this.ensureDefinitionNodes(project, kind, id, [starter]);
+      await this.ensureDefinitionNodes(project, kind, id, [starter], "", false);
     }
   }
 
