@@ -43,6 +43,13 @@ export interface ProseProjection {
 	 * them.
 	 */
 	closers: ReadonlyMap<number, Closer>;
+	/**
+	 * The source end of a character that stands for more source units than
+	 * its own -- an entity's decoded character -- by the source position the
+	 * character answers to. A caret put after such a character goes here,
+	 * not one unit on.
+	 */
+	spans: ReadonlyMap<number, number>;
 }
 
 export interface Closer {
@@ -248,7 +255,15 @@ export function projectProse(source: string): ProseProjection {
 			closers.set(elision.from, { to: elision.to, reach: elision.reach });
 		}
 	}
-	return { text: text.join(''), sourceIndexOf, closers };
+	// A character decoded from an entity stands for the whole reference: a
+	// caret put after it goes past the `;`, not one unit into the `&amp;`.
+	const spans = new Map<number, number>();
+	for (const elision of elisions) {
+		if (elision.emit === undefined || elision.emit === '') continue;
+		const at = elision.at ?? elision.from;
+		if (elision.to - at > 1) spans.set(at, elision.to);
+	}
+	return { text: text.join(''), sourceIndexOf, closers, spans };
 }
 
 /** One projection kept, for the handful of seeks a single click asks for. */
@@ -310,7 +325,7 @@ export function findPassage(
 	near: number,
 	side: -1 | 1 = 1,
 ): number | null {
-	const { text, sourceIndexOf, closers } = projectionOf(source);
+	const { text, sourceIndexOf, closers, spans } = projectionOf(source);
 
 	// The passage under the projection's own rule, and the pointer's place in
 	// it counted in surviving characters.
@@ -335,7 +350,7 @@ export function findPassage(
 
 	const before = sourceIndexOf[best + soughtLead - 1];
 	if (side === -1 && soughtLead > 0 && before !== undefined) {
-		let end = before + 1;
+		let end = spans.get(before) ?? before + 1;
 		let reach = end;
 		for (;;) {
 			const closer = closers.get(end);
