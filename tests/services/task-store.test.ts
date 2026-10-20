@@ -293,6 +293,30 @@ describe("TaskService", () => {
 		tasks = new TaskService(service.repository, { now: () => clock });
 	});
 
+
+	it("appends a batch in one write, leaving out ids that already stand", async () => {
+		expect(await tasks.create(project, makeTask("t-1"))).toBe(true);
+		const writes = (): number => fakeVault.processCalls.filter((path) => path === FILE).length;
+		const before = writes();
+
+		expect(
+			await tasks.createMany(project, [
+				makeTask("t-1"),
+				makeTask("t-2"),
+				makeTask("t-3", { status: "done" }),
+				makeTask("t-2", { title: "Twin" }),
+			]),
+		).toEqual(["t-2", "t-3"]);
+		expect(ids(await tasks.list(project))).toEqual(["t-1", "t-2", "t-3"]);
+		expect(writes()).toBe(before + 1);
+
+		// Nothing new leaves the file as it is.
+		const content = fakeVault.contents.get(FILE);
+		expect(await tasks.createMany(project, [makeTask("t-1"), makeTask("t-3")])).toEqual([]);
+		expect(await tasks.createMany(project, [])).toEqual([]);
+		expect(fakeVault.contents.get(FILE)).toBe(content);
+	});
+
 	it("creates once per id, appending, and lists what stands in order", async () => {
 		expect(await tasks.create(project, makeTask("t-1"))).toBe(true);
 		expect(await tasks.create(project, makeTask("t-1"))).toBe(false);

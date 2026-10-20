@@ -4,6 +4,7 @@ import {
 	addBeatSheetAct,
 	beatSheetFromStructure,
 	beatSheetStructureOf,
+	beatSheetTemplateNamesake,
 	createBeatSheet,
 	deleteBeat,
 	deleteBeatRow,
@@ -123,6 +124,73 @@ export class BeatSheetService {
 			);
 		});
 		return wrote ? id : null;
+	}
+
+	/**
+	 * Sheets brought over whole from elsewhere, each under an id of this
+	 * project's own, in one write; the sheet opened last stays as it was.
+	 * Answers one id per sheet, in order, or null where the sheet would not
+	 * read or the store refused the write.
+	 */
+	async importSheets(
+		project: ProjectRef,
+		sheets: ReadonlyArray<Omit<BeatSheet, "id">>,
+	): Promise<(string | null)[]> {
+		if (sheets.length === 0) return [];
+		const ids = sheets.map(() => this.mintId("beat-sheet"));
+		const landed: (string | null)[] = sheets.map(() => null);
+		// The store calls the change once where it writes, and never where it
+		// refuses, so what the change recorded is what stands.
+		await this.store.updateDocument(project, (held) => {
+			let next = held;
+			sheets.forEach((sheet, index) => {
+				const id = ids[index]!;
+				const made = createBeatSheet(next, { ...sheet, id });
+				if (made === null) return;
+				next = { ...made, lastSheetId: held.lastSheetId };
+				landed[index] = id;
+			});
+			return next === held ? null : next;
+		});
+		return landed;
+	}
+
+	/**
+	 * Templates brought over from elsewhere, in one write. A namesake, by
+	 * folded name, is replaced where it stands under `replace` and left as
+	 * it is under `skip`. Answers the id each template stands under now, in
+	 * order: the namesake's where one was replaced or already said the same,
+	 * null where it was skipped, would not read, or the store refused the write.
+	 */
+	async importTemplates(
+		project: ProjectRef,
+		templates: ReadonlyArray<{ name: string; description: string; structure: BeatSheetStructure }>,
+		policy: "skip" | "replace",
+	): Promise<(string | null)[]> {
+		if (templates.length === 0) return [];
+		const landed: (string | null)[] = templates.map(() => null);
+		await this.store.updateDocument(project, (held) => {
+			let next = held;
+			templates.forEach((template, index) => {
+				const namesake = beatSheetTemplateNamesake(next, template.name);
+				if (namesake !== undefined && policy === "skip") return;
+				const made = saveBeatSheetTemplate(
+					next,
+					{
+						id: namesake?.id ?? this.mintId("beat-sheet-template"),
+						name: template.name,
+						description: template.description,
+						structure: template.structure,
+					},
+					this.now(),
+				);
+				// A namesake already saying exactly this is nothing to write, and stands under its own id.
+				if (made !== null) next = made;
+				landed[index] = beatSheetTemplateNamesake(next, template.name)?.id ?? null;
+			});
+			return next === held ? null : next;
+		});
+		return landed;
 	}
 
 	renameSheet(project: ProjectRef, id: string, name: string): Promise<BeatSheetWrite> {

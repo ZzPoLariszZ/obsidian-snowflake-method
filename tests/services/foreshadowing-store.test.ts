@@ -302,6 +302,23 @@ describe("ForeshadowingService", () => {
 		threads = new ForeshadowingService(service.repository, { now: () => clock });
 	});
 
+
+	it("appends a batch in one write, leaving out ids that already stand", async () => {
+		expect(await threads.create(project, makeItem("fs-1"))).toBe(true);
+		const writes = (): number => fakeVault.processCalls.filter((path) => path === FILE).length;
+		const before = writes();
+
+		expect(
+			await threads.createMany(project, [makeItem("fs-1"), makeItem("fs-2"), makeItem("fs-3"), makeItem("fs-2")]),
+		).toEqual(["fs-2", "fs-3"]);
+		expect((await threads.list(project)).map((item) => item.id)).toEqual(["fs-1", "fs-2", "fs-3"]);
+		expect(writes()).toBe(before + 1);
+
+		const content = fakeVault.contents.get(FILE);
+		expect(await threads.createMany(project, [makeItem("fs-1")])).toEqual([]);
+		expect(fakeVault.contents.get(FILE)).toBe(content);
+	});
+
 	it("creates once per id and lists what stands", async () => {
 		expect(await threads.create(project, makeItem("fs-1"))).toBe(true);
 		expect(await threads.create(project, makeItem("fs-1"))).toBe(false);

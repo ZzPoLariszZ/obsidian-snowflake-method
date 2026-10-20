@@ -192,6 +192,78 @@ describe("BeatSheetService", () => {
 
 	const threeAct = () => ({ structure: builtInBeatSheetTemplate("en", "three-act").structure });
 
+
+	const sheetOf = (name: string): Omit<BeatSheet, "id"> => ({
+		name,
+		acts: [],
+		presentation: null,
+		showSubDescriptions: true,
+		reversed: false,
+		createdAt: 7,
+		updatedAt: 7,
+	});
+	const writes = (): number => fakeVault.processCalls.filter((path) => path === FILE).length;
+
+	it("brings sheets over under ids of their own in one write, leaving the sheet opened last alone", async () => {
+		const opened = await sheets.createSheet(project, { name: "Draft one", source: { structure: { acts: [] } } });
+		const before = writes();
+		expect(await sheets.importSheets(project, [sheetOf("Brought"), sheetOf("Also")])).toEqual([
+			"beat-sheet-2",
+			"beat-sheet-3",
+		]);
+		const held = await sheets.read(project);
+		expect(held.sheets.map((sheet) => [sheet.id, sheet.name])).toEqual([
+			["beat-sheet-1", "Draft one"],
+			["beat-sheet-2", "Brought"],
+			["beat-sheet-3", "Also"],
+		]);
+		expect(held.lastSheetId).toBe(opened);
+		expect(writes()).toBe(before + 1);
+		expect(await sheets.importSheets(project, [])).toEqual([]);
+		expect(writes()).toBe(before + 1);
+	});
+
+	it("brings templates over by name, replacing a namesake only when asked", async () => {
+		const structure = threeAct().structure;
+		expect(
+			await sheets.importTemplates(project, [{ name: "Hero", description: "First.", structure }], "skip"),
+		).toEqual(["beat-sheet-template-1"]);
+		const before = writes();
+
+		// Under skip the namesake stands as it was and answers nothing; the new name lands.
+		expect(
+			await sheets.importTemplates(
+				project,
+				[
+					{ name: "hero", description: "Second.", structure },
+					{ name: "Quest", description: "New.", structure },
+				],
+				"skip",
+			),
+		).toEqual([null, "beat-sheet-template-2"]);
+		expect((await sheets.read(project)).templates.map((template) => [template.name, template.description])).toEqual([
+			["Hero", "First."],
+			["Quest", "New."],
+		]);
+		expect(writes()).toBe(before + 1);
+
+		expect(
+			await sheets.importTemplates(project, [{ name: "hero", description: "Second.", structure }], "replace"),
+		).toEqual(["beat-sheet-template-1"]);
+		expect((await sheets.read(project)).templates.map((template) => [template.name, template.description])).toEqual([
+			["hero", "Second."],
+			["Quest", "New."],
+		]);
+		expect(writes()).toBe(before + 2);
+
+		// A replace that would change nothing leaves the file as it is and still answers the id.
+		const content = fakeVault.contents.get(FILE);
+		expect(
+			await sheets.importTemplates(project, [{ name: "hero", description: "Second.", structure }], "replace"),
+		).toEqual(["beat-sheet-template-1"]);
+		expect(fakeVault.contents.get(FILE)).toBe(content);
+	});
+
 	it("makes a sheet from a structure with ids of its own under every prefix, and opens on it", async () => {
 		const id = await sheets.createSheet(project, { name: "Draft one", source: threeAct() });
 		expect(id).toBe("beat-sheet-1");

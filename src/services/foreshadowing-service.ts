@@ -98,6 +98,26 @@ export class ForeshadowingService {
 	}
 
 	/**
+	 * Appends threads in order, in one write; a thread whose id already
+	 * stands, in the file or earlier in the batch, is left out. The ids appended.
+	 */
+	async createMany(project: ProjectRef, items: readonly Foreshadowing[]): Promise<string[]> {
+		let appended: string[] = [];
+		const wrote = await this.store.updateForeshadowings(project, (kept) => {
+			const standing = new Set(kept.map((item) => item.id));
+			const fresh: Foreshadowing[] = [];
+			for (const item of items) {
+				if (standing.has(item.id)) continue;
+				standing.add(item.id);
+				fresh.push({ ...item, related: item.related.map(refOf) });
+			}
+			appended = fresh.map((item) => item.id);
+			return fresh.length === 0 ? null : [...kept, ...fresh];
+		});
+		return wrote ? appended : [];
+	}
+
+	/**
 	 * The edit form's save, one write: the thread's own limbs and the role
 	 * and note of every occurrence it still holds. An occurrence named in
 	 * `removed` is deleted, one the form never saw -- added from the stream

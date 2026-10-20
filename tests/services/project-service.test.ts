@@ -7106,3 +7106,215 @@ describe("project series", () => {
     });
   });
 });
+
+describe("batch seams", () => {
+  let fakeVault: FakeVault;
+  let service: SnowflakeProjectService;
+  let project: ProjectSnapshot;
+  let writes: Array<{ path: string; userInput: boolean }>;
+
+  const stored = (path: string): Record<string, unknown> =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter;
+  const statusRecord = (name: string): RecordLine => ({
+    label: { path: `Def/World_Status/${name}/${name}`, display: name },
+    value: "",
+    clauses: [],
+  });
+
+  beforeEach(async () => {
+    const environment = createFakeEnvironment();
+    fakeVault = environment.fakeVault;
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+    project = await service.createProject({ title: "Novel", locale: "en" });
+    writes = [];
+    service.repository.onBodyWrite = (path, _before, _after, userInput) => {
+      writes.push({ path, userInput });
+    };
+  });
+
+  it("makes a character under the id and rank handed in, credited to the plugin", async () => {
+    const ada = await service.createCharacterIn(
+      project,
+      {
+        name: "Ada",
+        color: "macaron-3",
+        categoryPaths: ["Kin/Elf"],
+        worldStatus: [statusRecord("Standing")],
+        customFields: "- Eyes: grey",
+      },
+      { id: "character-ada", rank: 7000, userInput: false },
+    );
+
+    expect(ada.characterId).toBe("character-ada");
+    expect(ada.rank).toBe(7000);
+    expect(ada.hasStoredRank).toBe(true);
+    expect(stored(ada.path)[FRONTMATTER_KEYS.sceneColor]).toBe("macaron-3");
+    expect(stored(ada.path)[FRONTMATTER_KEYS.characterId]).toBe("character-ada");
+    expect(ada.worldStatus).toHaveLength(1);
+    expect(ada.customFields).toContain("Eyes: grey");
+    // The note, its records and the vocabulary node its category needed all went by, none as the author's.
+    expect(writes.length).toBeGreaterThanOrEqual(3);
+    expect(writes.some((write) => write.path.endsWith("21_Category/Kin/Elf/Elf.md"))).toBe(true);
+    expect(writes.every((write) => !write.userInput)).toBe(true);
+
+    const loaded = await service.loadProject(project.projectFile);
+    expect(loaded.structureIssues).toEqual([]);
+    expect(loaded.characters.map((character) => [character.characterId, character.rank])).toEqual([
+      ["character-ada", 7000],
+    ]);
+  });
+
+  it("makes a scene and a worldbuilding note the same way, keeping record lines it cannot read", async () => {
+    const dawn = await service.createSceneIn(
+      project,
+      {
+        title: "Dawn",
+        worldStatus: [],
+        worldStatusUnrecognized: ["- Nobody wrote this one down"],
+      },
+      { id: "scene-dawn", rank: 3000, userInput: false },
+    );
+    expect(dawn.sceneId).toBe("scene-dawn");
+    expect(dawn.rank).toBe(3000);
+    expect(dawn.worldStatusUnrecognized).toEqual(["- Nobody wrote this one down"]);
+
+    const harbor = await service.createEntityIn(
+      project,
+      {
+        kind: "location",
+        name: "Harbor",
+        color: "macaron-5",
+        relationshipsUnrecognized: ["- A line in no grammar"],
+      },
+      { id: "entity-harbor", rank: 2048, userInput: false },
+    );
+    expect(harbor.entityId).toBe("entity-harbor");
+    expect(harbor.rank).toBe(2048);
+    expect(stored(harbor.path)[FRONTMATTER_KEYS.sceneColor]).toBe("macaron-5");
+    expect(harbor.relationshipsUnrecognized).toEqual(["- A line in no grammar"]);
+    expect(writes.every((write) => !write.userInput)).toBe(true);
+
+    // Without the options, the seams behave as the forms' saves do.
+    writes.length = 0;
+    const plain = await service.createCharacterIn(await service.loadProject(project.projectFile), {
+      name: "Plain",
+    });
+    expect(plain.characterId).toMatch(/^character-/u);
+    expect(plain.rank).toBe(1024);
+    expect(FRONTMATTER_KEYS.sceneColor in stored(plain.path)).toBe(false);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.every((write) => write.userInput)).toBe(true);
+  });
+
+  it("rewrites notes through the loaded project, credited to the plugin, headings included", async () => {
+    const bea = await service.createCharacter(project, { name: "Bea" });
+    const dusk = await service.createScene(project, { title: "Dusk" });
+    const harbor = await service.createEntity(project, { kind: "location", name: "Harbor" });
+    writes.length = 0;
+
+    const loaded = await service.loadProject(project.projectFile);
+    const beatrix = await service.updateCharacterIn(
+      loaded,
+      bea.characterId,
+      {
+        expectedRevision: bea.revision,
+        name: "Beatrix",
+        motivation: "To sail.",
+        categoryPaths: ["Kin/Dwarf"],
+      },
+      { userInput: false },
+    );
+    expect(beatrix.name).toBe("Beatrix");
+    expect(beatrix.path).toMatch(/Beatrix\.md$/u);
+    expect(beatrix.motivation).toBe("To sail.");
+    expect(fakeVault.contents.get(beatrix.path)).toContain("# Beatrix");
+
+    const night = await service.updateSceneIn(
+      loaded,
+      dusk.sceneId,
+      { expectedRevision: dusk.revision, title: "Night", conflict: "The tide." },
+      { userInput: false },
+    );
+    expect(night.title).toBe("Night");
+    expect(night.conflict).toBe("The tide.");
+
+    const port = await service.updateEntityIn(
+      loaded,
+      harbor.entityId,
+      { expectedRevision: harbor.revision, description: "Where ships rest." },
+      { userInput: false },
+    );
+    expect(port.description).toBe("Where ships rest.");
+
+    expect(writes.length).toBeGreaterThanOrEqual(4);
+    expect(writes.every((write) => !write.userInput)).toBe(true);
+  });
+
+  it("refuses the seams on a read-only project", async () => {
+    const readOnly = { ...project, readOnly: true };
+    await expect(
+      service.ensureDefinitionPaths(readOnly, "character", "category", [], {
+        replaceDescriptions: false,
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedSchemaError);
+  });
+
+  it("raises vocabulary nodes with their descriptions, replacing one only when asked", async () => {
+    const categoryRoot = `${project.rootPath}/20_Character/21_Category`;
+    const descriptionOf = (taxonomy: string): unknown => {
+      const leaf = taxonomy.split("/").pop() ?? taxonomy;
+      return stored(`${categoryRoot}/${taxonomy}/${leaf}.md`)[FRONTMATTER_KEYS.description];
+    };
+
+    const first = await service.ensureDefinitionPaths(
+      project,
+      "character",
+      "category",
+      [
+        { taxonomyPath: "Kin/Elf", description: "Pointed ears." },
+        { taxonomyPath: "Kin", description: "Who one is born among." },
+        { taxonomyPath: "", description: "" },
+      ],
+      { replaceDescriptions: false, userInput: false },
+    );
+    expect(first).toEqual({ created: ["Kin/Elf"], existing: ["Kin"], refused: [""] });
+    expect(descriptionOf("Kin/Elf")).toBe("Pointed ears.");
+    // Kin stood, made on the way to Elf, and under skip it keeps what it has: nothing.
+    expect(descriptionOf("Kin")).toBeUndefined();
+    expect(writes.every((write) => !write.userInput)).toBe(true);
+
+    const skipped = await service.ensureDefinitionPaths(
+      project,
+      "character",
+      "category",
+      [{ taxonomyPath: "kin/elf", description: "Ears to a point." }],
+      { replaceDescriptions: false },
+    );
+    expect(skipped).toEqual({ created: [], existing: ["Kin/Elf"], refused: [] });
+    expect(descriptionOf("Kin/Elf")).toBe("Pointed ears.");
+
+    const replaced = await service.ensureDefinitionPaths(
+      project,
+      "character",
+      "category",
+      [
+        { taxonomyPath: "Kin/Elf", description: "Ears to a point." },
+        { taxonomyPath: "Kin", description: "Who one is born among." },
+        { taxonomyPath: "Kin/Dwarf", description: "Of the deep halls." },
+      ],
+      { replaceDescriptions: true },
+    );
+    expect(replaced).toEqual({ created: ["Kin/Dwarf"], existing: ["Kin/Elf", "Kin"], refused: [] });
+    expect(descriptionOf("Kin/Elf")).toBe("Ears to a point.");
+    expect(descriptionOf("Kin")).toBe("Who one is born among.");
+    expect(descriptionOf("Kin/Dwarf")).toBe("Of the deep halls.");
+    expect(
+      readMarkedSection(fakeVault.contents.get(`${categoryRoot}/Kin/Elf/Elf.md`) ?? "", "definition-fields"),
+    ).toContain("Ears to a point.");
+    expect((await service.loadProject(project.projectFile)).structureIssues).toEqual([]);
+  });
+});

@@ -283,6 +283,38 @@ export class ManuscriptService {
     return this.createSegment(project, title, sequenceAtEnd(segments));
   }
 
+  /**
+   * Appends notes after the manuscript's last, in the order given, each
+   * holding the words handed in rather than the template's hint: a batch's
+   * way of bringing chapters over. The order is settled once, and each note
+   * takes the position after the one before it. Answers the paths made, in
+   * order; a title the folder already holds lands under a numbered name, as
+   * a single append does. Each path is also told to `onCreated` as its note
+   * lands, so a long batch can be followed.
+   */
+  async appendSegments(
+    project: ProjectRef,
+    drafts: ReadonlyArray<{ title: string; body: string }>,
+    options: { userInput: boolean; onCreated?: (path: string) => void },
+  ): Promise<string[]> {
+    if (drafts.length === 0) return [];
+    const segments = await this.settleOrder(project, lastOf);
+    const paths: string[] = [];
+    let sequence = sequenceAtEnd(segments);
+    for (const draft of drafts) {
+      const path = await this.createSegment(project, draft.title, sequence, {
+        body: draft.body,
+        userInput: options.userInput,
+      });
+      paths.push(path);
+      options.onCreated?.(path);
+      const next = sequenceBetween(sequence, null);
+      if (next === null) throw new Error("Cannot place a segment here.");
+      sequence = next;
+    }
+    return paths;
+  }
+
   async prependSegment(
     project: ProjectRef,
     title: string,
@@ -656,14 +688,18 @@ export class ManuscriptService {
     project: ProjectRef,
     title: string,
     sequence: number,
+    options: { body?: string; userInput?: boolean } = {},
   ): Promise<string> {
     const name = title.trim();
     if (!name) throw new Error("Segment title is required.");
     const created = await this.repository.createManagedFile({
       path: this.plannedSegmentPath(project, name),
       uniqueOnConflict: true,
-      userInput: true,
-      template: manuscriptSegmentTemplate(name, project.locale),
+      userInput: options.userInput ?? true,
+      template:
+        options.body === undefined
+          ? manuscriptSegmentTemplate(name, project.locale)
+          : { body: options.body, sections: [] },
       frontmatter: {
         [FRONTMATTER_KEYS.schema]: SCHEMA_VERSION,
         [FRONTMATTER_KEYS.document]: "draft",
@@ -675,7 +711,7 @@ export class ManuscriptService {
   }
 
   /** Where a note of this title is made, before any clash moves it along. */
-  private plannedSegmentPath(project: ProjectRef, title: string): string {
+  plannedSegmentPath(project: ProjectRef, title: string): string {
     const name = title.trim();
     if (!name) throw new Error("Segment title is required.");
     const layout = getProjectPathLayout(project.locale);

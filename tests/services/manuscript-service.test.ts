@@ -1161,3 +1161,79 @@ describe("renaming manuscript notes in a batch", () => {
     expect(renameCalls.length).toBe(before);
   });
 });
+
+describe("appending manuscript notes in a batch", () => {
+  let fakeVault: FakeVault;
+  let service: SnowflakeProjectService;
+  let project: ProjectSnapshot;
+  let writes: Array<{ path: string; userInput: boolean }>;
+  const folder = "Snowflake Projects/Novel/50_Manuscript";
+
+  const titles = async (): Promise<string[]> =>
+    (await service.manuscript.listSegments(project)).map(({ title }) => title);
+  const bodyOf = (path: string): string =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").body.trim();
+  const sequenceOf = (path: string): unknown =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter[
+      FRONTMATTER_KEYS.manuscriptSequence
+    ];
+
+  beforeEach(async () => {
+    const environment = createFakeEnvironment();
+    fakeVault = environment.fakeVault;
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+    project = await service.createProject({ title: "Novel", locale: "en" });
+    writes = [];
+    service.repository.onBodyWrite = (path, _before, _after, userInput) => {
+      writes.push({ path, userInput });
+    };
+  });
+
+  it("appends notes after the last, each holding its own words, credited as asked", async () => {
+    const told: string[] = [];
+    const paths = await service.manuscript.appendSegments(
+      project,
+      [
+        { title: "Two", body: "# Two\n\nWords of two.\n" },
+        { title: "Three", body: "# Three\n\nWords of three.\n" },
+      ],
+      { userInput: false, onCreated: (path) => told.push(path) },
+    );
+
+    expect(paths).toEqual([`${folder}/Two.md`, `${folder}/Three.md`]);
+    // Each note is told as it lands, in the order the batch named them.
+    expect(told).toEqual(paths);
+    expect(await titles()).toEqual(["Draft", "Two", "Three"]);
+    expect(bodyOf(`${folder}/Two.md`)).toBe("# Two\n\nWords of two.");
+    expect(bodyOf(`${folder}/Three.md`)).toBe("# Three\n\nWords of three.");
+    // The order settled once: the draft took its position, and each note the one after the last.
+    const sequences = ["Draft", "Two", "Three"].map((title) => sequenceOf(`${folder}/${title}.md`));
+    expect(sequences.every((sequence) => typeof sequence === "number")).toBe(true);
+    expect(sequences[0]).toBeLessThan(sequences[1] as number);
+    expect(sequences[1]).toBeLessThan(sequences[2] as number);
+    expect(writes.map((write) => write.path)).toEqual([`${folder}/Two.md`, `${folder}/Three.md`]);
+    expect(writes.every((write) => !write.userInput)).toBe(true);
+  });
+
+  it("numbers a title the folder already holds, and answers nothing for an empty batch", async () => {
+    expect(await service.manuscript.appendSegments(project, [], { userInput: true })).toEqual([]);
+    expect(writes).toEqual([]);
+    const [path] = await service.manuscript.appendSegments(
+      project,
+      [{ title: "Draft", body: "# Draft\n\nAgain.\n" }],
+      { userInput: true },
+    );
+    expect(path).toBe(`${folder}/Draft (2).md`);
+    expect(await titles()).toEqual(["Draft", "Draft (2)"]);
+    expect(writes).toEqual([{ path: `${folder}/Draft (2).md`, userInput: true }]);
+  });
+
+  it("plans a note's path before it is made", () => {
+    expect(service.manuscript.plannedSegmentPath(project, "  Four  ")).toBe(`${folder}/Four.md`);
+    expect(service.manuscript.plannedSegmentPath(project, "A: B?")).toBe(`${folder}/A- B-.md`);
+  });
+});

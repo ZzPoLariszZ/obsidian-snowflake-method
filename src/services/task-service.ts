@@ -67,6 +67,26 @@ export class TaskService {
 	}
 
 	/**
+	 * Appends tasks in order, in one write; a task whose id already stands,
+	 * in the file or earlier in the batch, is left out. The ids appended.
+	 */
+	async createMany(project: ProjectRef, tasks: readonly Task[]): Promise<string[]> {
+		let appended: string[] = [];
+		const wrote = await this.store.updateTasks(project, (kept) => {
+			const standing = new Set(kept.map((task) => task.id));
+			const fresh: Task[] = [];
+			for (const task of tasks) {
+				if (standing.has(task.id)) continue;
+				standing.add(task.id);
+				fresh.push({ ...task, related: task.related.map(refOf) });
+			}
+			appended = fresh.map((task) => task.id);
+			return fresh.length === 0 ? null : [...kept, ...fresh];
+		});
+		return wrote ? appended : [];
+	}
+
+	/**
 	 * The limbs a form hands back, written in one go: nothing is written
 	 * when the form changed nothing. A task the form moved to another column
 	 * goes to that column's end, where a dropped card would land.

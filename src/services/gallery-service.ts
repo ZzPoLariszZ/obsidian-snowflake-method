@@ -69,6 +69,17 @@ const FREED_NAME_LOOKS = 20;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+/** Whether two pictures are the same bytes, byte for byte. */
+function sameBytes(left: ArrayBuffer, right: ArrayBuffer): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  const a = new Uint8Array(left);
+  const b = new Uint8Array(right);
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
 export class GalleryService {
   constructor(private readonly repository: VaultRepository) {}
 
@@ -122,6 +133,41 @@ export class GalleryService {
         } else {
           landed.push(await this.land(folder, source.name, await source.read(), unclaimed));
         }
+      }
+    } catch (error) {
+      await this.discardPictures(landed.filter((entry) => entry.created).map((entry) => entry.path));
+      throw error;
+    }
+    return landed;
+  }
+
+  /**
+   * Lands pictures by name, each reusing a file the folder already holds
+   * under that name with the same bytes: a batch's way in, where the same
+   * picture may arrive on two notes, or on a second run, and must not be
+   * numbered twice. A file of that name holding other bytes stands, and the
+   * picture lands beside it as ` (2)`. A refused write trashes what this
+   * call landed before it, then rethrows, as `addPictures` does.
+   */
+  async landMatching(
+    project: KindScope,
+    kind: EntityKindId,
+    pictures: ReadonlyArray<{ name: string; data: ArrayBuffer }>,
+  ): Promise<GalleryLanding[]> {
+    const folder = this.folderPath(project, kind);
+    const landed: GalleryLanding[] = [];
+    try {
+      for (const picture of pictures) {
+        const wanted = normalizePath(`${folder}/${safeFileName(picture.name)}`);
+        const standing = this.repository.vault.getFileByPath(wanted);
+        if (
+          standing !== null &&
+          sameBytes(await this.repository.vault.readBinary(standing), picture.data)
+        ) {
+          landed.push({ link: wikiLinkText(wanted), path: wanted, created: false });
+          continue;
+        }
+        landed.push(await this.land(folder, picture.name, picture.data, new Set()));
       }
     } catch (error) {
       await this.discardPictures(landed.filter((entry) => entry.created).map((entry) => entry.path));

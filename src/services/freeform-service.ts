@@ -111,6 +111,20 @@ export class FreeformService {
 		return wrote ? id : null;
 	}
 
+	/**
+	 * A view brought over whole from elsewhere, under an id of this project's
+	 * own and with nothing it could not read; its id, or null where the store
+	 * refused. What stands on it is taken as given: the caller has already
+	 * said what each resource names here.
+	 */
+	async importView(project: ProjectRef, view: Omit<FreeformView, "id">): Promise<string | null> {
+		const id = this.mintId(FREEFORM_VIEW_ID_PREFIX);
+		const wrote = await this.store.updateView(project, id, (held) =>
+			held === null ? { ...view, id, strays: { placements: [], frames: [], edges: [] } } : null,
+		);
+		return wrote ? id : null;
+	}
+
 	renameView(project: ProjectRef, viewId: string, name: string): Promise<FreeformViewWrite> {
 		return this.revise(project, viewId, (held) => renameFreeformView(held, name, this.now()));
 	}

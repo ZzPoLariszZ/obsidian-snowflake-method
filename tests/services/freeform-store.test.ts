@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { MAIN_FREEFORM_VIEW_ID, newFreeformView, type FreeformStep, type FreeformView } from "../../src/domain";
+import {
+	MAIN_FREEFORM_VIEW_ID,
+	newFreeformView,
+	type FreeformPlacement,
+	type FreeformStep,
+	type FreeformView,
+} from "../../src/domain";
 import {
 	FREEFORM_FOLDER_FILE_NAME,
 	FREEFORM_STORE_SCHEMA_VERSION,
@@ -345,6 +351,41 @@ describe("FreeformService", () => {
 
 	const writes = (id: string): number =>
 		fakeVault.processCalls.filter((path) => path === fileOf(id)).length;
+
+
+	it("brings a view over under an id of its own, with nothing it could not read", async () => {
+		const seed = newFreeformView({ id: "seed", name: "Brought", now: 5 });
+		const placement: FreeformPlacement = {
+			...text("p-1", 1, 2),
+			width: 120,
+			height: 40,
+			displayMode: "standard",
+			zIndex: 0,
+			frameId: null,
+		};
+		const id = await views.importView(project, {
+			name: seed.name,
+			placements: [placement],
+			frames: seed.frames,
+			edges: seed.edges,
+			viewport: seed.viewport,
+			createdAt: 5,
+			updatedAt: 6,
+			strays: { placements: ["junk"], frames: [], edges: [] },
+		});
+		expect(id).toBe("freeform-view-1");
+		const held = (await views.read(project)).views.find((view) => view.id === id);
+		expect(held).toMatchObject({
+			id: "freeform-view-1",
+			name: "Brought",
+			placements: [placement],
+			createdAt: 5,
+			updatedAt: 6,
+			strays: { placements: [], frames: [], edges: [] },
+		});
+		expect(fakeVault.contents.has(fileOf("freeform-view-1"))).toBe(true);
+		expect(writes("freeform-view-1")).toBe(0);
+	});
 
 	it("makes a view under an id of its own, and mints what stands on it under each prefix", async () => {
 		const id = await views.createView(project, { name: "Story overview" });

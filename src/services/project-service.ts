@@ -196,6 +196,8 @@ import {
   worldbuildingKindFolder,
   type KindScope,
   type ArtifactSnapshot,
+  type BatchUpdateOptions,
+  type BatchWriteOptions,
   type CharacterInput,
   type CharacterPatch,
   type CharacterRecord,
@@ -2199,6 +2201,22 @@ export class SnowflakeProjectService {
     this.assertProjectWritable(project);
     const input: CharacterInput =
       typeof inputOrName === "string" ? { name: inputOrName, type: characterType } : inputOrName;
+    return this.createCharacterIn(project, input);
+  }
+
+  /**
+   * Makes a character in a project already loaded and known to be writable,
+   * reading the names, ranks and periods it works against from the snapshot
+   * handed in: a batch appends each note it makes to its own copy of the
+   * snapshot and goes on without a reload. The options name the id and rank
+   * the note is born with and whether its words count as the author's.
+   */
+  async createCharacterIn(
+    project: ProjectSnapshot,
+    input: CharacterInput,
+    options: BatchWriteOptions = {},
+  ): Promise<CharacterRecord> {
+    const userInput = options.userInput ?? true;
     const name = input.name.trim();
     if (!name) throw new Error("Character name is required.");
     this.assertNameAvailable(
@@ -2214,12 +2232,13 @@ export class SnowflakeProjectService {
       throw new Error(`Unsupported character type: ${String(resolvedType)}`);
     }
 
-    const characterId = createStableId("character");
+    const characterId = options.id ?? createStableId("character");
     const characters = project.characters;
     const rank =
-      characters.length === 0
+      options.rank ??
+      (characters.length === 0
         ? RANK_GAP
-        : characters[characters.length - 1]!.rank + RANK_GAP;
+        : characters[characters.length - 1]!.rank + RANK_GAP);
     if (!Number.isSafeInteger(rank)) throw new RangeError("Cannot assign a safe character rank.");
     const layout = getProjectPathLayout(project.locale);
     const requested = normalizePath(
@@ -2254,11 +2273,12 @@ export class SnowflakeProjectService {
           : [characterRoleName(project.locale, resolvedType)]),
       ],
       [input.worldStatus, input.relationships],
+      userInput,
     );
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
-      userInput: true,
+      userInput,
       template: characterTemplate(name, project.locale, {
         fieldsBlock: renderCharacterFieldsBlock(
           project.locale,
@@ -2295,6 +2315,7 @@ export class SnowflakeProjectService {
         ...(input.progressStatus
           ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
           : {}),
+        ...(input.color ? { [FRONTMATTER_KEYS.sceneColor]: input.color } : {}),
         ...galleryFrontmatterOf(input),
       },
     });
@@ -2306,7 +2327,7 @@ export class SnowflakeProjectService {
         worldStatus: input.worldStatus ?? [],
         relationships: input.relationships ?? [],
       },
-      { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      unrecognizedRecordLinesOf(input),
       projectTimeSpans(project),
     );
     if ((input.customFields ?? "").trim().length > 0) {
@@ -2318,7 +2339,7 @@ export class SnowflakeProjectService {
         createdRecords,
         characterUpdateLayout(name, project.locale),
         undefined,
-        { userInput: true },
+        { userInput },
       );
     }
     return this.characterFromRecord(
@@ -2379,6 +2400,17 @@ export class SnowflakeProjectService {
   ): Promise<CharacterRecord> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
+    return this.updateCharacterIn(project, characterId, patch);
+  }
+
+  /** The save behind `updateCharacter`, on a project already loaded and known to be writable. */
+  async updateCharacterIn(
+    project: ProjectSnapshot,
+    characterId: string,
+    patch: CharacterPatch,
+    options: BatchUpdateOptions = {},
+  ): Promise<CharacterRecord> {
+    const userInput = options.userInput ?? true;
     const character = project.characters.find(
       (candidate) => candidate.characterId === characterId,
     );
@@ -2417,6 +2449,7 @@ export class SnowflakeProjectService {
           : [characterRoleName(project.locale, patch.type)]),
       ],
       [patch.worldStatus, patch.relationships],
+      userInput,
     );
 
     const frontmatterPatch: ManagedFrontmatter = {};
@@ -2547,6 +2580,7 @@ export class SnowflakeProjectService {
       rollbackValues,
       characterUpdateLayout(character.name, project.locale),
       CHARACTER_FRONTMATTER_ORDER,
+      userInput,
     );
     await this.removeEmptiedRecordSections(
       character,
@@ -2556,7 +2590,7 @@ export class SnowflakeProjectService {
 
     let path = character.path;
     if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
-      await this.syncNoteHeading(path, nextName);
+      await this.syncNoteHeading(path, nextName, userInput);
       path = await this.renameManagedNote(path, nextName);
       await this.refreshMemberReferences(project, character.path, path, nextName);
     }
@@ -2576,10 +2610,14 @@ export class SnowflakeProjectService {
    * left as it is: the author may have removed it deliberately, and writing one
    * back would add content rather than correct it.
    */
-  private async syncNoteHeading(path: string, title: string): Promise<void> {
+  private async syncNoteHeading(
+    path: string,
+    title: string,
+    userInput = true,
+  ): Promise<void> {
     const record = await this.repository.readManaged(path);
     if (firstHeading(record.body) === null) return;
-    await this.repository.updateFirstHeading(path, title, { userInput: true });
+    await this.repository.updateFirstHeading(path, title, { userInput });
   }
 
   private async renameManagedNote(path: string, title: string): Promise<string> {
@@ -3071,6 +3109,16 @@ export class SnowflakeProjectService {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const input: SceneInput = typeof inputOrTitle === "string" ? { title: inputOrTitle } : inputOrTitle;
+    return this.createSceneIn(project, input);
+  }
+
+  /** Makes a scene in a project already loaded and known to be writable, as `createCharacterIn` makes a character. */
+  async createSceneIn(
+    project: ProjectSnapshot,
+    input: SceneInput,
+    options: BatchWriteOptions = {},
+  ): Promise<SceneRecord> {
+    const userInput = options.userInput ?? true;
     const title = input.title.trim();
     if (!title) throw new Error("Scene title is required.");
     this.assertNameAvailable(
@@ -3079,9 +3127,11 @@ export class SnowflakeProjectService {
       title,
     );
     const scenes = project.scenes;
-    const rank = scenes.length === 0 ? RANK_GAP : scenes[scenes.length - 1]!.rank + RANK_GAP;
+    const rank =
+      options.rank ??
+      (scenes.length === 0 ? RANK_GAP : scenes[scenes.length - 1]!.rank + RANK_GAP);
     if (!Number.isSafeInteger(rank)) throw new RangeError("Cannot assign a safe scene rank.");
-    const sceneId = createStableId("scene");
+    const sceneId = options.id ?? createStableId("scene");
     const layout = getProjectPathLayout(project.locale);
     const characterNames = new Map(
       project.characters.map((character) => [character.path, character.name]),
@@ -3100,15 +3150,18 @@ export class SnowflakeProjectService {
       "scene",
       input.categoryPaths ?? [],
     );
-    await this.ensureReferencedDefinitions(project, "scene", input.categoryPaths ?? [], [
-      input.worldStatus,
-      input.relationships,
-    ]);
+    await this.ensureReferencedDefinitions(
+      project,
+      "scene",
+      input.categoryPaths ?? [],
+      [input.worldStatus, input.relationships],
+      userInput,
+    );
     const linkedManuscript = readStringList(input.linkedManuscript ?? []);
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
-      userInput: true,
+      userInput,
       template: sceneTemplate(title, project.locale, {
         fieldsBlock: sceneFieldsBlock(
           project.locale,
@@ -3163,7 +3216,7 @@ export class SnowflakeProjectService {
         worldStatus: input.worldStatus ?? [],
         relationships: input.relationships ?? [],
       },
-      { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      unrecognizedRecordLinesOf(input),
       projectTimeSpans(project),
     );
     if ((input.customFields ?? "").trim().length > 0) {
@@ -3175,7 +3228,7 @@ export class SnowflakeProjectService {
         createdRecords,
         sceneUpdateLayout(title, project.locale),
         undefined,
-        { userInput: true },
+        { userInput },
       );
     }
     return this.sceneFromRecord(
@@ -3320,6 +3373,17 @@ export class SnowflakeProjectService {
   ): Promise<SceneRecord> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
+    return this.updateSceneIn(project, sceneId, patch);
+  }
+
+  /** The save behind `updateScene`, on a project already loaded and known to be writable. */
+  async updateSceneIn(
+    project: ProjectSnapshot,
+    sceneId: string,
+    patch: ScenePatch,
+    options: BatchUpdateOptions = {},
+  ): Promise<SceneRecord> {
+    const userInput = options.userInput ?? true;
     const scene = project.scenes.find((candidate) => candidate.sceneId === sceneId);
     if (!scene) throw new ManagedFileNotFoundError(`scene:${sceneId}`);
     if (scene.readOnly) throw new UnsupportedSchemaError(scene.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
@@ -3373,10 +3437,13 @@ export class SnowflakeProjectService {
     if (patch.aliases !== undefined) {
       frontmatterPatch[ALIASES_KEY] = nextAliases.length > 0 ? nextAliases : undefined;
     }
-    await this.ensureReferencedDefinitions(project, "scene", patch.categoryPaths ?? [], [
-      patch.worldStatus,
-      patch.relationships,
-    ]);
+    await this.ensureReferencedDefinitions(
+      project,
+      "scene",
+      patch.categoryPaths ?? [],
+      [patch.worldStatus, patch.relationships],
+      userInput,
+    );
     const nextCategories =
       patch.categoryPaths === undefined
         ? scene.categories
@@ -3471,6 +3538,7 @@ export class SnowflakeProjectService {
       rollbackValues,
       sceneUpdateLayout(scene.title, project.locale),
       SCENE_FRONTMATTER_ORDER,
+      userInput,
     );
     await this.removeEmptiedRecordSections(
       scene,
@@ -3480,7 +3548,7 @@ export class SnowflakeProjectService {
 
     let path = scene.path;
     if (nextTitle !== undefined && nextTitle.length > 0 && nextTitle !== scene.title) {
-      await this.syncNoteHeading(path, nextTitle);
+      await this.syncNoteHeading(path, nextTitle, userInput);
       path = await this.renameManagedNote(path, nextTitle);
       // No property names a scene, but a record line can: what a character was
       // doing, where and when, is a sentence that may point at one.
@@ -3922,6 +3990,7 @@ export class SnowflakeProjectService {
     kind: EntityKindId,
     categoryPaths: readonly string[],
     records: ReadonlyArray<readonly RecordLine[] | undefined>,
+    userInput = true,
   ): Promise<void> {
     const jobs = new Map<
       string,
@@ -3954,7 +4023,7 @@ export class SnowflakeProjectService {
       }
     }
     for (const job of jobs.values()) {
-      await this.ensureDefinitionNodes(project, kind, job.id, job.segments);
+      await this.ensureDefinitionNodes(project, kind, job.id, job.segments, "", userInput);
     }
   }
 
@@ -4590,16 +4659,84 @@ export class SnowflakeProjectService {
    * nothing and report success, forever.
    */
   private definitionNodeFolderStands(rootPath: string, path: string): boolean {
-    if (this.repository.getFolder(rootPath) === null) return false;
+    return this.standingDefinitionFolder(rootPath, path.split("/")) !== null;
+  }
+
+  /** The node folder standing at a taxonomy path, matched fold by fold, in the case the vault has it; null where the chain breaks. */
+  private standingDefinitionFolder(
+    rootPath: string,
+    segments: readonly string[],
+  ): string | null {
+    if (this.repository.getFolder(rootPath) === null) return null;
     let folderPath = rootPath;
-    for (const segment of path.split("/")) {
+    for (const segment of segments) {
       const existing = this.repository
         .listDirectFolders(folderPath)
         .find((child) => foldName(child.name) === foldName(segment));
-      if (existing === undefined) return false;
+      if (existing === undefined) return null;
       folderPath = `${folderPath}/${existing.name}`;
     }
-    return true;
+    return folderPath;
+  }
+
+  /**
+   * Raises every node named, each with its description, below one root of a
+   * project already loaded and known to be writable: a batch's way of
+   * bringing a vocabulary over whole. A node that already stands is the
+   * author's and keeps its own description unless `replaceDescriptions` is
+   * asked for, in which case it takes the one offered, as
+   * `updateDefinitionDescription` would set it. Answers the taxonomy paths
+   * made, the ones that already stood, and the ones refused as paths.
+   */
+  async ensureDefinitionPaths(
+    project: ProjectSnapshot,
+    kind: EntityKindId,
+    id: DefinitionFileId,
+    nodes: ReadonlyArray<{ taxonomyPath: string; description: string }>,
+    options: { replaceDescriptions: boolean; userInput?: boolean },
+  ): Promise<{ created: string[]; existing: string[]; refused: string[] }> {
+    this.assertProjectWritable(project);
+    const userInput = options.userInput ?? true;
+    const created: string[] = [];
+    const existing: string[] = [];
+    const refused: string[] = [];
+    await this.ensureWorldbuildingTree(project);
+    const rootPath = definitionRootPath(project, kind, id);
+    for (const node of nodes) {
+      const check = checkDefinitionPath(node.taxonomyPath);
+      if (!check.ok) {
+        refused.push(node.taxonomyPath);
+        continue;
+      }
+      const standing = this.standingDefinitionFolder(rootPath, check.segments);
+      if (standing === null) {
+        const made = await this.ensureDefinitionNodes(
+          project,
+          kind,
+          id,
+          check.segments,
+          node.description,
+          userInput,
+        );
+        created.push(made[made.length - 1] ?? check.segments.join("/"));
+        continue;
+      }
+      const taxonomy = taxonomyPathFromTarget(standing, rootPath) ?? check.segments.join("/");
+      existing.push(taxonomy);
+      if (!options.replaceDescriptions) continue;
+      const selfPath = this.standingNodeNotePath(standing);
+      const trimmed = node.description.trim();
+      if (selfPath !== null) {
+        await this.repository.updateFrontmatter(selfPath, {
+          [FRONTMATTER_KEYS.description]:
+            trimmed.length === 0 ? undefined : trimmed,
+        });
+      }
+      await this.syncDefinitionNode(project, id, rootPath, standing, trimmed, {
+        userInput,
+      });
+    }
+    return { created, existing, refused };
   }
 
   private async ensureDefinitionNodes(
@@ -4608,6 +4745,7 @@ export class SnowflakeProjectService {
     id: DefinitionFileId,
     segments: readonly string[],
     description = "",
+    userInput = true,
   ): Promise<string[]> {
     const rootPath = definitionRootPath(project, kind, id);
     await this.repository.ensureFolder(rootPath);
@@ -4639,7 +4777,7 @@ export class SnowflakeProjectService {
           rootPath,
           folderPath,
           index === segments.length - 1 ? description : "",
-          { userInput: true },
+          { userInput },
         );
       }
     } finally {
@@ -5247,6 +5385,16 @@ export class SnowflakeProjectService {
   ): Promise<WorldbuildingRecord> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
+    return this.createEntityIn(project, input);
+  }
+
+  /** Makes a worldbuilding note in a project already loaded and known to be writable, as `createCharacterIn` makes a character. */
+  async createEntityIn(
+    project: ProjectSnapshot,
+    input: EntityInput,
+    options: BatchWriteOptions = {},
+  ): Promise<WorldbuildingRecord> {
+    const userInput = options.userInput ?? true;
     const kind = input.kind;
     const name = input.name.trim();
     if (!name) throw new Error("Entity name is required.");
@@ -5260,12 +5408,13 @@ export class SnowflakeProjectService {
     const timeEnd = kind === "time" ? (input.timeEnd ?? "").trim() : "";
     assertEntityTimeFields(timeKind, timeStart, timeEnd);
 
-    const entityId = createStableId("entity");
+    const entityId = options.id ?? createStableId("entity");
     const siblings = entitiesOf(project, kind);
     const rank =
-      siblings.length === 0
+      options.rank ??
+      (siblings.length === 0
         ? RANK_GAP
-        : siblings[siblings.length - 1]!.rank + RANK_GAP;
+        : siblings[siblings.length - 1]!.rank + RANK_GAP);
     if (!Number.isSafeInteger(rank)) throw new RangeError("Cannot assign a safe entity rank.");
     const folder = normalizePath(worldbuildingKindFolder(project, kind));
     const aliases = (input.aliases ?? [])
@@ -5276,10 +5425,13 @@ export class SnowflakeProjectService {
       kind,
       input.categoryPaths ?? [],
     );
-    await this.ensureReferencedDefinitions(project, kind, input.categoryPaths ?? [], [
-      input.worldStatus,
-      input.relationships,
-    ]);
+    await this.ensureReferencedDefinitions(
+      project,
+      kind,
+      input.categoryPaths ?? [],
+      [input.worldStatus, input.relationships],
+      userInput,
+    );
     const view = entityFieldsViewOf(kind, {
       progressStatus: input.progressStatus ?? null,
       aliases,
@@ -5292,7 +5444,7 @@ export class SnowflakeProjectService {
     const created = await this.repository.createManagedFile({
       path: normalizePath(`${folder}/${safeFileName(name)}.md`),
       uniqueOnConflict: true,
-      userInput: true,
+      userInput,
       template: entityTemplate(name, kind, project.locale, {
         fieldsBlock: renderEntityFieldsBlock(project.locale, kind, view),
         notes: input.notes,
@@ -5318,6 +5470,7 @@ export class SnowflakeProjectService {
         ...(input.progressStatus
           ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
           : {}),
+        ...(input.color ? { [FRONTMATTER_KEYS.sceneColor]: input.color } : {}),
         ...galleryFrontmatterOf(input),
       },
     });
@@ -5329,7 +5482,7 @@ export class SnowflakeProjectService {
         worldStatus: input.worldStatus ?? [],
         relationships: input.relationships ?? [],
       },
-      { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      unrecognizedRecordLinesOf(input),
       projectTimeSpans(project),
     );
     if ((input.customFields ?? "").trim().length > 0) {
@@ -5341,7 +5494,7 @@ export class SnowflakeProjectService {
         recordValues,
         entityUpdateLayout(name, kind, project.locale),
         undefined,
-        { userInput: true },
+        { userInput },
       );
     }
     return this.entityFromRecord(
@@ -5357,6 +5510,17 @@ export class SnowflakeProjectService {
   ): Promise<WorldbuildingRecord> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
+    return this.updateEntityIn(project, entityId, patch);
+  }
+
+  /** The save behind `updateEntity`, on a project already loaded and known to be writable. */
+  async updateEntityIn(
+    project: ProjectSnapshot,
+    entityId: string,
+    patch: EntityPatch,
+    options: BatchUpdateOptions = {},
+  ): Promise<WorldbuildingRecord> {
+    const userInput = options.userInput ?? true;
     const entity = project.worldbuildingKinds.flatMap(
       (kind) => entitiesOf(project, kind.id),
     ).find((candidate) => candidate.entityId === entityId);
@@ -5383,10 +5547,13 @@ export class SnowflakeProjectService {
         nextName,
       );
     }
-    await this.ensureReferencedDefinitions(project, kind, patch.categoryPaths ?? [], [
-      patch.worldStatus,
-      patch.relationships,
-    ]);
+    await this.ensureReferencedDefinitions(
+      project,
+      kind,
+      patch.categoryPaths ?? [],
+      [patch.worldStatus, patch.relationships],
+      userInput,
+    );
 
     const next = {
       progressStatus:
@@ -5489,12 +5656,13 @@ export class SnowflakeProjectService {
       rollbackValues,
       entityUpdateLayout(entity.name, kind, project.locale),
       ENTITY_FRONTMATTER_ORDER,
+      userInput,
     );
     await this.removeEmptiedRecordSections(entity, nextRecords, patch.customFields);
 
     let path = entity.path;
     if (nextName !== undefined && nextName.length > 0 && nextName !== entity.name) {
-      await this.syncNoteHeading(path, nextName);
+      await this.syncNoteHeading(path, nextName, userInput);
       path = await this.renameManagedNote(path, nextName);
       await this.refreshMemberReferences(project, entity.path, path, nextName);
     }
@@ -8399,6 +8567,8 @@ export class SnowflakeProjectService {
     layout: readonly SectionLayoutEntry[],
     /** The key sequence the note holds to, where its kind has one. */
     frontmatterOrder?: readonly string[],
+    /** Whether the words written count as the author's; a batch says no. */
+    userInput = true,
   ): Promise<void> {
     const hasSections = Object.keys(sectionValues).length > 0;
     const hasFrontmatter = Object.keys(frontmatterPatch).length > 0;
@@ -8420,7 +8590,7 @@ export class SnowflakeProjectService {
     // rather than update: a note from before the fields block gains it on its
     // first edit, at its canonical place in the layout.
     await this.repository.upsertSections(path, sectionValues, layout, expectedRevision, {
-      userInput: true,
+      userInput,
     });
     if (!hasFrontmatter) return;
 
@@ -8442,7 +8612,7 @@ export class SnowflakeProjectService {
           rollbackValues,
           layout,
           afterSectionsRevision,
-          { userInput: true },
+          { userInput },
         );
       } catch (rollbackError) {
         if (rollbackError instanceof ConcurrentChangeError) throw rollbackError;
@@ -8966,6 +9136,17 @@ function galleryOf(frontmatter: ManagedFrontmatter): { gallery: string[]; galler
 }
 
 /** The gallery keys a new note is made with: both left out while it has no pictures. */
+/** The record lines an input carries unread, as the section renderer takes them: none unless the input says. */
+function unrecognizedRecordLinesOf(input: {
+  worldStatusUnrecognized?: string[];
+  relationshipsUnrecognized?: string[];
+}): { worldStatusUnrecognized: string[]; relationshipsUnrecognized: string[] } {
+  return {
+    worldStatusUnrecognized: input.worldStatusUnrecognized ?? [],
+    relationshipsUnrecognized: input.relationshipsUnrecognized ?? [],
+  };
+}
+
 function galleryFrontmatterOf(input: { gallery?: string[]; galleryMain?: string | null }): ManagedFrontmatter {
   const gallery = readStringList(input.gallery ?? []);
   const main = galleryMainOf(gallery, input.galleryMain ?? null);

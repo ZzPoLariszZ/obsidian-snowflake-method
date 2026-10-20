@@ -29,6 +29,7 @@ import {
 	setViewTimesReversed,
 	type EntityRef,
 	type ScenePresentation,
+	type Timeline,
 	type TimelineCardStyle,
 	type TimelineDocument,
 } from "../domain";
@@ -105,6 +106,54 @@ export class TimelineService {
 			}),
 		);
 		return wrote ? id : null;
+	}
+
+	/**
+	 * Timelines brought over whole from elsewhere, each under an id of this
+	 * project's own, in one write. Answers one id per timeline, in order, or
+	 * null where the timeline was refused for its binding or the store
+	 * refused the write.
+	 */
+	async importTimelines(
+		project: ProjectRef,
+		timelines: ReadonlyArray<Omit<Timeline, "id">>,
+	): Promise<(string | null)[]> {
+		if (timelines.length === 0) return [];
+		const ids = timelines.map(() => this.mintId("timeline"));
+		const landed: (string | null)[] = timelines.map(() => null);
+		// The store calls the change once where it writes, and never where it
+		// refuses, so what the change recorded is what stands.
+		await this.store.updateDocument(project, (held) => {
+			let next = held;
+			timelines.forEach((timeline, index) => {
+				const id = ids[index]!;
+				const made = createTimeline(next, { ...timeline, id });
+				if (made === null) return;
+				next = made;
+				landed[index] = id;
+			});
+			if (next === held) return null;
+			// A timeline shows only through a view, so the newcomers join the
+			// view the project last looked at, or its first: brought over
+			// into a book that has never opened its timelines, they would
+			// otherwise stand invisible behind an empty workspace.
+			const viewId =
+				next.lastViewId !== null && findTimelineView(next, next.lastViewId) !== undefined
+					? next.lastViewId
+					: (next.views[0]?.id ?? null);
+			const view = viewId === null ? undefined : findTimelineView(next, viewId);
+			if (view !== undefined) {
+				const joined = setViewTimelines(
+					next,
+					view.id,
+					[...view.timelines, ...landed.filter((id): id is string => id !== null)],
+					this.now(),
+				);
+				if (joined !== null) next = joined;
+			}
+			return next;
+		});
+		return landed;
 	}
 
 	renameTimeline(project: ProjectRef, id: string, name: string): Promise<TimelineWrite> {

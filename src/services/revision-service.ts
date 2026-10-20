@@ -50,6 +50,26 @@ export class RevisionService {
 	}
 
 	/**
+	 * Appends revisions in order, in one write; a revision whose id already
+	 * stands, in the file or earlier in the batch, is left out. The ids appended.
+	 */
+	async createMany(project: ProjectRef, revisions: readonly Revision[]): Promise<string[]> {
+		let appended: string[] = [];
+		const wrote = await this.store.updateRevisions(project, (kept) => {
+			const standing = new Set(kept.map((revision) => revision.id));
+			const fresh: Revision[] = [];
+			for (const revision of revisions) {
+				if (standing.has(revision.id)) continue;
+				standing.add(revision.id);
+				fresh.push(revision);
+			}
+			appended = fresh.map((revision) => revision.id);
+			return fresh.length === 0 ? null : [...kept, ...fresh];
+		});
+		return wrote ? appended : [];
+	}
+
+	/**
 	 * Rewrites one revision's proposed text and comment; false when gone.
 	 * The kind follows the proposal the way `revisionKindFor` says, the same
 	 * rule the draft was saved by.

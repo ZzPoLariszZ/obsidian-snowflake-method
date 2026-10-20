@@ -223,6 +223,46 @@ describe("TimelineService", () => {
 		});
 	});
 
+
+	it("brings timelines over under ids of their own in one write, refusing one bound to a scene", async () => {
+		await timelines.createTimeline(project, { name: "Main", binding: null });
+		const writes = (): number => fakeVault.processCalls.filter((path) => path === FILE).length;
+		const before = writes();
+
+		expect(
+			await timelines.importTimelines(project, [
+				{
+					name: "Ada's",
+					binding: { kind: "character", id: "character-ada", name: "Ada" },
+					times: [{ timeId: "time-1", rows: [{ id: "row-1", text: "Arrives", scenes: ["scene-1"] }] }],
+					createdAt: 1,
+					updatedAt: 2,
+				},
+				{
+					name: "Bound to a scene",
+					binding: { kind: "scene", id: "scene-1", name: "One" },
+					times: [],
+					createdAt: 1,
+					updatedAt: 1,
+				},
+			]),
+		).toEqual(["timeline-2", null]);
+		const held = await timelines.read(project);
+		expect(held.timelines.map((timeline) => timeline.id)).toEqual(["timeline-1", "timeline-2"]);
+		// The newcomer shows at once: it joins the view the project last looked at.
+		expect(held.views.map((view) => view.timelines)).toEqual([["timeline-2"]]);
+		expect(held.timelines[1]).toMatchObject({
+			name: "Ada's",
+			binding: { kind: "character", id: "character-ada", name: "Ada" },
+			times: [{ timeId: "time-1", rows: [{ id: "row-1", text: "Arrives", scenes: ["scene-1"] }] }],
+			createdAt: 1,
+			updatedAt: 2,
+		});
+		expect(writes()).toBe(before + 1);
+		expect(await timelines.importTimelines(project, [])).toEqual([]);
+		expect(writes()).toBe(before + 1);
+	});
+
 	it("mints ids of its own for timelines, views and rows", async () => {
 		const timelineId = await timelines.createTimeline(project, { name: "Main", binding: null });
 		expect(timelineId).toBe("timeline-1");

@@ -364,4 +364,43 @@ describe("GalleryService", () => {
     expect(plain.galleryMain).toBeNull();
     expect(FRONTMATTER_KEYS.gallery in stored(plain.path)).toBe(false);
   });
+  it("lands matching pictures once: a same-name file with the same bytes is reused, other bytes are numbered", async () => {
+    const project = await service.createProject({ name: "Matching" });
+    const folder = galleryFolderPath(project, "character");
+    const landed = await service.gallery.landMatching(project, "character", [
+      { name: "portrait.png", data: bytes("first") },
+      { name: "portrait.png", data: bytes("first") },
+      { name: "portrait.png", data: bytes("second") },
+    ]);
+    expect(landed).toEqual([
+      { link: link(`${folder}/portrait.png`), path: `${folder}/portrait.png`, created: true },
+      { link: link(`${folder}/portrait.png`), path: `${folder}/portrait.png`, created: false },
+      { link: link(`${folder}/portrait (2).png`), path: `${folder}/portrait (2).png`, created: true },
+    ]);
+    expect(fakeVault.createBinaryCalls).toEqual([`${folder}/portrait.png`, `${folder}/portrait (2).png`]);
+
+    // A later run finds the first still standing and the numbered one by its own name.
+    const again = await service.gallery.landMatching(project, "character", [
+      { name: "portrait.png", data: bytes("first") },
+      { name: "portrait (2).png", data: bytes("second") },
+      { name: "portrait.png", data: bytes("third") },
+    ]);
+    expect(again.map((entry) => entry.created)).toEqual([false, false, true]);
+    expect(again[2]?.path).toBe(`${folder}/portrait (3).png`);
+    expect(fakeVault.createBinaryCalls).toHaveLength(3);
+    expect(await service.gallery.landMatching(project, "character", [])).toEqual([]);
+  });
+
+  it("trashes what a matching landing made before a refused write, then rethrows", async () => {
+    const project = await service.createProject({ name: "Refused" });
+    const folder = galleryFolderPath(project, "character");
+    fakeVault.failNextCreateBinaryPath = `${folder}/second.png`;
+    await expect(
+      service.gallery.landMatching(project, "character", [
+        { name: "first.png", data: bytes("first") },
+        { name: "second.png", data: bytes("second") },
+      ]),
+    ).rejects.toThrow();
+    expect(fakeVault.getAbstractFileByPath(`${folder}/first.png`)).toBeNull();
+  });
 });

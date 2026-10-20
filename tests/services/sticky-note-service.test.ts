@@ -56,6 +56,15 @@ describe("StickyNoteService", () => {
 		project = await service.createProject({ title: "Novel", locale: "en" });
 	});
 
+
+	it("starts a note set aside when a batch says so", async () => {
+		const note = await sticky().create(project, undefined, INSTANT, -60, "Kept aside.", true);
+		expect(frontmatterOf(PATH)[FRONTMATTER_KEYS.archived]).toBe(true);
+		expect(note.body).toBe("Kept aside.");
+		const plain = await sticky().create(project, undefined, LATER, -60, "");
+		expect(frontmatterOf(plain.path)[FRONTMATTER_KEYS.archived]).toBe(false);
+	});
+
 	it("starts a note holding the words it was made from", async () => {
 		const note = await sticky().create(project, undefined, INSTANT, -60, "The **ash** tree.");
 		expect(note.body).toBe("The **ash** tree.");

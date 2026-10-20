@@ -549,10 +549,15 @@ export interface CharacterInput {
   growth?: string;
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
+  /** Record lines the plugin could not read, kept word for word under the parsed ones. */
+  worldStatusUnrecognized?: string[];
+  relationshipsUnrecognized?: string[];
   oneParagraphStoryline?: string;
   characterSynopsis?: string;
   characterProfile?: string;
   customFields?: string;
+  /** The card's tint; absent or null for none. */
+  color?: MacaronColor | null;
   /** Picture links as raw wikilinks, kept exactly as given. */
   gallery?: string[];
   /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
@@ -647,6 +652,9 @@ export interface SceneInput {
   conflict?: string;
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
+  /** Record lines the plugin could not read, kept word for word under the parsed ones. */
+  worldStatusUnrecognized?: string[];
+  relationshipsUnrecognized?: string[];
   events?: string;
   planning?: string;
   customFields?: string;
@@ -808,12 +816,35 @@ export interface EntityInput {
   timeEnd?: string;
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
+  /** Record lines the plugin could not read, kept word for word under the parsed ones. */
+  worldStatusUnrecognized?: string[];
+  relationshipsUnrecognized?: string[];
   notes?: string;
   customFields?: string;
+  /** The card's tint; absent or null for none. */
+  color?: MacaronColor | null;
   /** Picture links as raw wikilinks, kept exactly as given. */
   gallery?: string[];
   /** The main picture, one of `gallery`'s entries; null for none. Absent leaves it as it is. */
   galleryMain?: string | null;
+}
+
+/**
+ * How a batch makes a note: under an id and a rank chosen up front, so a
+ * link to a note not yet made can be written right the first time, and
+ * credited to the plugin rather than the author where `userInput` is false.
+ * Everything absent is what a form's save does.
+ */
+export interface BatchWriteOptions {
+  id?: string;
+  rank?: number;
+  /** Whether the words written count as the author's; true unless said otherwise. */
+  userInput?: boolean;
+}
+
+/** How a batch rewrites a note: credited to the plugin where `userInput` is false. */
+export interface BatchUpdateOptions {
+  userInput?: boolean;
 }
 
 export interface EntityPatch {

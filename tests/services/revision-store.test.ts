@@ -265,6 +265,32 @@ describe("RevisionService", () => {
 		revisions = service.revisions;
 	});
 
+
+	it("appends a batch in one write, leaving out ids that already stand", async () => {
+		expect(await revisions.create(project, makeRevision("rev-1"))).toBe(true);
+		const writes = (): number => fakeVault.processCalls.filter((path) => path === FILE).length;
+		const before = writes();
+
+		expect(
+			await revisions.createMany(project, [
+				makeRevision("rev-1"),
+				makeRevision("rev-2"),
+				makeRevision("rev-3"),
+				makeRevision("rev-2"),
+			]),
+		).toEqual(["rev-2", "rev-3"]);
+		expect((await revisions.list(project)).map((revision) => revision.id)).toEqual([
+			"rev-1",
+			"rev-2",
+			"rev-3",
+		]);
+		expect(writes()).toBe(before + 1);
+
+		const content = fakeVault.contents.get(FILE);
+		expect(await revisions.createMany(project, [makeRevision("rev-3")])).toEqual([]);
+		expect(fakeVault.contents.get(FILE)).toBe(content);
+	});
+
 	it("creates once per id and lists what stands", async () => {
 		const revision = makeRevision("rev-1");
 		expect(await revisions.create(project, revision)).toBe(true);
