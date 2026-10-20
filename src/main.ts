@@ -10776,6 +10776,7 @@ export default class SnowflakeMethodPlugin
 		this.projects.beatSheet.evict(file.path);
 		this.projects.relationshipGraph.evict(file.path);
 		this.projects.freeform.evict(file.path);
+		this.projects.imports.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -10997,6 +10998,7 @@ export default class SnowflakeMethodPlugin
 		this.projects.beatSheet.evict(oldPath);
 		this.projects.relationshipGraph.evict(oldPath);
 		this.projects.freeform.evict(oldPath);
+		this.projects.imports.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name. Carried
 		// in the order the renames came, one after another: a renumbering

@@ -169,6 +169,7 @@ import { MentionIndexService } from "./mention-index";
 import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { FreeformService } from "./freeform-service";
+import { ImportStore } from "./import-store";
 import { isFreeformFilePath } from "./freeform-store";
 import { TaskService } from "./task-service";
 import { TimelineService } from "./timeline-service";
@@ -428,6 +429,8 @@ export class SnowflakeProjectService {
   readonly relationshipGraph: RelationshipGraphService;
   /** Freeform views, each a file of its own: user data beside the beat sheets. */
   readonly freeform: FreeformService;
+  /** Where imported parts came from: one record per part copied in from another project. */
+  readonly imports: ImportStore;
   /** The stores of records kept beside the manuscript, told of a chapter's fate as one. */
   readonly marginRecords: readonly MarginRecordService[];
   /** Sticky notes: Markdown files under task management, listed and written here. */
@@ -587,6 +590,10 @@ export class SnowflakeProjectService {
     });
     this.stickyNotes = new StickyNoteService(this.repository, {
       mintId: () => createStableId("sticky-note"),
+    });
+    this.imports = new ImportStore({
+      repository: this.repository,
+      now: analysis.now ?? ((): number => Date.now()),
     });
     this.exporter = new ManuscriptExportService(this.repository, this.manuscript);
     this.canvasExporter = new CanvasExportService(this.repository, {
@@ -1324,6 +1331,7 @@ export class SnowflakeProjectService {
       timeline: new Set(),
       beatSheet: new Set(),
       relationshipGraph: new Set(),
+      imports: new Set(),
       // Sticky notes are managed notes of their own type, owned and repaired
       // like members.
       stickyNotes: new Set(["sticky-note"]),
@@ -7280,6 +7288,7 @@ export class SnowflakeProjectService {
       timeline: [],
       beatSheet: [],
       relationshipGraph: [],
+      imports: [],
       materials: [],
       archive: [],
     };

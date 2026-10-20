@@ -70,6 +70,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "timeline",
   "beatSheet",
   "relationshipGraph",
+  "imports",
   "materials",
   "archive",
 ] as const;
@@ -119,6 +120,8 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       timeline: "70_Tool/73_Visualization/733_Timeline",
       beatSheet: "70_Tool/73_Visualization/734_Beat_Sheet",
       relationshipGraph: "70_Tool/73_Visualization/735_Relationship_Graph",
+      // The import chain: one file saying where imported parts came from.
+      imports: "70_Tool/74_Import",
       materials: "80_Material",
       archive: "90_Archive",
     },
@@ -150,6 +153,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       timeline: "70_工具/73_可视化/733_时间线",
       beatSheet: "70_工具/73_可视化/734_节拍表",
       relationshipGraph: "70_工具/73_可视化/735_关系图",
+      imports: "70_工具/74_导入",
       materials: "80_素材",
       archive: "90_存档",
     },
@@ -373,9 +377,10 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  * of the folders whose absence costs nothing: each holds only what its own
  * writer puts there -- the sessions and the two statistics caches, the task,
  * foreshadowing and revision files, the sticky notes, the freeform views,
- * the timeline, the beat sheet and the relationship graph -- and each of
- * those writers ensures its chain on the way to a write, so an absent folder is back the moment there
- * is something to keep in it. No step reads one, and no note is filed by one.
+ * the timeline, the beat sheet, the relationship graph and the import
+ * record -- and each of those writers ensures its chain on the way to a
+ * write, so an absent folder is back the moment there is something to keep
+ * in it. No step reads one, and no note is filed by one.
  *
  * Demanding any of them would mark as damaged every project made before its
  * feature. A project from 0.7.0 has no tool chain at all, and would open in
@@ -398,6 +403,7 @@ export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
     "timeline",
     "beatSheet",
     "relationshipGraph",
+    "imports",
   ]);
 
 /** A project-level contract problem that exists before marker inspection. */

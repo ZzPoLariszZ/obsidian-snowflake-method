@@ -601,7 +601,7 @@ describe("SnowflakeProjectService", () => {
 
     const seen = await service.loadProject(project.projectFile);
     expect(seen.structureIssues.map((issue) => issue.code)).toEqual(
-      Array.from({ length: 11 }, () => "missing-on-demand-directory"),
+      Array.from({ length: 12 }, () => "missing-on-demand-directory"),
     );
     expect(seen.structureIssues.some((issue) => issue.blocking)).toBe(false);
     expect(seen.structureIssues.every((issue) => issue.repairable)).toBe(true);
@@ -613,7 +613,7 @@ describe("SnowflakeProjectService", () => {
       timeline,
     );
     expect(fakeVault.nodes.has(timeline)).toBe(true);
-    expect(repaired.structureIssues).toHaveLength(10);
+    expect(repaired.structureIssues).toHaveLength(11);
   });
 
   it("offers every folder of the tool chain, and demands every other", () => {
