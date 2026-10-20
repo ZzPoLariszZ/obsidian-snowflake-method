@@ -41,6 +41,7 @@ import {
 } from '../domain';
 import { buildOptionField, type OptionPicker } from './option-picker';
 import type {
+	RelationshipGraphBridge,
 	RelationshipGraphControls,
 	RelationshipGraphHandle,
 	RelationshipGraphReading,
@@ -108,6 +109,13 @@ export function renderRelationshipGraph(
 	};
 	let disposed = false;
 	let reading: RelationshipGraphReading | null = null;
+	/**
+	 * The bridge the reading was read through, which its owed writes go
+	 * back to: the controls' own may stand on another project by the time
+	 * a write falls due, as a tab moved on does before the old graph is
+	 * taken down.
+	 */
+	let readBridge: RelationshipGraphBridge | null = null;
 	/** The graph of the reading held, built once per reading, with its index for the search. */
 	let graph: EntityGraph = EMPTY_ENTITY_GRAPH;
 	let index: GraphQueryIndex | null = null;
@@ -139,7 +147,7 @@ export function renderRelationshipGraph(
 		if (view === null || reading === null || reading.readOnly) return;
 		if (sameViewport(view, reading.held.entities.viewport)) return;
 		writtenViewport = view;
-		void controls.bridge().updateEntities({ viewport: view }).catch(notice);
+		void (readBridge ?? controls.bridge()).updateEntities({ viewport: view }).catch(notice);
 	};
 	const queueViewport = (view: GraphViewport): void => {
 		if (reading === null || reading.readOnly) return;
@@ -168,7 +176,7 @@ export function renderRelationshipGraph(
 		owedState = null;
 		if (patch === null || reading === null) return;
 		echoesOwed.push(reading.held.entities);
-		void controls.bridge().updateEntities(patch).catch(notice);
+		void (readBridge ?? controls.bridge()).updateEntities(patch).catch(notice);
 	};
 	const changeState = (patch: Partial<EntityGraphState>): void => {
 		if (reading === null || reading.readOnly) return;
@@ -658,8 +666,10 @@ export function renderRelationshipGraph(
 		paintStage();
 	};
 	const reload = async (): Promise<void> => {
-		const read = await controls.bridge().read();
+		const bridge = controls.bridge();
+		const read = await bridge.read();
 		if (disposed) return;
+		readBridge = read === null ? null : bridge;
 		if (read === null) {
 			readEntities = null;
 			echoesOwed = [];
