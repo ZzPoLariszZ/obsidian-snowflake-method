@@ -95,6 +95,8 @@ interface HeldLeaf {
 	project: SceneManuscriptProject;
 	/** What the project's file holds for the graph, as the keeper last read or wrote it; null while it holds nothing. */
 	kept: NativeGraphOptions | null;
+	/** The preset the tab was given, built with the colours of its time, which a snapshot measures the options against. */
+	preset: NativeGraphOptions;
 	/** Set when the view told us it was going; the sweep drops the entry. */
 	closed: boolean;
 }
@@ -213,7 +215,7 @@ export class SceneManuscriptGraphKeeper {
 		for (const [id, project] of Object.entries(kept.leaves)) {
 			const leaf = workspace.getLeafById(id);
 			if (leaf === null || !isGraphView(leaf.view)) continue;
-			const entry = this.adopt(leaf, leaf.view, project, null);
+			const entry = this.adopt(leaf, leaf.view, project, null, buildSceneManuscriptPreset(project, this.deps.colors()));
 			// The global file may hold the user's own options again by now, so
 			// the project's are set afresh from what its file remembers.
 			void this.apply(entry).catch(this.fail);
@@ -232,7 +234,7 @@ export class SceneManuscriptGraphKeeper {
 			await this.deps.app.workspace.revealLeaf(standing.leaf);
 			return 'revealed';
 		}
-		const { options, kept } = await this.projectOptions(project);
+		const { options, kept, preset } = await this.projectOptions(project);
 		if (this.held.length === 0 && this.before === null) {
 			// The user's own options, to be given back when the loan ends: where
 			// they cannot be read, nothing is borrowed, and a plain graph opens.
@@ -258,7 +260,7 @@ export class SceneManuscriptGraphKeeper {
 			return 'unavailable';
 		}
 		this.set(view, options);
-		this.adopt(leaf, view, project, kept);
+		this.adopt(leaf, view, project, kept, preset);
 		this.persist();
 		this.notify();
 		return 'opened';
@@ -272,6 +274,7 @@ export class SceneManuscriptGraphKeeper {
 		for (const entry of this.held) {
 			if (entry.closed || entry.project.projectFile !== project.projectFile) continue;
 			entry.kept = null;
+			entry.preset = preset;
 			this.set(entry.view, preset);
 		}
 		return wrote;
@@ -317,8 +320,9 @@ export class SceneManuscriptGraphKeeper {
 		view: GraphViewLike,
 		project: SceneManuscriptProject,
 		kept: NativeGraphOptions | null,
+		preset: NativeGraphOptions,
 	): HeldLeaf {
-		const entry: HeldLeaf = { leaf, view, id: leafId(leaf), project, kept, closed: false };
+		const entry: HeldLeaf = { leaf, view, id: leafId(leaf), project, kept, preset, closed: false };
 		this.held.push(entry);
 		// Registered on the view, so it runs as the view unloads and the engine
 		// still holds the options: before the leaf is detached or shows
@@ -335,23 +339,25 @@ export class SceneManuscriptGraphKeeper {
 	/**
 	 * The options the project's file remembers, re-prefixed for a moved root,
 	 * else the preset; `kept` is what the file holds, read the same way, or
-	 * null where it holds nothing.
+	 * null where it holds nothing, and `preset` the preset as it stands now.
 	 */
 	private async projectOptions(
 		project: SceneManuscriptProject,
-	): Promise<{ options: NativeGraphOptions; kept: NativeGraphOptions | null }> {
+	): Promise<{ options: NativeGraphOptions; kept: NativeGraphOptions | null; preset: NativeGraphOptions }> {
 		const stored = await this.deps.stored(project);
+		const preset = buildSceneManuscriptPreset(project, this.deps.colors());
 		if (stored !== null) {
 			const options = reprefixOptions(stored.options, stored.rootPath, project.rootPath);
-			return { options, kept: options };
+			return { options, kept: options, preset };
 		}
-		return { options: buildSceneManuscriptPreset(project, this.deps.colors()), kept: null };
+		return { options: preset, kept: null, preset };
 	}
 
 	private async apply(entry: HeldLeaf): Promise<void> {
-		const { options, kept } = await this.projectOptions(entry.project);
+		const { options, kept, preset } = await this.projectOptions(entry.project);
 		if (this.disposed || entry.closed) return;
 		entry.kept = kept;
+		entry.preset = preset;
 		this.set(entry.view, options);
 	}
 
@@ -373,7 +379,7 @@ export class SceneManuscriptGraphKeeper {
 		if (options === null) return;
 		this.lastOurs = options;
 		if (entry.project.readOnly) return;
-		if (sameGraphOptions(options, buildSceneManuscriptPreset(entry.project, this.deps.colors()))) {
+		if (sameGraphOptions(options, entry.preset)) {
 			if (entry.kept === null) return;
 			entry.kept = null;
 			await this.deps.clear(entry.project);
