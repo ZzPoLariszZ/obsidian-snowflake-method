@@ -163,7 +163,9 @@ export function buildEntityGraph(
 				};
 				const at = edges.push({ edge, lane: 0 }) - 1;
 				const key = pairKey(member.id, targetId);
-				pairs.set(key, [...(pairs.get(key) ?? []), at]);
+				const group = pairs.get(key);
+				if (group === undefined) pairs.set(key, [at]);
+				else group.push(at);
 				nodes.get(member.id)!.weight += 1;
 				nodes.get(targetId)!.weight += 1;
 			}
@@ -439,9 +441,14 @@ export function localGraph(
 	if (!graph.nodes.some((node) => node.id === focus)) return { nodes, edges };
 	const outgoing = new Map<string, GraphEdge[]>();
 	const incoming = new Map<string, GraphEdge[]>();
+	const add = (index: Map<string, GraphEdge[]>, key: string, edge: GraphEdge): void => {
+		const group = index.get(key);
+		if (group === undefined) index.set(key, [edge]);
+		else group.push(edge);
+	};
 	for (const edge of graph.edges) {
-		outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge]);
-		incoming.set(edge.target, [...(incoming.get(edge.target) ?? []), edge]);
+		add(outgoing, edge.source, edge);
+		add(incoming, edge.target, edge);
 	}
 	nodes.add(focus);
 	let frontier = [focus];
