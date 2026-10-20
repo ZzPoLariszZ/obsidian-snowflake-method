@@ -40,7 +40,6 @@ export interface GraphScene {
 /** The keys held when a node was clicked. */
 export interface GraphClickModifiers {
 	readonly mod: boolean;
-	readonly shift: boolean;
 }
 
 /** What the engine tells the shell. */

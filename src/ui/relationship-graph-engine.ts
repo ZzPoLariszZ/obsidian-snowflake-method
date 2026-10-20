@@ -752,7 +752,7 @@ class RelationshipGraphEngine implements GraphHandle {
 		const point = this.pointOf(event);
 		const node = this.nodeAt(point);
 		if (node !== null) {
-			this.port.nodeClicked(node.id, { mod: Keymap.isModEvent(event) !== false, shift: event.shiftKey });
+			this.port.nodeClicked(node.id, { mod: Keymap.isModEvent(event) !== false });
 			return;
 		}
 		const link = this.edgeAt(point);

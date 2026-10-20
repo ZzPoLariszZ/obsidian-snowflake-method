@@ -687,14 +687,14 @@ describe('the entities view', () => {
 		await settle();
 		const { port } = fixture.engines[0]!;
 		const projectPath = 'Demo/001_Project_Metadata.md';
-		port.nodeClicked('character-alice', { mod: false, shift: false });
+		port.nodeClicked('character-alice', { mod: false });
 		expect(fixture.activateProject).toHaveBeenCalledTimes(1);
 		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('character-alice', projectPath);
-		port.nodeClicked('scene-1', { mod: false, shift: false });
+		port.nodeClicked('scene-1', { mod: false });
 		expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'edit', id: 'scene-1' }, projectPath);
-		port.nodeClicked('entity-1', { mod: false, shift: false });
+		port.nodeClicked('entity-1', { mod: false });
 		expect(fixture.host.openEntityForm).toHaveBeenCalledWith({ mode: 'edit', id: 'entity-1' }, projectPath);
-		port.nodeClicked('character-bob', { mod: true, shift: false });
+		port.nodeClicked('character-bob', { mod: true });
 		expect(fixture.host.openProjectFile).toHaveBeenCalledWith('Demo/20_Character/Bob.md');
 		port.edgeClicked(fixture.engines[0]!.scenes[0]!.picture.edges[0]!);
 		expect(fixture.host.openRelationship).toHaveBeenCalledExactlyOnceWith(
@@ -703,7 +703,7 @@ describe('the entities view', () => {
 			projectPath,
 		);
 		expect(fixture.activateProject).toHaveBeenCalledTimes(5);
-		port.nodeClicked('nobody', { mod: false, shift: false });
+		port.nodeClicked('nobody', { mod: false });
 		expect(fixture.host.openCharacterForm).toHaveBeenCalledTimes(1);
 		expect(fixture.activateProject).toHaveBeenCalledTimes(5);
 	});

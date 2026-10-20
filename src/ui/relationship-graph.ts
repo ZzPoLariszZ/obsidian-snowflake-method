@@ -423,7 +423,7 @@ export function renderRelationshipGraph(
 			if (node.path !== null) openNote(node.path);
 		},
 		edit: (node) => {
-			openNode(node.id, { mod: false, shift: false });
+			openNode(node.id, { mod: false });
 		},
 		editRelationship: openEdge,
 		showLocal: (id) => {
@@ -481,7 +481,7 @@ export function renderRelationshipGraph(
 			}
 			case 'Enter':
 				if (focused === null) return;
-				openNode(focused, { mod: Keymap.isModEvent(event) !== false, shift: event.shiftKey });
+				openNode(focused, { mod: Keymap.isModEvent(event) !== false });
 				used();
 				return;
 			case 'ArrowUp':
