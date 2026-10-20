@@ -115,7 +115,13 @@ const option = (
 function openManager(
 	projects: ManageProjectOption[],
 	onSetSeries = vi.fn(async (): Promise<ManageProjectLists> => ({ projects, archived: [] })),
-): { manager: ManageProjectsModal; content: CorkboardElement; onSetSeries: typeof onSetSeries } {
+	onImportProject = vi.fn(),
+): {
+	manager: ManageProjectsModal;
+	content: CorkboardElement;
+	onSetSeries: typeof onSetSeries;
+	onImportProject: typeof onImportProject;
+} {
 	const lists = async (): Promise<ManageProjectLists> => ({ projects, archived: [] });
 	const manager = new ManageProjectsModal(
 		app,
@@ -135,12 +141,13 @@ function openManager(
 		lists,
 		async () => null,
 		onSetSeries,
+		onImportProject,
 	);
 	manager.open();
 	// The dialog's content as the fake built it, which the app's own element
 	// type knows nothing of.
 	const content = (manager as unknown as { contentEl: CorkboardElement }).contentEl;
-	return { manager, content, onSetSeries };
+	return { manager, content, onSetSeries, onImportProject };
 }
 
 const rowTitles = (section: CorkboardElement): string[] =>
@@ -179,6 +186,22 @@ describe('ManageProjectsModal with series', () => {
 			'modal.projectManager.noSeries',
 		);
 		expect(rowTitles(loose)).toEqual(['Lone']);
+	});
+
+	it('offers Import from project on a row, greyed when the project is read-only, and steps aside for the dialog', () => {
+		const projects = [option('Book', { name: 'Saga', book: 1 }), option('Frozen', null, true)];
+		const { manager, content, onImportProject } = openManager(projects);
+		const closed = vi.spyOn(manager, 'close');
+		const more = content.querySelectorAll('.snowflake-method-project-manager-project-more');
+		more[1]?.dispatch('click');
+		const frozenRow = menus[menus.length - 1]?.find((row) => row.title === 'actions.importFromProject');
+		expect(frozenRow).toMatchObject({ icon: 'import', disabled: true });
+		more[0]?.dispatch('click');
+		const bookRow = menus[menus.length - 1]?.find((row) => row.title === 'actions.importFromProject');
+		expect(bookRow).toMatchObject({ icon: 'import', disabled: false });
+		bookRow?.click?.();
+		expect(closed).toHaveBeenCalledOnce();
+		expect(onImportProject).toHaveBeenCalledExactlyOnceWith(projects[0]);
 	});
 
 	it('draws a plain list, no headings, while nothing is in a series', () => {

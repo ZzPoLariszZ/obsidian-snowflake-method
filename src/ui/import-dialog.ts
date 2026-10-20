@@ -1,0 +1,823 @@
+import {
+	App,
+	Modal,
+	Notice,
+	SearchComponent,
+	Setting,
+	ToggleComponent,
+	setIcon,
+} from 'obsidian';
+
+import {
+	DEFINITION_FILE_IDS,
+	isWorldbuildingKind,
+	linkedParts,
+	type DefinitionFileId,
+	type ImportClashPolicy,
+	type ImportInspection,
+	type ImportPart,
+	type ImportPartKind,
+	type ImportPlan,
+	type ImportSelection,
+} from '../domain';
+import type { ImportReport, ProjectSeries } from '../services';
+import { memberMatches } from './dashboard-state';
+import { DIALOG_CLASS } from './dialog-class';
+import {
+	ConfirmModal,
+	SnowflakeFormModal,
+	type SubmitHandler,
+	type Translate,
+} from './modals';
+import { buildOptionField, type OptionPicker } from './option-picker';
+import {
+	defaultImportSource,
+	importSourceOptions,
+	type ImportSourceOption,
+} from './series';
+
+// ---- The selection ----------------------------------------------------------
+
+/**
+ * What the author has ticked, kept apart from the dialog that draws it. A
+ * tick means "I want this from the source"; what happens to a note already
+ * here is the policy's business, and ticks never move when the policy does.
+ * The closure over what a part requires is the planner's, applied at plan
+ * time and never shown as ticks.
+ */
+export class ImportSelectionModel {
+	readonly ticked = new Set<string>();
+	private readonly byKey = new Map<string, ImportPart>();
+
+	constructor(readonly parts: readonly ImportPart[]) {
+		for (const part of parts) {
+			this.byKey.set(part.key, part);
+			if (part.defaultSelected) this.ticked.add(part.key);
+		}
+	}
+
+	has(key: string): boolean {
+		return this.ticked.has(key);
+	}
+
+	/** How many parts are ticked. */
+	count(): number {
+		return this.ticked.size;
+	}
+
+	/** True while any chapter is ticked: what a revision rides on. */
+	manuscriptTicked(): boolean {
+		for (const key of this.ticked) {
+			if (this.byKey.get(key)?.kind === 'chapter') return true;
+		}
+		return false;
+	}
+
+	/** A revision rides the manuscript: it can be ticked only while a chapter is. */
+	available(key: string): boolean {
+		const part = this.byKey.get(key);
+		if (part === undefined) return false;
+		return part.kind !== 'revision' || this.manuscriptTicked();
+	}
+
+	/**
+	 * Ticks or unticks the keys named, those that can be, and takes every
+	 * revision off with the last chapter.
+	 */
+	tick(keys: Iterable<string>, on: boolean): void {
+		for (const key of keys) {
+			if (!on) {
+				this.ticked.delete(key);
+			} else if (this.available(key)) {
+				this.ticked.add(key);
+			}
+		}
+		if (this.manuscriptTicked()) return;
+		for (const key of [...this.ticked]) {
+			if (this.byKey.get(key)?.kind === 'revision') this.ticked.delete(key);
+		}
+	}
+
+	/** How much of a set of keys is ticked. */
+	state(keys: readonly string[]): 'none' | 'some' | 'all' {
+		let on = 0;
+		for (const key of keys) if (this.ticked.has(key)) on += 1;
+		if (on === 0) return 'none';
+		return on === keys.length ? 'all' : 'some';
+	}
+
+	/** Ticks what the ticked parts point at, one hop out, and answers how many that was. */
+	selectLinked(): number {
+		const linked = linkedParts(this.parts, this.ticked);
+		this.tick(linked, true);
+		return linked.length;
+	}
+
+	selection(clashPolicy: ImportClashPolicy): ImportSelection {
+		return { parts: new Set(this.ticked), clashPolicy };
+	}
+}
+
+// ---- The tree ------------------------------------------------------------------
+
+export interface ImportTreeRow {
+	/** The part's key, or the bucket's name for a row standing for several parts. */
+	readonly id: string;
+	readonly label: string;
+	/** Every part the row ticks. */
+	readonly keys: readonly string[];
+	/** The one part a row stands for, when it stands for one. */
+	readonly part: ImportPart | null;
+}
+
+export interface ImportTreeGroup {
+	readonly id: string;
+	readonly title: string;
+	readonly rows: readonly ImportTreeRow[];
+}
+
+/** A kind's name in the dialog's own words: the two member kinds, the seeded worldbuilding kinds, a custom kind by its name. */
+export function importKindTitle(t: Translate, kind: string): string {
+	if (kind === 'character') return t('freeform.character');
+	if (kind === 'scene') return t('freeform.scene');
+	return isWorldbuildingKind(kind) ? t(`worldbuilding.kind.${kind}`) : kind;
+}
+
+const VOCABULARY_WORDS: Record<DefinitionFileId, string> = {
+	category: 'modal.import.vocabulary.category',
+	'world-status': 'modal.import.vocabulary.world-status',
+	relationship: 'modal.import.vocabulary.relationship',
+};
+
+/**
+ * The parts arranged as the dialog lists them: the steps, the members by
+ * kind with their pictures last, the vocabularies and the field templates
+ * by kind, the manuscript, the tool records and the visual documents. A
+ * group with nothing in it is left out.
+ */
+export function importTree(inspection: ImportInspection, t: Translate): ImportTreeGroup[] {
+	const parts = inspection.parts;
+	const groups: ImportTreeGroup[] = [];
+	const push = (id: string, title: string, rows: ImportTreeRow[]): void => {
+		if (rows.length > 0) groups.push({ id, title, rows });
+	};
+	const rowOf = (part: ImportPart, label = part.name): ImportTreeRow => ({
+		id: part.key,
+		label,
+		keys: [part.key],
+		part,
+	});
+	const bucketRow = (id: string, label: string, members: readonly ImportPart[]): ImportTreeRow => ({
+		id,
+		label,
+		keys: members.map((part) => part.key),
+		part: null,
+	});
+	const kinds = ['character', 'scene', ...inspection.source.project.kinds.map((kind) => kind.id)];
+
+	push(
+		'summary',
+		t('modal.import.group.summary'),
+		parts.filter((part) => part.kind === 'step').map((part) => rowOf(part, t(`steps.${part.sourceId}.title`))),
+	);
+	const memberGroup = (id: string, title: string, kind: string, members: readonly ImportPart[]): void => {
+		const rows = members.map((part) => rowOf(part));
+		const pictures = parts.filter((part) => part.kind === 'picture' && part.group === kind);
+		if (pictures.length > 0) rows.push(bucketRow(`pictures:${kind}`, t('modal.import.row.pictures'), pictures));
+		push(id, title, rows);
+	};
+	memberGroup(
+		'characters',
+		t('modal.import.group.characters'),
+		'character',
+		parts.filter((part) => part.kind === 'character'),
+	);
+	memberGroup(
+		'scenes',
+		t('modal.import.group.scenes'),
+		'scene',
+		parts.filter((part) => part.kind === 'scene'),
+	);
+	for (const kind of inspection.source.project.kinds) {
+		memberGroup(
+			`kind:${kind.id}`,
+			importKindTitle(t, kind.id),
+			kind.id,
+			parts.filter((part) => part.kind === 'worldbuilding' && part.group === kind.id),
+		);
+	}
+
+	const vocabulary: ImportTreeRow[] = [];
+	for (const kind of kinds) {
+		for (const id of DEFINITION_FILE_IDS) {
+			const nodes = parts.filter((part) => part.kind === 'vocabulary' && part.bucket === `${kind}/${id}`);
+			if (nodes.length === 0) continue;
+			vocabulary.push(
+				bucketRow(
+					`vocabulary:${kind}/${id}`,
+					t('modal.import.vocabulary', { kind: importKindTitle(t, kind), file: t(VOCABULARY_WORDS[id]) }),
+					nodes,
+				),
+			);
+		}
+	}
+	push('vocabulary', t('modal.import.group.vocabulary'), vocabulary);
+
+	const templates: ImportTreeRow[] = [];
+	for (const kind of kinds) {
+		const held = parts.filter((part) => part.kind === 'custom-field-template' && part.bucket === kind);
+		if (held.length === 0) continue;
+		templates.push(bucketRow(`templates:${kind}`, t('modal.import.templates', { kind: importKindTitle(t, kind) }), held));
+	}
+	push('templates', t('modal.import.group.templates'), templates);
+
+	push(
+		'manuscript',
+		t('manuscript.title'),
+		parts.filter((part) => part.kind === 'chapter').map((part) => rowOf(part)),
+	);
+
+	const tools: ImportTreeRow[] = [];
+	const toolRow = (kind: ImportPartKind, label: string): void => {
+		const held = parts.filter((part) => part.kind === kind);
+		if (held.length > 0) tools.push(bucketRow(`tools:${kind}`, label, held));
+	};
+	toolRow('task', t('tasks.tab.tasks'));
+	toolRow('foreshadowing', t('tasks.tab.foreshadowing'));
+	toolRow('revision', t('tasks.tab.revision'));
+	toolRow('sticky-note', t('tasks.tab.stickyNotes'));
+	push('tools', t('dashboard.tasks'), tools);
+
+	const visual: ImportTreeRow[] = [];
+	for (const part of parts) {
+		if (part.kind === 'freeform-view') visual.push(rowOf(part, t('modal.import.row.view', { name: part.name })));
+		if (part.kind === 'timeline') visual.push(rowOf(part, t('modal.import.row.timeline', { name: part.name })));
+		if (part.kind === 'beat-sheet') visual.push(rowOf(part, t('modal.import.row.beatSheet', { name: part.name })));
+	}
+	const sheetTemplates = parts.filter((part) => part.kind === 'beat-sheet-template');
+	if (sheetTemplates.length > 0) {
+		visual.push(bucketRow('tools:beat-sheet-template', t('modal.import.row.beatSheetTemplates'), sheetTemplates));
+	}
+	push('visualization', t('modal.import.group.visualization'), visual);
+
+	return groups;
+}
+
+// ---- The words ------------------------------------------------------------------
+
+/** One translation per count, in the singular where the count is one. */
+function counted(t: Translate, key: string, count: number): string {
+	return t(count === 1 ? `${key}One` : key, { count });
+}
+
+const UNITS: readonly { readonly key: string; readonly kinds: readonly ImportPartKind[] }[] = [
+	{ key: 'notes', kinds: ['character', 'scene', 'worldbuilding'] },
+	{ key: 'pictures', kinds: ['picture'] },
+	{ key: 'chapters', kinds: ['chapter'] },
+	{ key: 'timelines', kinds: ['timeline'] },
+	{ key: 'beatSheets', kinds: ['beat-sheet'] },
+	{ key: 'views', kinds: ['freeform-view'] },
+	{ key: 'tasks', kinds: ['task'] },
+	{ key: 'foreshadowing', kinds: ['foreshadowing'] },
+	{ key: 'revisions', kinds: ['revision'] },
+	{ key: 'stickyNotes', kinds: ['sticky-note'] },
+];
+
+/** The non-zero units in their fixed order: "14 notes, 3 pictures, 2 timelines". */
+export function importUnits(t: Translate, countOf: (kind: ImportPartKind) => number): string[] {
+	const words: string[] = [];
+	for (const unit of UNITS) {
+		let count = 0;
+		for (const kind of unit.kinds) count += countOf(kind);
+		if (count > 0) words.push(counted(t, `modal.import.summary.${unit.key}`, count));
+	}
+	return words;
+}
+
+/** The kinds the replace confirmation names: each is a note of the target's. */
+const NOTE_KINDS: ReadonlySet<ImportPartKind> = new Set<ImportPartKind>([
+	'step',
+	'character',
+	'scene',
+	'worldbuilding',
+	'vocabulary',
+	'custom-field-template',
+]);
+
+export interface ImportPlanWords {
+	/** The units, or the sentence for nothing selected. */
+	units: string;
+	/** What follows the units, clause by clause. */
+	clauses: string[];
+	/** How many linked parts stand outside the selection, for the offer to select them. */
+	unselected: number;
+}
+
+/** What a plan comes to, as the dialog's summary line says it. */
+export function importPlanWords(t: Translate, plan: ImportPlan, ticked: number): ImportPlanWords {
+	if (ticked === 0) return { units: t('modal.import.summary.nothing'), clauses: [], unselected: 0 };
+	const units = importUnits(t, (kind) => plan.counts[kind].create + plan.counts[kind].replace);
+	const clauses: string[] = [];
+	let skipped = 0;
+	let replaced = 0;
+	for (const entry of plan.entries) {
+		if (entry.action === 'replace') replaced += 1;
+		else if (entry.action === 'skip' && (entry.reason === 'name-taken' || entry.reason === 'file-name-taken')) skipped += 1;
+	}
+	if (skipped > 0) clauses.push(counted(t, 'modal.import.summary.skipped', skipped));
+	if (replaced > 0) clauses.push(counted(t, 'modal.import.summary.replaced', replaced));
+	if (plan.droppedLinks.length > 0) clauses.push(counted(t, 'modal.import.summary.dropped', plan.droppedLinks.length));
+	return {
+		units: units.length === 0 ? t('modal.import.summary.nothing') : units.join(', '),
+		clauses,
+		unselected: plan.unselectedLinks.length,
+	};
+}
+
+/** What a run brought, in the same units. */
+export function importReportSummary(t: Translate, report: ImportReport): string {
+	const counts = new Map<ImportPartKind, number>();
+	for (const item of [...report.created, ...report.replaced]) counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
+	const units = importUnits(t, (kind) => counts.get(kind) ?? 0);
+	return units.length === 0 ? t('modal.import.summary.nothing') : units.join(', ');
+}
+
+/** The names a replace confirmation lists: the notes the plan writes over. */
+export function importReplacedNames(t: Translate, plan: ImportPlan): string[] {
+	const names: string[] = [];
+	for (const entry of plan.entries) {
+		if (entry.action !== 'replace' || !NOTE_KINDS.has(entry.part.kind)) continue;
+		names.push(entry.part.kind === 'step' ? t(`steps.${entry.part.sourceId}.title`) : entry.targetName);
+	}
+	return names;
+}
+
+/** Whether a run has anything to say beyond its notice: a skip, a dropped link or a failure. */
+export function importReportWanted(report: ImportReport): boolean {
+	return (
+		report.failed.length > 0 ||
+		report.droppedLinks.length > 0 ||
+		report.skipped.some((item) => item.reason !== 'unchanged')
+	);
+}
+
+// ---- The dialog -------------------------------------------------------------------
+
+/** What the dialog asks the host for: the source read against the target, and a plan over it. */
+export interface ImportDialogBridge {
+	inspect(sourcePath: string): Promise<ImportInspection>;
+	plan(inspection: ImportInspection, selection: ImportSelection): ImportPlan;
+}
+
+export interface ImportDialogConfig {
+	target: { path: string; title: string; series: ProjectSeries | null };
+	sources: readonly ImportSourceOption[];
+	/** The source to open on, else the lowest book of the target's series, else the first offered. */
+	initialSource?: string | null;
+	bridge: ImportDialogBridge;
+}
+
+/** What the author settled on: where from, and what. */
+export interface ImportChoice {
+	sourcePath: string;
+	selection: ImportSelection;
+}
+
+const SUMMARY_DELAY_MS = 150;
+
+/**
+ * Import from project: a source, a policy for notes already here, a search
+ * over the parts and the tree of them, with a summary of what the ticks come
+ * to standing at the foot. Words in the target project's language. Replacing
+ * is confirmed on submit, and a refusal there keeps the dialog open.
+ */
+export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
+	private sourcePath: string | null;
+	private policy: ImportClashPolicy = 'skip';
+	private query = '';
+	private inspection: ImportInspection | null = null;
+	private model: ImportSelectionModel | null = null;
+	private groups: ImportTreeGroup[] = [];
+	private readonly unfolded = new Set<string>();
+	private treeEl: HTMLElement | null = null;
+	private statusEl: HTMLElement | null = null;
+	private summaryEl: HTMLElement | null = null;
+	private sourceField: OptionPicker | null = null;
+	private loadSequence = 0;
+	private summaryTimer: number | null = null;
+	private summarySequence = 0;
+
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly config: ImportDialogConfig,
+		onSubmit: SubmitHandler<ImportChoice>,
+	) {
+		super(app, t, t('modal.import.title'), onSubmit, 'modal.import.submit');
+		this.modalEl.addClass('snowflake-method-project-modal', 'snowflake-method-import-modal');
+		// Stamped with the project it writes into, as every form is with its own.
+		this.modalEl.dataset.snowflakeProject = config.target.path;
+		this.sourcePath =
+			config.initialSource ??
+			defaultImportSource(config.sources, config.target.series)?.path ??
+			config.sources[0]?.path ??
+			null;
+	}
+
+	onClose(): void {
+		this.sourceField?.destroy();
+		this.sourceField = null;
+		this.clearSummaryTimer();
+		this.loadSequence += 1;
+		super.onClose();
+	}
+
+	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form', 'snowflake-method-import-form');
+		const t = this.t;
+		const from = new Setting(this.contentEl).setName(t('modal.import.from'));
+		this.sourceField?.destroy();
+		this.sourceField = buildOptionField(this.app, from.controlEl, {
+			label: t('modal.import.from'),
+			placeholder: t('modal.import.fromPlaceholder'),
+			emptyPlaceholder: t('modal.import.noSources'),
+			options: () =>
+				importSourceOptions(this.config.sources, this.config.target.series, {
+					sameSeries: t('modal.import.section.sameSeries'),
+					others: t('modal.import.section.others'),
+					archived: t('modal.import.section.archived'),
+				}),
+			value: () => this.sourcePath ?? '',
+			choose: (value) => {
+				if (value === this.sourcePath) return;
+				this.sourcePath = value;
+				void this.loadSource();
+			},
+		});
+
+		const policy = new Setting(this.contentEl).setName(t('modal.import.policy'));
+		const describePolicy = (): void => {
+			policy.setDesc(this.policy === 'replace' ? t('modal.import.policyReplaceDesc') : '');
+			policy.settingEl.toggleClass('is-replacing', this.policy === 'replace');
+		};
+		policy.addDropdown((dropdown) =>
+			dropdown
+				.addOption('skip', t('modal.import.policy.skip'))
+				.addOption('replace', t('modal.import.policy.replace'))
+				.setValue(this.policy)
+				.onChange((value) => {
+					this.policy = value === 'replace' ? 'replace' : 'skip';
+					describePolicy();
+					this.paintTree();
+					this.scheduleSummary();
+				}),
+		);
+		describePolicy();
+
+		const search = new Setting(this.contentEl).setName(t('modal.import.search'));
+		const box = new SearchComponent(search.controlEl);
+		box.setPlaceholder(t('modal.import.searchPlaceholder'));
+		box.setValue(this.query);
+		box.onChange((value) => {
+			this.query = value;
+			this.paintTree();
+		});
+		// Escape clears a search before it closes the dialog: the key is
+		// taken here, on the box, so the dialog's own handler never sees it.
+		box.inputEl.addEventListener('keydown', (event) => {
+			if (event.key !== 'Escape' || this.query.trim().length === 0) return;
+			event.preventDefault();
+			event.stopPropagation();
+			box.setValue('');
+			this.query = '';
+			this.paintTree();
+		});
+
+		this.treeEl = this.contentEl.createDiv({
+			cls: 'snowflake-method-import-tree',
+			attr: { role: 'tree', 'aria-label': t('modal.import.tree') },
+		});
+		this.statusEl = this.contentEl.createDiv({ cls: 'snowflake-method-import-status' });
+		if (this.inspection === null) {
+			void this.loadSource();
+		} else {
+			this.paintTree();
+		}
+	}
+
+	protected leadingActions(actions: HTMLElement): void {
+		this.summaryEl = actions.createDiv({
+			cls: 'snowflake-method-import-summary',
+			attr: { 'aria-live': 'polite' },
+		});
+		this.scheduleSummary();
+	}
+
+	protected collectValue(): ImportChoice | null {
+		if (this.sourcePath === null || this.inspection === null || this.model === null) {
+			new Notice(this.t('modal.import.noSources'));
+			return null;
+		}
+		if (this.model.count() === 0) {
+			new Notice(this.t('modal.import.summary.nothing'));
+			return null;
+		}
+		return { sourcePath: this.sourcePath, selection: this.model.selection(this.policy) };
+	}
+
+	/** Confirms what a replace writes over before the base closes and runs; declining keeps the dialog. */
+	protected async submit(): Promise<boolean> {
+		const choice = this.collectValue();
+		if (choice === null || this.inspection === null) return false;
+		const plan = this.config.bridge.plan(this.inspection, choice.selection);
+		const names = importReplacedNames(this.t, plan);
+		if (names.length > 0 && !(await confirmImportReplace(this.app, this.t, names))) return false;
+		return super.submit();
+	}
+
+	// ---- Loading ------------------------------------------------------------------
+
+	private async loadSource(): Promise<void> {
+		const sequence = ++this.loadSequence;
+		this.inspection = null;
+		this.model = null;
+		this.groups = [];
+		this.paintTree();
+		this.scheduleSummary();
+		if (this.sourcePath === null) return;
+		let inspection: ImportInspection;
+		try {
+			inspection = await this.config.bridge.inspect(this.sourcePath);
+		} catch (error) {
+			if (sequence !== this.loadSequence) return;
+			new Notice(error instanceof Error ? error.message : this.t('errors.unknown'));
+			return;
+		}
+		if (sequence !== this.loadSequence) return;
+		this.inspection = inspection;
+		this.model = new ImportSelectionModel(inspection.parts);
+		this.groups = importTree(inspection, this.t);
+		this.paintTree();
+		this.scheduleSummary();
+	}
+
+	// ---- The tree ---------------------------------------------------------------
+
+	private paintTree(): void {
+		const tree = this.treeEl;
+		const status = this.statusEl;
+		if (tree === null || status === null) return;
+		tree.empty();
+		status.empty();
+		const model = this.model;
+		if (model === null) {
+			status.setText(this.inspection === null && this.sourcePath === null ? this.t('modal.import.noSources') : '');
+			return;
+		}
+		if (this.groups.length === 0) {
+			status.setText(this.t('modal.import.empty'));
+			return;
+		}
+		const searching = this.query.trim().length > 0;
+		let shown = 0;
+		for (const group of this.groups) {
+			const rows = searching ? group.rows.filter((row) => memberMatches([row.label], this.query)) : group.rows;
+			// A group with nothing to answer steps aside, and one with an
+			// answer opens while the search stands.
+			if (searching && rows.length === 0) continue;
+			shown += 1;
+			this.paintGroup(tree, model, group, rows, searching || this.unfolded.has(group.id));
+		}
+		if (shown === 0) status.setText(this.t('modal.import.noMatches'));
+	}
+
+	private paintGroup(
+		tree: HTMLElement,
+		model: ImportSelectionModel,
+		group: ImportTreeGroup,
+		rows: readonly ImportTreeRow[],
+		opened: boolean,
+	): void {
+		const t = this.t;
+		const groupEl = tree.createDiv({
+			cls: 'snowflake-method-import-group',
+			attr: { role: 'treeitem', 'aria-expanded': String(opened) },
+		});
+		groupEl.toggleClass('is-open', opened);
+		const header = groupEl.createDiv({ cls: 'snowflake-method-import-group-header' });
+		const fold = header.createEl('button', {
+			cls: 'snowflake-method-import-fold',
+			attr: { type: 'button', 'aria-expanded': String(opened), 'aria-label': group.title },
+		});
+		const chevron = fold.createSpan({ cls: 'snowflake-method-import-chevron' });
+		setIcon(chevron, 'chevron-right');
+		fold.createSpan({ cls: 'snowflake-method-import-group-title', text: group.title });
+		fold.addEventListener('click', () => {
+			if (this.unfolded.has(group.id)) this.unfolded.delete(group.id);
+			else this.unfolded.add(group.id);
+			this.paintTree();
+		});
+		const keys = group.rows.flatMap((row) => row.keys);
+		const selected = keys.filter((key) => model.has(key)).length;
+		header.createSpan({
+			cls: 'snowflake-method-import-group-count',
+			text: t('modal.import.groupCount', { selected, count: keys.length }),
+		});
+		// The group's toggle takes every tickable row the group shows now: a
+		// search narrows what it takes to what it found.
+		const shownKeys = rows.flatMap((row) => row.keys);
+		const state = model.state(shownKeys);
+		const toggle = new ToggleComponent(header).setValue(state !== 'none').onChange((on) => {
+			model.tick(shownKeys, on);
+			this.paintTree();
+			this.scheduleSummary();
+		});
+		toggle.toggleEl.toggleClass('is-mixed', state === 'some');
+		toggle.toggleEl.setAttribute('aria-label', t('modal.import.takeAll', { name: group.title }));
+		if (!opened) return;
+		// The rows are made when the fold opens and unmade when it closes,
+		// so a project of thousands of scenes costs nine headers until asked.
+		const list = groupEl.createDiv({ cls: 'snowflake-method-import-rows', attr: { role: 'group' } });
+		for (const row of rows) this.paintRow(list, model, row);
+	}
+
+	private paintRow(list: HTMLElement, model: ImportSelectionModel, row: ImportTreeRow): void {
+		const t = this.t;
+		const rowEl = list.createDiv({ cls: 'snowflake-method-import-row', attr: { role: 'treeitem' } });
+		const available = row.keys.some((key) => model.available(key));
+		const state = model.state(row.keys);
+		const standing = row.part === null ? null : (this.inspection?.standing.get(row.part.key) ?? null);
+		const here = standing !== null && standing.kind !== 'new';
+		rowEl.toggleClass('is-unavailable', !available);
+		rowEl.toggleClass('is-here', here && this.policy === 'skip');
+		rowEl.toggleClass('is-replaced', here && this.policy === 'replace');
+		const flip = (on: boolean): void => {
+			model.tick(row.keys, on);
+			this.paintTree();
+			this.scheduleSummary();
+		};
+		const toggle = new ToggleComponent(rowEl).setValue(state !== 'none').onChange(flip);
+		toggle.setDisabled(!available);
+		toggle.toggleEl.toggleClass('is-mixed', state === 'some');
+		toggle.toggleEl.setAttribute('aria-label', t('modal.import.take', { name: row.label }));
+		const name = rowEl.createSpan({ cls: 'snowflake-method-import-row-name', text: row.label });
+		// The words are part of the control, as a checkbox's label is: a
+		// click on them does what a click on the toggle does. The tree is
+		// repainted on every change, so the state read here is current.
+		name.addEventListener('click', () => {
+			if (available) flip(state === 'none');
+		});
+		const mark = rowEl.createSpan({ cls: 'snowflake-method-import-row-mark' });
+		if (!available) mark.setText(t('modal.import.mark.needsManuscript'));
+		else if (here) mark.setText(t(this.policy === 'replace' ? 'modal.import.mark.replace' : 'modal.import.mark.here'));
+	}
+
+	// ---- The summary --------------------------------------------------------------
+
+	private clearSummaryTimer(): void {
+		if (this.summaryTimer === null) return;
+		this.modalEl.win.clearTimeout(this.summaryTimer);
+		this.summaryTimer = null;
+	}
+
+	/** Repaints the summary a moment after the last change, so a run of ticks costs one plan. */
+	private scheduleSummary(): void {
+		this.clearSummaryTimer();
+		const sequence = ++this.summarySequence;
+		this.summaryTimer = this.modalEl.win.setTimeout(() => {
+			this.summaryTimer = null;
+			if (sequence !== this.summarySequence) return;
+			this.paintSummary();
+		}, SUMMARY_DELAY_MS);
+	}
+
+	private paintSummary(): void {
+		const summary = this.summaryEl;
+		if (summary === null) return;
+		summary.empty();
+		const model = this.model;
+		if (this.inspection === null || model === null) return;
+		const plan = this.config.bridge.plan(this.inspection, model.selection(this.policy));
+		const words = importPlanWords(this.t, plan, model.count());
+		summary.createSpan({ text: words.units });
+		for (const clause of words.clauses) {
+			summary.createSpan({ cls: 'snowflake-method-import-summary-divider', text: ' · ' });
+			summary.createSpan({ text: clause });
+		}
+		if (words.unselected > 0) {
+			summary.createSpan({ cls: 'snowflake-method-import-summary-divider', text: ' · ' });
+			summary.createSpan({ text: counted(this.t, 'modal.import.summary.unselectedLinks', words.unselected) });
+			summary.createSpan({ text: ' ' });
+			const select = summary.createEl('button', {
+				cls: 'snowflake-method-import-select-linked',
+				text: this.t('modal.import.selectLinked'),
+				attr: { type: 'button' },
+			});
+			select.addEventListener('click', () => {
+				model.selectLinked();
+				this.paintTree();
+				this.paintSummary();
+			});
+		}
+	}
+}
+
+// ---- Confirming a replace ------------------------------------------------------
+
+class ConfirmImportReplaceModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly names: readonly string[],
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(app, t, { label: t('modal.importReplace.confirm'), style: 'mod-warning' }, onResolve);
+		this.setTitle(counted(t, 'modal.importReplace.title', names.length));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t('modal.importReplace.question') });
+		const shown = this.names.slice(0, 8);
+		const list = body.createEl('ul', { cls: 'snowflake-method-export-paths' });
+		for (const name of shown) list.createEl('li', { text: name });
+		if (this.names.length > shown.length) {
+			list.createEl('li', { text: this.t('modal.exportReplace.more', { count: this.names.length - shown.length }) });
+		}
+		body.createEl('p', { text: this.t('modal.importReplace.consequence') });
+	}
+}
+
+/** True when the author agreed to write over the notes named. */
+export function confirmImportReplace(app: App, t: Translate, names: readonly string[]): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmImportReplaceModal(app, t, names, resolve).open();
+	});
+}
+
+// ---- The report --------------------------------------------------------------------
+
+const SKIP_REASON_WORDS: Record<string, string> = {
+	'name-taken': 'modal.importReport.reason.exists',
+	'file-name-taken': 'modal.importReport.reason.fileTaken',
+	'no-chapter': 'modal.importReport.reason.noChapter',
+};
+
+/**
+ * What a run has to say when its notice would not do: what was skipped and
+ * why, which links were dropped, and what failed. One surface, Close only.
+ */
+export class ImportReportModal extends Modal {
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly report: ImportReport,
+	) {
+		super(app);
+		this.modalEl.addClass(DIALOG_CLASS, 'snowflake-method-import-report-modal');
+		this.setTitle(t('modal.importReport.title'));
+	}
+
+	onOpen(): void {
+		const t = this.t;
+		const report = this.report;
+		this.contentEl.empty();
+		const callout = this.contentEl.createDiv({ cls: 'snowflake-method-repair-callout snowflake-method-import-report' });
+		callout.createEl('p', {
+			text: t('modal.importReport.summary', { summary: importReportSummary(t, report), source: report.source.title }),
+		});
+		const section = (title: string, lines: readonly { name: string; note: string }[]): void => {
+			if (lines.length === 0) return;
+			callout.createEl('h3', { text: title });
+			const list = callout.createEl('ul', { cls: 'snowflake-method-import-report-list' });
+			for (const line of lines) {
+				const item = list.createEl('li');
+				item.createSpan({ text: line.name });
+				item.createSpan({ cls: 'snowflake-method-import-report-note', text: line.note });
+			}
+		};
+		section(
+			t('modal.importReport.skipped'),
+			report.skipped
+				.filter((item) => item.reason !== 'unchanged')
+				.map((item) => ({ name: item.name, note: t(SKIP_REASON_WORDS[item.reason] ?? 'modal.importReport.reason.exists') })),
+		);
+		section(
+			t('modal.importReport.dropped'),
+			report.droppedLinks.map((drop) => ({
+				name: `${drop.owner.name} → ${drop.target}`,
+				note: t('modal.importReport.reason.missingTarget'),
+			})),
+		);
+		section(
+			t('modal.importReport.failed'),
+			report.failed.map((item) => ({ name: item.name, note: item.message })),
+		);
+		const actions = this.contentEl.createDiv({ cls: 'snowflake-method-modal-actions' });
+		const close = actions.createEl('button', { cls: 'mod-cta', text: t('common.close'), attr: { type: 'button' } });
+		close.addEventListener('click', () => this.close());
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}

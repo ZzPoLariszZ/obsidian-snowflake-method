@@ -46,6 +46,7 @@ import type { RelationshipGraphBridge } from './relationship-graph-bridge';
 import type { TimelineBridge } from './timeline-bridge';
 import type { StoryStructureVisualization } from './story-structure-state';
 import type { RevisionPanelBridge } from './revision-panel';
+import type { ImportSourceOption } from './series';
 import type {
 	SessionPanelBridge,
 	SessionPanelContext,
@@ -268,6 +269,8 @@ export interface ProjectDashboardModel {
 	locale: 'en' | 'zh-CN';
 	readOnly: boolean;
 	readOnlyReason: string | null;
+	/** The series the project is a book of, for the switcher's offers. */
+	series: ProjectSeries | null;
 	steps: StepViewModel[];
 	stepFields: Partial<Record<StepId, StepFields>>;
 	stepRevisions: Partial<Record<StepId, string>>;
@@ -786,6 +789,14 @@ export interface DashboardHost {
 	openProjectManager(
 		projectLocale: 'en' | 'zh-CN' | null,
 	): Promise<void>;
+	/**
+	 * The projects an import into the one at the path may read from: the
+	 * writable ones in the root, then the archived ones, the target left out.
+	 * Null stands for a project not yet made, which may read from any.
+	 */
+	importSources(targetPath: string | null): Promise<ImportSourceOption[]>;
+	/** Opens the import dialog on the project, on the source named when one is. */
+	openImportDialog(targetPath: string, sourcePath?: string | null): Promise<void>;
 	getDefaultProjectLocale(): 'en' | 'zh-CN';
 	syncCertificateCelebration(
 		projectId: string,

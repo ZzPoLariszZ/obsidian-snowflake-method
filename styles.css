@@ -4312,6 +4312,237 @@ textarea.snowflake-method-corkboard-recovered-text {
 	}
 }
 
+/* == Import ====================================================================
+   The import dialog is the project dialog with a tree under its rows: the
+   dialog takes a fixed height so the tree scrolls under the rows and the
+   buttons stay at the foot, and the form drops the two-column grid for one
+   column, the tree taking whatever height the rows leave. Named with the
+   dialog and the form, as the stacked field is, since the project form's own
+   rules name both. */
+.modal.snowflake-method-project-modal.snowflake-method-import-modal {
+	height: min(40rem, calc(100vh - 2rem));
+	max-height: calc(100vh - 2rem);
+}
+
+.modal.snowflake-method-import-modal .modal-content.snowflake-method-import-form {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	min-height: 0;
+	overflow: hidden;
+}
+
+/* The policy row's description is the replace warning, shown only under
+   Replace, and stands in the warning colour as the marks below do. */
+.modal.snowflake-method-import-modal .snowflake-method-import-form > .setting-item.is-replacing .setting-item-description {
+	color: var(--text-warning);
+}
+
+.snowflake-method-import-tree {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+}
+
+.snowflake-method-import-status {
+	flex: 0 0 auto;
+	min-height: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-import-status:empty {
+	display: none;
+}
+
+.snowflake-method-import-group + .snowflake-method-import-group {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* The fold button, the live count and the group's toggle on one line: the
+   button takes the room, the two controls keep theirs. */
+.snowflake-method-import-group-header {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-2-2) var(--size-4-2);
+}
+
+.snowflake-method-import-fold {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	min-width: 0;
+	height: auto;
+	padding: var(--size-2-1) var(--size-2-2);
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+	text-align: start;
+	cursor: var(--cursor);
+}
+
+.snowflake-method-import-fold:hover {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-import-chevron {
+	display: flex;
+	flex: 0 0 auto;
+	color: var(--text-muted);
+	transition: transform 120ms ease;
+}
+
+.snowflake-method-import-chevron .svg-icon {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-import-group.is-open .snowflake-method-import-chevron {
+	transform: rotate(90deg);
+}
+
+.snowflake-method-import-group-title {
+	overflow: hidden;
+	min-width: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-import-group-count {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.snowflake-method-import-rows {
+	padding: 0 var(--size-4-2) var(--size-2-2);
+}
+
+/* A row: the toggle, the name, and the mark at the end of the line. */
+.snowflake-method-import-row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-2-1) var(--size-2-2) var(--size-2-1) var(--size-4-6);
+	border-radius: var(--radius-s);
+}
+
+.snowflake-method-import-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-import-row-name {
+	overflow: hidden;
+	min-width: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: var(--cursor);
+}
+
+.snowflake-method-import-row-mark {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+
+.snowflake-method-import-row-mark:empty {
+	display: none;
+}
+
+.snowflake-method-import-row.is-here .snowflake-method-import-row-name {
+	color: var(--text-muted);
+}
+
+.snowflake-method-import-row.is-replaced .snowflake-method-import-row-mark {
+	color: var(--text-warning);
+}
+
+.snowflake-method-import-row.is-unavailable {
+	opacity: 0.6;
+}
+
+.snowflake-method-import-row.is-unavailable .snowflake-method-import-row-name {
+	cursor: default;
+}
+
+/* A toggle standing for a group of which some are ticked: on, but faded,
+   so the tick reads as a part rather than the whole. */
+.snowflake-method-import-modal .checkbox-container.is-mixed {
+	opacity: 0.55;
+}
+
+/* The summary takes the start of the footer; the buttons keep the end. */
+.snowflake-method-import-summary {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin-inline-end: auto;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
+.snowflake-method-import-summary-divider {
+	color: var(--text-faint);
+}
+
+.snowflake-method-import-select-linked {
+	height: auto;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-accent);
+	font-size: inherit;
+	line-height: inherit;
+	cursor: var(--cursor);
+}
+
+.snowflake-method-import-select-linked:hover {
+	text-decoration: underline;
+}
+
+/* The report: one callout, its lists under their headings. */
+.snowflake-method-import-report-modal {
+	width: min(34rem, calc(100vw - 2rem));
+	max-width: 34rem;
+}
+
+.snowflake-method-import-report h3 {
+	margin: var(--size-4-3) 0 var(--size-2-2);
+	font-size: var(--font-ui-medium);
+}
+
+.snowflake-method-import-report-list {
+	margin: 0;
+	padding-inline-start: var(--size-4-5);
+}
+
+.snowflake-method-import-report-list li {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 var(--size-4-2);
+}
+
+.snowflake-method-import-report-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+/* The create form's Start from row spans both columns of its grid. */
+.modal .modal-content.snowflake-method-project-form .setting-item.snowflake-method-start-from-setting {
+	grid-column: 1 / -1;
+}
+
 /* The member forms stand as wide as the health report, and spend the extra on
    air at both edges rather than on wider fields: the form inside is the width
    it always was, framed rather than stretched. The gutter is written the way

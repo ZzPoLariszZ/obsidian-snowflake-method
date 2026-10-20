@@ -120,6 +120,8 @@ export class ImportRefusedError extends Error {
 	constructor(
 		readonly code: ImportRefusalCode,
 		message: string,
+		/** What the code is about, for a message in the author's words: the kind a refusal names. */
+		readonly detail: string | null = null,
 	) {
 		super(message);
 		this.name = "ImportRefusedError";
@@ -444,6 +446,7 @@ export class ProjectImportService {
 				throw new ImportRefusedError(
 					"kind-refused",
 					`The kind "${kind.id}" could not be made in "${target.title}": ${made.code}.`,
+					kind.id,
 				);
 			}
 			kindsCreated.push(made.kind.id);

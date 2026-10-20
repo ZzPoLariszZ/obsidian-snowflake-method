@@ -11,6 +11,7 @@ interface Row {
 	icon?: string;
 	label?: boolean;
 	checked?: boolean;
+	disabled?: boolean;
 	click?: () => void;
 }
 
@@ -25,6 +26,7 @@ function recordingMenu(): { menu: Menu; rows: Row[] } {
 				setIcon(icon: string) { row.icon = icon; return item; },
 				setIsLabel(label: boolean) { row.label = label; return item; },
 				setChecked(checked: boolean) { row.checked = checked; return item; },
+				setDisabled(disabled: boolean) { row.disabled = disabled; return item; },
 				onClick(click: () => void) { row.click = click; return item; },
 			};
 			build(item);
@@ -86,5 +88,38 @@ describe('fillProjectSwitcherMenu', () => {
 			'A', 'B', '---', 'dashboard.manageProjects',
 		]);
 		expect(rows.some((row) => row.label === true)).toBe(false);
+	});
+
+	it('offers Import from project above the manager when asked to, greyed while the project cannot be written', () => {
+		const { menu, rows } = recordingMenu();
+		const onImport = vi.fn();
+		fillProjectSwitcherMenu(menu, {
+			projects: [project('A', null)],
+			currentPath: 'A',
+			t: (key) => key,
+			onSelect: () => undefined,
+			onManage: () => undefined,
+			onImport,
+			canImport: true,
+		});
+		expect(rows.map((row) => row.kind === 'separator' ? '---' : row.title)).toEqual([
+			'A', '---', 'actions.importFromProject', 'dashboard.manageProjects',
+		]);
+		const importRow = rows.find((row) => row.title === 'actions.importFromProject');
+		expect(importRow).toMatchObject({ icon: 'import', disabled: false });
+		importRow?.click?.();
+		expect(onImport).toHaveBeenCalledOnce();
+
+		const greyed = recordingMenu();
+		fillProjectSwitcherMenu(greyed.menu, {
+			projects: [project('A', null)],
+			currentPath: 'A',
+			t: (key) => key,
+			onSelect: () => undefined,
+			onManage: () => undefined,
+			onImport: () => undefined,
+			canImport: false,
+		});
+		expect(greyed.rows.find((row) => row.title === 'actions.importFromProject')?.disabled).toBe(true);
 	});
 });

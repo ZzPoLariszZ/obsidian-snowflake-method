@@ -19,6 +19,10 @@ export interface ProjectSwitcherMenuConfig {
 	t: (key: string, vars?: Record<string, string | number>) => string;
 	onSelect: (path: string) => void;
 	onManage: () => void;
+	/** Opens the import dialog on the project shown; the row is left out when absent. */
+	onImport?: () => void;
+	/** False while the project shown cannot be written to, which greys the row. */
+	canImport?: boolean;
 }
 
 /**
@@ -50,6 +54,18 @@ export function fillProjectSwitcherMenu(
 		for (const project of grouping.loose) addProject(menu, project, config);
 	}
 	menu.addSeparator();
+	const onImport = config.onImport;
+	if (onImport !== undefined) {
+		menu.addItem((item) =>
+			item
+				.setTitle(config.t('actions.importFromProject'))
+				.setIcon('import')
+				.setDisabled(config.canImport === false)
+				.onClick(() => {
+					onImport();
+				}),
+		);
+	}
 	menu.addItem((item) =>
 		item
 			.setTitle(config.t('dashboard.manageProjects'))

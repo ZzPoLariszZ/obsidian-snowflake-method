@@ -1703,6 +1703,12 @@ export class SnowflakeDashboardView extends ItemView {
 						.openProjectManager(this.projectLocale)
 						.catch((error: unknown) => this.renderError(error));
 				},
+				onImport: () => {
+					void this.host
+						.openImportDialog(model.path)
+						.catch((error: unknown) => this.renderError(error));
+				},
+				canImport: !model.readOnly,
 			});
 			projectControl.setAttribute('aria-expanded', 'true');
 			menu.onHide(() => {
@@ -1759,17 +1765,26 @@ export class SnowflakeDashboardView extends ItemView {
 		locale: 'en' | 'zh-CN',
 	): Promise<void> {
 		try {
-			const existing = await this.host.listProjects();
+			const [existing, sources] = await Promise.all([
+				this.host.listProjects(),
+				this.host.importSources(null),
+			]);
 			new CreateProjectModal(
 				this.app,
 				t,
 				locale,
 				existing.map((project) => project.title),
 				seriesNames(existing),
+				sources,
 				async (request) => {
 					const project = await this.host.createProject(request);
 					await this.host.selectProject(project.path);
 					await this.refresh();
+					// The import dialog opens on the new project's dashboard,
+					// so a change of mind there leaves the project as made.
+					if (request.startFrom !== null) {
+						await this.host.openImportDialog(project.path, request.startFrom);
+					}
 				},
 			).open();
 		} catch (error) {

@@ -1,5 +1,6 @@
 import { foldName } from '../domain';
 import type { ProjectSeries } from '../services';
+import type { PickerOption } from './option-picker';
 
 /** What a project row has to carry to be put with its series. */
 export interface SeriesMember {
@@ -99,4 +100,49 @@ export function defaultImportSource<T extends SeriesMember>(
 	);
 	siblings.sort(compareBooks);
 	return siblings[0] ?? null;
+}
+
+/** A project an import may read: a book the root holds, or one put away in the archive. */
+export interface ImportSourceOption extends SeriesMember {
+	path: string;
+	archived: boolean;
+}
+
+/** The three headings a list of sources stands under. */
+export interface ImportSourceWords {
+	sameSeries: string;
+	others: string;
+	archived: string;
+}
+
+/**
+ * The sources as a picker offers them: the books of the target's own series
+ * first, in book order, then the other projects as they came, then the
+ * archived ones, each part under its heading. A heading is left out with its
+ * part when nothing stands in it.
+ */
+export function importSourceOptions(
+	sources: readonly ImportSourceOption[],
+	target: ProjectSeries | null,
+	words: ImportSourceWords,
+): PickerOption[] {
+	const key = target === null ? null : foldName(target.name);
+	const inSeries = (source: ImportSourceOption): boolean =>
+		key !== null &&
+		source.series !== null &&
+		foldName(source.series.name) === key;
+	const siblings = sources.filter((source) => !source.archived && inSeries(source));
+	siblings.sort(compareBooks);
+	const others = sources.filter((source) => !source.archived && !inSeries(source));
+	const archived = sources.filter((source) => source.archived);
+	const option = (source: ImportSourceOption, section: string): PickerOption => ({
+		value: source.path,
+		label: source.title,
+		section,
+	});
+	return [
+		...siblings.map((source) => option(source, words.sameSeries)),
+		...others.map((source) => option(source, words.others)),
+		...archived.map((source) => option(source, words.archived)),
+	];
 }

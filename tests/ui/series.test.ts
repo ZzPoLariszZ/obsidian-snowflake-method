@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	defaultImportSource,
 	groupBySeries,
+	importSourceOptions,
 	seriesLine,
 	seriesNames,
 } from '../../src/ui/series';
@@ -72,6 +73,44 @@ describe('seriesLine and seriesNames', () => {
 		expect(
 			seriesNames([book('A', 'Saga', 2), book('B', 'saga', 1), book('C', 'Alpha'), book('D', null)]),
 		).toEqual(['Alpha', 'Saga']);
+	});
+});
+
+describe('importSourceOptions', () => {
+	const words = { sameSeries: 'Same series', others: 'Other projects', archived: 'Archived' };
+	const source = (title: string, name: string | null, number: number | null = null, archived = false) => ({
+		path: `Root/${title}/Project.md`,
+		title,
+		series: name === null ? null : { name, book: number },
+		archived,
+	});
+
+	it('puts the target’s own books first in book order, then the rest, then the archive, each under its heading', () => {
+		const options = importSourceOptions(
+			[
+				source('Loose', null),
+				source('Saga 3', 'Saga', 3),
+				source('Old', 'Saga', 1, true),
+				source('Saga 1', 'saga', 1),
+				source('Other 2', 'Other', 2),
+			],
+			{ name: 'Saga', book: 4 },
+			words,
+		);
+		expect(options.map((option) => `${option.section}: ${option.label}`)).toEqual([
+			'Same series: Saga 1',
+			'Same series: Saga 3',
+			'Other projects: Loose',
+			'Other projects: Other 2',
+			'Archived: Old',
+		]);
+		expect(options[0]?.value).toBe('Root/Saga 1/Project.md');
+	});
+
+	it('offers every project as other for a target in no series, and leaves out a heading with nothing under it', () => {
+		const options = importSourceOptions([source('Saga 1', 'Saga', 1), source('Loose', null)], null, words);
+		expect(options.map((option) => option.section)).toEqual(['Other projects', 'Other projects']);
+		expect(options.map((option) => option.label)).toEqual(['Saga 1', 'Loose']);
 	});
 });
 

@@ -91,6 +91,7 @@ import {
 import type { ProjectLocale } from '../settings';
 import { groupBySeries, seriesNames } from './series';
 import { buildSeriesField, type SeriesField } from './series-field';
+import { importSourceOptions, type ImportSourceOption } from './series';
 import {
 	buildOptionField,
 	buildOptionPicker,
@@ -128,6 +129,8 @@ export interface CreateProjectRequest {
 	locale: ProjectLocale;
 	/** The series the project is born into, or null for one on its own. */
 	series: ProjectSeries | null;
+	/** The project whose design the new one imports once made, or null for a blank one. */
+	startFrom: string | null;
 }
 
 export interface ManageProjectOption {
@@ -879,6 +882,9 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 	private name: UniqueNameField;
 	private readonly series: SeriesFields = { name: '', book: '' };
 	private seriesField: SeriesField | null = null;
+	/** The project file of the source to import from, or empty for a blank start. */
+	private startFrom = '';
+	private startFromField: OptionPicker | null = null;
 
 	constructor(
 		app: App,
@@ -888,6 +894,8 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 		private readonly takenNames: readonly string[],
 		/** The series those projects stand in, for the field that offers them. */
 		private readonly seriesNames: readonly string[],
+		/** The projects the new one may import from once it is made. */
+		private readonly sources: readonly ImportSourceOption[],
 		onSubmit: SubmitHandler<CreateProjectRequest>,
 	) {
 		super(app, t, t('modal.project.title'), onSubmit);
@@ -899,6 +907,8 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 	onClose(): void {
 		this.seriesField?.destroy();
 		this.seriesField = null;
+		this.startFromField?.destroy();
+		this.startFromField = null;
 		super.onClose();
 	}
 
@@ -955,6 +965,50 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 			this.seriesNames,
 			{},
 		);
+		this.buildStartFromRow();
+	}
+
+	/**
+	 * Where the new project takes its design from: nothing, or one of the
+	 * other projects, the books of the series typed above offered first. The
+	 * list is read when it opens, so a series typed after the form was drawn
+	 * still puts its books at the head.
+	 */
+	private buildStartFromRow(): void {
+		if (this.sources.length === 0) return;
+		const t = this.t;
+		const setting = new Setting(this.contentEl)
+			.setName(t('modal.project.startFrom'))
+			.setDesc(t('modal.project.startFromDesc'));
+		setting.settingEl.addClass(
+			'snowflake-method-stacked-setting',
+			'snowflake-method-start-from-setting',
+		);
+		this.startFromField?.destroy();
+		this.startFromField = buildOptionField(this.app, setting.controlEl, {
+			label: t('modal.project.startFrom'),
+			placeholder: t('modal.project.startFromNone'),
+			emptyPlaceholder: t('modal.project.startFromNone'),
+			options: () => {
+				const name = this.series.name.trim();
+				return [
+					{ value: '', label: t('modal.project.startFromNone') },
+					...importSourceOptions(
+						this.sources,
+						name.length === 0 ? null : { name, book: null },
+						{
+							sameSeries: t('modal.import.section.sameSeries'),
+							others: t('modal.import.section.others'),
+							archived: t('modal.import.section.archived'),
+						},
+					),
+				];
+			},
+			value: () => this.startFrom,
+			choose: (value) => {
+				this.startFrom = value;
+			},
+		});
 	}
 
 	protected collectValue(): CreateProjectRequest | null {
@@ -975,6 +1029,7 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 			title,
 			locale: this.locale,
 			series,
+			startFrom: this.startFrom.length === 0 ? null : this.startFrom,
 		};
 	}
 }
@@ -1240,6 +1295,9 @@ export class ManageProjectsModal extends Modal {
 			project: ManageProjectOption,
 			series: ProjectSeries | null,
 		) => Promise<ManageProjectLists>,
+		// The import dialog is the host's to open, and the manager steps
+		// aside for it: two dialogs standing for one project would fight.
+		private readonly onImportProject: (project: ManageProjectOption) => void,
 	) {
 		super(app);
 		this.modalEl.addClass(DIALOG_CLASS);
@@ -1593,6 +1651,16 @@ export class ManageProjectsModal extends Modal {
 				.setIcon('book-copy')
 				.setDisabled(project.readOnly)
 				.onClick(() => this.openSetSeries(project)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.importFromProject'))
+				.setIcon('import')
+				.setDisabled(project.readOnly)
+				.onClick(() => {
+					this.close();
+					this.onImportProject(project);
+				}),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>

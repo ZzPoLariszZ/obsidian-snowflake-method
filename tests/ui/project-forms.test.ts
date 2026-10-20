@@ -127,11 +127,17 @@ afterEach(() => {
 });
 
 describe('CreateProjectModal', () => {
-	const open = (names: string[] = ['Saga']): FormLike<CreateProjectRequest> => {
-		const form = new CreateProjectModal(app, t, 'en', ['Taken'], names, () => Promise.resolve());
+	const sources = [
+		{ path: 'Root/Other/Project.md', title: 'Other', series: null, archived: false },
+		{ path: 'Root/Saga 1/Project.md', title: 'Saga 1', series: { name: 'Saga', book: 1 }, archived: false },
+	];
+	const open = (names: string[] = ['Saga'], offered = sources): FormLike<CreateProjectRequest> => {
+		const form = new CreateProjectModal(app, t, 'en', ['Taken'], names, offered, () => Promise.resolve());
 		form.open();
 		return form as unknown as FormLike<CreateProjectRequest>;
 	};
+	const startFromRow = (form: FormLike<unknown>): CorkboardElement | null =>
+		form.contentEl.querySelector('.snowflake-method-start-from-setting');
 
 	it('makes a project in no series unless a series is named', () => {
 		const form = open();
@@ -139,12 +145,43 @@ describe('CreateProjectModal', () => {
 		if (name === null) throw new Error('no name field');
 		type(name, 'Novel');
 		expect(book.disabled).toBe(true);
-		expect(form.collectValue()).toEqual({ title: 'Novel', locale: 'en', series: null });
+		expect(form.collectValue()).toEqual({ title: 'Novel', locale: 'en', series: null, startFrom: null });
 		type(series, 'Saga');
 		expect(book.disabled).toBe(false);
-		expect(form.collectValue()).toEqual({ title: 'Novel', locale: 'en', series: { name: 'Saga', book: null } });
+		expect(form.collectValue()).toEqual({
+			title: 'Novel',
+			locale: 'en',
+			series: { name: 'Saga', book: null },
+			startFrom: null,
+		});
 		type(book, '2');
-		expect(form.collectValue()).toEqual({ title: 'Novel', locale: 'en', series: { name: 'Saga', book: 2 } });
+		expect(form.collectValue()).toEqual({
+			title: 'Novel',
+			locale: 'en',
+			series: { name: 'Saga', book: 2 },
+			startFrom: null,
+		});
+	});
+
+	it('offers a project to start from only while there is one, blank first and the typed series’ books next', () => {
+		expect(startFromRow(open(['Saga'], []))).toBeNull();
+		const form = open();
+		const row = startFromRow(form);
+		if (row === null) throw new Error('no start-from row');
+		expect(row.classes.has('snowflake-method-stacked-setting')).toBe(true);
+		const picker = row.querySelector('.snowflake-method-option-picker-input') ?? row.querySelector('input');
+		if (picker === null) throw new Error('no start-from field');
+		// Blank is what the field shows until a project is chosen.
+		expect(picker.value).toBe('modal.project.startFromNone');
+		const { name, series } = fields(form);
+		if (name === null) throw new Error('no name field');
+		type(name, 'Novel');
+		expect(form.collectValue()?.startFrom).toBeNull();
+		type(series, 'Saga');
+		// The field reads its options when it opens, so the series typed
+		// after the form was drawn still heads the list with its books.
+		const options = (form as unknown as { startFromField: unknown; sources: unknown });
+		expect(options.startFromField).not.toBeNull();
 	});
 
 	it('refuses a book number that is not a whole number above zero', () => {

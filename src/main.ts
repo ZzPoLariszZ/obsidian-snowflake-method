@@ -241,6 +241,8 @@ import {
 	type StickyNoteRecord,
 	toWikiLink,
 	WritingSessionService,
+	ImportRefusedError,
+	type ImportReport,
 	type LiveWritingSession,
 	type StartWritingSessionOptions,
 	type WritingSessionEvent,
@@ -281,7 +283,14 @@ import {
 	SnowflakeDashboardView,
 } from './ui/dashboard-view';
 import { entityGroupLabel, entityGroupsOf } from './ui/entity-form';
-import { seriesNames } from './ui/series';
+import { seriesNames, type ImportSourceOption } from './ui/series';
+import {
+	ImportProjectModal,
+	ImportReportModal,
+	importReportSummary,
+	importReportWanted,
+	type ImportChoice,
+} from './ui/import-dialog';
 import {
 	MANUSCRIPT_EDITING_HOVER_SOURCE,
 	MANUSCRIPT_READING_HOVER_SOURCE,
@@ -1677,6 +1686,11 @@ export default class SnowflakeMethodPlugin
 			async (project) => this.restoreManagedProject(project),
 			async (project) => this.trashArchivedProject(project),
 			async (project, series) => this.setManagedProjectSeries(project, series),
+			(project) => {
+				void this.openImportDialog(project.path).catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
 		).open();
 	}
 
@@ -1704,6 +1718,144 @@ export default class SnowflakeMethodPlugin
 					}),
 		);
 		return this.manageProjectLists();
+	}
+
+	/**
+	 * The projects an import may read from: the writable ones in the root,
+	 * then the archived ones, in each case without the target itself. A
+	 * project written by a newer release is left out, since the importer
+	 * refuses to read one in part.
+	 */
+	async importSources(targetPath: string | null): Promise<ImportSourceOption[]> {
+		const [projects, archived] = await Promise.all([
+			this.discoverProjects(),
+			this.projects.listArchivedProjects(this.settings.projectRoot),
+		]);
+		const offered = (project: ProjectRef): boolean =>
+			!project.readOnly && project.projectFile !== targetPath;
+		const option = (project: ProjectRef, isArchived: boolean): ImportSourceOption => ({
+			path: project.projectFile,
+			title: project.title,
+			series: project.series,
+			archived: isArchived,
+		});
+		return [
+			...projects.filter(offered).map((project) => option(project, false)),
+			...archived.filter(offered).map((project) => option(project, true)),
+		];
+	}
+
+	/**
+	 * Opens the import dialog on a project, in that project's language. The
+	 * run starts once the dialog has closed on Import, so the author gets
+	 * the dashboard back while the notice counts the parts in.
+	 */
+	async openImportDialog(
+		targetPath: string,
+		sourcePath: string | null = null,
+	): Promise<void> {
+		const target = await this.projects.loadProject(targetPath);
+		const t: Translate = (key, vars) =>
+			this.translateForProject(target.locale, key, vars);
+		if (target.readOnly) throw new Error(t('errors.readOnly'));
+		const sources = await this.importSources(target.projectFile);
+		if (sources.length === 0) {
+			new Notice(t('modal.import.noSources'));
+			return;
+		}
+		new ImportProjectModal(
+			this.app,
+			t,
+			{
+				target: {
+					path: target.projectFile,
+					title: target.title,
+					series: target.series,
+				},
+				sources,
+				initialSource: sourcePath,
+				bridge: {
+					inspect: async (path) => {
+						try {
+							return await this.projects.importer.inspectSource(
+								path,
+								target.projectFile,
+							);
+						} catch (error) {
+							this.rethrowLocalizedMutationError(error);
+						}
+					},
+					plan: (inspection, selection) =>
+						this.projects.importer.plan(inspection, selection),
+				},
+			},
+			(choice) => {
+				void this.runImport(target.projectFile, choice, t).catch(
+					(error: unknown) => {
+						this.showError(error);
+					},
+				);
+				return Promise.resolve();
+			},
+		).open();
+	}
+
+	/**
+	 * Runs an import the dialog settled, one notice counting it in. The
+	 * reconcile pass is paused as it is for a migration: every note lands
+	 * saying what its properties say, and the burst of creates would else
+	 * queue a project load for each. Afterwards the health flags, the
+	 * discovery cache and every dashboard are told, and the author hears
+	 * what came over, in a notice when all of it did and in a report when
+	 * something was skipped, dropped or failed.
+	 */
+	private async runImport(
+		targetPath: string,
+		choice: ImportChoice,
+		t: Translate,
+	): Promise<void> {
+		const notice = new Notice(
+			t('modal.import.progress', { done: 0, total: 0 }),
+			0,
+		);
+		this.fieldsReconcilePaused = true;
+		let report: ImportReport;
+		try {
+			report = await this.projects.importer.runImport(
+				choice.sourcePath,
+				targetPath,
+				choice.selection,
+				{
+					onProgress: (progress) => {
+						notice.setMessage(
+							t('modal.import.progress', {
+								done: progress.done,
+								total: progress.total,
+							}),
+						);
+					},
+				},
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		} finally {
+			this.fieldsReconcilePaused = false;
+			this.pendingFieldsReconciles.clear();
+			notice.hide();
+		}
+		this.invalidateProjectHealth(report.target.projectFile);
+		this.invalidateProjectDiscovery();
+		await this.refreshDashboards({ streams: true });
+		if (importReportWanted(report)) {
+			new ImportReportModal(this.app, t, report).open();
+			return;
+		}
+		new Notice(
+			t('messages.importDone', {
+				source: report.source.title,
+				summary: importReportSummary(t, report),
+			}),
+		);
 	}
 
 	getDefaultProjectLocale(): 'en' | 'zh-CN' {
@@ -2245,6 +2397,7 @@ export default class SnowflakeMethodPlugin
 			readOnlyReason: project.readOnly
 				? projectT('dashboard.readOnlySchema')
 				: null,
+			series: project.series,
 			lastManuscriptNote: this.lastManuscriptNote(project.id),
 			steps: STEP_DEFINITIONS.map((definition) => ({
 				id: definition.id,
@@ -9722,6 +9875,20 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'import-from-project',
+			name: this.globalT('commands.importFromProject'),
+			checkCallback: (checking) => {
+				const path = this.settings.recentProjectPath;
+				if (path === null) return false;
+				if (!checking) {
+					void this.openImportDialog(path).catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return true;
+			},
+		});
+		this.addCommand({
 			id: 'add-character',
 			name: this.globalT('commands.addCharacter'),
 			checkCallback: (checking) => {
@@ -11927,6 +12094,19 @@ export default class SnowflakeMethodPlugin
 		if (error instanceof ArchiveFolderIsProjectError) {
 			throw new Error(this.t('errors.archiveFolderIsProject'));
 		}
+		if (error instanceof ImportRefusedError) {
+			const key =
+				error.code === 'same-project'
+					? 'errors.importSameProject'
+					: error.code === 'read-only-source'
+						? 'errors.importReadOnlySource'
+						: error.code === 'read-only-target'
+							? 'errors.readOnly'
+							: error.code === 'nested'
+								? 'errors.importNested'
+								: 'errors.importKindRefused';
+			throw new Error(this.t(key, { name: error.detail ?? '' }));
+		}
 		throw error;
 	}
 
@@ -11935,13 +12115,17 @@ export default class SnowflakeMethodPlugin
 		defaultLocale: 'en' | 'zh-CN' = this.getDefaultProjectLocale(),
 	): Promise<void> {
 		try {
-			const existing = await this.discoverProjects();
+			const [existing, sources] = await Promise.all([
+				this.discoverProjects(),
+				this.importSources(null),
+			]);
 			new CreateProjectModal(
 				this.app,
 				t,
 				defaultLocale,
 				existing.map((project) => project.title),
 				seriesNames(existing),
+				sources,
 				async (request) => {
 					const vaultWasEmpty = (await this.discoverProjects()).length === 0;
 					const project = await this.createProject(request);
@@ -11952,6 +12136,11 @@ export default class SnowflakeMethodPlugin
 						await this.selectProject(project.path);
 					}
 					await this.refreshDashboards();
+					// On the new project's own dashboard, so a change of mind
+					// in the dialog leaves the project standing as made.
+					if (request.startFrom !== null) {
+						await this.openImportDialog(project.path, request.startFrom);
+					}
 				},
 			).open();
 		} catch (error) {
