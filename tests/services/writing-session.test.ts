@@ -1075,6 +1075,107 @@ describe("WritingSessionService", () => {
 		expect(days[0]?.trackedNet).toBe(250);
 	});
 
+	it("reads the notes each record touched, every record once and under the root", async () => {
+		// Another device's session, filed when the project's folder had another
+		// name: its notes are found again by the layout folder they sit in,
+		// and a tally of no note of the project's is left out.
+		const foreign =
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-b_writing_session.json";
+		await fakeVault.seedFile(
+			foreign,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [
+					{
+						...foreignRecord(T0 - 3_600_000, 100, 40),
+						files: [
+							{ path: DRAFT, added: 40, deleted: 0, net: 40, manuscript: true },
+							{ path: "Books/Old name/80_Material/Notes.md", added: 60, deleted: 0, net: 60, manuscript: false },
+							{ path: "Elsewhere/Loose.md", added: 1, deleted: 0, net: 1, manuscript: false },
+						],
+					},
+				],
+			}),
+		);
+		await fakeVault.seedFile(
+			UNTIMED_FILE.replace("device-a", "device-b"),
+			JSON.stringify({
+				schemaVersion: 1,
+				days: [
+					{
+						id: "untimed-device-b-2026-08-17",
+						day: "2026-08-17",
+						timezone: "UTC",
+						words: {
+							project: { added: 10, deleted: 1, net: 9 },
+							manuscript: { added: 4, deleted: 0, net: 4 },
+						},
+						files: [
+							{ path: DRAFT, added: 4, deleted: 0, net: 4, manuscript: true },
+							{ path: NOTES, added: 6, deleted: 1, net: 5, manuscript: false },
+						],
+					},
+				],
+			}),
+		);
+		// This device's untimed typing, accruing in memory and filed on the
+		// beat: the stored copy and the accruing day are one record.
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		await timers.flush();
+		expect(fakeVault.contents.get(UNTIMED_FILE)).toBeDefined();
+		fakeVault.write(NOTES, written("one two three four five")());
+		// Then a running session, read as the record it would be if it stopped now.
+		await startSession();
+		sessions.surfaceActivity(NOTES);
+		sessions.noteChanged(NOTES, written("one two three four five six seven"));
+		await timers.flush();
+
+		const readings = await sessions.fileTalliesBetween(project, "2026-08-17", "2026-08-17");
+		const ids = readings.map((reading) => reading.id).sort();
+		expect(ids).toEqual([...new Set(ids)]);
+		expect(readings).toHaveLength(4);
+		expect(readings.find((reading) => reading.id === `session-foreign-${String(T0 - 3_600_000)}`)).toEqual({
+			id: `session-foreign-${String(T0 - 3_600_000)}`,
+			kind: "session",
+			day: "2026-08-17",
+			startedAt: T0 - 3_600_000,
+			endedAt: T0 - 3_600_000 + 60_000,
+			focusMs: 60_000,
+			files: [
+				{ path: "50_Manuscript/Draft.md", added: 40, deleted: 0, net: 40 },
+				{ path: "80_Material/Notes.md", added: 60, deleted: 0, net: 60 },
+			],
+		});
+		expect(readings.find((reading) => reading.id === "untimed-device-b-2026-08-17")).toEqual({
+			id: "untimed-device-b-2026-08-17",
+			kind: "untimed",
+			day: "2026-08-17",
+			startedAt: null,
+			endedAt: null,
+			focusMs: 0,
+			files: [
+				{ path: "50_Manuscript/Draft.md", added: 4, deleted: 0, net: 4 },
+				{ path: "80_Material/Notes.md", added: 6, deleted: 1, net: 5 },
+			],
+		});
+		expect(readings.find((reading) => reading.id === "untimed-device-a-2026-08-17")).toMatchObject({
+			kind: "untimed",
+			day: "2026-08-17",
+			files: [{ path: "80_Material/Notes.md", added: 2, deleted: 0, net: 2 }],
+		});
+		const live = readings.find((reading) => reading.kind === "session" && reading.id !== `session-foreign-${String(T0 - 3_600_000)}`);
+		expect(live).toMatchObject({
+			day: "2026-08-17",
+			startedAt: T0,
+			endedAt: clock,
+			focusMs: clock - T0,
+			files: [{ path: "80_Material/Notes.md", added: 2, deleted: 0, net: 2 }],
+		});
+		// A day none of them belong to reads empty.
+		expect(await sessions.fileTalliesBetween(project, "2026-08-18", "2026-08-18")).toEqual([]);
+	});
+
 	/**
 	 * The debounce drain runs outside the mutation queue, so a stop can land
 	 * while a drain holds deltas it has already claimed from the pending map.

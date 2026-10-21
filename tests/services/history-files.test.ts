@@ -5,7 +5,11 @@ import {
 	SNAPSHOT_FILE_SUFFIX,
 	historyFilePath,
 } from "../../src/domain";
-import { PROJECT_PATH_LAYOUTS, isModificationHistoryPath } from "../../src/services";
+import {
+	PROJECT_PATH_LAYOUTS,
+	isModificationHistoryPath,
+	relativizeProjectPath,
+} from "../../src/services";
 
 const root = "Snowflake Projects/Novel";
 const T0 = Date.UTC(2026, 9, 21, 3);
@@ -47,5 +51,21 @@ describe("telling the modification history's files from the rest", () => {
 		// The folders themselves.
 		expect(isModificationHistoryPath(home)).toBe(false);
 		expect(isModificationHistoryPath(`${root}/${dir}`)).toBe(false);
+	});
+
+	it("names a note under the root, finds an older root's note by its layout folder, and leaves the rest", () => {
+		expect(relativizeProjectPath(root, `${root}/40_Scene/Arrival.md`)).toBe("40_Scene/Arrival.md");
+		expect(relativizeProjectPath(root, `${root}/Loose.md`)).toBe("Loose.md");
+		expect(relativizeProjectPath(root, root)).toBeNull();
+		// Recorded under a name the project had before its folder was renamed.
+		expect(relativizeProjectPath(root, "Books/Old name/40_Scene/Arrival.md")).toBe("40_Scene/Arrival.md");
+		expect(relativizeProjectPath(root, "书/旧名/40_场景/到达.md")).toBe("40_场景/到达.md");
+		expect(
+			relativizeProjectPath(root, "Books/Old name/70_Tool/71_Data_Statistics/711_Writing_Session/x.json"),
+		).toBe("70_Tool/71_Data_Statistics/711_Writing_Session/x.json");
+		// A file named like a layout folder is not in one; a path through none is nobody's.
+		expect(relativizeProjectPath(root, "Books/Old name/40_Scene")).toBeNull();
+		expect(relativizeProjectPath(root, "Elsewhere/Loose.md")).toBeNull();
+		expect(relativizeProjectPath(root, "Books/Old name/Loose.md")).toBeNull();
 	});
 });

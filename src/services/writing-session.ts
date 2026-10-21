@@ -59,6 +59,7 @@ import {
 	parseMarkdownFrontmatter,
 	type VaultRepository,
 } from "../repository";
+import { relativizeProjectPath } from "./history-files";
 import {
 	appendJsonRecordFile,
 	readStampedJson,
@@ -167,6 +168,31 @@ export interface TodayWritingSummary {
 export interface WritingDayTotals extends TodayWritingSummary {
 	/** The day itself, `YYYY-MM-DD` in the reading device's own zone. */
 	day: string;
+}
+
+/** One note's words in one record, the note named under the project root. */
+export interface SessionNoteTally {
+	path: string;
+	added: number;
+	deleted: number;
+	net: number;
+}
+
+/**
+ * One record read for the notes it touched: a finished or running session,
+ * or an untimed day. The modification history reads these for the days it
+ * has no versions of a note; the totals never look inside a record's files.
+ */
+export interface SessionTallyReading {
+	id: string;
+	kind: "session" | "untimed";
+	/** The calendar day the record belongs to, as the totals bucket it. */
+	day: string;
+	/** A session's bounds in ms; null for an untimed day, which has no clock. */
+	startedAt: number | null;
+	endedAt: number | null;
+	focusMs: number;
+	files: SessionNoteTally[];
 }
 
 /**
@@ -2375,12 +2401,7 @@ export class WritingSessionService {
 			const day = addDays(from, at);
 			byDay.set(day, emptyDay(day));
 		}
-		const sessions = await this.gatherSessions(project, from, through);
-		// The running session is read the way spread() reads it: as the
-		// record it would be if it stopped now, merged by id beside the
-		// finished ones -- one loop, one shape, nothing summed twice.
-		const running = this.liveRecord(project);
-		if (running !== null) sessions.set(running.id, running);
+		const { sessions, untimed } = await this.recordsBetween(project, from, through);
 		for (const session of sessions.values()) {
 			const bucket = byDay.get(calendarDay(Date.parse(session.startedAt), zone));
 			if (bucket === undefined) continue;
@@ -2398,21 +2419,8 @@ export class WritingSessionService {
 		}
 		// The untimed days join the word readings and nothing else: no time,
 		// no session count, no pace -- a day of them shows words over silent
-		// clocks. Read regardless of the setting, because turning capture off
-		// does not unwrite what was already recorded. Each record is a whole
-		// calendar day already, bucketed by its own name; the accruing day and
-		// any unfiled record overlay the stored copy by id, freshest last.
-		// The accruing day is read first: its rollover may file yesterday
-		// into the unfiled map, and the overlay below must see that record
-		// on the very reading that performed the rollover.
-		const accruing = this.liveUntimedRecord(project);
-		const untimed = await this.gatherUntimedDays(project, from, through);
-		for (const flush of this.unflushed.values()) {
-			if (flush.projectId === project.id) {
-				untimed.set(flush.record.id, flush.record);
-			}
-		}
-		if (accruing !== null) untimed.set(accruing.id, accruing);
+		// clocks. Each record is a whole calendar day already, bucketed by
+		// its own name.
 		for (const record of untimed.values()) {
 			const bucket = byDay.get(record.day);
 			if (bucket === undefined) continue;
@@ -2423,6 +2431,103 @@ export class WritingSessionService {
 			bucket.goalNet += record.words[this.deps.goalScope()].net;
 		}
 		return [...byDay.values()];
+	}
+
+	/**
+	 * The notes each record touched, for `from` through `through`: every
+	 * stored session and untimed day of every device, the running session
+	 * and the accruing day among them, each once, in no particular order.
+	 * Paths are read under the project root, so a record from before the
+	 * project's folder was renamed still names its notes; a tally whose
+	 * note the history cannot name is left out. The modification history
+	 * reads these for the days it has no versions of a note; the totals
+	 * above never look inside a record's files.
+	 */
+	async fileTalliesBetween(
+		project: ProjectRef,
+		from: string,
+		through: string,
+	): Promise<SessionTallyReading[]> {
+		const zone = this.timezone();
+		const { sessions, untimed } = await this.recordsBetween(project, from, through);
+		const inSpan = (day: string): boolean => day >= from && day <= through;
+		const readings: SessionTallyReading[] = [];
+		for (const session of sessions.values()) {
+			const startedAt = Date.parse(session.startedAt);
+			const day = calendarDay(startedAt, zone);
+			if (!inSpan(day)) continue;
+			readings.push({
+				id: session.id,
+				kind: "session",
+				day,
+				startedAt,
+				endedAt: Date.parse(session.endedAt),
+				focusMs: sessionDurations(session).focusMs,
+				files: this.noteTallies(project, session.files),
+			});
+		}
+		for (const record of untimed.values()) {
+			if (!inSpan(record.day)) continue;
+			readings.push({
+				id: record.id,
+				kind: "untimed",
+				day: record.day,
+				startedAt: null,
+				endedAt: null,
+				focusMs: 0,
+				files: this.noteTallies(project, record.files),
+			});
+		}
+		return readings;
+	}
+
+	/** A record's tallies with their notes named under the project root; a tally of no nameable note is left out. */
+	private noteTallies(
+		project: ProjectRef,
+		files: readonly SessionFileTally[],
+	): SessionNoteTally[] {
+		const tallies: SessionNoteTally[] = [];
+		for (const tally of files) {
+			const path = relativizeProjectPath(project.rootPath, tally.path);
+			if (path === null) continue;
+			tallies.push({ path, added: tally.added, deleted: tally.deleted, net: tally.net });
+		}
+		return tallies;
+	}
+
+	/**
+	 * Every record a stretch of days can hold, stored and live alike, each
+	 * once. The sessions filed in the months around the stretch, with the
+	 * running session read the way spread() reads it: as the record it
+	 * would be if it stopped now, merged by id beside the finished ones --
+	 * one shape, nothing summed twice. The untimed days are read regardless
+	 * of the setting, because turning capture off does not unwrite what was
+	 * already recorded; the accruing day and any unfiled record overlay the
+	 * stored copy by id, freshest last. The accruing day is read first: its
+	 * rollover may file yesterday into the unfiled map, and the overlay
+	 * must see that record on the very reading that performed the rollover.
+	 * Nothing here buckets by day; the readers do.
+	 */
+	private async recordsBetween(
+		project: ProjectRef,
+		from: string,
+		through: string,
+	): Promise<{
+		sessions: Map<string, WritingSessionRecord>;
+		untimed: Map<string, UntimedDayRecord>;
+	}> {
+		const sessions = await this.gatherSessions(project, from, through);
+		const running = this.liveRecord(project);
+		if (running !== null) sessions.set(running.id, running);
+		const accruing = this.liveUntimedRecord(project);
+		const untimed = await this.gatherUntimedDays(project, from, through);
+		for (const flush of this.unflushed.values()) {
+			if (flush.projectId === project.id) {
+				untimed.set(flush.record.id, flush.record);
+			}
+		}
+		if (accruing !== null) untimed.set(accruing.id, accruing);
+		return { sessions, untimed };
 	}
 
 	/**
