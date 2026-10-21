@@ -4,6 +4,7 @@ export * from "./canvas-export";
 export * from "./definition-files";
 export * from "./explorer-counts";
 export * from "./explorer-names";
+export * from "./file-recovery";
 export * from "./foreshadowing-service";
 export * from "./foreshadowing-store";
 export * from "./freeform-service";
