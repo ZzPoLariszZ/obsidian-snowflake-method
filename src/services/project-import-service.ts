@@ -722,7 +722,7 @@ function resolverOf(project: ProjectSnapshot): ImportLinkResolver {
 
 class ImportRun {
 	readonly report: ImportReport;
-	private readonly working: ProjectSnapshot;
+	private working: ProjectSnapshot;
 	private readonly source: GatheredProject;
 	private readonly inspection: ImportInspection;
 	private readonly context: ImportRewriteContext;
@@ -1025,6 +1025,7 @@ class ImportRun {
 					};
 					written = await this.projects.updateCharacterIn(this.working, entry.targetId, patch, options);
 					replaceIn(this.working.characters, (candidate) => candidate.characterId === written.characterId, written);
+					if (written.name !== held.name) await this.reloadWorking();
 				} else {
 					written = await this.projects.createCharacterIn(this.working, input, made);
 					this.working.characters.push(written);
@@ -1066,6 +1067,7 @@ class ImportRun {
 					};
 					written = await this.projects.updateSceneIn(this.working, entry.targetId, patch, options);
 					replaceIn(this.working.scenes, (candidate) => candidate.sceneId === written.sceneId, written);
+					if (written.title !== held.title) await this.reloadWorking();
 				} else {
 					written = await this.projects.createSceneIn(this.working, input, made);
 					this.working.scenes.push(written);
@@ -1103,6 +1105,7 @@ class ImportRun {
 						galleryMain: input.galleryMain,
 					};
 					written = await this.projects.updateEntityIn(this.working, entry.targetId, patch, options);
+					if (written.name !== held.name) await this.reloadWorking();
 				} else {
 					written = await this.projects.createEntityIn(this.working, input, made);
 				}
@@ -1449,6 +1452,15 @@ class ImportRun {
 		const body = (await this.projects.manuscript.readSegment(path)).body;
 		this.bodies.set(path, body);
 		return body;
+	}
+
+	/**
+	 * The snapshot read again after a replace renamed a member: the service
+	 * rewrites the link in every other note that named it, and a replace
+	 * that follows checks its revision against the file as it now stands.
+	 */
+	private async reloadWorking(): Promise<void> {
+		this.working = workingSnapshotOf(await this.projects.loadProject(this.working.projectFile));
 	}
 }
 

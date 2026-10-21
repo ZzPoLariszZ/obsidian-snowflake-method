@@ -683,6 +683,28 @@ describe("ProjectImportService", () => {
 		expect(loaded.characters.map((character) => character.name)).toEqual(["Bob", "Alicia", "Carol"]);
 	});
 
+	it("replaces a scene whose note the rename before it rewrote", async () => {
+		const seeded = await seed(source);
+		expect((await run(await fresh(source), target)).failed).toEqual([]);
+		// The source renames Alice and edits the scene that casts her: both are due an update, and replacing
+		// Alicia first renames the copy's note, which rewrites the scene copy's cast before its own turn.
+		const sourceAlice = must((await fresh(source)).characters.find((character) => character.characterId === seeded.alice.id));
+		await service.updateCharacter(source, sourceAlice.characterId, { expectedRevision: sourceAlice.revision, name: "Alicia" });
+		const sourceOpening = must((await fresh(source)).scenes.find((scene) => scene.sceneId === seeded.opening.id));
+		await service.updateScene(source, sourceOpening.sceneId, { expectedRevision: sourceOpening.revision, conflict: "The tide turns twice." });
+		const updated = await run(await fresh(source), await fresh(target), () => false, "replace");
+		expect(updated.failed).toEqual([]);
+		expect(updated.replaced.map((item) => [item.kind, item.targetName])).toEqual(
+			expect.arrayContaining([
+				["character", "Alicia"],
+				["scene", "Opening"],
+			]),
+		);
+		const opening = must((await fresh(target)).scenes.find((scene) => scene.title === "Opening"));
+		expect(opening.conflict).toBe("The tide turns twice.");
+		expect(opening.characters.some((link) => link.includes("Alicia"))).toBe(true);
+	});
+
 	it("lets the book copied from take back what its copy changed, and keeps both records agreeing", async () => {
 		const seeded = await seed(source);
 		expect((await run(await fresh(source), target)).failed).toEqual([]);
