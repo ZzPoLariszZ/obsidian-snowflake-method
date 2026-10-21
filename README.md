@@ -88,6 +88,7 @@ Thank you for your support!
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
 | Gallery | Keep pictures on any character, scene or worldbuilding note, and choose the one its cards show. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
+| Import and series | Bring any part of a story's design in from another project, and keep the books of a series in step with each other. |
 | Story structure | See every scene as a card in narrative order, or switch to your characters or a worldbuilding kind, and reorder and edit them right on the cards. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. The relationship graph draws the relationships you recorded as labeled lines between your characters and worldbuilding notes, and opens Obsidian's own graph on the scenes and their chapters. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. Keep the look to the manuscript stream, or apply it to your Snowflake projects or the whole vault. |
@@ -293,6 +294,16 @@ Writing is easier to keep up when you can see it. The dashboard's **Data statist
 
 **The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose. Notes in your projects that use the typography get the same marks and the same menus.
 
+### Import and series
+
+A story can grow out of another. The project menu at the bottom of the dashboard has **Import from project**. It copies any part of another project's design into the one you are working on. That covers the step texts, characters, scenes, worldbuilding notes, vocabularies, field templates, pictures and tool records, and the manuscript if you ask for it. Everything arrives as new notes in this project's folders and language, and every link between them points at the copies.
+
+<p align="center"><a href="assets/screenshots/import_from_project_en.png"><img src="assets/screenshots/import_from_project_en.png" width="100%" alt="The Import from project dialog open over a new project's dashboard: Clocktower Snow chosen under From, Skip it chosen for notes that already exist, a search box, and a tree of groups with their counts and checkboxes, with Characters open to show Nora Linden, Arthur Linden, Clara Linden, Silas Penn, Granny Hart and Edmund Crane ticked. The footer counts forty-three notes and twenty tool records, then says that seven linked notes aren’t selected, with Select them beside it, above the Cancel and Import buttons." /></a></p>
+
+**Tick what you want.** Each group can be taken whole or opened to pick single notes, and the search box narrows the rows. The manuscript is off by default, and the revisions anchored in it come only with its chapters. A link to a note you haven't ticked is kept only when a note of that name is already here. So the footer counts those links, and **Select them** ticks the notes in one click. A note whose name is already taken is skipped, or replaced if you choose so. The import is confirmed before it runs, because it can't be undone, and a source in the other language is pointed out when you choose it. A report lists whatever was skipped, dropped or failed.
+
+**Books in a series share a design.** The create form and the project manager can put a project in a series with a book number, and the project menu then groups the books together. The project manager lists them the same way, with each series folding like the archive, and the archive is grouped by series as well. A new book can start from another book's design. Every copy remembers where it came from, so **Update from series** works in both directions. The book that imported takes a sibling's later changes into the copies it hasn't edited. The book it imported from takes back what the sibling changed in those copies. Notes edited on both sides are listed and left alone unless you tick them. Chapters, pictures and tool records are brought once and never updated.
+
 <a id="installation"></a>
 
 ## Installation
@@ -356,6 +367,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Go back to where the stream opened | Return to the note where you opened the manuscript stream. |
 | Go to the next manuscript note | Move one note forward in the manuscript. |
 | Go to the previous manuscript note | Move one note back in the manuscript. |
+| Import from project | Copy any part of another project's design into the current project. |
 | Insert a manuscript note after this one | Add a note right after the one you are reading. |
 | Insert a manuscript note before this one | Add a note right before the one you are reading. |
 | New sticky note | Add a sticky note to the current project and open it as a floating panel. |
@@ -408,6 +420,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Toggle typewriter scrolling | Keep the line you are writing at the middle of the page. |
 | Toggle word counts in the file explorer | Show or hide the word count beside each note and folder. |
 | Toggle writing count outside sessions | Start or stop recording the words you write while no session is running. |
+| Update from series | Bring a sibling book's changes into the notes the two books share. |
 | Update notes in older format | Update every note written by an older release. |
 
 Commands that act on the manuscript are available only while a manuscript stream is the current view. **Split manuscript note at the cursor** also needs a note in the stream to be open for writing. **Toggle typewriter scrolling** works in the notes under the typography scope as well, and the focus mode commands work in your projects' notes. The two commands that copy or export the current note use the note at the center of the page.
@@ -558,25 +571,27 @@ Each project is stored directly inside the project root you set. Its folders, fi
     │   │   │   └── revisions.json
     │   │   └── 724_Sticky_Note/
     │   │       └── 20260904T223121.847+0800.md
-    │   └── 73_Visualization/
-    │       ├── 732_Freeform/
-    │       │   ├── freeform-view-<id>.json
-    │       │   ├── freeform.json
-    │       │   └── <view name>.canvas
-    │       ├── 733_Timeline/
-    │       │   ├── timeline.json
-    │       │   └── <view name>.canvas
-    │       ├── 734_Beat_Sheet/
-    │       │   ├── beat-sheet.json
-    │       │   └── <sheet name>.canvas
-    │       └── 735_Relationship_Graph/
-    │           └── relationship-graph.json
+    │   ├── 73_Visualization/
+    │   │   ├── 732_Freeform/
+    │   │   │   ├── freeform-view-<id>.json
+    │   │   │   ├── freeform.json
+    │   │   │   └── <view name>.canvas
+    │   │   ├── 733_Timeline/
+    │   │   │   ├── timeline.json
+    │   │   │   └── <view name>.canvas
+    │   │   ├── 734_Beat_Sheet/
+    │   │   │   ├── beat-sheet.json
+    │   │   │   └── <sheet name>.canvas
+    │   │   └── 735_Relationship_Graph/
+    │   │       └── relationship-graph.json
+    │   └── 74_Import/
+    │       └── imports.json
     └── ...
 ```
 
 </details>
 
-Writing sessions are recorded per device, so two machines never write to the same file when you sync. The ignore rules you write while tracking entities, the revisions you propose and your foreshadowing threads are each kept in one shared file. These files travel with the Vault. A sticky note is a Markdown file of its own. The position of its floating panel is remembered on each device, not written into the note. Unlike these records, the entity index and prose statistics stored beside them are caches. The plugin rebuilds them from the manuscript whenever they are missing or out of date. So deleting them costs nothing but the time it takes to read the book again.
+Writing sessions are recorded per device, so two machines never write to the same file when you sync. The ignore rules you write while tracking entities, the revisions you propose and your foreshadowing threads are each kept in one shared file. These files travel with the Vault. A sticky note is a Markdown file of its own. The position of its floating panel is remembered on each device, not written into the note. Unlike these records, the entity index and prose statistics stored beside them are caches. The plugin rebuilds them from the manuscript whenever they are missing or out of date. So deleting them costs nothing but the time it takes to read the book again. What a project has imported from another, and from where, is recorded in `74_Import/imports.json`. A later update from the series then knows which notes the two books share, whichever of them runs it.
 
 Archiving a project moves its whole folder into `Snowflake Archive`. That folder is next to your projects, not inside any of them. Nothing in the notes changes. A project keeps every reference inside its own folder, so no link breaks while it is archived. The project manager lists what is in the archive and can restore any of it. If its old name has been taken in the meantime, the project comes back under a free name. Moving a folder in or out by hand works the same way, so the archive is a place, not a mechanism.
 
@@ -644,7 +659,7 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Gallery and corresponding card style (0.26.0)
 - [x] More views on the corkboard (0.26.0)
 - [x] Relationship graph (0.27.0)
-- [ ] Import and series: a project can import any part of a story's design from another Snowflake project, and books in the same series can share anything
+- [x] Import and series (0.28.0)
 - [ ] Better display on tablets and phones
 
 <a id="development"></a>
@@ -797,6 +812,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 自定义字段 | 给任意笔记加上故事需要的字段，常用的一组字段可以存为该种类的模板。 |
 | 图库 | 给角色、场景和世界观笔记配上图片，并选出卡片上显示的那一张。 |
 | 项目归档 | 把暂时写完的项目收起来，需要时再取回。 |
+| 导入与系列 | 从另一个项目导入故事设计的任何部分，同一系列的几册书也能保持一致。 |
 | 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。看板也可以换成角色或任一类世界观。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。关系图把你记下的关系画成角色与世界观笔记之间带标签的连线，场景与正文章节的联系则交给 Obsidian 自带的关系图谱来显示。 |
 | 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。这套版面可以只用在正文流，也可以用到雪花项目或整个仓库的笔记上。 |
@@ -1002,6 +1018,16 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 **同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。用上排版的项目笔记也会这样标出，菜单也一样。
 
+### 导入与系列
+
+一个故事可以从另一个故事里长出来。工作台底部的项目菜单里有**从项目导入**，它把另一个项目的任何设计内容复制到你正在写的项目里：步骤文本、角色、场景、世界观笔记、词汇表、字段模板、图片和工具记录，勾选后还有正文。所有内容都以新笔记的形式落在这个项目的文件夹里，使用这个项目的语言，笔记之间的链接也都指向这些副本。
+
+<p align="center"><a href="assets/screenshots/import_from_project_cn.png"><img src="assets/screenshots/import_from_project_cn.png" width="100%" alt="在新项目的工作台上打开的从项目导入对话框：来源项目选了钟楼雪，笔记已存在时选了跳过，下面是搜索框和一棵带数量与复选框的分组树，角色一组已展开，列出勾选好的林晚、林知远、苏念、沈砚、顾婆婆和周明川。页脚数出四十三篇笔记和二十条工具记录，再写明链接到七篇未选择的笔记，旁边是选择它们，下面是取消和导入按钮。" /></a></p>
+
+**勾选你要的内容。** 每一组可以整组选取，也可以展开只挑几篇笔记，搜索框会缩小范围。正文默认不选，锚在正文里的修订只随它的章节一起过来。链接到你没有勾选的笔记时，只有这里已经有同名笔记，链接才会保留，所以页脚会数出这些链接，点一下**选择它们**就能把那些笔记勾上。名字已被占用的笔记会跳过，你也可以选择替换。导入前会先确认，因为它无法撤销，选中另一种语言的项目时也会先提醒。导入后的报告会列出跳过、丢弃和失败的内容。
+
+**同一系列的书共用一套设计。** 创建表单和项目管理器都可以把项目放进一个系列并编上册数，项目菜单会把同系列的书归在一起。项目管理器也按系列列出各册，每个系列都能像归档区一样折叠，归档区同样按系列归组。新的一册可以从另一册的设计起步。每个副本都记得自己来自哪里，所以之后用**从系列更新**，两个方向都行：导入的一册把姊妹卷后来的改动带进自己没改过的副本，被导入的一册则把姊妹卷在副本里的改动收回来。两边都改过的笔记会单独列出，不勾选就不会动。章节、图片和工具记录只导入一次，不会更新。
+
 ## 安装
 
 除非有特别的理由，建议从社区插件市场安装。这样装上的是经过审核的发布版本，也能跟上 Obsidian 自身的更新。BRAT 和手动安装则留给测试版本，以及不自行安装任何东西的仓库。
@@ -1059,6 +1085,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 打开场景数据库 | 打开当前项目场景的 Bases 视图。 |
 | 打开世界观数据库 | 打开你选定的世界观种类的 Bases 视图。 |
 | 打开可视化工作区 | 在独立的工作区中打开当前项目的故事结构。 |
+| 从项目导入 | 把另一个项目的任意设计内容复制到当前项目。 |
 | 打开卡片看板工作区 | 打开可视化工作区的卡片看板。场景、角色或某一类世界观都摆成卡片。 |
 | 打开自由画布工作区 | 打开可视化工作区的自由画布。笔记、记录、文件和文字都作为卡片摆在上面，可以连线和分组。 |
 | 打开时间线工作区 | 打开可视化工作区的时间线。场景按发生的时间排开。 |
@@ -1111,6 +1138,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 切换文件列表中的插件文件 | 隐藏或显示插件自己的文件和编号前缀。 |
 | 切换文件列表的沉浸模式 | 只显示你正在写的项目，或者重新显示全部项目。 |
 | 切换文件列表的排列模式 | 开始或停止把文件和文件夹拖成自己的顺序。 |
+| 从系列更新 | 把同系列另一册的改动带进两册共有的笔记。 |
 | 切换文件列表中的字数 | 显示或隐藏每篇笔记和每个文件夹旁的字数。 |
 
 与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。**切换打字机滚动**在排版范围内的笔记里也能使用。设置专注模式的四条命令，在项目里的笔记中也能使用。两条针对当前笔记的命令，作用于页面正中的那一篇。
@@ -1255,25 +1283,27 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
     │   │   │   └── revisions.json
     │   │   └── 724_便签/
     │   │       └── 20260904T223121.847+0800.md
-    │   └── 73_可视化/
-    │       ├── 732_自由画布/
-    │       │   ├── freeform-view-<id>.json
-    │       │   ├── freeform.json
-    │       │   └── <视图名称>.canvas
-    │       ├── 733_时间线/
-    │       │   ├── timeline.json
-    │       │   └── <视图名称>.canvas
-    │       ├── 734_节拍表/
-    │       │   ├── beat-sheet.json
-    │       │   └── <节拍表名称>.canvas
-    │       └── 735_关系图/
-    │           └── relationship-graph.json
+    │   ├── 73_可视化/
+    │   │   ├── 732_自由画布/
+    │   │   │   ├── freeform-view-<id>.json
+    │   │   │   ├── freeform.json
+    │   │   │   └── <视图名称>.canvas
+    │   │   ├── 733_时间线/
+    │   │   │   ├── timeline.json
+    │   │   │   └── <视图名称>.canvas
+    │   │   ├── 734_节拍表/
+    │   │   │   ├── beat-sheet.json
+    │   │   │   └── <节拍表名称>.canvas
+    │   │   └── 735_关系图/
+    │   │       └── relationship-graph.json
+    │   └── 74_导入/
+    │       └── imports.json
     └── ...
 ```
 
 </details>
 
-写作时段按设备分开记录，这样同步时就不会有两台机器争着写同一个文件。实体追踪中写下的忽略规则、你提出的修订和你追踪的伏笔，各自存为一个共享文件，跟着仓库走。每张便签都是单独的一个 Markdown 文件。便签的悬浮面板停在哪里，按设备分别记住，不写进笔记。旁边的实体索引和正文统计是缓存，不是记录。它们缺失或过期时，插件都会从正文重新建立。所以就算删掉它们，代价最多也就是插件把全书重读一遍的时间。
+写作时段按设备分开记录，这样同步时就不会有两台机器争着写同一个文件。实体追踪中写下的忽略规则、你提出的修订和你追踪的伏笔，各自存为一个共享文件，跟着仓库走。每张便签都是单独的一个 Markdown 文件。便签的悬浮面板停在哪里，按设备分别记住，不写进笔记。旁边的实体索引和正文统计是缓存，不是记录。它们缺失或过期时，插件都会从正文重新建立。所以就算删掉它们，代价最多也就是插件把全书重读一遍的时间。项目从另一个项目导入了什么、来自哪里，都记在 `74_导入/imports.json` 里，之后无论哪一册运行从系列更新，都知道两册共有哪些笔记。
 
 归档一个项目，会把它的整个文件夹移进 `Snowflake Archive`。这个文件夹和各个项目放在同一层，不在任何项目里面。笔记本身不会有任何改动。项目的所有引用都在它自己的文件夹内，所以归档期间不会留下任何断链。项目管理器会列出归档里的项目，你随时可以取回。如果原来的名称已被占用，会给它换一个还没被用过的名称。手动把文件夹移进或移出，效果完全一样。归档只是一个存放位置，背后没有别的机制。
 
@@ -1339,7 +1369,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 图库与对应的卡片样式 (0.26.0)
 - [x] 卡片看板的更多视图 (0.26.0)
 - [x] 关系图 (0.27.0)
-- [ ] 导入与系列：项目可以从其他雪花项目导入任何小说设计内容，也支持系列作品，同一系列的作品可以共享任何内容
+- [x] 导入与系列 (0.28.0)
 - [ ] 改进平板和手机上的显示
 
 ## 开发
