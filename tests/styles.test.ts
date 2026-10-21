@@ -37,6 +37,19 @@ describe('styles.css', () => {
 		return next === -1 ? styles.slice(from) : styles.slice(from, next);
 	};
 
+	it('keeps the modification history to theme tokens, and lets a day keep its one cell', () => {
+		const history = section('Modification history');
+		expect(history.includes('!important')).toBe(false);
+		expect(history.includes(':has(')).toBe(false);
+		expect(history).not.toMatch(/column-(gap|count|width)/u);
+		expect(history).not.toMatch(/text-indent/u);
+		expect(
+			declarations(
+				':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table.snowflake-method-history-table tr.snowflake-method-history-day > td::before',
+			),
+		).toContain('content: none');
+	});
+
 	/**
 	 * `:has()` asks what an element contains, which the browser re-checks
 	 * broadly as the page changes. It was taken out once in 0.5.1 and grew

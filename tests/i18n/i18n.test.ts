@@ -12,7 +12,7 @@ import {
 	TASK_PRIORITIES,
 	TASK_STATUSES,
 } from '../../src/domain';
-import { TASKS_TABS } from '../../src/ui/dashboard-state';
+import { STATISTICS_TABS, TASKS_TABS } from '../../src/ui/dashboard-state';
 import { ENTITY_GROUP_FIELDS } from '../../src/ui/entity-filters';
 import {
 	CORKBOARD_GROUP_FIELDS,
@@ -664,6 +664,12 @@ describe('translation resources', () => {
 		expect(zhCN['statistics.tab.prose']).toBe('正文分析');
 		expect(en['statistics.tab.entities']).toBe('Entity tracking');
 		expect(zhCN['statistics.tab.entities']).toBe('实体追踪');
+		expect(en['statistics.tab.history']).toBe('Modification history');
+		expect(zhCN['statistics.tab.history']).toBe('修改历史');
+		for (const tab of STATISTICS_TABS) {
+			expect(Object.keys(en), tab).toContain(`statistics.tab.${tab}`);
+			expect(Object.keys(zhCN), tab).toContain(`statistics.tab.${tab}`);
+		}
 		expect(Object.keys(en)).toContain('statistics.tab.planned');
 	});
 

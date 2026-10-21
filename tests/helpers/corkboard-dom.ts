@@ -31,6 +31,8 @@ export class CorkboardDom {
 	}[] = [];
 	private sequence = 0;
 	readonly frames = new Map<number, () => void>();
+	/** Interval callbacks, run by hand with tick(). */
+	readonly intervals = new Map<number, () => void>();
 	readonly windowListeners = new Map<string, { listener: unknown; capture: boolean }[]>();
 	readonly observers: { notify(): void; disconnected: boolean }[] = [];
 	readonly doc: {
@@ -62,6 +64,12 @@ export class CorkboardDom {
 				return id;
 			},
 			clearTimeout: (id: number): void => { this.frames.delete(id); },
+			setInterval: (callback: () => void): number => {
+				const id = ++this.sequence;
+				this.intervals.set(id, callback);
+				return id;
+			},
+			clearInterval: (id: number): void => { this.intervals.delete(id); },
 			addEventListener: (type: string, listener: unknown, capture = false): void => {
 				this.windowListeners.set(type, [...this.windowListeners.get(type) ?? [], { listener, capture }]);
 			},
@@ -82,6 +90,11 @@ export class CorkboardDom {
 		this.container = new CorkboardElement(this, 'div');
 		this.doc.body = this.container;
 		this.doc.documentElement = this.container;
+	}
+
+	/** Every standing interval fired once, as a minute passing would. */
+	tick(): void {
+		for (const callback of [...this.intervals.values()]) callback();
 	}
 
 	flushFrame(): void {
@@ -119,8 +132,21 @@ type DomEvent = {
 	stopPropagation(): void;
 };
 
+/** An element's children: an array, with the collection's item() the virtual table reads rows by. */
+type ChildList = CorkboardElement[] & { item(index: number): CorkboardElement | null };
+
+const childList = (): ChildList => {
+	const list: CorkboardElement[] = [];
+	// Not enumerable: a test comparing children to a plain array still matches.
+	Object.defineProperty(list, 'item', {
+		value: (index: number): CorkboardElement | null => list[index] ?? null,
+		enumerable: false,
+	});
+	return list as ChildList;
+};
+
 export class CorkboardElement {
-	readonly children: CorkboardElement[] = [];
+	readonly children: ChildList = childList();
 	readonly dataset: Record<string, string> = {};
 	readonly styles: Record<string, string> = {};
 	readonly classList = { contains: (name: string): boolean => this.classes.has(name) };
@@ -237,7 +263,12 @@ export class CorkboardElement {
 		Object.assign(this.styles, styles);
 	}
 	setCssProps(styles: Record<string, string>): void { this.setCssStyles(styles); }
-	getBoundingClientRect(): { height: number } { this.readGeometry('getBoundingClientRect'); return { height: 37 }; }
+	/** Every box is one row high, stacked under its siblings, so a list measures as rows of 37. */
+	getBoundingClientRect(): { top: number; height: number } {
+		this.readGeometry('getBoundingClientRect');
+		const at = this.parent === null ? 0 : this.parent.children.indexOf(this);
+		return { top: Math.max(0, at) * 37, height: 37 };
+	}
 	matches(selector: string): boolean {
 		// A class or several joined, a tag, or a comma-separated list of either, as the boards ask.
 		return selector.split(',').some((part) => {

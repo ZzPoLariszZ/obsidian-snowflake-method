@@ -1720,6 +1720,11 @@ export default class SnowflakeMethodPlugin
 		return this.settings.showTableActionsColumn;
 	}
 
+	/** The calendar the statistics read by, which day a week begins on and how a date is written, as one key. */
+	statisticsCalendar(): string {
+		return `${this.settings.sessionWeekStart}|${this.settings.sessionDateFormat}`;
+	}
+
 	isFreeformModeEnabled(): boolean {
 		return this.settings.freeformMode;
 	}
@@ -6512,7 +6517,6 @@ export default class SnowflakeMethodPlugin
 				this.history.subscribe((event) => {
 					if (event.kind === 'data' || event.kind === 'availability') listener(event.kind);
 				}),
-			unit: (total) => this.writingCountUnit(total, t),
 			kindLabel: (ref) => historyKindLabel(t, ref),
 			kindIcon: (ref) => historyKindIcon(known() ?? { worldbuildingKinds: [] }, ref),
 			showsActionsColumn: () => this.showsTableActionsColumn(),

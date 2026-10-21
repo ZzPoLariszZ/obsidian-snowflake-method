@@ -8,7 +8,7 @@ import {
 import type { ManagedSectionIssueViewModel } from './view-model';
 
 /** The faces of the Data statistics pane, in the order the strip draws. */
-export const STATISTICS_TABS = ['sessions', 'prose', 'entities'] as const;
+export const STATISTICS_TABS = ['sessions', 'prose', 'entities', 'history'] as const;
 export type StatisticsTab = (typeof STATISTICS_TABS)[number];
 
 export function isStatisticsTab(value: unknown): value is StatisticsTab {

@@ -12802,6 +12802,239 @@ button.snowflake-method-kind-options {
 	box-shadow: none;
 }
 
+/* == Modification history ================================================== */
+
+/* The Modification history face of the statistics pane: the prose panel's
+   frame, and under its control band the range the reader walks with the
+   span's figures under its title, a word about File recovery where its
+   copies are not being counted, and the day list. */
+
+.snowflake-method-history-notice.is-hidden,
+.snowflake-method-history-notice-button.is-hidden,
+.snowflake-method-history-table-wrap.is-hidden,
+.snowflake-method-history-panel .snowflake-method-character-empty.is-hidden {
+	display: none;
+}
+
+/* The range row: the calendar widget's arrows and title, then the Today
+   button and the unit chooser at the row's end, wrapping in a narrow pane. */
+.snowflake-method-history-range {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+/* The title between the arrows, with a floor on its width so the arrows
+   stand still while the title changes length. */
+.snowflake-method-history-range-heading {
+	min-width: 9em;
+	text-align: center;
+}
+
+.snowflake-method-history-range-title {
+	color: var(--text-normal);
+	font-size: 1.15em;
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-history-range .snowflake-method-widget-picks {
+	margin-inline-start: auto;
+}
+
+/* The unit chooser as wide as the band's three buttons over it, measured
+   by the panel, so the band and the row end in one block. */
+.snowflake-method-history-range .snowflake-method-widget-picks select.snowflake-method-widget-pick {
+	width: var(--snowflake-method-history-pick-width, 9.5rem);
+}
+
+.snowflake-method-history-today {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+/* A word about File recovery, shown only where its copies are not being
+   counted: the warning tone where the core plugin is off, muted otherwise. */
+.snowflake-method-history-notice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-history-notice[data-tone='warning'] {
+	border-color: var(--text-warning);
+	color: var(--text-warning);
+}
+
+.snowflake-method-history-notice-icon {
+	display: flex;
+	flex: 0 0 auto;
+}
+
+.snowflake-method-history-notice-text {
+	flex: 1 1 20rem;
+	min-width: 0;
+}
+
+.snowflake-method-history-notice-button {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+/* The day list takes every line the field has left, as a member step's
+   table takes its pane's: the field lays its one face out as a column, the
+   kept panel's host and the panel in it stand as tall as the field, and the
+   shared frame, which grows from a basis of nothing to a floor of twelve
+   lines, takes the leftover while its body scrolls. So the frame ends the
+   same distance above the field's edge as the panel begins below it. The
+   basis matters: a frame that began at its content's height would hold the
+   panel open to the whole list, and the field would scroll instead of the
+   body. Too short a field for the frame's floor, and the field scrolls
+   after all. */
+.snowflake-method-tab-scroll.is-filled {
+	display: flex;
+	flex-direction: column;
+}
+
+.snowflake-method-history-host {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+}
+
+.snowflake-method-history-panel {
+	flex: 1 1 auto;
+}
+
+/* Three columns, one text button in the last: a clock, the sentence with
+   its figures, and the dialog. The sentence takes the rest, so the floors
+   stand under the shared ones by the column the table does without. */
+.snowflake-method-table.snowflake-method-history-table {
+	--snowflake-method-table-floor: 30rem;
+}
+
+.snowflake-method-table.snowflake-method-history-table.has-actions-column {
+	--snowflake-method-table-floor: 40rem;
+}
+
+/* Two clocks and a dash in the monospaced face run to eleven characters,
+   a hundred pixels at the interface's size, and the cell keeps its padding
+   on either side. */
+col.snowflake-method-history-column-time {
+	width: 8.5rem;
+}
+
+/* As wide as the button and the cell's padding, measured by the panel from
+   the first row it draws, so the button stands the cell's padding from the
+   frame in either language. Until then, room enough for the longer label. */
+col.snowflake-method-history-column-actions {
+	width: var(--snowflake-method-history-actions-width, 16rem);
+}
+
+/* Every number on the tab in the monospaced face, the words around them in
+   the interface's own: a column of figures lines up digit under digit. */
+.snowflake-method-history-numeral {
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-table.snowflake-method-history-table td.snowflake-method-history-column-time {
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* The sentence wraps rather than ending in an ellipsis: the sheet's one-line
+   rule is for names, and a sentence cut short loses what became of the note. */
+.snowflake-method-table.snowflake-method-history-table td.snowflake-method-history-column-activity {
+	white-space: normal;
+}
+
+/* The rows stand as tall as the button they carry, so a one-line cell
+   centres on it rather than sitting at the top with its padding's worth
+   of room below; a wrapped sentence centres the other cells on itself. */
+.snowflake-method-table.snowflake-method-history-table tr.snowflake-method-history-row > td {
+	vertical-align: middle;
+}
+
+/* The rows stand as tall as the button they carry, so a one-line cell
+   centres on it rather than sitting at the top with its padding's worth
+   of room below; a wrapped sentence centres the other cells on itself. */
+.snowflake-method-table.snowflake-method-history-table tr.snowflake-method-history-row > td {
+	vertical-align: middle;
+}
+
+/* A day's head: one cell across the row, the day's name at its start and
+   its figures at its end, on the secondary ground so the days read as bands
+   between the rows. The figures wrap under the name in a narrow frame and
+   keep to the end there too. */
+.snowflake-method-table.snowflake-method-history-table
+	tr.snowflake-method-history-day
+	> td {
+	display: table-cell;
+	background: var(--background-secondary);
+}
+
+.snowflake-method-history-day-title {
+	font-weight: var(--font-semibold);
+}
+
+/* The sentence: the kind's icon, then the words with the name as a link. */
+.snowflake-method-history-activity {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-2-2);
+	min-width: 0;
+}
+
+.snowflake-method-history-icon {
+	display: flex;
+	flex: 0 0 auto;
+	margin-block-start: 0.15em;
+	color: var(--text-muted);
+}
+
+.snowflake-method-history-icon .svg-icon {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-history-sentence {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* A name that leads nowhere: the note is gone. */
+.snowflake-method-history-name.is-missing {
+	color: var(--text-muted);
+	text-decoration: line-through;
+}
+
+/* A frame too narrow for the grid: the shared sheet turns every row into a
+   card, and the day's head keeps its one cell, a bar between the cards
+   rather than a card with a label of its own. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table.snowflake-method-history-table
+	tr.snowflake-method-history-day
+	> td {
+	display: block;
+	padding: var(--size-4-1) var(--size-4-3);
+}
+
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table.snowflake-method-history-table
+	tr.snowflake-method-history-day
+	> td::before {
+	content: none;
+}
+
 /* == Sticky notes ========================================================== */
 
 /* The eight macarons a note can wear, as the light theme paints them, and

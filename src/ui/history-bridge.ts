@@ -65,8 +65,6 @@ export interface HistoryPanelBridge {
 	openFileRecoverySettings(): boolean;
 	/** Fires on data worth re-reading and on the copies' availability; never on a clock tick. */
 	subscribe(listener: (change: HistoryChange) => void): () => void;
-	/** The unit word a count is read in: words, or characters. */
-	unit(total: number): string;
 	/** What a note's kind is called. */
 	kindLabel(ref: HistoryNoteRef): string;
 	/** The icon a note's kind wears. */

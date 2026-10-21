@@ -129,6 +129,11 @@ import {
 	type ForeshadowingPanelHandle,
 } from './foreshadowing-panel';
 import {
+	renderHistoryPanel,
+	type HistoryFilterMemory,
+	type HistoryPanelHandle,
+} from './history-panel';
+import {
 	renderRevisionPanel,
 	type RevisionFilterMemory,
 	type RevisionPanelHandle,
@@ -398,6 +403,17 @@ export class SnowflakeDashboardView extends ItemView {
 		lengthMax: null,
 	};
 	private readonly entitiesPanel = new KeptPanel<EntitiesPanelHandle>();
+	/**
+	 * The history panel, kept the way the session panel is: it keeps itself
+	 * current through its own subscription and clock.
+	 */
+	private readonly historyPanel = new KeptPanel<HistoryPanelHandle>();
+	/** The history's range and funnel outlive it, as the prose filters do. */
+	private readonly historyFilters: HistoryFilterMemory = {
+		kind: '',
+		unit: 'week',
+		anchor: null,
+	};
 	/** The foreshadowing table's filters outlive it, as the prose filters do. */
 	private readonly foreshadowingFilters: ForeshadowingFilterMemory = {
 		status: '',
@@ -916,6 +932,9 @@ export class SnowflakeDashboardView extends ItemView {
 			body: (body, tab) => {
 				this.renderStatisticsBody(body, tab);
 			},
+			// The day list takes the field's height and scrolls inside it, as
+			// a member step's table takes its pane's.
+			filled: (tab) => tab === 'history',
 		});
 	}
 
@@ -937,6 +956,8 @@ export class SnowflakeDashboardView extends ItemView {
 			body: (body: HTMLElement, tab: T) => void;
 			/** A face that scrolls itself: the field then stands still and lends it its reach. */
 			selfScrolling?: (tab: T) => boolean;
+			/** A face that fills the field: its panel stands as tall as the field and its own list scrolls. */
+			filled?: (tab: T) => boolean;
 		},
 	): void {
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
@@ -970,6 +991,7 @@ export class SnowflakeDashboardView extends ItemView {
 			tabs.mark(chosen);
 			body.empty();
 			body.toggleClass('is-self-scrolling', pane.selfScrolling?.(chosen) ?? false);
+			body.toggleClass('is-filled', pane.filled?.(chosen) ?? false);
 			pane.body(body, chosen);
 		};
 		show(pane.current());
@@ -1044,6 +1066,35 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 			return;
 		}
+		if (tab === 'history') {
+			// The mounted panel is already current -- it re-reads on the
+			// plugin's own events and on its clock -- so it is taken back as
+			// it stands.
+			const historyKey = this.historyPanelKey();
+			if (this.historyPanel.reuse(body, historyKey) !== null) return;
+			// The host is the field's flex item, so it carries the panel's
+			// claim on the field's height.
+			const host = body.createDiv({ cls: 'snowflake-method-history-host' });
+			this.historyPanel.keep(
+				host,
+				historyKey,
+				renderHistoryPanel(
+					host,
+					this.host.modificationHistory({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					{
+						filters: this.historyFilters,
+						...this.lentFilterPopover(),
+						openTasksTab: (tab) => {
+							this.openTasksTab(tab);
+						},
+					},
+				),
+			);
+			return;
+		}
 		body.createEl('p', {
 			cls: 'snowflake-method-tab-planned',
 			text: this.t('statistics.tab.planned'),
@@ -1085,6 +1136,26 @@ export class SnowflakeDashboardView extends ItemView {
 		return `${this.panelKey()}|${
 			this.host.showsTableProgressStatus() ? 'status' : ''
 		}|${this.host.showsTableActionsColumn() ? 'actions' : ''}`;
+	}
+
+	/**
+	 * The history's day list is laid by the actions setting, as the thread
+	 * table is, and its range by the calendar settings: a week that begins
+	 * on another day is built afresh rather than walked into.
+	 */
+	private historyPanelKey(): string {
+		return `${this.panelKey()}|${
+			this.host.showsTableActionsColumn() ? 'actions' : ''
+		}|${this.host.statisticsCalendar()}`;
+	}
+
+	/** Where a task's or a thread's name in the history leads: the Task management pane, on one tab. */
+	private openTasksTab(tab: TasksTab): void {
+		this.selectedPane = { kind: 'tasks' };
+		this.tasksTab = tab;
+		this.stepChosen = true;
+		this.app.workspace.requestSaveLayout();
+		void this.refresh();
 	}
 
 	/** What one face of the task management pane puts inside the frame. */
@@ -1149,6 +1220,7 @@ export class SnowflakeDashboardView extends ItemView {
 		if (except !== 'sessions') this.sessionPanel.dispose();
 		if (except !== 'prose') this.prosePanel.dispose();
 		if (except !== 'entities') this.entitiesPanel.dispose();
+		if (except !== 'history') this.historyPanel.dispose();
 	}
 
 	/**

@@ -2023,6 +2023,40 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				heading: this.t('dashboard.statistics'),
 				items: [
 					this.sectionDress('statistics'),
+					// The calendar every tab of the statistics reads by: which day
+					// a week begins on, and how a date is written.
+					{
+						name: this.t('settings.sessionWeekStart.name'),
+						desc: this.t('settings.sessionWeekStart.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionWeekStart',
+							defaultValue: DEFAULT_SETTINGS.sessionWeekStart,
+							// Named by the platform's own calendar rather than by
+							// this plugin's copy: a weekday reads the same for
+							// everyone who speaks a language, and is not this
+							// plugin's to translate.
+							options: Object.fromEntries(
+								WEEK_START_DAYS.map((day, at) => [
+									day,
+									weekdayLabels(this.locale(), 'long')[at] ?? day,
+								]),
+							),
+						},
+					},
+					{
+						name: this.t('settings.sessionDateFormat.name'),
+						desc: this.t('settings.sessionDateFormat.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionDateFormat',
+							defaultValue: DEFAULT_SETTINGS.sessionDateFormat,
+							// A format names its own parts, in every language.
+							options: Object.fromEntries(
+								DATE_FORMATS.map((format) => [format, format]),
+							),
+						},
+					},
 					// A session starts from the status bar or the palette. What lives here
 					// is what a new one starts with, and how the statistics read it back:
 					// what counts as a word, then the clock, then how a session begins, then
@@ -2167,38 +2201,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 								DEFAULT_SETTINGS.sessionDailyWordGoalManuscript,
 							min: 0,
 							step: 1,
-						},
-					},
-					{
-						name: this.t('settings.sessionWeekStart.name'),
-						desc: this.t('settings.sessionWeekStart.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'sessionWeekStart',
-							defaultValue: DEFAULT_SETTINGS.sessionWeekStart,
-							// Named by the platform's own calendar rather than by
-							// this plugin's copy: a weekday reads the same for
-							// everyone who speaks a language, and is not this
-							// plugin's to translate.
-							options: Object.fromEntries(
-								WEEK_START_DAYS.map((day, at) => [
-									day,
-									weekdayLabels(this.locale(), 'long')[at] ?? day,
-								]),
-							),
-						},
-					},
-					{
-						name: this.t('settings.sessionDateFormat.name'),
-						desc: this.t('settings.sessionDateFormat.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'sessionDateFormat',
-							defaultValue: DEFAULT_SETTINGS.sessionDateFormat,
-							// A format names its own parts, in every language.
-							options: Object.fromEntries(
-								DATE_FORMATS.map((format) => [format, format]),
-							),
 						},
 					},
 					{

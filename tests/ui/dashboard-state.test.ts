@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	FREEFORM_STEPS,
+	STATISTICS_TABS,
 	coerceFreeformPane,
 	dashboardHasHealthIssues,
 	dashboardPaneKey,
 	dashboardRenderContinuity,
-	FREEFORM_STEPS,
 	isFreeformStep,
+	isStatisticsTab,
 	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
@@ -529,5 +531,12 @@ describe('the task management pane state', () => {
 		});
 		expect(refused.state.tasksTab).toBe('revision');
 		expect(refused.changed).toBe(false);
+	});
+});
+
+describe('the statistics tabs', () => {
+	it('count the modification history among them', () => {
+		expect(STATISTICS_TABS).toEqual(['sessions', 'prose', 'entities', 'history']);
+		expect(isStatisticsTab('history')).toBe(true);
 	});
 });

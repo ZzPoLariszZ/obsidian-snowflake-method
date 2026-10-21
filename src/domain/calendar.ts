@@ -292,6 +292,18 @@ export function zoneOffsetMs(ms: number, timeZone: string): number {
 }
 
 /**
+ * The clock a moment reads in a zone, `HH:MM`, for the moments a history
+ * lists: the hour and minute as the device's own clock showed them, which
+ * is the one the reader remembers writing by.
+ */
+export function clockOf(ms: number, timeZone: string): string {
+	const local = ms + zoneOffsetMs(ms, timeZone);
+	const minutes = Math.floor((((local % DAY_MS) + DAY_MS) % DAY_MS) / 60_000);
+	const two = (value: number): string => String(value).padStart(2, '0');
+	return `${two(Math.floor(minutes / 60))}:${two(minutes % 60)}`;
+}
+
+/**
  * The parts of a day a reading splits a sitting across. They begin at six
  * because that is where a writing day begins, and the small hours come last
  * because that is where they are met -- at the end of the day they were

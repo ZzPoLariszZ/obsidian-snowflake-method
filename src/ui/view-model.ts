@@ -797,6 +797,8 @@ export interface DashboardHost {
 	showsTableProgressStatus(): boolean;
 	/** True while a table's rows wear their actions as a column of buttons. */
 	showsTableActionsColumn(): boolean;
+	/** The calendar the statistics read by, which day a week begins on and how a date is written, as one key. */
+	statisticsCalendar(): string;
 	/** True while the dashboard sets the ten steps aside for freeform work. */
 	isFreeformModeEnabled(): boolean;
 	/** The convention the writing count follows. */
