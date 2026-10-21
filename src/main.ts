@@ -232,6 +232,7 @@ import {
 	type WritingCountScope,
 	isBeatSheetFilePath,
 	isFreeformFilePath,
+	isImportFilePath,
 	graphMembersOf,
 	isRelationshipGraphFilePath,
 	isStickyNotePath,
@@ -10955,6 +10956,13 @@ export default class SnowflakeMethodPlugin
 			this.scheduleFreeformNotify();
 			return;
 		}
+		// The import record says which books an update can come from, which
+		// the dashboards show; the store itself re-reads a changed file.
+		if (file instanceof TFile && isImportFilePath(file.path)) {
+			this.updatableSiblingsByProject.clear();
+			this.scheduleRefresh();
+			return;
+		}
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
@@ -11125,6 +11133,11 @@ export default class SnowflakeMethodPlugin
 			// A view has gone, which every workspace showing it must hear of; or
 			// the folder's own file, which said the views were gone.
 			this.scheduleFreeformNotify(true);
+			return;
+		}
+		if (file instanceof TFile && isImportFilePath(file.path)) {
+			this.updatableSiblingsByProject.clear();
+			this.scheduleRefresh();
 			return;
 		}
 		// A project folder going takes its notes' surfaces with it.
