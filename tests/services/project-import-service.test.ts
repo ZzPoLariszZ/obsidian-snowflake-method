@@ -454,6 +454,10 @@ describe("ProjectImportService", () => {
 		await fakeVault.createBinary(`${folder}/portrait.png`, bytes("portrait"));
 		const same = await run(await fresh(source), target);
 		expect(same.pictures).toEqual({ landed: 0, reused: 1 });
+		// Found standing as the source has it, the picture is not reported as brought; the record pairs it with its source all the same.
+		expect(same.created.some((item) => item.kind === "picture")).toBe(false);
+		expect(same.skipped.map((item) => [item.kind, item.reason])).toContainEqual(["picture", "unchanged"]);
+		expect((await service.imports.readDocument(await fresh(target))).entries.some((entry) => entry.kind === "picture")).toBe(true);
 		expect(fakeVault.getFileByPath(`${folder}/portrait (2).png`)).toBeNull();
 
 		const other = await service.createProject({ title: "Book 3", locale: "en" });

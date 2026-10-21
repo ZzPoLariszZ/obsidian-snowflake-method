@@ -684,9 +684,9 @@ export class ProjectImportService {
 
 // ---- One run ---------------------------------------------------------------
 
-/** The outcome of writing one planned part. */
+/** The outcome of writing one planned part: made, written over, found standing as its source has it, or failed. */
 type Outcome =
-	| { readonly state: "created" | "replaced"; readonly targetName: string; readonly targetPath: string | null }
+	| { readonly state: "created" | "replaced" | "reused"; readonly targetName: string; readonly targetPath: string | null }
 	| { readonly state: "failed"; readonly message: string };
 
 /** A member as written: its outcome, the copy as read back for the provenance, and the links the rewrite let go. */
@@ -954,7 +954,7 @@ class ImportRun {
 				this.mapping.paths.set(importPathKey(picture.path), landed.path);
 				if (landed.created) this.report.pictures.landed += 1;
 				else this.report.pictures.reused += 1;
-				await this.settle(entry, { state: "created", targetName: entry.targetName, targetPath: landed.path });
+				await this.settle(entry, { state: landed.created ? "created" : "reused", targetName: entry.targetName, targetPath: landed.path });
 			} catch (error) {
 				await this.settle(entry, { state: "failed", message: messageOf(error) });
 			}
@@ -1443,7 +1443,9 @@ class ImportRun {
 			this.report.failed.push({ ...item, message: outcome.message });
 		} else {
 			const landed = { ...item, targetName: outcome.targetName, targetPath: outcome.targetPath };
-			(outcome.state === "created" ? this.report.created : this.report.replaced).push(landed);
+			// A part found standing as its source has it was not brought, so the report does not say it was; the record pairs it all the same.
+			if (outcome.state === "reused") this.report.skipped.push({ ...landed, reason: "unchanged" });
+			else (outcome.state === "created" ? this.report.created : this.report.replaced).push(landed);
 			this.landed.push({ entry, targetId, targetName: outcome.targetName, targetPath: outcome.targetPath, copy });
 		}
 		this.done += 1;
