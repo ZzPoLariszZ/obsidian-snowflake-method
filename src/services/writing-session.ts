@@ -59,7 +59,11 @@ import {
 	parseMarkdownFrontmatter,
 	type VaultRepository,
 } from "../repository";
-import { fileStamp, quarantineJsonFile } from "./json-store";
+import {
+	appendJsonRecordFile,
+	readStampedJson,
+	type StampedMemo,
+} from "./json-store";
 import { getProjectPathLayout, type ProjectRef } from "./types";
 import type { NoteCountOptions, WritingCountService } from "./writing-count";
 
@@ -1806,22 +1810,16 @@ export class WritingSessionService {
 	}
 
 	/**
-	 * One JSON file parsed once per on-disk state: the stamp is the file's
-	 * stat, the memo is the caller's, and anything that rewrites a file moves
-	 * its stat and misses here. One protocol for both record kinds, so a
-	 * change to the stamping can never reach one memo and miss the other.
+	 * One JSON file parsed once per on-disk state, the shared protocol over
+	 * the caller's memo: both record kinds read through it, so a change to
+	 * the stamping can never reach one memo and miss the other.
 	 */
-	private async readStamped<T>(
-		memo: Map<string, { stamp: string; file: T | null }>,
+	private readStamped<T>(
+		memo: StampedMemo<T>,
 		file: { path: string; stat: { mtime: number; size: number } },
 		parse: (content: string | null) => T | null,
 	): Promise<T | null> {
-		const stamp = fileStamp(file);
-		const kept = memo.get(file.path);
-		if (kept !== undefined && kept.stamp === stamp) return kept.file;
-		const parsed = parse(await this.deps.repository.readPlainFile(file.path));
-		memo.set(file.path, { stamp, file: parsed });
-		return parsed;
+		return readStampedJson(this.deps.repository, memo, file, parse);
 	}
 
 	/**
@@ -1939,30 +1937,17 @@ export class WritingSessionService {
 		serialize: (file: T) => string,
 		build: { fresh: () => T; merge: (parsed: T) => T },
 	): Promise<void> {
-		if (this.deps.repository.getFile(path) === null) {
-			await this.deps.repository.createPlainFile(
-				path,
-				serialize(build.fresh()),
-			);
-			return;
-		}
-		let corrupt = false;
-		await this.deps.repository.updatePlainFile(path, (current) => {
-			const parsed = parse(current);
-			if (parsed === null) {
-				corrupt = true;
-				return current;
-			}
-			return serialize(build.merge(parsed));
-		});
-		if (!corrupt) return;
-		const aside = await quarantineJsonFile(
+		const { aside } = await appendJsonRecordFile(
 			this.deps.repository,
 			this.now,
 			path,
+			parse,
+			serialize,
+			build,
 		);
-		await this.deps.repository.createPlainFile(path, serialize(build.fresh()));
-		this.emit({ kind: "corrupt-file-preserved", path: aside });
+		if (aside !== null) {
+			this.emit({ kind: "corrupt-file-preserved", path: aside });
+		}
 	}
 
 	/** Credits landed: note when the dirt began, and pace the write. */
