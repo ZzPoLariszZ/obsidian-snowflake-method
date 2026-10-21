@@ -1073,13 +1073,13 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		select.addEventListener('click', offer.select);
 	}
 
-	/** What an update comes to: the notes taken, and those of them this book had edited. */
+	/**
+	 * What an update comes to: the notes taken, and those of them this book
+	 * had edited. With nothing to take, the tree's own line has said why, and
+	 * the foot says only that nothing is selected, as it would for an import.
+	 */
 	private paintUpdateSummary(summary: HTMLElement, inspection: ImportInspection, model: ImportSelectionModel): void {
 		const t = this.t;
-		if (this.groups.length === 0) {
-			this.paintSummaryLines(summary, t('modal.import.update.nothing', { book: this.book() }), [], null);
-			return;
-		}
 		const ticked = model.count();
 		let edited = 0;
 		for (const key of model.ticked) {

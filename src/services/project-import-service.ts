@@ -33,7 +33,9 @@ import {
 	entityInputOf,
 	fingerprint,
 	foldName,
+	importCopyKey,
 	importHash,
+	importKindHasOwnId,
 	importLinkResolver,
 	importPathKey,
 	importRewriteContext,
@@ -41,6 +43,7 @@ import {
 	isImagePath,
 	planImport,
 	recordImports,
+	refreshImports,
 	rememberChoices,
 	remapBeatSheet,
 	remapForeshadowing,
@@ -75,6 +78,7 @@ import {
 	type ImportProjectContents,
 	type ImportProjectShape,
 	type ImportProvenanceEntry,
+	type ImportProvenanceRefresh,
 	type ImportRecord,
 	type ImportRewriteContext,
 	type ImportScene,
@@ -401,15 +405,32 @@ export class ProjectImportService {
 
 	/**
 	 * What a source offers a target and how each part already stands there,
-	 * for the dialog to tick from. Reads only. Refuses the pairs no run could
-	 * take: a project and itself, nested roots, a project this build may not
-	 * write or may not read in full.
+	 * for the dialog to tick from. Writes nothing but a record found out of
+	 * date, where the two sides agree though it remembers otherwise. Refuses
+	 * the pairs no run could take: a project and itself, nested roots, a
+	 * project this build may not write or may not read in full.
 	 */
 	async inspectSource(sourceLocator: ProjectLocator, targetLocator: ProjectLocator): Promise<ImportInspection> {
 		const source = await this.projects.loadProject(sourceLocator);
 		const target = await this.projects.loadProject(targetLocator);
 		this.refuse(source, target);
-		return (await this.inspectLoaded(source, target)).inspection;
+		const { inspection } = await this.inspectLoaded(source, target);
+		await this.refreshRecords(source, target, inspection.refresh);
+		return inspection;
+	}
+
+	/** Entries an inspection found out of date, written back where they are held, so the next reading agrees without a run. */
+	private async refreshRecords(
+		source: ProjectRef,
+		target: ProjectRef,
+		refresh: readonly ImportProvenanceRefresh[],
+	): Promise<void> {
+		const own = refresh.filter((found) => found.record === "own").map((found) => found.entry);
+		const theirs = refresh.filter((found) => found.record === "source").map((found) => found.entry);
+		if (own.length > 0) await this.projects.imports.updateDocument(target, (held) => recordImports(held, own));
+		if (theirs.length > 0) {
+			await this.projects.imports.updateDocument(source, (held) => refreshImports(held, theirs, importCopyKey));
+		}
 	}
 
 	/** The plan a selection comes to against an inspection, as the dialog's summary shows it; pure over the inspection. */
@@ -518,11 +539,13 @@ export class ProjectImportService {
 		const aliases = kindAliases(source.worldbuildingKinds, target.worldbuildingKinds);
 		const contents = withKindAliases(gatheredSource.contents, aliases);
 		const provenance = await this.projects.imports.readDocument(target);
+		const sourceProvenance = await this.projects.imports.readDocument(source);
 		const inspection = inspectImport({
 			source: contents,
 			target: gatheredTarget.contents,
 			takenPaths: this.repository.listFilesBelow(target.rootPath).map((file) => file.path),
 			provenance,
+			sourceProvenance,
 		});
 		return {
 			inspection,
@@ -766,7 +789,10 @@ class ImportRun {
 	 * What landed, remembered in the target's import store with the choices
 	 * this run was made with. A copy is hashed now rather than as it was
 	 * written: its links name notes this run went on to create, and the
-	 * projection reads those by id only once they stand.
+	 * projection reads those by id only once they stand. The source's own
+	 * entries about the parts just copied from this project are brought up to
+	 * date as well, with the note written here as their source, so the source
+	 * reads them as unchanged rather than as changed on both sides.
 	 */
 	async recordProvenance(selection: ImportSelection): Promise<void> {
 		this.begin("provenance");
@@ -775,9 +801,12 @@ class ImportRun {
 		const sourceId = this.source.snapshot.id;
 		const resolveSource = importLinkResolver(this.source.contents);
 		const resolveTarget = resolverOf(this.working);
-		const entries: ImportProvenanceEntry[] = this.landed.map(({ entry, targetId, targetName, targetPath, copy }) => {
+		const entries: ImportProvenanceEntry[] = [];
+		const theirs: ImportProvenanceEntry[] = [];
+		for (const { entry, targetId, targetName, targetPath, copy } of this.landed) {
 			const sourceHash = importHash(entry.part.record, resolveSource);
-			return {
+			const copyHash = copy === null ? sourceHash : importHash(copy, resolveTarget);
+			entries.push({
 				kind: entry.part.kind,
 				targetId,
 				targetPath,
@@ -786,14 +815,30 @@ class ImportRun {
 				sourceId: entry.part.sourceId,
 				sourcePath: entry.part.sourcePath,
 				sourceHash,
-				copyHash: copy === null ? sourceHash : importHash(copy, resolveTarget),
+				copyHash,
 				importedAt: now,
-			};
-		});
+			});
+			const held = this.inspection.reverse.get(entry.part.key);
+			if (held === undefined) continue;
+			theirs.push({
+				...held,
+				sourceId: importKindHasOwnId(held.kind) && targetId !== null ? targetId : held.sourceId,
+				sourcePath: targetPath ?? held.sourcePath,
+				sourceHash: copyHash,
+				copyHash: sourceHash,
+				importedAt: now,
+			});
+		}
+		for (const found of this.inspection.refresh) (found.record === "own" ? entries : theirs).push(found.entry);
 		await this.projects.imports.updateDocument(this.working, (held) => {
 			const remembered = rememberChoices(held, sourceId, choices);
 			return recordImports(remembered, entries) ?? remembered;
 		});
+		if (theirs.length > 0) {
+			await this.projects.imports.updateDocument(this.source.snapshot, (held) =>
+				refreshImports(held, theirs, importCopyKey),
+			);
+		}
 	}
 
 	// ---- Phases -------------------------------------------------------------

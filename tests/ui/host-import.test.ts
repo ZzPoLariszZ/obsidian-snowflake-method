@@ -224,7 +224,25 @@ describe('openUpdateFromSeries', () => {
 		await fresh.plugin.openUpdateFromSeries('Root/Book 2/Project.md');
 		expect(notices[notices.length - 1]?.message).toBe('zh-CN:modal.import.noSiblings');
 		expect(dialogs).toHaveLength(0);
-		expect(fresh.projects.imports.readDocument).toHaveBeenCalledOnce();
+		// Its own record, then the sibling's: a book that imported from this one holds the pairing.
+		expect(fresh.projects.imports.readDocument).toHaveBeenCalledTimes(2);
+	});
+
+	it('offers the book that never imported the books holding copies of its notes, read from their own records', async () => {
+		const { plugin } = pluginWith(
+			[
+				ref('Book 1', { series: { name: 'Saga', book: 1 } }),
+				ref('Book 2', { series: { name: 'Saga', book: 2 } }),
+				ref('Book 3', { series: { name: 'Saga', book: 3 } }),
+				ref('Other', { series: { name: 'Other', book: 1 } }),
+			],
+			[],
+			{ 'Book 3': ['Book 1'], Other: ['Book 1'] },
+		);
+		await plugin.openUpdateFromSeries('Root/Book 1/Project.md');
+		const config = lastDialog().config as { mode: string; sources: { title: string }[] };
+		expect(config.mode).toBe('update');
+		expect(config.sources.map((source) => source.title)).toEqual(['Book 3']);
 	});
 
 	it('opens the update dialog on the books of the series imported from, lowest first, and no other', async () => {

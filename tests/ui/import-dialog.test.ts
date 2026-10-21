@@ -1030,7 +1030,8 @@ describe('ImportProjectModal in update mode', () => {
 		expect(dialog.contentEl.querySelector('.snowflake-method-import-status')?.textContent).toBe(
 			'modal.import.update.nothing{"book":"Book 1"}',
 		);
-		expect(summaryText(dialog)).toBe('modal.import.update.nothing{"book":"Book 1"}');
+		// The foot does not say it again.
+		expect(summaryText(dialog)).toBe('modal.import.summary.nothing');
 		expect(await dialog.submit()).toBe(false);
 		expect(notices).toHaveBeenLastCalledWith('modal.import.summary.nothing');
 	});

@@ -1171,6 +1171,13 @@ export interface ImportGonePart {
 	readonly targetPath: string | null;
 }
 
+/** An entry a record should hold in place of the one it does, after the two sides were found to agree. */
+export interface ImportProvenanceRefresh {
+	/** Which record holds it: this project's own, or the source's, in which the entry names this project. */
+	readonly record: 'own' | 'source';
+	readonly entry: ImportProvenanceEntry;
+}
+
 export interface ImportInspection {
 	readonly source: ImportProjectContents;
 	readonly target: ImportProjectContents;
@@ -1182,6 +1189,10 @@ export interface ImportInspection {
 	readonly gone: readonly ImportGonePart[];
 	/** This source's provenance entries by part key. */
 	readonly provenance: ReadonlyMap<string, ImportProvenanceEntry>;
+	/** The source's own entries that name this project as where their parts came from, by the source part's key. */
+	readonly reverse: ReadonlyMap<string, ImportProvenanceEntry>;
+	/** Entries the inspection found out of date: the two sides agree though a record remembers otherwise. */
+	readonly refresh: readonly ImportProvenanceRefresh[];
 	readonly lastChoices: ImportChoices | null;
 }
 
@@ -1189,24 +1200,120 @@ export interface ImportInspectionInput {
 	readonly source: ImportProjectContents;
 	readonly target: ImportProjectContents;
 	readonly takenPaths: Iterable<string>;
+	/** The target's own record. */
 	readonly provenance: ImportProvenanceDocument;
+	/** The source's own record, whose entries from the target let the target take back what the source changed in its copies. */
+	readonly sourceProvenance?: ImportProvenanceDocument;
 }
 
 /**
  * How a design part stands against its provenance: new without an entry or
  * once its copy is gone, unchanged while the source still projects as it did
  * at the copy, an update when the source moved and the copy did not, and a
- * conflict when both did.
+ * conflict when both did. Two sides that project the same now are unchanged
+ * whatever the entry remembers: they came to agree by hand, or by a copy the
+ * record did not see, and there is nothing left to bring over. The source is
+ * then read with the copy's ids (`sourceAsCopy`) where the caller has them,
+ * since a projection names linked members by id.
  */
 export function classifyImportStanding(
 	entry: ImportProvenanceEntry | null,
 	copyStands: boolean,
-	hashes: { readonly source: () => string; readonly copy: () => string },
+	hashes: {
+		readonly source: () => string;
+		readonly copy: () => string;
+		readonly sourceAsCopy?: () => string;
+	},
 ): 'new' | 'unchanged' | 'update' | 'conflict' {
 	if (entry === null || !copyStands) return 'new';
 	if (hashes.source() === entry.sourceHash) return 'unchanged';
-	return hashes.copy() === entry.copyHash ? 'update' : 'conflict';
+	const copy = hashes.copy();
+	if ((hashes.sourceAsCopy ?? hashes.source)() === copy) return 'unchanged';
+	return copy === entry.copyHash ? 'update' : 'conflict';
 }
+
+/** The parts of one project, by the handles a record names them with. */
+interface ImportPartIndex {
+	readonly byKey: ReadonlyMap<string, ImportPart>;
+	readonly byId: ReadonlyMap<string, ImportPart>;
+	readonly byPath: ReadonlyMap<string, ImportPart>;
+	readonly byName: ReadonlyMap<string, ImportPart>;
+}
+
+function indexImportParts(parts: readonly ImportPart[]): ImportPartIndex {
+	const byKey = new Map<string, ImportPart>();
+	const byId = new Map<string, ImportPart>();
+	const byPath = new Map<string, ImportPart>();
+	const byName = new Map<string, ImportPart>();
+	for (const part of parts) {
+		byKey.set(part.key, part);
+		if (importKindHasOwnId(part.kind)) byId.set(part.sourceId, part);
+		if (part.sourcePath !== null) byPath.set(importPathKey(part.sourcePath), part);
+		switch (part.kind) {
+			case 'character':
+			case 'scene':
+			case 'worldbuilding':
+			case 'custom-field-template':
+				byName.set(`${part.kind}:${part.group ?? ''}:${foldName(part.name)}`, part);
+				break;
+			case 'beat-sheet-template':
+				byName.set(`${part.kind}::${foldName(part.name)}`, part);
+				break;
+			default:
+				break;
+		}
+	}
+	return { byKey, byId, byPath, byName };
+}
+
+/** The copy an entry made, found by its id, its path, or for a beat sheet template its name, which is all one has. */
+function copyIn(index: ImportPartIndex, entry: ImportProvenanceEntry): ImportPart | null {
+	const found = importKindHasOwnId(entry.kind)
+		? entry.targetId === null
+			? undefined
+			: index.byId.get(entry.targetId)
+		: entry.kind === 'beat-sheet-template'
+			? index.byName.get(`${entry.kind}::${foldName(entry.targetName)}`)
+			: entry.targetPath === null
+				? undefined
+				: index.byPath.get(importPathKey(entry.targetPath));
+	return found !== undefined && found.kind === entry.kind ? found : null;
+}
+
+/** The part an entry was copied from, as the record names it: by its id, else by its key, else by its path. */
+function originalIn(index: ImportPartIndex, entry: ImportProvenanceEntry): ImportPart | null {
+	const found = importKindHasOwnId(entry.kind)
+		? index.byId.get(entry.sourceId)
+		: (index.byKey.get(importPartKey(entry.kind, entry.sourceId)) ??
+			(entry.sourcePath === null ? undefined : index.byPath.get(importPathKey(entry.sourcePath))));
+	return found !== undefined && found.kind === entry.kind ? found : null;
+}
+
+/** An entry read from its other end: the copy it made stands as the source part, and the part it was copied from as the copy. */
+const reversedEntry = (entry: ImportProvenanceEntry): ImportProvenanceEntry => ({
+	...entry,
+	sourceHash: entry.copyHash,
+	copyHash: entry.sourceHash,
+});
+
+/** The identity of the copy an entry describes, on the side that holds it, under the source it names. */
+export function importCopyKey(entry: ImportProvenanceEntry): string {
+	const copy =
+		importKindHasOwnId(entry.kind) && entry.targetId !== null
+			? `id:${entry.targetId}`
+			: entry.kind === 'beat-sheet-template'
+				? `name:${foldName(entry.targetName)}`
+				: `path:${importPathKey(entry.targetPath ?? '')}`;
+	return `${entry.sourceProjectId}\u0000${entry.kind}\u0000${copy}`;
+}
+
+const once = <T>(compute: () => T): (() => T) => {
+	let held: { value: T } | null = null;
+	return () => {
+		if (held === null) held = { value: compute() };
+		return held.value;
+	};
+};
 
 export function inspectImport(input: ImportInspectionInput): ImportInspection {
 	const { source, target } = input;
@@ -1216,60 +1323,52 @@ export function inspectImport(input: ImportInspectionInput): ImportInspection {
 	const provenance = provenanceFrom(input.provenance, source.project.id);
 	const resolveSource = importLinkResolver(source);
 	const resolveTarget = importLinkResolver(target);
+	const sourceIndex = indexImportParts(parts);
+	const targetIndex = indexImportParts(targetParts);
 
-	const targetByKey = new Map<string, ImportPart>();
-	const targetById = new Map<string, ImportPart>();
-	const targetByPath = new Map<string, ImportPart>();
-	const targetByName = new Map<string, ImportPart>();
-	for (const part of targetParts) {
-		targetByKey.set(part.key, part);
-		if (importKindHasOwnId(part.kind)) targetById.set(part.sourceId, part);
-		if (part.sourcePath !== null) targetByPath.set(importPathKey(part.sourcePath), part);
-		switch (part.kind) {
-			case 'character':
-			case 'scene':
-			case 'worldbuilding':
-			case 'custom-field-template':
-				targetByName.set(`${part.kind}:${part.group ?? ''}:${foldName(part.name)}`, part);
-				break;
-			case 'beat-sheet-template':
-				targetByName.set(`${part.kind}::${foldName(part.name)}`, part);
-				break;
-			default:
-				break;
-		}
+	// The source's own record, read from this end: its entries that say one of
+	// its parts was copied from this project, by that part's key. Through them
+	// this project takes back what the source changed in its copies, so a book
+	// that never imported can still update from the ones that imported from it.
+	const reverse = new Map<string, ImportProvenanceEntry>();
+	const sourceRecord = input.sourceProvenance?.entries ?? [];
+	for (const entry of sourceRecord) {
+		if (entry.sourceProjectId !== target.project.id) continue;
+		const copy = copyIn(sourceIndex, entry);
+		if (copy !== null) reverse.set(copy.key, entry);
 	}
-	/** The copy an entry made, found by its id, its path, or for a beat sheet template its name, which is all one has. */
-	const copyOf = (entry: ImportProvenanceEntry): ImportPart | null => {
-		const found = importKindHasOwnId(entry.kind)
-			? entry.targetId === null
-				? undefined
-				: targetById.get(entry.targetId)
-			: entry.kind === 'beat-sheet-template'
-				? targetByName.get(`${entry.kind}::${foldName(entry.targetName)}`)
-				: entry.targetPath === null
-					? undefined
-					: targetByPath.get(importPathKey(entry.targetPath));
-		return found !== undefined && found.kind === entry.kind ? found : null;
+	// A source member paired with a note here by either record, so the source's
+	// design can be projected with this project's ids and compared with the copy's.
+	const pairIds = new Map<string, string>();
+	for (const entry of provenance.values()) {
+		if (isImportMemberKind(entry.kind) && entry.targetId !== null) pairIds.set(entry.sourceId, entry.targetId);
+	}
+	for (const entry of reverse.values()) {
+		if (isImportMemberKind(entry.kind) && entry.targetId !== null) pairIds.set(entry.targetId, entry.sourceId);
+	}
+	const resolveSourceAsTarget: ImportLinkResolver = (link) => {
+		const id = resolveSource(link);
+		return id === null ? null : (pairIds.get(id) ?? id);
 	};
+
 	const namesakeOf = (part: ImportPart): ImportPart | null => {
 		switch (part.record.kind) {
 			case 'character':
 			case 'scene':
 			case 'worldbuilding':
 			case 'custom-field-template':
-				return targetByName.get(`${part.kind}:${part.group ?? ''}:${foldName(part.name)}`) ?? null;
+				return targetIndex.byName.get(`${part.kind}:${part.group ?? ''}:${foldName(part.name)}`) ?? null;
 			case 'beat-sheet-template':
-				return targetByName.get(`${part.kind}::${foldName(part.name)}`) ?? null;
+				return targetIndex.byName.get(`${part.kind}::${foldName(part.name)}`) ?? null;
 			case 'vocabulary': {
 				const node = part.record.node;
 				const translated = translateTaxonomy(translation, node.kind, node.id, node.taxonomyPath);
 				const standing = translation.targetNodes.get(nodeKey(node.kind, node.id, translated));
 				if (standing === undefined) return null;
-				return targetByKey.get(importPartKey('vocabulary', `${standing.kind}/${standing.id}/${standing.taxonomyPath}`)) ?? null;
+				return targetIndex.byKey.get(importPartKey('vocabulary', `${standing.kind}/${standing.id}/${standing.taxonomyPath}`)) ?? null;
 			}
 			case 'step':
-				return targetByKey.get(part.key) ?? null;
+				return targetIndex.byKey.get(part.key) ?? null;
 			default:
 				return null;
 		}
@@ -1296,16 +1395,32 @@ export function inspectImport(input: ImportInspectionInput): ImportInspection {
 	});
 
 	const standing = new Map<string, ImportStanding>();
+	const refresh: ImportProvenanceRefresh[] = [];
 	for (const part of parts) {
-		const entry = provenance.get(part.key) ?? null;
-		const copy = entry === null ? null : copyOf(entry);
+		const own = provenance.get(part.key) ?? null;
+		const theirs = own === null ? (reverse.get(part.key) ?? null) : null;
+		// The note here the part is paired with: the copy an own entry made, or the original the source's entry was copied from.
+		const copy = own !== null ? copyIn(targetIndex, own) : theirs !== null ? originalIn(targetIndex, theirs) : null;
+		const recorded = own ?? (theirs === null ? null : reversedEntry(theirs));
 		if (IMPORT_DESIGN_KINDS.has(part.kind)) {
-			const classified = classifyImportStanding(entry, copy !== null, {
-				source: () => importHash(part.record, resolveSource),
-				copy: () => (copy === null ? '' : importHash(copy.record, resolveTarget)),
+			const sourceNow = once(() => importHash(part.record, resolveSource));
+			const copyNow = once(() => (copy === null ? '' : importHash(copy.record, resolveTarget)));
+			const classified = classifyImportStanding(recorded, copy !== null, {
+				source: sourceNow,
+				copy: copyNow,
+				sourceAsCopy: () => importHash(part.record, resolveSourceAsTarget),
 			});
 			if (classified !== 'new' && copy !== null) {
 				standing.set(part.key, standingOf(classified, copy));
+				// Found to agree though the record remembers otherwise: the record is
+				// brought up to date, on whichever side holds it.
+				if (classified === 'unchanged' && recorded !== null && sourceNow() !== recorded.sourceHash) {
+					if (own !== null) {
+						refresh.push({ record: 'own', entry: { ...own, sourceHash: sourceNow(), copyHash: copyNow() } });
+					} else if (theirs !== null) {
+						refresh.push({ record: 'source', entry: { ...theirs, sourceHash: copyNow(), copyHash: sourceNow() } });
+					}
+				}
 				continue;
 			}
 		} else if (copy !== null) {
@@ -1322,11 +1437,30 @@ export function inspectImport(input: ImportInspectionInput): ImportInspection {
 
 	const partsByKey = new Set(parts.map((part) => part.key));
 	const gone: ImportGonePart[] = [];
+	const goneKeys = new Set<string>();
+	const addGone = (found: ImportGonePart): void => {
+		const key = `${found.kind}:${found.targetId ?? found.targetPath ?? found.name}`;
+		if (goneKeys.has(key)) return;
+		goneKeys.add(key);
+		gone.push(found);
+	};
 	for (const [key, entry] of provenance) {
 		if (partsByKey.has(key)) continue;
-		const copy = copyOf(entry);
+		const copy = copyIn(targetIndex, entry);
 		if (copy === null) continue;
-		gone.push({ kind: entry.kind, name: copy.name, targetId: entry.targetId, targetPath: entry.targetPath });
+		addGone({ kind: entry.kind, name: copy.name, targetId: entry.targetId, targetPath: entry.targetPath });
+	}
+	// The source's copies of this project's parts that it no longer holds: this project keeps its notes.
+	for (const entry of sourceRecord) {
+		if (entry.sourceProjectId !== target.project.id || copyIn(sourceIndex, entry) !== null) continue;
+		const original = originalIn(targetIndex, entry);
+		if (original === null) continue;
+		addGone({
+			kind: entry.kind,
+			name: original.name,
+			targetId: importKindHasOwnId(original.kind) ? original.sourceId : null,
+			targetPath: original.sourcePath,
+		});
 	}
 
 	const takenPaths = new Set<string>();
@@ -1341,6 +1475,8 @@ export function inspectImport(input: ImportInspectionInput): ImportInspection {
 		standing,
 		gone,
 		provenance,
+		reverse,
+		refresh,
 		lastChoices: input.provenance.lastChoices[source.project.id] ?? null,
 	};
 }

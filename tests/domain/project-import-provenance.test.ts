@@ -9,6 +9,7 @@ import {
 	readImportProvenanceDocument,
 	readImportProvenanceEntry,
 	recordImports,
+	refreshImports,
 	rememberChoices,
 	serializeImportProvenanceDocument,
 	type ImportProvenanceEntry,
@@ -103,6 +104,27 @@ describe('recording imports', () => {
 		const held = recordImports(emptyImportProvenanceDocument(), [entry({ copyHash: 'a' }), entry({ copyHash: 'b' })]);
 		expect(held?.entries).toHaveLength(1);
 		expect(held?.entries[0]?.copyHash).toBe('b');
+	});
+
+	it('refreshes the entry about a copy under its source, whatever part it named before, letting a second word about it go', () => {
+		const held =
+			recordImports(emptyImportProvenanceDocument(), [
+				entry({ sourceId: 'old', targetId: 'copy-1', copyHash: 'a' }),
+				entry({ sourceId: 'other', targetId: 'copy-1', copyHash: 'b' }),
+				entry({ sourceId: 'kept', targetId: 'copy-2' }),
+			]) ?? emptyImportProvenanceDocument();
+		const key = (found: ImportProvenanceEntry): string => `${found.sourceProjectId}:${found.kind}:${found.targetId ?? ''}`;
+		const refreshed = refreshImports(
+			held,
+			[entry({ sourceId: 'new', targetId: 'copy-1', copyHash: 'c' }), entry({ sourceId: 'fresh', targetId: 'copy-3' })],
+			key,
+		);
+		expect(refreshed?.entries.map((found) => [found.sourceId, found.targetId, found.copyHash])).toEqual([
+			['new', 'copy-1', 'c'],
+			['kept', 'copy-2', 'fp1-copy'],
+			['fresh', 'copy-3', 'fp1-copy'],
+		]);
+		expect(refreshImports(held, [], key)).toBeNull();
 	});
 
 	it('answers null for nothing to record and for nothing to forget', () => {

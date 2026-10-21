@@ -683,6 +683,53 @@ describe("ProjectImportService", () => {
 		expect(loaded.characters.map((character) => character.name)).toEqual(["Bob", "Alicia", "Carol"]);
 	});
 
+	it("lets the book copied from take back what its copy changed, and keeps both records agreeing", async () => {
+		const seeded = await seed(source);
+		expect((await run(await fresh(source), target)).failed).toEqual([]);
+		// Book 2's copy of Alice moves. Book 1 never imported, yet reads Book 2's record from its end: its own Alice is due an update.
+		const copy = must((await fresh(target)).characters.find((character) => character.name === "Alice"));
+		await service.updateCharacter(target, copy.characterId, { expectedRevision: copy.revision, motivation: "To find the map." });
+		const copyKey = `character:${copy.characterId}`;
+		const back = await service.importer.inspectSource(await fresh(target), await fresh(source));
+		expect(back.standing.get(copyKey)).toEqual({ kind: "update", targetId: seeded.alice.id, targetPath: seeded.alice.path, targetName: "Alice" });
+		expect(back.reverse.has(copyKey)).toBe(true);
+		const bobCopy = must((await fresh(target)).characters.find((character) => character.name === "Bob"));
+		expect(back.standing.get(`character:${bobCopy.characterId}`)?.kind).toBe("unchanged");
+		expect(back.gone).toEqual([]);
+
+		// The update writes Book 1's Alice from the copy, in place, and refreshes Book 2's entry about that copy.
+		const taken = await service.importer.runImport(await fresh(target), await fresh(source), { parts: new Set([copyKey]), clashPolicy: "replace" });
+		expect(taken.failed).toEqual([]);
+		expect(taken.replaced.map((item) => [item.name, item.targetName])).toEqual([["Alice", "Alice"]]);
+		const original = must((await fresh(source)).characters.find((character) => character.name === "Alice"));
+		expect(original.characterId).toBe(seeded.alice.id);
+		expect(original.motivation).toBe("To find the map.");
+		const theirs = await service.imports.readDocument(await fresh(target));
+		const about = must(theirs.entries.find((held) => held.targetId === copy.characterId));
+		expect(about.sourceProjectId).toBe(source.id);
+		expect(about.sourceId).toBe(seeded.alice.id);
+		const ours = await service.imports.readDocument(await fresh(source));
+		expect(ours.entries.map((held) => [held.sourceProjectId, held.targetId])).toEqual([[target.id, seeded.alice.id]]);
+		// So Book 2 reads its copy as unchanged, not as changed on both sides, and Book 1 has nothing more to take back.
+		const forward = await service.importer.inspectSource(await fresh(source), await fresh(target));
+		expect(forward.standing.get(`character:${seeded.alice.id}`)?.kind).toBe("unchanged");
+		expect(forward.refresh).toEqual([]);
+		expect((await service.importer.inspectSource(await fresh(target), await fresh(source))).standing.get(copyKey)?.kind).toBe("unchanged");
+
+		// Both books write the same words by hand: nothing to bring over, the record learns it, and the next move is an update, not a conflict.
+		const one = must((await fresh(source)).characters.find((character) => character.name === "Alice"));
+		await service.updateCharacter(source, one.characterId, { expectedRevision: one.revision, goal: "The same goal." });
+		const two = must((await fresh(target)).characters.find((character) => character.name === "Alice"));
+		await service.updateCharacter(target, two.characterId, { expectedRevision: two.revision, goal: "The same goal." });
+		const agreed = await service.importer.inspectSource(await fresh(source), await fresh(target));
+		expect(agreed.standing.get(`character:${seeded.alice.id}`)?.kind).toBe("unchanged");
+		expect(agreed.refresh.map((found) => found.record)).toEqual(["own"]);
+		expect((await service.importer.inspectSource(await fresh(source), await fresh(target))).refresh).toEqual([]);
+		const three = must((await fresh(source)).characters.find((character) => character.name === "Alice"));
+		await service.updateCharacter(source, three.characterId, { expectedRevision: three.revision, goal: "A further goal." });
+		expect((await service.importer.inspectSource(await fresh(source), await fresh(target))).standing.get(`character:${seeded.alice.id}`)?.kind).toBe("update");
+	});
+
 	const seededPicture = (project: ProjectSnapshot): string | null =>
 		[...fakeVault.binaryContents.keys()].find((path) => path.startsWith(`${galleryFolderPath(project, "character")}/`)) ?? null;
 

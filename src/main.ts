@@ -1803,25 +1803,34 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The books of the project's series it has imported from, lowest book
-	 * first: the ones an update can come from. One read of the project's
-	 * import record, then the discovered projects as they stand.
+	 * The books of the project's series an update can come from, lowest book
+	 * first: the ones it has imported from, and the ones that have imported
+	 * from it, whose records pair their copies with its notes. One read of
+	 * each book's import record, then the discovered projects as they stand.
 	 */
 	private async updatableSiblings(project: ProjectRef): Promise<ProjectRef[]> {
 		const series = project.series;
 		if (series === null) return [];
-		const held = await this.projects.imports.readDocument(project);
-		const sourceIds = new Set(held.entries.map((entry) => entry.sourceProjectId));
-		if (sourceIds.size === 0) return [];
 		const name = foldName(series.name);
-		const siblings = (await this.discoverProjects()).filter(
+		const books = (await this.discoverProjects()).filter(
 			(candidate) =>
 				candidate.id !== project.id &&
 				!candidate.readOnly &&
 				candidate.series !== null &&
-				foldName(candidate.series.name) === name &&
-				sourceIds.has(candidate.id),
+				foldName(candidate.series.name) === name,
 		);
+		if (books.length === 0) return [];
+		const held = await this.projects.imports.readDocument(project);
+		const sourceIds = new Set(held.entries.map((entry) => entry.sourceProjectId));
+		const siblings: ProjectRef[] = [];
+		for (const book of books) {
+			const shared =
+				sourceIds.has(book.id) ||
+				(await this.projects.imports.readDocument(book)).entries.some(
+					(entry) => entry.sourceProjectId === project.id,
+				);
+			if (shared) siblings.push(book);
+		}
 		siblings.sort(
 			(a, b) =>
 				(a.series?.book ?? Number.POSITIVE_INFINITY) -

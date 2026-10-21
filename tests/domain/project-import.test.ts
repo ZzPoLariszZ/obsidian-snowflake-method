@@ -514,13 +514,14 @@ const hooks = (): ImportPlanHooks => {
 const inspect = (
 	sourceContents: ImportProjectContents,
 	targetContents: ImportProjectContents,
-	options: { takenPaths?: string[]; provenance?: ImportProvenanceDocument } = {},
+	options: { takenPaths?: string[]; provenance?: ImportProvenanceDocument; sourceProvenance?: ImportProvenanceDocument } = {},
 ): ImportInspection =>
 	inspectImport({
 		source: sourceContents,
 		target: targetContents,
 		takenPaths: options.takenPaths ?? [],
 		provenance: options.provenance ?? emptyImportProvenanceDocument(),
+		...(options.sourceProvenance === undefined ? {} : { sourceProvenance: options.sourceProvenance }),
 	});
 const defaults = (inspection: ImportInspection): Set<string> =>
 	new Set(inspection.parts.filter((part) => part.defaultSelected).map((part) => part.key));
@@ -755,6 +756,10 @@ describe('projection', () => {
 		expect(classifyImportStanding(entry, true, hashes('then', 'edited'))).toBe('unchanged');
 		expect(classifyImportStanding(entry, true, hashes('now', 'written'))).toBe('update');
 		expect(classifyImportStanding(entry, true, hashes('now', 'edited'))).toBe('conflict');
+		// Both sides project the same now: unchanged whatever the entry remembers, the source read with the copy's ids where given.
+		expect(classifyImportStanding(entry, true, hashes('agreed', 'agreed'))).toBe('unchanged');
+		expect(classifyImportStanding(entry, true, { ...hashes('now', 'agreed'), sourceAsCopy: () => 'agreed' })).toBe('unchanged');
+		expect(classifyImportStanding(entry, true, { ...hashes('now', 'agreed'), sourceAsCopy: () => 'other' })).toBe('conflict');
 	});
 });
 
@@ -844,6 +849,74 @@ describe('inspectImport', () => {
 		});
 		expect(inspect(book1(), contents(EN), { provenance: ghost }).standing.get('character:character-bob-1')).toEqual({ kind: 'new' });
 		expect(inspect(book1(), contents(EN), { provenance: ghost }).gone).toEqual([]);
+	});
+
+	it('reads the source’s own record from this end, so the book copied from takes back what its copy changed', () => {
+		const theirs = provenance([bobEntry(bob2)]);
+		const still = inspect(book2(), book1(), { sourceProvenance: theirs });
+		expect(still.standing.get('character:character-bob-2')).toEqual({
+			kind: 'unchanged',
+			targetId: bob1.id,
+			targetPath: bob1.path,
+			targetName: 'Bob',
+		});
+		expect(still.reverse.get('character:character-bob-2')).toBe(theirs.entries[0]);
+		expect(still.refresh).toEqual([]);
+		// The copy moved: the original here is due an update. The original moved: nothing to take back. Both: a conflict.
+		expect(inspect(book2({ goal: 'Lead' }), book1(), { sourceProvenance: theirs }).standing.get('character:character-bob-2')?.kind).toBe('update');
+		expect(inspect(book2(), book1({ goal: 'Keep ahead' }), { sourceProvenance: theirs }).standing.get('character:character-bob-2')?.kind).toBe('unchanged');
+		expect(inspect(book2({ goal: 'Lead' }), book1({ goal: 'Keep ahead' }), { sourceProvenance: theirs }).standing.get('character:character-bob-2')?.kind).toBe('conflict');
+		// Both moved to the same words: nothing to bring over, and the source's entry is due a refresh with both sides as they stand.
+		const agreed = inspect(book2({ goal: 'Lead' }), book1({ goal: 'Lead' }), { sourceProvenance: theirs });
+		expect(agreed.standing.get('character:character-bob-2')?.kind).toBe('unchanged');
+		expect(agreed.refresh).toEqual([
+			{
+				record: 'source',
+				entry: {
+					...theirs.entries[0],
+					sourceHash: importHash({ kind: 'character', member: { ...bob1, goal: 'Lead' } }, importLinkResolver(book1({ goal: 'Lead' }))),
+					copyHash: importHash({ kind: 'character', member: { ...bob2, goal: 'Lead' } }, importLinkResolver(book2({ goal: 'Lead' }))),
+				},
+			},
+		]);
+		// This project's own entry about the pair speaks first, and the source agreeing with it is a refresh of this record.
+		const own = provenance([
+			entry({
+				sourceProjectId: EN.id,
+				sourceId: bob2.id,
+				sourcePath: bob2.path,
+				targetId: bob1.id,
+				targetPath: bob1.path,
+				targetName: 'Bob',
+				sourceHash: importHash({ kind: 'character', member: { ...bob2, goal: 'Lead' } }, importLinkResolver(book2({ goal: 'Lead' }))),
+				copyHash: importHash({ kind: 'character', member: bob1 }, importLinkResolver(book1())),
+			}),
+		]);
+		expect(inspect(book2({ goal: 'Lead' }), book1(), { provenance: own, sourceProvenance: theirs }).standing.get('character:character-bob-2')?.kind).toBe('unchanged');
+		const stale = provenance([
+			entry({
+				sourceProjectId: EN.id,
+				sourceId: bob2.id,
+				sourcePath: bob2.path,
+				targetId: bob1.id,
+				targetPath: bob1.path,
+				targetName: 'Bob',
+				sourceHash: importHash({ kind: 'character', member: bob2 }, importLinkResolver(book2())),
+				copyHash: importHash({ kind: 'character', member: bob1 }, importLinkResolver(book1())),
+			}),
+		]);
+		const ownAgreed = inspect(book2({ goal: 'Lead' }), book1({ goal: 'Lead' }), { provenance: stale, sourceProvenance: theirs });
+		expect(ownAgreed.standing.get('character:character-bob-2')?.kind).toBe('unchanged');
+		expect(ownAgreed.refresh.map((found) => [found.record, found.entry.sourceProjectId])).toEqual([['own', EN.id]]);
+		// A copy the source let go of is gone from it, this project keeping its note; an original gone from here starts the copy over.
+		const without = contents(EN, { characters: [alice2, carol2], tasks: [task2], vocabulary: seeded(EN) });
+		expect(inspect(without, book1(), { sourceProvenance: theirs }).gone).toEqual([
+			{ kind: 'character', name: 'Bob', targetId: bob1.id, targetPath: bob1.path },
+		]);
+		const orphaned = inspect(book2(), contents(EN1, { characters: [alice1] }), { sourceProvenance: theirs });
+		expect(orphaned.standing.get('character:character-bob-2')).toEqual({ kind: 'new' });
+		expect(orphaned.gone).toEqual([]);
+		expect(orphaned.reverse.has('character:character-bob-2')).toBe(true);
 	});
 
 	it('knows a node and a step text that already stand, in either language', () => {

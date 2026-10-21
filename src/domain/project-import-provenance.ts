@@ -170,6 +170,40 @@ export function recordImports(
 	return { ...held, entries: [...kept, ...deduped] };
 }
 
+/**
+ * Brings a record up to date with what was found on both sides of its
+ * entries: each entry given takes the place of the held entry describing the
+ * same copy under the same source, whatever part of that source it named
+ * before, and stands at the end where none did. A second held entry about
+ * the same copy is let go, since the fresh one has said it. Null where
+ * nothing is given.
+ */
+export function refreshImports(
+	held: ImportProvenanceDocument,
+	entries: readonly ImportProvenanceEntry[],
+	copyKey: (entry: ImportProvenanceEntry) => string,
+): ImportProvenanceDocument | null {
+	if (entries.length === 0) return null;
+	const fresh = new Map(entries.map((entry) => [copyKey(entry), entry] as const));
+	const said = new Set<string>();
+	const kept: ImportProvenanceEntry[] = [];
+	for (const entry of held.entries) {
+		const key = copyKey(entry);
+		const next = fresh.get(key);
+		if (next === undefined) {
+			kept.push(entry);
+			continue;
+		}
+		if (said.has(key)) continue;
+		said.add(key);
+		kept.push(next);
+	}
+	for (const [key, entry] of fresh) {
+		if (!said.has(key)) kept.push(entry);
+	}
+	return { ...held, entries: kept };
+}
+
 /** Lets go of every entry whose copy no longer stands here, as a reader finds them. */
 export function forgetImports(
 	held: ImportProvenanceDocument,
