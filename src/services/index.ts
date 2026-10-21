@@ -12,6 +12,7 @@ export * from "./freeform-store";
 export * from "./gallery-service";
 export * from "./history-classify";
 export * from "./history-files";
+export * from "./history-harvester";
 export * from "./import-store";
 export * from "./json-document-store";
 export * from "./json-record-store";
