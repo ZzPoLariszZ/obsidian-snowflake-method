@@ -418,6 +418,7 @@ import type {
 } from './ui/entities-panel';
 import type { ProsePanelBridge } from './ui/prose-panel';
 import type { HistoryAvailability, HistoryPanelBridge } from './ui/history-bridge';
+import { addOpenFileRecoveryItem } from './ui/history-menu';
 import { historyKindIcon } from './ui/kind-icon';
 import { historyKindLabel } from './ui/kind-word';
 import {
@@ -5173,6 +5174,12 @@ export default class SnowflakeMethodPlugin
 		if (leaf === null) return;
 		await leaf.setViewState({ type: STATISTICS_VIEW_TYPE, active: true });
 		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	/** The dashboard brought forward on the modification history, the statistics pane's fourth tab. */
+	async openModificationHistory(): Promise<void> {
+		const view = await this.revealDashboard();
+		await view?.showStatisticsTab('history');
 	}
 
 	async openStickyNotesView(): Promise<void> {
@@ -10075,6 +10082,15 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'open-history',
+			name: this.globalT('commands.openHistory'),
+			callback: () => {
+				void this.openModificationHistory().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'toggle-managed-boundary-protection',
 			name: this.globalT('commands.toggleManagedBoundaries'),
 			callback: () => {
@@ -10888,6 +10904,17 @@ export default class SnowflakeMethodPlugin
 					});
 				}),
 		);
+		// Obsidian's own File recovery dialog on this note, where its versions
+		// are read and restored: the history counts them, the dialog keeps them.
+		addOpenFileRecoveryItem(menu, {
+			t,
+			section,
+			state: fileRecoveryAvailability(this.app).state,
+			open: () => openFileRecovery(this.app, path),
+			notice: (message) => {
+				new Notice(message);
+			},
+		});
 	}
 
 	/**

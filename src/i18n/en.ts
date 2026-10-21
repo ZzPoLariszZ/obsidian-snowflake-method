@@ -62,6 +62,7 @@ export const en = {
 	'commands.pauseResumeWritingSession': 'Pause or resume the writing session',
 	'commands.stopWritingSession': 'Stop the writing session',
 	'commands.openStatistics': 'Open writing session sidebar',
+	'commands.openHistory': 'Open modification history',
 	'commands.toggleCustomHighlights': 'Toggle custom highlights',
 	'commands.toggleSessionScope': 'Switch statistics scope',
 	'commands.manuscriptFocus.off': 'Focus mode is off.',

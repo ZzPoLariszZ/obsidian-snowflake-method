@@ -1950,6 +1950,18 @@ export class SnowflakeDashboardView extends ItemView {
 		this.openCreateKind(model);
 	}
 
+	/**
+	 * Brings the statistics pane forward on one of its tabs, for a command
+	 * that finishes inside the pane: the modification history's own way in.
+	 */
+	async showStatisticsTab(tab: StatisticsTab): Promise<void> {
+		this.selectedPane = { kind: 'statistics' };
+		this.statisticsTab = tab;
+		this.stepChosen = true;
+		this.app.workspace.requestSaveLayout();
+		await this.refresh();
+	}
+
 	async activateFromWorkspace(): Promise<void> {
 		await this.refreshFromWorkspace();
 		this.activateProjectContext();

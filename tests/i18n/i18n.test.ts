@@ -48,6 +48,8 @@ describe('translation resources', () => {
 	it('uses the health-checker command name without exposing a current-step command', () => {
 		expect(en['commands.openHealthChecker']).toBe('Open health checker');
 		expect(zhCN['commands.openHealthChecker']).toBe('打开健康检查器');
+		expect(en['commands.openHistory']).toBe('Open modification history');
+		expect(zhCN['commands.openHistory']).toBe('打开修改历史');
 		expect(Object.keys(en)).not.toContain('commands.openCurrentStep');
 		expect(Object.keys(zhCN)).not.toContain('commands.openCurrentStep');
 	});

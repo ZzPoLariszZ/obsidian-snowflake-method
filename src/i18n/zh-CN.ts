@@ -64,6 +64,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'commands.pauseResumeWritingSession': '暂停或继续写作时段',
 	'commands.stopWritingSession': '停止写作时段',
 	'commands.openStatistics': '打开写作时段侧边栏',
+	'commands.openHistory': '打开修改历史',
 	'commands.toggleCustomHighlights': '切换自定义高亮',
 	'commands.toggleSessionScope': '切换数据统计范围',
 	'commands.manuscriptFocus.off': '专注模式已关闭。',
