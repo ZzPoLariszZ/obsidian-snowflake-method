@@ -1249,6 +1249,11 @@ export class ManageProjectsModal extends Modal {
 	// Collapsed until asked for: archived projects are dormant, and the section
 	// opens itself only when an archive action has just filled it.
 	private archivedExpanded = false;
+	// A series folds like the archive and stays as it was left while the
+	// dialog stands: a rebuild (a rename, a new root) would otherwise open
+	// every series again. The key names the list as well as the series, since
+	// a series can stand in the archive and the list at once.
+	private readonly collapsedSeries = new Set<string>();
 	// Changing the language, the project root, or any project rebuilds the whole
 	// modal, which would otherwise send both panes back to the top.
 	private readonly renderState = new RenderStateKeeper([
@@ -1378,29 +1383,7 @@ export class ManageProjectsModal extends Modal {
 				},
 			});
 		};
-		// The books of a series stand together under its name, and the
-		// projects in none get a heading of their own only once there is a
-		// series to tell them from: a list of lone projects stays a list.
-		const grouping = groupBySeries(this.projects);
-		for (const group of grouping.series) {
-			const section = this.renderSeriesSection(
-				projectList,
-				group.name,
-				group.books.length,
-			);
-			for (const project of group.books) renderActiveRow(section, project);
-		}
-		if (grouping.series.length === 0) {
-			for (const project of grouping.loose) renderActiveRow(projectList, project);
-		} else if (grouping.loose.length > 0) {
-			const section = this.renderSeriesSection(
-				projectList,
-				this.t('modal.projectManager.noSeries'),
-				grouping.loose.length,
-			);
-			section.addClass('is-loose');
-			for (const project of grouping.loose) renderActiveRow(section, project);
-		}
+		this.renderGroupedRows(projectList, 'active', this.projects, renderActiveRow);
 
 		if (this.archived.length > 0) {
 			const archivedSection = sidebar.createDiv({
@@ -1441,11 +1424,13 @@ export class ManageProjectsModal extends Modal {
 				);
 				archivedList.toggleClass('is-collapsed', !this.archivedExpanded);
 			});
-			for (const project of this.archived) {
+			// The archive groups by series as the list does: it is where an
+			// archived book shows which series it belongs to.
+			this.renderGroupedRows(archivedList, 'archived', this.archived, (container, project) => {
 				// No open: an archived project opens nowhere until it is
 				// restored, so the row stays a plain block rather than a
 				// control that looks pressable and refuses.
-				this.renderProjectRow(archivedList, project, {
+				this.renderProjectRow(container, project, {
 					modifier: ' is-archived',
 					warn: false,
 					open: null,
@@ -1453,7 +1438,7 @@ export class ManageProjectsModal extends Modal {
 						this.showArchivedProjectMenu(project, trigger);
 					},
 				});
-			}
+			});
 		}
 
 		const main = layout.createEl('main', {
@@ -1841,30 +1826,85 @@ export class ManageProjectsModal extends Modal {
 	 * folder, and the menu that stands at the end. A row that can be opened
 	 * makes the name a button; one that cannot leaves it a plain block.
 	 */
-	/** One series of the list: its name and count above, its books below. */
+	/**
+	 * The rows of either list. The books of a series stand together under
+	 * its name, and the projects in none get a heading of their own only once
+	 * there is a series to tell them from: a list of lone projects stays a
+	 * list.
+	 */
+	private renderGroupedRows(
+		list: HTMLElement,
+		scope: 'active' | 'archived',
+		projects: readonly ManageProjectOption[],
+		renderRow: (container: HTMLElement, project: ManageProjectOption) => void,
+	): void {
+		const grouping = groupBySeries(projects);
+		if (grouping.series.length === 0) {
+			for (const project of grouping.loose) renderRow(list, project);
+			return;
+		}
+		for (const group of grouping.series) {
+			const books = this.renderSeriesSection(list, {
+				key: `${scope}:${group.name}`,
+				name: group.name,
+				count: group.books.length,
+				loose: false,
+			});
+			for (const project of group.books) renderRow(books, project);
+		}
+		if (grouping.loose.length > 0) {
+			const books = this.renderSeriesSection(list, {
+				key: `${scope}:`,
+				name: this.t('modal.projectManager.noSeries'),
+				count: grouping.loose.length,
+				loose: true,
+			});
+			for (const project of grouping.loose) renderRow(books, project);
+		}
+	}
+
+	/**
+	 * One series of either list: a fold like the archive's, carrying the name
+	 * and the count, and the books below it. Hands back where the books go.
+	 */
 	private renderSeriesSection(
 		list: HTMLElement,
-		name: string,
-		count: number,
+		group: { key: string; name: string; count: number; loose: boolean },
 	): HTMLElement {
+		const expanded = !this.collapsedSeries.has(group.key);
 		const section = list.createDiv({
-			cls: 'snowflake-method-project-manager-series',
-			attr: { role: 'group', 'aria-label': name },
+			cls: `snowflake-method-project-manager-series${group.loose ? ' is-loose' : ''}`,
+			attr: { role: 'group', 'aria-label': group.name },
 		});
-		const heading = section.createDiv({
-			cls: 'snowflake-method-project-manager-series-heading',
+		const toggle = section.createEl('button', {
+			cls: 'snowflake-method-project-manager-series-toggle',
+			attr: { type: 'button', 'aria-expanded': expanded ? 'true' : 'false' },
 		});
-		heading.createSpan({
+		toggle.createSpan({
+			cls: 'snowflake-method-disclosure-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
+		toggle.createSpan({
 			cls: 'snowflake-method-project-manager-series-name',
-			text: name,
+			text: group.name,
 		});
 		paintCount(
-			heading
+			toggle
 				.createSpan({ cls: 'snowflake-method-project-manager-series-count' })
 				.createSpan({ cls: 'snowflake-method-step-indicator' }),
-			count,
+			group.count,
 		);
-		return section;
+		const books = section.createDiv({
+			cls: `snowflake-method-project-manager-series-list${expanded ? '' : ' is-collapsed'}`,
+		});
+		toggle.addEventListener('click', () => {
+			const open = this.collapsedSeries.has(group.key);
+			if (open) this.collapsedSeries.delete(group.key);
+			else this.collapsedSeries.add(group.key);
+			toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+			books.toggleClass('is-collapsed', !open);
+		});
+		return books;
 	}
 
 	private renderProjectRow(

@@ -116,13 +116,14 @@ function openManager(
 	projects: ManageProjectOption[],
 	onSetSeries = vi.fn(async (): Promise<ManageProjectLists> => ({ projects, archived: [] })),
 	onImportProject = vi.fn(),
+	archived: ManageProjectOption[] = [],
 ): {
 	manager: ManageProjectsModal;
 	content: CorkboardElement;
 	onSetSeries: typeof onSetSeries;
 	onImportProject: typeof onImportProject;
 } {
-	const lists = async (): Promise<ManageProjectLists> => ({ projects, archived: [] });
+	const lists = async (): Promise<ManageProjectLists> => ({ projects, archived });
 	const manager = new ManageProjectsModal(
 		app,
 		t,
@@ -136,7 +137,7 @@ function openManager(
 		async () => projects,
 		async () => undefined,
 		async () => null,
-		[],
+		archived,
 		lists,
 		lists,
 		async () => null,
@@ -154,6 +155,10 @@ const rowTitles = (section: CorkboardElement): string[] =>
 	section
 		.querySelectorAll('.snowflake-method-project-manager-project-title')
 		.map((title) => title.children.map((part) => part.textContent).join(' '));
+const seriesToggles = (within: CorkboardElement): CorkboardElement[] =>
+	within.querySelectorAll('.snowflake-method-project-manager-series-toggle');
+const seriesLists = (within: CorkboardElement): CorkboardElement[] =>
+	within.querySelectorAll('.snowflake-method-project-manager-series-list');
 
 beforeEach(() => {
 	vi.stubGlobal('window', { setTimeout: (): number => 0 });
@@ -186,6 +191,68 @@ describe('ManageProjectsModal with series', () => {
 			'modal.projectManager.noSeries',
 		);
 		expect(rowTitles(loose)).toEqual(['Lone']);
+	});
+
+	it('folds a series like the archive, and keeps the fold through a rebuild', () => {
+		const { manager, content } = openManager([
+			option('First', { name: 'Saga', book: 1 }),
+			option('Lone', null),
+		]);
+		const toggles = seriesToggles(content);
+		expect(toggles.map((toggle) => toggle.getAttribute('aria-expanded'))).toEqual(['true', 'true']);
+		expect(toggles[0]?.querySelector('.snowflake-method-disclosure-icon')).not.toBeNull();
+		expect(toggles[0]?.querySelector('.snowflake-method-step-indicator')?.textContent).toBe('1');
+		toggles[0]?.dispatch('click');
+		expect(toggles[0]?.getAttribute('aria-expanded')).toBe('false');
+		expect(seriesLists(content).map((list) => list.classes.has('is-collapsed'))).toEqual([true, false]);
+		// Rebuilt, as a rename or a new root rebuilds it, the series stays folded.
+		(manager as unknown as { renderManager(): void }).renderManager();
+		expect(seriesToggles(content).map((toggle) => toggle.getAttribute('aria-expanded'))).toEqual([
+			'false',
+			'true',
+		]);
+		expect(seriesLists(content).map((list) => list.classes.has('is-collapsed'))).toEqual([true, false]);
+		seriesToggles(content)[0]?.dispatch('click');
+		expect(seriesToggles(content)[0]?.getAttribute('aria-expanded')).toBe('true');
+		expect(seriesLists(content)[0]?.classes.has('is-collapsed')).toBe(false);
+	});
+
+	it('groups the archive by series too, so an archived book shows the series it belongs to', () => {
+		const { content } = openManager(
+			[option('First', { name: 'Saga', book: 1 })],
+			undefined,
+			undefined,
+			[option('Old', null), option('Sequel', { name: 'Saga', book: 2 })],
+		);
+		const archive = content.querySelector('.snowflake-method-project-manager-archived-list');
+		if (archive === null) throw new Error('no archive');
+		const sections = archive.querySelectorAll('.snowflake-method-project-manager-series');
+		expect(sections).toHaveLength(2);
+		const [saga, loose] = sections as [CorkboardElement, CorkboardElement];
+		expect(saga.querySelector('.snowflake-method-project-manager-series-name')?.textContent).toBe('Saga');
+		expect(rowTitles(saga)).toEqual(['Book 2 Sequel']);
+		expect(saga.querySelector('.snowflake-method-project-manager-project-row')?.classes.has('is-archived')).toBe(
+			true,
+		);
+		expect(loose.classes.has('is-loose')).toBe(true);
+		expect(rowTitles(loose)).toEqual(['Old']);
+		// Its fold is its own: closing Saga in the archive leaves Saga open in the list.
+		seriesToggles(archive)[0]?.dispatch('click');
+		expect(seriesLists(archive)[0]?.classes.has('is-collapsed')).toBe(true);
+		const list = content.querySelector('.snowflake-method-project-manager-list');
+		if (list === null) throw new Error('no list');
+		expect(seriesLists(list)[0]?.classes.has('is-collapsed')).toBe(false);
+	});
+
+	it('keeps the archive a plain list while none of it is in a series', () => {
+		const { content } = openManager([option('First', { name: 'Saga', book: 1 })], undefined, undefined, [
+			option('Old', null),
+			option('Older', null),
+		]);
+		const archive = content.querySelector('.snowflake-method-project-manager-archived-list');
+		if (archive === null) throw new Error('no archive');
+		expect(archive.querySelectorAll('.snowflake-method-project-manager-series')).toHaveLength(0);
+		expect(rowTitles(archive)).toEqual(['Old', 'Older']);
 	});
 
 	it('offers Import from project on a row, greyed when the project is read-only, and steps aside for the dialog', () => {

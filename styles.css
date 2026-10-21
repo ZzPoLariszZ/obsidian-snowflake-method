@@ -3676,13 +3676,17 @@ textarea.snowflake-method-corkboard-recovered-text {
 }
 
 /* The disclosure starts at the project titles' inset, and the count keeps
-	the more-button's column, so the archive stays aligned with the rows above. */
+	the more-button's column, so the archive stays aligned with the rows above.
+	A series heading is the same fold, in either list, and wears the same rule. */
 .snowflake-method-project-manager-modal
-	button.snowflake-method-project-manager-archived-toggle {
+	button.snowflake-method-project-manager-archived-toggle,
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-series-toggle {
 	display: flex;
 	align-items: center;
 	gap: var(--size-2-2);
 	width: 100%;
+	min-width: 0;
 	height: auto;
 	padding: var(--size-4-2) 0 var(--size-4-2) var(--size-4-3);
 	border: 0;
@@ -3701,12 +3705,16 @@ textarea.snowflake-method-corkboard-recovered-text {
 }
 
 .snowflake-method-project-manager-modal
-	button.snowflake-method-project-manager-archived-toggle:hover {
+	button.snowflake-method-project-manager-archived-toggle:hover,
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-series-toggle:hover {
 	background: var(--background-modifier-hover);
 }
 
 .snowflake-method-project-manager-modal
-	button.snowflake-method-project-manager-archived-toggle:focus-visible {
+	button.snowflake-method-project-manager-archived-toggle:focus-visible,
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-series-toggle:focus-visible {
 	outline: 2px solid var(--background-modifier-border-focus, var(--interactive-accent));
 	outline-offset: 2px;
 }
@@ -3884,9 +3892,10 @@ textarea.snowflake-method-corkboard-recovered-text {
 }
 
 /* The books of a series stand together under its name, and the projects in
-	none under a heading of their own once a series stands beside them. The
-	heading takes the rows' transparent edge, so the names line up, and its
-	count keeps the more-button's column, as the archive's does. */
+	none under a heading of their own once a series stands beside them, in the
+	archive as in the list. The heading is the archive's own fold (its rule
+	stands with the archive's above), and a gap wider than the rows' keeps
+	each series apart without a line. */
 .snowflake-method-project-manager-series {
 	display: flex;
 	flex: none;
@@ -3895,19 +3904,17 @@ textarea.snowflake-method-corkboard-recovered-text {
 }
 
 .snowflake-method-project-manager-series + .snowflake-method-project-manager-series {
-	margin-block-start: var(--size-4-2);
+	margin-block-start: var(--size-4-3);
 }
 
-.snowflake-method-project-manager-series-heading {
+.snowflake-method-project-manager-series-list {
 	display: flex;
-	align-items: center;
-	gap: var(--size-2-2);
-	min-width: 0;
-	padding: var(--size-2-1) 0 var(--size-2-1) var(--size-4-3);
-	border-inline-start: 3px solid transparent;
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	font-weight: var(--font-semibold);
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-project-manager-series-list.is-collapsed {
+	display: none;
 }
 
 .snowflake-method-project-manager-series-name {
