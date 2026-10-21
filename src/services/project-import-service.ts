@@ -1238,7 +1238,8 @@ class ImportRun {
 		const pending: Pending<Foreshadowing>[] = [];
 		for (const entry of this.entriesOf("foreshadowing")) {
 			if (entry.part.record.kind !== "foreshadowing" || entry.targetId === null) continue;
-			const rewrite = remapForeshadowing(entry.part.record.thread, entry.targetId, this.mapping);
+			const thread = entry.part.record.thread;
+			const rewrite = remapForeshadowing(thread, entry.targetId, this.mapping);
 			const dropped = [...rewrite.dropped];
 			const occurrences: ForeshadowingOccurrence[] = [];
 			try {
@@ -1246,7 +1247,9 @@ class ImportRun {
 					const body = await this.bodyOf(occurrence.path);
 					const anchor = body === null ? null : anchorOccurrence(body, occurrence);
 					if (anchor === null || anchor.state === "conflict") {
-						dropped.push({ field: "occurrence", target: occurrence.path });
+						// Named by its source chapter, as every drop is: the copy's path is nothing the report knows a name for.
+						const source = thread.occurrences.find((held) => held.id === occurrence.id);
+						dropped.push({ field: "occurrence", target: source?.path ?? occurrence.path });
 						continue;
 					}
 					occurrences.push({ ...occurrence, from: anchor.from, to: anchor.to });
