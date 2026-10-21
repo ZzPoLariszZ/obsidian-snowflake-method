@@ -1100,7 +1100,6 @@ describe('planImport', () => {
 		expect(entryOf(plan, KEYS.revisionOne)).toMatchObject({ action: 'create', targetId: 'revision-1' });
 		expect(entryOf(plan, KEYS.revisionTwo)).toMatchObject({ action: 'skip', reason: 'no-chapter' });
 		expect(mapping.paths.get(importPathKey(chapterOne.path))).toBe(`${EN.draftFolder}/第一章 2.md`);
-		expect(mapping.names.get(chapterOne.path)).toBe('第一章 2');
 		expect(plan.droppedLinks).toEqual([
 			{ ownerKey: KEYS.opening, link: { key: KEYS.ali, field: 'pov' }, reason: 'not-selected' },
 			{ ownerKey: KEYS.opening, link: { key: KEYS.ali, field: 'cast' }, reason: 'not-selected' },

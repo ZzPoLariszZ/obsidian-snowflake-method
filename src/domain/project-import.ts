@@ -1856,7 +1856,6 @@ export function planImport(
 		}
 		create(part, { targetName: title, targetId: null, targetPath: path, rank: null });
 		mapping.paths.set(importPathKey(chapter.path), path);
-		mapping.names.set(chapter.path, title);
 		takenTitles.chapter.push(title);
 		takenPaths.add(foldPath(path));
 	}

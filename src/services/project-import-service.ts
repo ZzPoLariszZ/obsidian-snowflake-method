@@ -1208,7 +1208,6 @@ class ImportRun {
 				continue;
 			}
 			this.mapping.paths.set(importPathKey(chapter.path), path);
-			this.mapping.names.set(chapter.path, draft.title);
 			try {
 				if (draft.title !== chapter.title) {
 					await this.repository.updateFirstHeading(path, draft.title, { userInput: false });
