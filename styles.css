@@ -3677,7 +3677,9 @@ textarea.snowflake-method-corkboard-recovered-text {
 
 /* The disclosure starts at the project titles' inset, and the count keeps
 	the more-button's column, so the archive stays aligned with the rows above.
-	A series heading is the same fold, in either list, and wears the same rule. */
+	A series heading is built as the same fold, in either list: at the top of
+	the list it wears this rule outright, and inside the archive it takes the
+	quieter face from the series rules below. */
 .snowflake-method-project-manager-modal
 	button.snowflake-method-project-manager-archived-toggle,
 .snowflake-method-project-manager-modal
@@ -3893,9 +3895,21 @@ textarea.snowflake-method-corkboard-recovered-text {
 
 /* The books of a series stand together under its name, and the projects in
 	none under a heading of their own once a series stands beside them, in the
-	archive as in the list. The heading is the archive's own fold (its rule
-	stands with the archive's above), and a gap wider than the rows' keeps
-	each series apart without a line. */
+	archive as in the list. The heading is built like the archive's fold (its
+	box stands with the archive's above). In the list it wears that rule
+	outright, a top-level fold beside the archive's. Inside the archive it is a
+	fold within a fold, and wears a group label's face instead, small and muted
+	on a shorter row, so a series there reads as part of the archive and never
+	as a second archive. A gap wider than the rows' keeps each series apart
+	without a line. */
+.snowflake-method-project-manager-modal
+	.snowflake-method-project-manager-archived-list
+	button.snowflake-method-project-manager-series-toggle {
+	padding-block: var(--size-4-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
 .snowflake-method-project-manager-series {
 	display: flex;
 	flex: none;
