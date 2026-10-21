@@ -65,6 +65,8 @@ export default defineConfig(
 				{
 					brands: [
 						'Chenggua',
+						'Core plugins',
+						'File recovery',
 						'Hero’s Journey',
 						'Jinjiang',
 						'Lucide',

@@ -36,6 +36,7 @@ import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type { WikilinkTarget } from './segment-editor-backend';
 import type { EntityGroupId } from './entity-form';
 import type { EntitiesPanelBridge } from './entities-panel';
+import type { HistoryPanelBridge } from './history-bridge';
 import type { ProsePanelBridge } from './prose-panel';
 import type { ForeshadowingPanelBridge } from './foreshadowing-panel';
 import type { StickyNoteBridge } from './sticky-note-bridge';
@@ -767,6 +768,8 @@ export interface DashboardHost {
 	proseStatistics(context: SessionPanelContext): ProsePanelBridge;
 	/** The bridge the statistics pane renders the tracking panel through. */
 	entityTracking(context: SessionPanelContext): EntitiesPanelBridge;
+	/** The bridge the statistics pane renders the modification history through. */
+	modificationHistory(context: SessionPanelContext): HistoryPanelBridge;
 	/** The bridge the task management pane renders the revision table through. */
 	revisionTable(context: SessionPanelContext): RevisionPanelBridge;
 	/** The bridge the task management pane renders the foreshadowing table through. */

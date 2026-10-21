@@ -1,12 +1,29 @@
-import { HISTORY_FILE_SUFFIXES } from "../domain";
+import {
+	EVENT_FILE_SUFFIX,
+	HISTORY_FILE_SUFFIXES,
+	SNAPSHOT_FILE_SUFFIX,
+	addMonths,
+	historyFolder,
+	historyYearFolder,
+	monthsBetween,
+	parseHistoryEventMonthFile,
+	parseNoteSnapshotMonthFile,
+	type HistoryEventMonthFile,
+	type HistoryEventRecord,
+	type HistorySnapshotSource,
+	type NoteSnapshotMonthFile,
+} from "../domain";
 import { isPathAtOrBelow } from "../project-root";
-import { PROJECT_PATH_LAYOUTS } from "./types";
+import type { VaultRepository } from "../repository";
+import { fileStamp, parseJsonObject, readStampedJson, type StampedMemo } from "./json-store";
+import { PROJECT_PATH_LAYOUTS, getProjectPathLayout, type ProjectRef } from "./types";
 
 /**
  * The modification history's files on disk: where a project's folder of
- * them stands under either language's layout, and which paths are the
- * plugin's own records there. The records themselves are read and written
- * by the history services; this is the part every vault event is asked.
+ * them stands under either language's layout, which paths are the
+ * plugin's own records there, and one reading of every file a span needs.
+ * The records themselves are written by the history services; this is the
+ * part every vault event is asked, and the part every reading begins with.
  */
 
 /** The folder tails the history folder's path ends in, one per project language. */
@@ -64,4 +81,76 @@ export function relativizeProjectPath(rootPath: string, path: string): string | 
 		if (TOP_LEVEL_FOLDERS.has(segments[i] ?? "")) return segments.slice(i).join("/");
 	}
 	return null;
+}
+
+// --- reading a span's files -------------------------------------------------
+
+/** What one reading of a project's history files found, and when it must be read again. */
+export interface HistoryFiles {
+	snapshots: HistorySnapshotSource[];
+	events: HistoryEventRecord[];
+	/** Every file read, each with its stat: a different string is a different on-disk state. */
+	stamps: string;
+}
+
+/** The parsed files kept between readings, one memo per record kind. */
+export interface HistoryFileMemos {
+	snapshots: StampedMemo<NoteSnapshotMonthFile>;
+	events: StampedMemo<HistoryEventMonthFile>;
+}
+
+export function createHistoryFileMemos(): HistoryFileMemos {
+	return { snapshots: new Map(), events: new Map() };
+}
+
+const parseSnapshotFile = (content: string | null): NoteSnapshotMonthFile | null =>
+	parseNoteSnapshotMonthFile(parseJsonObject(content));
+
+const parseEventFile = (content: string | null): HistoryEventMonthFile | null =>
+	parseHistoryEventMonthFile(parseJsonObject(content));
+
+/**
+ * Every device's history files a span reads: the snapshot files of the
+ * months around it, since a day's first version is read against the one
+ * before it, which may stand in the month before; and every event file
+ * there is, since a note's identity follows a chain of renames that may
+ * begin anywhere. Each file is parsed once per on-disk state. A file that
+ * will not parse is passed over here, and set aside by the writer that
+ * next touches it, so a reading never destroys what it cannot read.
+ */
+export async function gatherHistoryFiles(
+	repository: VaultRepository,
+	project: ProjectRef,
+	from: string,
+	through: string,
+	memos: HistoryFileMemos,
+): Promise<HistoryFiles> {
+	const directory = getProjectPathLayout(project.locale).directories.modificationHistory;
+	const snapshots: HistorySnapshotSource[] = [];
+	const events: HistoryEventRecord[] = [];
+	const stamps: string[] = [];
+	for (const { year, months } of monthsBetween(addMonths(from, -1), addMonths(through, 1))) {
+		const folder = historyYearFolder(project.rootPath, directory, year);
+		const prefixes = months.map((month) => `${year}_${month}_`);
+		for (const file of repository.listDirectFiles(folder)) {
+			if (!file.name.endsWith(SNAPSHOT_FILE_SUFFIX)) continue;
+			const prefix = prefixes.find((candidate) => file.name.startsWith(candidate));
+			if (prefix === undefined) continue;
+			stamps.push(`${file.path}@${fileStamp(file)}`);
+			const parsed = await readStampedJson(repository, memos.snapshots, file, parseSnapshotFile);
+			if (parsed === null) continue;
+			snapshots.push({
+				device: file.name.slice(prefix.length, -SNAPSHOT_FILE_SUFFIX.length),
+				file: parsed,
+			});
+		}
+	}
+	for (const file of repository.listFilesBelow(historyFolder(project.rootPath, directory))) {
+		if (!file.name.endsWith(EVENT_FILE_SUFFIX) || !isModificationHistoryPath(file.path)) continue;
+		stamps.push(`${file.path}@${fileStamp(file)}`);
+		const parsed = await readStampedJson(repository, memos.events, file, parseEventFile);
+		if (parsed === null) continue;
+		for (const event of parsed.events) events.push(event);
+	}
+	return { snapshots, events, stamps: stamps.join("\n") };
 }

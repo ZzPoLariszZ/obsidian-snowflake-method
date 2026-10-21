@@ -5,7 +5,11 @@
  * authored kind its own name.
  */
 
-import { isWorldbuildingKind, type WorldbuildingKindId } from '../domain';
+import {
+	isWorldbuildingKind,
+	type HistoryNoteRef,
+	type WorldbuildingKindId,
+} from '../domain';
 import { isCharacterMember, type EntityMember } from './entity-card';
 import type { Translate } from './modals';
 
@@ -26,4 +30,25 @@ export function memberKindWord(t: Translate, member: EntityMember): string {
 /** A key with a built-in kind's own entry, or the `custom` entry with the kind's name filled in. */
 export function kindText(t: Translate, prefix: string, kind: WorldbuildingKindId): string {
 	return isWorldbuildingKind(kind) ? t(`${prefix}.${kind}`) : t(`${prefix}.custom`, { name: kind });
+}
+
+/**
+ * What the modification history calls a note's kind: the entities by the
+ * copy's word or their own name, the manuscript and the steps by theirs,
+ * and the rest as the other notes they are.
+ */
+export function historyKindLabel(t: Translate, ref: HistoryNoteRef): string {
+	switch (ref.kind) {
+		case 'character':
+		case 'scene':
+			return kindWord(t, ref.kind);
+		case 'worldbuilding':
+			return kindWord(t, ref.wbKind ?? '');
+		case 'manuscript':
+			return t('manuscript.title');
+		case 'step':
+			return ref.step === undefined ? t('dashboard.steps') : t(`steps.${String(ref.step)}.title`);
+		default:
+			return t('history.kind.other');
+	}
 }

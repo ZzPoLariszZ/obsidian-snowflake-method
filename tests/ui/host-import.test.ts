@@ -123,6 +123,8 @@ function pluginWith(active: Ref[], archived: Ref[] = [], imported: Record<string
 		[...active, ...archived].map((project) => [project.rootPath, Promise.resolve({})]),
 	);
 	const pendingFieldsReconciles = new Set<string>(['Root/Book 2/Characters/Alice.md']);
+	// The history hears the run begin and end; what it records is its own suite's.
+	const history = { beginImport: vi.fn(), endImport: vi.fn() };
 	Object.assign(plugin, {
 		app: { workspace: { getLeavesOfType: () => [] } },
 		settings: { projectRoot: 'Root', recentProjectPath: 'Root/Book 2/Project.md' },
@@ -136,9 +138,11 @@ function pluginWith(active: Ref[], archived: Ref[] = [], imported: Record<string
 		updatableSiblingsByProject: new Map(),
 		pendingFieldsReconciles,
 		fieldsReconcilePaused: false,
+		// The history hears the run begin and end; what it records is its own suite's.
+		history,
 		refreshDashboards,
 	});
-	return { plugin, importer, projects, refreshDashboards, projectHealth, pendingFieldsReconciles };
+	return { plugin, importer, projects, refreshDashboards, projectHealth, pendingFieldsReconciles, history };
 }
 
 afterEach(() => {
@@ -282,7 +286,7 @@ describe('runImport', () => {
 
 	it('pauses the reconcile pass for the run, counts it in one notice, then tells the caches and the dashboards', async () => {
 		const target = ref('Book 2');
-		const { plugin, importer, refreshDashboards, projectHealth, pendingFieldsReconciles } = pluginWith([ref('Book 1'), target]);
+		const { plugin, importer, refreshDashboards, projectHealth, pendingFieldsReconciles, history } = pluginWith([ref('Book 1'), target]);
 		let pausedDuringRun = false;
 		importer.runImport.mockImplementationOnce(async (_source: string, _target: string, _selection: unknown, options?: { onProgress?: (p: unknown) => void }) => {
 			pausedDuringRun = (plugin as unknown as { fieldsReconcilePaused: boolean }).fieldsReconcilePaused;
@@ -306,6 +310,13 @@ describe('runImport', () => {
 		expect(pausedDuringRun).toBe(true);
 		expect((plugin as unknown as { fieldsReconcilePaused: boolean }).fieldsReconcilePaused).toBe(false);
 		expect(pendingFieldsReconciles.size).toBe(0);
+		// The history held the run's events and names the source once the report is in.
+		expect(history.beginImport).toHaveBeenCalledOnce();
+		expect(history.endImport).toHaveBeenCalledOnce();
+		expect(history.endImport.mock.calls[0]?.[0]).toMatchObject({
+			source: { title: 'Book 1' },
+			created: [{ targetPath: null }],
+		});
 		const progress = notices.find((notice) => notice.duration === 0);
 		expect(progress?.hidden).toBe(true);
 		expect(projectHealth.has('Root/Book 2')).toBe(false);
@@ -372,7 +383,7 @@ describe('runImport', () => {
 
 	it('puts a refusal in the author’s words, the pause lifted and the notice gone', async () => {
 		const target = ref('Book 2');
-		const { plugin, importer } = pluginWith([ref('Book 1'), target]);
+		const { plugin, importer, history } = pluginWith([ref('Book 1'), target]);
 		importer.runImport.mockRejectedValueOnce(new ImportRefusedError('kind-refused', 'raw words', '势力'));
 		await plugin.openImportDialog('Root/Book 2/Project.md');
 		await lastDialog().onSubmit(choice);
@@ -380,5 +391,7 @@ describe('runImport', () => {
 		expect((plugin as unknown as { fieldsReconcilePaused: boolean }).fieldsReconcilePaused).toBe(false);
 		expect(notices.find((notice) => notice.duration === 0)?.hidden).toBe(true);
 		expect(notices[notices.length - 1]?.message).toBe('errors.importKindRefused{"name":"势力"}');
+		// A run that brought nothing still ends: the held events file as their own.
+		expect(history.endImport).toHaveBeenCalledWith(null);
 	});
 });

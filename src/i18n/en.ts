@@ -466,6 +466,10 @@ export const en = {
 	'settings.sessionTrackUntimed.name': 'Track writing count outside sessions',
 	'settings.sessionTrackUntimed.desc':
 		'Time-related metrics will remain session-only.',
+	'settings.history.heading': 'Modification history',
+	'settings.historyReadSnapshots.name': 'Read File recovery snapshots',
+	'settings.historyReadSnapshots.desc':
+		'Count the versions Obsidian’s File recovery keeps on this device, for about a week each. Only the counts are stored, never the text. Writing sessions and the plugin’s own changes are recorded either way.',
 	'dashboard.title': 'Snowflake Method',
 	'dashboard.project': 'Project',
 	'dashboard.projectSwitcher': 'Project switcher',
@@ -738,6 +742,8 @@ export const en = {
 	'session.notice.recovered': 'An interrupted writing session was saved.',
 	'session.notice.corruptPreserved':
 		'A session file would not read and was set aside as {path}.',
+	'history.notice.corruptPreserved':
+		'A modification history file could not be read and was set aside as {path}.',
 	'session.modal.start': 'Start',
 	'modal.dailyGoal.title': 'Set daily goal',
 	'modal.dailyGoal.words.project': 'Net word count: whole project',
@@ -821,6 +827,7 @@ export const en = {
 	'statistics.tab.prose': 'Prose analysis',
 	'statistics.tab.entities': 'Entity tracking',
 	'statistics.tab.planned': 'Planning stage…',
+	'history.kind.other': 'Other notes',
 	'errors.unknown': 'Something went wrong.',
 	'errors.dashboard': 'The Snowflake dashboard could not be loaded.',
 	'errors.readOnly': 'This project is read-only.',

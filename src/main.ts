@@ -179,6 +179,7 @@ import {
 	documentTypeOf,
 	parseMarkdownFrontmatter,
 	projectIdOf,
+	type ManagedFrontmatter,
 } from './repository';
 import {
 	createStableId,
@@ -243,6 +244,15 @@ import {
 	type StickyNoteRecord,
 	toWikiLink,
 	WritingSessionService,
+	ModificationHistoryService,
+	type ModificationHistoryEvent,
+	type SnapshotStoreReader,
+	fileRecoveryAvailability,
+	FILE_RECOVERY_SETTINGS_TAB,
+	IdbSnapshotStoreReader,
+	isModificationHistoryPath,
+	openFileRecovery,
+	openSettingsTab,
 	ImportRefusedError,
 	type ImportReport,
 	type LiveWritingSession,
@@ -390,7 +400,7 @@ import { renderBeatSheet } from './ui/beat-sheet';
 import { renderFreeform } from './ui/freeform';
 import { renderRelationshipGraph } from './ui/relationship-graph';
 import { relationshipGraphMount } from './ui/relationship-graph-canvas';
-import { packRgbTriplet, SCENE_MANUSCRIPT_FALLBACK_COLORS } from './ui/native-graph';
+import { packRgbTriplet, SCENE_MANUSCRIPT_FALLBACK_COLORS, watchInternalPlugins } from './ui/native-graph';
 import {
 	SceneManuscriptGraphKeeper,
 	type SceneManuscriptProject,
@@ -407,6 +417,9 @@ import type {
 	TrackingKindSection,
 } from './ui/entities-panel';
 import type { ProsePanelBridge } from './ui/prose-panel';
+import type { HistoryAvailability, HistoryPanelBridge } from './ui/history-bridge';
+import { historyKindIcon } from './ui/kind-icon';
+import { historyKindLabel } from './ui/kind-word';
 import {
 	ConfirmMemberDeletionModal,
 	CreateProjectModal,
@@ -546,10 +559,30 @@ function applyTintReach(targetDocument: Document, reach: PresentationStyle): voi
 /** Fields that hold writing. A date, a number, a checkbox holds none. */
 const COUNTABLE_FIELD_TYPES = new Set(['text', 'search']);
 
+/** The zone this device cuts its days in, which the history and its files are written in. */
+function deviceTimeZone(): string {
+	return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/** Every file's path at or below a folder, read off the tree Obsidian still holds for a folder just deleted. */
+function filePathsBelow(folder: TFolder): string[] {
+	const paths: string[] = [];
+	const visit = (node: TFolder): void => {
+		for (const child of node.children) {
+			if (child instanceof TFolder) visit(child);
+			else paths.push(child.path);
+		}
+	};
+	visit(folder);
+	return paths;
+}
+
 /** Per-device localStorage keys: never data.json, which may sync. */
 const SESSION_RECOVERY_KEY = 'snowflake-method-session-recovery';
 const SESSION_DEVICE_KEY = 'snowflake-method-device-id';
 const UNTIMED_RECOVERY_KEY = 'snowflake-method-untimed-recovery';
+const HISTORY_HARVEST_KEY = 'snowflake-method-history-harvest';
+const HISTORY_LEDGER_PENDING_KEY = 'snowflake-method-history-ledger-pending';
 const CORKBOARD_PREFERENCES_KEY = 'snowflake-method-corkboard-preferences';
 
 /**
@@ -735,6 +768,7 @@ export default class SnowflakeMethodPlugin
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
 	sessions!: WritingSessionService;
+	history!: ModificationHistoryService;
 	/** What every sticky-note surface shares: claims, the device's memory of the panels, the bell. */
 	stickyNoteHub!: StickyNoteHub;
 	/** The floating sticky notes, one layer per window, made when a window first floats one. */
@@ -1265,6 +1299,39 @@ export default class SnowflakeMethodPlugin
 				clear: (handle) => window.clearTimeout(handle as number),
 			},
 		});
+		// The modification history: the copies File recovery keeps are counted
+		// behind the setting, the plugin's own changes are kept in a ledger, and
+		// the sessions' tallies are read through the service above. Its
+		// cursor and its pending events stay on this device, like the sessions'.
+		this.history = new ModificationHistoryService({
+			repository: this.projects.repository,
+			writingCount: this.projects.writingCount,
+			tallies: this.sessions,
+			reader: () => this.snapshotStoreReader(),
+			projects: () => [...this.knownProjectsByRoot.values()],
+			projectAtPath: (path) => this.projectRefAtPath(path),
+			frontmatterNow: (path) => this.frontmatterNow(path),
+			countOptions: () => this.writingCountOptions(),
+			cursor: {
+				load: () => this.app.loadLocalStorage(HISTORY_HARVEST_KEY) as unknown,
+				save: (cursor) => {
+					this.app.saveLocalStorage(HISTORY_HARVEST_KEY, cursor);
+				},
+			},
+			pending: {
+				load: () => this.app.loadLocalStorage(HISTORY_LEDGER_PENDING_KEY) as unknown,
+				save: (pending) => {
+					this.app.saveLocalStorage(HISTORY_LEDGER_PENDING_KEY, pending);
+				},
+			},
+			mint: () => `history-event-${crypto.randomUUID()}`,
+			deviceId: () => this.writingSessionDeviceId(),
+			timezone: () => deviceTimeZone(),
+			timers: {
+				set: (handler, ms) => window.setTimeout(handler, ms),
+				clear: (handle) => window.clearTimeout(handle as number),
+			},
+		});
 		this.stickyNoteHub = new StickyNoteHub({
 			load: () => this.app.loadLocalStorage(STICKY_NOTE_LOCAL_STATE_KEY) as unknown,
 			save: (state) => {
@@ -1275,6 +1342,20 @@ export default class SnowflakeMethodPlugin
 		// crediting words, now that vault events answer only for strangers.
 		this.projects.repository.onBodyWrite = (path, before, after, userInput) => {
 			this.sessions.notePersistedByPlugin(path, before, after, userInput);
+		};
+		// And the history hears what the plugin itself made: a note created,
+		// and every task, foreshadowing and revision the services write.
+		this.projects.repository.onManagedFileCreated = (path, content, userInput) => {
+			this.history.noteCreated(path, content, userInput);
+		};
+		this.projects.tasks.onEvent = (project, event) => {
+			this.history.taskEvent(project, event);
+		};
+		this.projects.foreshadowing.onEvent = (project, event) => {
+			this.history.threadEvent(project, event);
+		};
+		this.projects.revisions.onEvent = (project, event) => {
+			this.history.revisionEvent(project, event);
 		};
 		// And a merge's absorbed segment reports what it held, so the removal
 		// weighs against the text the merge credits into the survivor. A
@@ -1481,6 +1562,9 @@ export default class SnowflakeMethodPlugin
 			this.app.workspace.detachLeavesOfType('snowflake-method-mentions');
 			this.resolveProjectScanReady();
 			this.registerVaultListeners();
+			// Pending history events file, and File recovery's copies are
+			// counted after the first pause, once the projects are known.
+			this.history.start();
 			this.startExplorer();
 			this.registerEvent(
 				this.app.workspace.on('active-leaf-change', (leaf) => {
@@ -1567,6 +1651,9 @@ export default class SnowflakeMethodPlugin
 		// still write index files into the vault seconds after unload.
 		this.projects.mentions.dispose();
 		this.projects.analysis.dispose();
+		// The history's timers likewise: no pass over the store and no ledger
+		// flush after unload.
+		this.history.dispose();
 		// A typography change still waiting on its timer, written now: the drag
 		// that made it is the author's choice whether or not they paused after it.
 		if (this.settingsSaveTimer !== null) {
@@ -1941,7 +2028,11 @@ export default class SnowflakeMethodPlugin
 		const progressKey = updating ? 'modal.import.updating' : 'modal.import.progress';
 		const notice = new Notice(t(progressKey, { done: 0, total: 0 }), 0);
 		this.fieldsReconcilePaused = true;
+		// What the run writes is the import's doing in the history, named
+		// after its source once the report is in.
+		this.history.beginImport();
 		let report: ImportReport;
+		let landed: ImportReport | null = null;
 		try {
 			report = await this.projects.importer.runImport(
 				choice.sourcePath,
@@ -1958,9 +2049,11 @@ export default class SnowflakeMethodPlugin
 					},
 				},
 			);
+			landed = report;
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		} finally {
+			this.history.endImport(landed);
 			this.fieldsReconcilePaused = false;
 			this.pendingFieldsReconciles.clear();
 			notice.hide();
@@ -3971,6 +4064,9 @@ export default class SnowflakeMethodPlugin
 		if (key === 'sessionTrackUntimedWords') {
 			await this.sessions.untimedTrackingChanged();
 		}
+		// Whether the copies are counted is the harvester's to hear, and the
+		// history tab's notice shows which.
+		if (key === 'historyReadSnapshots') this.history.settingsChanged();
 		// Every session widget is showing a session setting somewhere, and the
 		// page they are set from is not one they can see change.
 		if (key.startsWith('session')) this.sessionSettingsChanged();
@@ -4327,6 +4423,16 @@ export default class SnowflakeMethodPlugin
 		this.register(
 			this.sessions.subscribe((event) => this.handleSessionEvent(event)),
 		);
+		this.register(
+			this.history.subscribe((event) => this.handleHistoryEvent(event)),
+		);
+		// The core plugin turned on or off while the plugin runs is heard
+		// here: the history tab's notice follows, and a store newly there is read.
+		this.register(
+			watchInternalPlugins(this.app, () => {
+				this.history.availabilityChanged();
+			}),
+		);
 		this.registerWritingSurfaceWatch(this.app.workspace.containerEl.doc);
 		this.registerFieldMenu(this.app.workspace.containerEl.doc);
 		// Popout windows already on screen never fire `window-open` again --
@@ -4627,6 +4733,61 @@ export default class SnowflakeMethodPlugin
 			event.kind === 'recovered'
 		) {
 			this.scheduleRefresh(false);
+		}
+	}
+
+	private handleHistoryEvent(event: ModificationHistoryEvent): void {
+		if (this.unloading) return;
+		if (event.kind === 'corrupt-file-preserved') {
+			new Notice(
+				this.projectT('history.notice.corruptPreserved', { path: event.path }),
+			);
+		}
+	}
+
+	/** What a note's frontmatter says now, off the cache; null for a path that is no file. */
+	private frontmatterNow(path: string): ManagedFrontmatter | null {
+		const file = this.app.vault.getFileByPath(path);
+		if (file === null) return null;
+		return this.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+	}
+
+	/**
+	 * The store the harvester counts this pass, or null while the setting,
+	 * the core plugin or the device says no. Asked at every pass, so the
+	 * answer follows the core plugin as it is turned on and off.
+	 */
+	private snapshotStoreReader(): SnapshotStoreReader | null {
+		if (!this.settings.historyReadSnapshots) return null;
+		const availability = fileRecoveryAvailability(this.app);
+		return availability.state === 'available' ? new IdbSnapshotStoreReader(availability.db) : null;
+	}
+
+	/** Whether the copies are being counted right now, and under what settings, as the history tab says it. */
+	private historyAvailability(): HistoryAvailability {
+		const status = this.history.status();
+		const base = {
+			intervalMinutes: null,
+			keepDays: null,
+			harvesting: status.running,
+			readThrough: status.readThrough,
+		};
+		if (!this.settings.historyReadSnapshots) return { ...base, snapshots: 'setting-off' };
+		const availability = fileRecoveryAvailability(this.app);
+		switch (availability.state) {
+			case 'disabled':
+				return { ...base, snapshots: 'plugin-off' };
+			case 'unsupported':
+				return { ...base, snapshots: 'unsupported' };
+			case 'unreadable':
+				return { ...base, snapshots: 'unreadable' };
+			case 'available':
+				return {
+					...base,
+					snapshots: status.lastError === null ? 'reading' : 'unreadable',
+					intervalMinutes: availability.intervalMinutes,
+					keepDays: availability.keepDays,
+				};
 		}
 	}
 
@@ -6289,6 +6450,75 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	/**
+	 * The bridge the modification history tab reads through, shaped like
+	 * the sessions': one project's days, the one being worked in where the
+	 * pane names none, and every way out of a row opened from here.
+	 */
+	modificationHistory(context: SessionPanelContext = {}): HistoryPanelBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		// The project as the scan knows it, without a read: enough for a
+		// kind's icon and for finding a note under its root.
+		const known = (): ProjectRef | null => {
+			const path = panelProject();
+			return path === null ? null : this.projectRefAtPath(path);
+		};
+		const noteAt = (path: string): TFile | null => {
+			const project = known();
+			return project === null
+				? null
+				: this.app.vault.getFileByPath(`${project.rootPath}/${path}`);
+		};
+		return {
+			t,
+			locale: () =>
+				resolveLocale(
+					this.settings.uiLocale,
+					moment.locale(),
+					projectLocale ??
+						this.currentProjectLocale ??
+						this.resolvedDefaultProjectLocale(),
+				),
+			weekStart: () => this.settings.sessionWeekStart,
+			dateFormat: () => this.settings.sessionDateFormat,
+			today: () => this.sessions.today(),
+			timeZone: () => deviceTimeZone(),
+			availability: () => this.historyAvailability(),
+			read: async (from, through) => {
+				const project = await this.resolveProject(panelProject());
+				return project === null ? null : this.history.read(project, from, through);
+			},
+			refresh: () => this.history.refresh(),
+			openNote: async (path) => {
+				const file = noteAt(path);
+				if (file !== null) await this.revealNoteLeaf(file);
+			},
+			openFileRecovery: (path) => {
+				const file = noteAt(path);
+				return file === null ? 'gone' : openFileRecovery(this.app, file.path);
+			},
+			openCorePluginSettings: () => openSettingsTab(this.app),
+			openFileRecoverySettings: () =>
+				fileRecoveryAvailability(this.app).state === 'disabled'
+					? openSettingsTab(this.app)
+					: openSettingsTab(this.app, FILE_RECOVERY_SETTINGS_TAB),
+			subscribe: (listener) =>
+				this.history.subscribe((event) => {
+					if (event.kind === 'data' || event.kind === 'availability') listener(event.kind);
+				}),
+			unit: (total) => this.writingCountUnit(total, t),
+			kindLabel: (ref) => historyKindLabel(t, ref),
+			kindIcon: (ref) => historyKindIcon(known() ?? { worldbuildingKinds: [] }, ref),
+			showsActionsColumn: () => this.showsTableActionsColumn(),
+		};
+	}
+
 	writingSessions(context: SessionPanelContext = {}): SessionPanelBridge {
 		const projectLocale = context.locale ?? null;
 		const t = (
@@ -6489,13 +6719,16 @@ export default class SnowflakeMethodPlugin
 	 * words and one reads it character by character, and a number labelled
 	 * with the wrong one of those is a number that reads as wrong.
 	 */
-	private writingCountUnit(total: number): string {
+	private writingCountUnit(
+		total: number,
+		t: Translate = (key, vars) => this.projectT(key, vars),
+	): string {
 		if (countsCharacters(this.settings.writingCountMode)) {
-			return this.projectT(
+			return t(
 				total === 1 ? 'statusBar.unitCharacter' : 'statusBar.unitCharacters',
 			);
 		}
-		return this.projectT(
+		return t(
 			total === 1 ? 'statusBar.unitWord' : 'statusBar.unitWords',
 		);
 	}
@@ -10942,6 +11175,14 @@ export default class SnowflakeMethodPlugin
 			this.scheduleWritingCountRefresh(1000);
 			return;
 		}
+		// The history's own record files are told to the history alone: a
+		// device's file landing through sync is new data for its tab, and no
+		// dashboard needs rebuilding over it.
+		if (file instanceof TFile && isModificationHistoryPath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.history.filesChanged();
+			return;
+		}
 		// The task file is told to the board the same way: its own bell, and
 		// the dashboards keep their frames -- a drop would otherwise cost a
 		// model reload and a frame rebuild a moment after landing.
@@ -11118,6 +11359,10 @@ export default class SnowflakeMethodPlugin
 		this.projects.imports.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
+		});
+		this.history.noteDeleted(file.path, {
+			folder: file instanceof TFolder,
+			children: file instanceof TFolder ? filePathsBelow(file) : [],
 		});
 		if (!this.touchesProject(file.path)) return;
 		if (file instanceof TFile && isStickyNotePath(file.path)) {
@@ -11373,6 +11618,7 @@ export default class SnowflakeMethodPlugin
 			})
 			.catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);
+		this.history.notePathRenamed(oldPath, file.path);
 		// A sticky note renamed or moved keeps its identity in its frontmatter:
 		// the surfaces find it again by id. Its health can move with it -- a
 		// note dragged out of the folder stops being one, and a note dragged

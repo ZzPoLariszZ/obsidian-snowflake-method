@@ -323,6 +323,12 @@ export interface SnowflakeSettings {
 	 * record. Time-related metrics stay session-only either way.
 	 */
 	sessionTrackUntimedWords: boolean;
+	/**
+	 * Whether the versions Obsidian's File recovery keeps on this device are
+	 * counted into the modification history. Only counts are stored, never
+	 * the text; the sessions and the plugin's own changes are recorded either way.
+	 */
+	historyReadSnapshots: boolean;
 	/** The day a week is drawn from, which the writing heatmap lays out by. */
 	sessionWeekStart: WeekStartDay;
 	/** How a day is written wherever the writing statistics name one. */
@@ -466,6 +472,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sessionBandSpan: 'all',
 	sessionAutoWithFocusMode: true,
 	sessionTrackUntimedWords: true,
+	historyReadSnapshots: true,
 	recentProjectPath: null,
 	recentStep: 1,
 	certificateCelebrations: {},
@@ -562,6 +569,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'sessionStopwatchExpectedMinutes',
 	'sessionAutoWithFocusMode',
 	'sessionTrackUntimedWords',
+	'historyReadSnapshots',
 	'sessionWeekStart',
 	'sessionDateFormat',
 	'sessionTrendDays',
@@ -936,6 +944,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.sessionTrackUntimedWords === 'boolean'
 				? raw.sessionTrackUntimedWords
 				: DEFAULT_SETTINGS.sessionTrackUntimedWords,
+		historyReadSnapshots:
+			typeof raw.historyReadSnapshots === 'boolean'
+				? raw.historyReadSnapshots
+				: DEFAULT_SETTINGS.historyReadSnapshots,
 		sessionWeekStart: isWeekStartDay(raw.sessionWeekStart)
 			? raw.sessionWeekStart
 			: DEFAULT_SETTINGS.sessionWeekStart,
@@ -2297,6 +2309,24 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							this.renderCustomRules(setting);
 						},
 					},
+					// The modification history's one choice: whether the versions
+					// Obsidian's File recovery keeps are counted. The sessions and
+					// the plugin's own changes are recorded whatever it says.
+					{
+						name: this.t('settings.history.heading'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+					{
+						name: this.t('settings.historyReadSnapshots.name'),
+						desc: this.t('settings.historyReadSnapshots.desc'),
+						control: {
+							type: 'toggle',
+							key: 'historyReadSnapshots',
+							defaultValue: DEFAULT_SETTINGS.historyReadSnapshots,
+						},
+					},
 				],
 			},
 			// What leaves the Vault as plain text, and how it is laid out on the
@@ -3499,6 +3529,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'sessionTrackUntimedWords':
 				if (typeof value === 'boolean') {
 					this.owner.settings.sessionTrackUntimedWords = value;
+				}
+				break;
+			case 'historyReadSnapshots':
+				if (typeof value === 'boolean') {
+					this.owner.settings.historyReadSnapshots = value;
 				}
 				break;
 			// Typed rather than dragged, so a whole number is what the field

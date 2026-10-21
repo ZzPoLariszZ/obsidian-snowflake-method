@@ -14,6 +14,7 @@ export * from "./history-classify";
 export * from "./history-files";
 export * from "./history-harvester";
 export * from "./history-ledger";
+export * from "./modification-history";
 export * from "./import-store";
 export * from "./json-document-store";
 export * from "./json-record-store";

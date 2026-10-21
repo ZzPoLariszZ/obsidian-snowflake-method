@@ -4,7 +4,11 @@
  * deals. A built-in wears its own, an authored kind the one its author chose.
  */
 
-import { isWorldbuildingKind, type ProjectWorldbuildingKind } from '../domain';
+import {
+	isWorldbuildingKind,
+	type HistoryNoteRef,
+	type ProjectWorldbuildingKind,
+} from '../domain';
 
 const WORLDBUILDING_KIND_ICONS: Record<'time' | 'location' | 'item', string> = {
 	time: 'clock',
@@ -39,4 +43,28 @@ export function kindIcon(
 		(candidate) => candidate.id === kind,
 	);
 	return descriptor?.icon ?? CUSTOM_KIND_ICON;
+}
+
+/**
+ * The icon a note wears in the modification history: the entities' own,
+ * the manuscript's scroll, the snowflake for a step note, and a plain page
+ * for whatever else the history speaks of.
+ */
+export function historyKindIcon(
+	model: { worldbuildingKinds: readonly ProjectWorldbuildingKind[] },
+	ref: HistoryNoteRef,
+): string {
+	switch (ref.kind) {
+		case 'character':
+		case 'scene':
+			return ENTITY_KIND_ICONS[ref.kind];
+		case 'worldbuilding':
+			return kindIcon(model, ref.wbKind ?? '');
+		case 'manuscript':
+			return 'scroll-text';
+		case 'step':
+			return 'snowflake';
+		default:
+			return 'file-text';
+	}
 }
