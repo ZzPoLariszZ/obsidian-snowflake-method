@@ -58,6 +58,7 @@ async function setup() {
 		},
 		externalDrafts: new Map(),
 		projectLocalesById: new Map(),
+		updatableSiblingsByProject: new Map(),
 		currentProjectLocale: 'en',
 		t: (key: string) => key,
 		translateForProject: (_locale: unknown, key: string) => key,

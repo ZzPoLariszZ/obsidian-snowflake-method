@@ -833,6 +833,8 @@ export default class SnowflakeMethodPlugin
 		this.resolveProjectScanReady = resolve;
 	});
 	private projectDiscoveryPromise: Promise<ProjectRef[]> | null = null;
+	/** The books an update can come from, by project id, kept with the scan: the dashboard model asks on every refresh. */
+	private readonly updatableSiblingsByProject = new Map<string, Promise<ProjectRef[]>>();
 	private currentProjectLocale: 'en' | 'zh-CN' | null = null;
 	private notePane: NotePane | null = null;
 	private readonly projectLocalesById = new Map<string, 'en' | 'zh-CN'>();
@@ -1805,10 +1807,26 @@ export default class SnowflakeMethodPlugin
 	/**
 	 * The books of the project's series an update can come from, lowest book
 	 * first: the ones it has imported from, and the ones that have imported
-	 * from it, whose records pair their copies with its notes. One read of
-	 * each book's import record, then the discovered projects as they stand.
+	 * from it, whose records pair their copies with its notes. Looked up once
+	 * and kept until the scan is let go of, because the dashboard model asks
+	 * on every refresh; the lookup is one read of each book's import record,
+	 * then the discovered projects as they stand.
 	 */
-	private async updatableSiblings(project: ProjectRef): Promise<ProjectRef[]> {
+	private updatableSiblings(project: ProjectRef): Promise<ProjectRef[]> {
+		const held = this.updatableSiblingsByProject.get(project.id);
+		if (held !== undefined) return held;
+		const lookup = this.findUpdatableSiblings(project);
+		this.updatableSiblingsByProject.set(project.id, lookup);
+		return lookup.catch((error: unknown) => {
+			// A lookup that failed is not kept for the next asker.
+			if (this.updatableSiblingsByProject.get(project.id) === lookup) {
+				this.updatableSiblingsByProject.delete(project.id);
+			}
+			throw error;
+		});
+	}
+
+	private async findUpdatableSiblings(project: ProjectRef): Promise<ProjectRef[]> {
 		const series = project.series;
 		if (series === null) return [];
 		const name = foldName(series.name);
@@ -2077,6 +2095,8 @@ export default class SnowflakeMethodPlugin
 	 */
 	private invalidateProjectDiscovery(): void {
 		this.projectDiscoveryPromise = null;
+		// The books an update can come from were read off the scan, and go with it.
+		this.updatableSiblingsByProject.clear();
 	}
 
 	private async scanProjects(): Promise<ProjectRef[]> {

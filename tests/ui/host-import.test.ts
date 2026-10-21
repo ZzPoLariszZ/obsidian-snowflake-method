@@ -133,6 +133,7 @@ function pluginWith(active: Ref[], archived: Ref[] = [], imported: Record<string
 		discoverProjects: vi.fn(() => Promise.resolve(active)),
 		projectHealth,
 		projectDiscoveryPromise: Promise.resolve(active),
+		updatableSiblingsByProject: new Map(),
 		pendingFieldsReconciles,
 		fieldsReconcilePaused: false,
 		refreshDashboards,
