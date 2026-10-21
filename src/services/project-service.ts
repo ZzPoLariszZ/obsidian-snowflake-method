@@ -4713,7 +4713,9 @@ export class SnowflakeProjectService {
    * author's and keeps its own description unless `replaceDescriptions` is
    * asked for, in which case it takes the one offered, as
    * `updateDefinitionDescription` would set it. Answers the taxonomy paths
-   * made, the ones that already stood, and the ones refused as paths.
+   * made, the ones that already stood, and the ones refused as paths, and
+   * by the path asked for, each node as it stands: the folders on the way
+   * keep the spelling they already had, which its note's path takes.
    */
   async ensureDefinitionPaths(
     project: ProjectSnapshot,
@@ -4721,12 +4723,18 @@ export class SnowflakeProjectService {
     id: DefinitionFileId,
     nodes: ReadonlyArray<{ taxonomyPath: string; description: string }>,
     options: { replaceDescriptions: boolean; userInput?: boolean },
-  ): Promise<{ created: string[]; existing: string[]; refused: string[] }> {
+  ): Promise<{
+    created: string[];
+    existing: string[];
+    refused: string[];
+    nodes: Map<string, { taxonomyPath: string; selfPath: string }>;
+  }> {
     this.assertProjectWritable(project);
     const userInput = options.userInput ?? true;
     const created: string[] = [];
     const existing: string[] = [];
     const refused: string[] = [];
+    const stood = new Map<string, { taxonomyPath: string; selfPath: string }>();
     await this.ensureWorldbuildingTree(project);
     const rootPath = definitionRootPath(project, kind, id);
     for (const node of nodes) {
@@ -4745,11 +4753,17 @@ export class SnowflakeProjectService {
           node.description,
           userInput,
         );
-        created.push(made[made.length - 1] ?? check.segments.join("/"));
+        const taxonomy = made[made.length - 1] ?? check.segments.join("/");
+        created.push(taxonomy);
+        stood.set(node.taxonomyPath, {
+          taxonomyPath: taxonomy,
+          selfPath: this.nodeNotePathOf(`${rootPath}/${taxonomy}`),
+        });
         continue;
       }
       const taxonomy = taxonomyPathFromFolder(standing, rootPath) ?? check.segments.join("/");
       existing.push(taxonomy);
+      stood.set(node.taxonomyPath, { taxonomyPath: taxonomy, selfPath: this.nodeNotePathOf(standing) });
       if (!options.replaceDescriptions) continue;
       const selfPath = this.standingNodeNotePath(standing);
       const trimmed = node.description.trim();
@@ -4763,7 +4777,7 @@ export class SnowflakeProjectService {
         userInput,
       });
     }
-    return { created, existing, refused };
+    return { created, existing, refused, nodes: stood };
   }
 
   private async ensureDefinitionNodes(
@@ -4822,8 +4836,13 @@ export class SnowflakeProjectService {
    *
   /** The node folder's own note as it stands on disk, or null. */
   private standingNodeNotePath(folderPath: string): string | null {
-    const leaf = normalizePath(`${folderPath}/${basename(folderPath)}.md`);
+    const leaf = this.nodeNotePathOf(folderPath);
     return this.repository.getFile(leaf) !== null ? leaf : null;
+  }
+
+  /** The note a node folder keeps its description on, whether or not it stands yet. */
+  private nodeNotePathOf(folderPath: string): string {
+    return normalizePath(`${folderPath}/${basename(folderPath)}.md`);
   }
 
   /**
@@ -4844,7 +4863,7 @@ export class SnowflakeProjectService {
     description: string,
     { userInput }: { userInput: boolean },
   ): Promise<boolean> {
-    const path = normalizePath(`${folderPath}/${basename(folderPath)}.md`);
+    const path = this.nodeNotePathOf(folderPath);
     const taxonomyPath = taxonomyPathFromFolder(folderPath, rootPath) ?? "";
     const offered = description.trim();
     // A note the node already has under an earlier name -- the leaf a

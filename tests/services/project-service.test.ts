@@ -7451,7 +7451,8 @@ describe("batch seams", () => {
       ],
       { replaceDescriptions: false, userInput: false },
     );
-    expect(first).toEqual({ created: ["Kin/Elf"], existing: ["Kin"], refused: [""] });
+    expect(first).toMatchObject({ created: ["Kin/Elf"], existing: ["Kin"], refused: [""] });
+    expect(first.nodes.get("Kin/Elf")).toEqual({ taxonomyPath: "Kin/Elf", selfPath: `${categoryRoot}/Kin/Elf/Elf.md` });
     expect(descriptionOf("Kin/Elf")).toBe("Pointed ears.");
     // Kin stood, made on the way to Elf, and under skip it keeps what it has: nothing.
     expect(descriptionOf("Kin")).toBeUndefined();
@@ -7464,7 +7465,9 @@ describe("batch seams", () => {
       [{ taxonomyPath: "kin/elf", description: "Ears to a point." }],
       { replaceDescriptions: false },
     );
-    expect(skipped).toEqual({ created: [], existing: ["Kin/Elf"], refused: [] });
+    expect(skipped).toMatchObject({ created: [], existing: ["Kin/Elf"], refused: [] });
+    // Asked for under another spelling, the node answers with the one it stands under.
+    expect(skipped.nodes.get("kin/elf")).toEqual({ taxonomyPath: "Kin/Elf", selfPath: `${categoryRoot}/Kin/Elf/Elf.md` });
     expect(descriptionOf("Kin/Elf")).toBe("Pointed ears.");
 
     const replaced = await service.ensureDefinitionPaths(
@@ -7478,7 +7481,7 @@ describe("batch seams", () => {
       ],
       { replaceDescriptions: true },
     );
-    expect(replaced).toEqual({ created: ["Kin/Dwarf"], existing: ["Kin/Elf", "Kin"], refused: [] });
+    expect(replaced).toMatchObject({ created: ["Kin/Dwarf"], existing: ["Kin/Elf", "Kin"], refused: [] });
     expect(descriptionOf("Kin/Elf")).toBe("Ears to a point.");
     expect(descriptionOf("Kin")).toBe("Who one is born among.");
     expect(descriptionOf("Kin/Dwarf")).toBe("Of the deep halls.");

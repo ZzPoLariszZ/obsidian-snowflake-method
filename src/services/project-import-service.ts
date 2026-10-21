@@ -861,6 +861,7 @@ class ImportRun {
 				description: entry.part.record.kind === "vocabulary" ? entry.part.record.node.description : "",
 			}));
 			let refused = new Set<string>();
+			let stood = new Map<string, { taxonomyPath: string; selfPath: string }>();
 			let failure: string | null = null;
 			try {
 				const made = await this.projects.ensureDefinitionPaths(this.working, group.kind, group.id, nodes, {
@@ -868,6 +869,7 @@ class ImportRun {
 					userInput: false,
 				});
 				refused = new Set(made.refused);
+				stood = made.nodes;
 			} catch (error) {
 				failure = messageOf(error);
 			}
@@ -877,13 +879,18 @@ class ImportRun {
 				} else if (refused.has(entry.targetName)) {
 					await this.settle(entry, { state: "failed", message: "The node's name cannot be a folder name." });
 				} else if (entry.part.record.kind === "vocabulary") {
+					// As raised rather than as planned: a folder on the way may already stand under another spelling, which the note's path takes.
+					const node = stood.get(entry.targetName);
+					const taxonomyPath = node?.taxonomyPath ?? entry.targetName;
+					const selfPath = node?.selfPath ?? entry.targetPath;
+					if (selfPath !== null) this.mapping.paths.set(importPathKey(entry.part.record.node.selfPath), selfPath);
 					const copy: ImportRecord = {
 						kind: "vocabulary",
-						node: { ...entry.part.record.node, taxonomyPath: entry.targetName, selfPath: entry.targetPath ?? "" },
+						node: { ...entry.part.record.node, taxonomyPath, selfPath: selfPath ?? "" },
 					};
 					await this.settle(
 						entry,
-						{ state: group.replace ? "replaced" : "created", targetName: entry.targetName, targetPath: entry.targetPath },
+						{ state: group.replace ? "replaced" : "created", targetName: taxonomyPath, targetPath: selfPath },
 						copy,
 					);
 				}
