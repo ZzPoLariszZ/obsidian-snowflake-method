@@ -967,7 +967,7 @@ describe('planImport', () => {
 		expect(entryOf(plan, KEYS.opening)).toMatchObject({ action: 'create', targetId: 'scene-1', targetPath: 'Snowflake Projects/Book 2/40_Scene/开场.md', rank: 1024 });
 		expect(entryOf(plan, KEYS.dawn)).toMatchObject({ action: 'create', targetId: 'entity-1', targetPath: 'Snowflake Projects/Book 2/60_Worldbuilding/61_Time/黎明.md', rank: 1024 });
 		expect(entryOf(plan, KEYS.wolves)).toMatchObject({ action: 'create', targetId: 'entity-2', targetPath: null, rank: 1024 });
-		expect(plan.kindsToCreate).toEqual([{ id: '势力', folderName: '64_势力', icon: 'flag', description: 'About 势力' }]);
+		expect(plan.kindsToCreate).toEqual([{ id: '势力', icon: 'flag', description: 'About 势力' }]);
 		// Nodes: the seeded ones already stand and say nothing, the author's own are made under the target's root.
 		expect(entryOf(plan, KEYS.major)).toMatchObject({ action: 'skip', reason: 'unchanged', targetName: 'Major' });
 		expect(entryOf(plan, KEYS.injured)).toMatchObject({ action: 'skip', reason: 'unchanged', targetName: 'Injured' });

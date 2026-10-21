@@ -1512,9 +1512,9 @@ export interface ImportDroppedLink {
 	readonly reason: 'not-selected' | 'missing';
 }
 
+/** A custom kind the target lacks; the target names its folder from its own registry. */
 export interface ImportKindToCreate {
 	readonly id: string;
-	readonly folderName: string;
 	readonly icon: string | null;
 	readonly description: string | null;
 }
@@ -1942,7 +1942,7 @@ export function planImport(
 		if (kindsToCreate.some((kind) => kind.id === group)) continue;
 		const kind = source.project.kinds.find((candidate) => candidate.id === group);
 		if (kind === undefined) continue;
-		kindsToCreate.push({ id: kind.id, folderName: kind.folderName, icon: kind.icon, description: kind.description });
+		kindsToCreate.push({ id: kind.id, icon: kind.icon, description: kind.description });
 	}
 
 	const lands = (key: string): boolean => {
