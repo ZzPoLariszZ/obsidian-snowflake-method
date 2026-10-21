@@ -4765,17 +4765,7 @@ export class SnowflakeProjectService {
       existing.push(taxonomy);
       stood.set(node.taxonomyPath, { taxonomyPath: taxonomy, selfPath: this.nodeNotePathOf(standing) });
       if (!options.replaceDescriptions) continue;
-      const selfPath = this.standingNodeNotePath(standing);
-      const trimmed = node.description.trim();
-      if (selfPath !== null) {
-        await this.repository.updateFrontmatter(selfPath, {
-          [FRONTMATTER_KEYS.description]:
-            trimmed.length === 0 ? undefined : trimmed,
-        });
-      }
-      await this.syncDefinitionNode(project, id, rootPath, standing, trimmed, {
-        userInput,
-      });
+      await this.writeDefinitionDescription(project, id, rootPath, standing, node.description, userInput);
     }
     return { created, existing, refused, nodes: stood };
   }
@@ -5214,6 +5204,24 @@ export class SnowflakeProjectService {
     if (this.repository.getFolder(folderPath) === null) {
       throw new ManagedFileNotFoundError(folderPath);
     }
+    await this.writeDefinitionDescription(project, id, rootPath, folderPath, description, true);
+  }
+
+  /**
+   * The description written onto one standing node: the property on its
+   * note, then the sync that re-renders the block below it. A note that was
+   * missing is made by the sync with the description in hand; one that
+   * stands has just been told. Whether the author or a batch is writing is
+   * the one thing the two callers differ in.
+   */
+  private async writeDefinitionDescription(
+    project: ProjectSnapshot,
+    id: DefinitionFileId,
+    rootPath: string,
+    folderPath: string,
+    description: string,
+    userInput: boolean,
+  ): Promise<void> {
     const selfPath = this.standingNodeNotePath(folderPath);
     const trimmed = description.trim();
     if (selfPath !== null) {
@@ -5222,10 +5230,8 @@ export class SnowflakeProjectService {
           trimmed.length === 0 ? undefined : trimmed,
       });
     }
-    // A note that was missing is made here with the description in hand; one
-    // that stands has just been told, and the sync re-renders its block.
     await this.syncDefinitionNode(project, id, rootPath, folderPath, trimmed, {
-      userInput: true,
+      userInput,
     });
   }
 
