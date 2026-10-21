@@ -8,6 +8,18 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0]
+
+### Added
+
+- **Import from project.** The project switcher's **Import from project** copies any part of another project's design into the current one. That covers the step texts, characters, scenes, worldbuilding notes, vocabularies, field templates, pictures, tasks, foreshadowing, revisions, sticky notes, freeform views, timelines and beat sheets. The manuscript comes too when you tick it. The dialog lists the source's parts as groups that open to single notes, with a search box. A note whose name is already taken is skipped, or replaced when you choose so. Every import is confirmed first, since it can't be undone, and a source in the other language is pointed out when chosen. The footer counts what will come over and names the linked notes that aren't ticked, with **Select them** to tick them. Copies are new notes in this project's folders and language, with every link pointed at the copies. A book in Chinese can import from one in English or the other way round. Words brought in are never counted as writing. A report lists what was skipped, dropped or failed, and the create form's **Start from** opens the dialog over a new project.
+- **Series and Update from series.** A project can be put in a series with a book number, from the create form or the project manager's menu. Each copy remembers its source, so **Update from series** brings a sibling book's changes into the notes that haven't been edited here. It lists the ones edited on both sides for you to tick, offers what is new in the sibling and shows what the sibling no longer has. It runs in either direction: the book imported from takes back what a sibling changed in its copies. Chapters, pictures and tool records are brought once.
+
+### Changed
+
+- The project switcher and the project manager group the projects by series, with the book number before each title. Every item of the switcher now carries an icon. In the manager each series folds like the archive. The archive groups its projects by series too, so an archived book still shows which series it belongs to.
+- On the character steps the panel's button is now **Open workspace**, opening the corkboard's character view. **Open base** moved into its menu, as on the scene steps.
+
 ## [0.27.0]
 
 ### Added
@@ -649,6 +661,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.28.0]
+
+### 新增
+
+- **从项目导入。** 项目切换器里的**从项目导入**可以把另一个项目的任意设计内容复制到当前项目：步骤文本、角色、场景、世界观笔记、词汇表、字段模板、图片、任务、伏笔、修订、便签、自由画布、时间线、节拍表，勾选后还有正文。对话框把来源项目的内容分组列出，每组可以展开到单篇笔记，还有搜索框。同名笔记会跳过，也可以选择替换。导入前会先确认，因为无法撤销，选中另一种语言的项目时也会先提醒。页脚会数出将导入的内容，并指出链接到了却没有勾选的笔记，点**选择它们**即可勾上。副本是这个项目文件夹里的新笔记，使用这个项目的语言，链接都指向副本，中文项目和英文项目之间也能互相导入。导入的字数不计入写作统计。导入后的报告会列出跳过、丢弃和失败的内容，创建表单里的**起始项目**会在新项目上直接打开这个对话框。
+- **系列与从系列更新。** 项目可以在创建表单或项目管理器的菜单里加入一个系列并编上册数。每个副本都记得自己的来源，所以**从系列更新**能把姊妹卷的改动带进这里没有改过的笔记，把两边都改过的笔记列出来由你勾选，还会列出姊妹卷里新增的内容和已经没有的内容。两个方向都行：被导入的一册也能收回姊妹卷在副本里的改动。章节、图片和工具记录只导入一次。
+
+### 变更
+
+- 项目切换器和项目管理器按系列归组，标题前标出册数，切换器的每一项现在都带有图标。管理器里每个系列都能像归档区一样折叠，归档区也按系列归组，归档的书仍能看出属于哪个系列。
+- 角色步骤的面板按钮改为**打开工作区**，会打开卡片看板的角色视图，**打开数据库**移到了它的菜单里，和场景步骤一样。
 
 ## [0.27.0]
 
