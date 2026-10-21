@@ -538,6 +538,9 @@ export class ProjectImportService {
 		const gatheredSource = await this.gather(source);
 		const aliases = kindAliases(source.worldbuildingKinds, target.worldbuildingKinds);
 		const contents = withKindAliases(gatheredSource.contents, aliases);
+		// The chosen templates are looked up by the kind as written, which is the target's id where the two fold the same.
+		const templateChoices = new Map<string, string>();
+		for (const [kind, path] of gatheredSource.templateChoices) templateChoices.set(aliases.get(kind) ?? kind, path);
 		const provenance = await this.projects.imports.readDocument(target);
 		const sourceProvenance = await this.projects.imports.readDocument(source);
 		const inspection = inspectImport({
@@ -549,7 +552,7 @@ export class ProjectImportService {
 		});
 		return {
 			inspection,
-			source: { ...gatheredSource, contents },
+			source: { ...gatheredSource, contents, templateChoices },
 			target: gatheredTarget,
 		};
 	}
