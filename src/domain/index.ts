@@ -15,6 +15,7 @@ export * from './fingerprint';
 export * from './foreshadowing';
 export * from './freeform';
 export * from './gallery';
+export * from './history';
 export * from './macaron';
 export * from './managed-sections';
 export * from './manuscript';

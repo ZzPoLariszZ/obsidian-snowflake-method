@@ -62,6 +62,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "writingSessions",
   "manuscriptAnalysis",
   "mentionIndex",
+  "modificationHistory",
   "tasks",
   "foreshadowing",
   "revisions",
@@ -100,10 +101,12 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       // single entry keeps the id-recovery walk from visiting 70_Tool three
       // times over.
       writingSessions: "70_Tool/71_Data_Statistics/711_Writing_Session",
-      // Two sibling data folders: the reader's own analysis choices, and the
-      // per-device mention index cache beside them.
+      // Three sibling data folders: the reader's own analysis choices, the
+      // per-device mention index cache beside them, and the modification
+      // history's monthly records, filed per device like the sessions.
       manuscriptAnalysis: "70_Tool/71_Data_Statistics/712_Prose_Analysis",
       mentionIndex: "70_Tool/71_Data_Statistics/713_Entity_Tracking",
+      modificationHistory: "70_Tool/71_Data_Statistics/714_Modification_History",
       // The task-management chain, one entry per tenant like the statistics
       // chain above: the task file, the foreshadowing file, the revision
       // file and the sticky notes, each in its own folder.
@@ -145,6 +148,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       writingSessions: "70_工具/71_数据统计/711_写作时段",
       manuscriptAnalysis: "70_工具/71_数据统计/712_正文分析",
       mentionIndex: "70_工具/71_数据统计/713_实体追踪",
+      modificationHistory: "70_工具/71_数据统计/714_修改历史",
       tasks: "70_工具/72_任务管理/721_任务",
       foreshadowing: "70_工具/72_任务管理/722_伏笔",
       revisions: "70_工具/72_任务管理/723_修订",
@@ -375,7 +379,8 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  * This is not a list of what creation leaves out. A new project is built with
  * all of them, as it is with every other folder of the layout. It is a list
  * of the folders whose absence costs nothing: each holds only what its own
- * writer puts there -- the sessions and the two statistics caches, the task,
+ * writer puts there -- the sessions, the two statistics caches and the
+ * modification history's records, the task,
  * foreshadowing and revision files, the sticky notes, the freeform views,
  * the timeline, the beat sheet, the relationship graph and the import
  * record -- and each of those writers ensures its chain on the way to a
@@ -387,14 +392,15 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  * the red, its steps no longer reconciled, over folders nothing is waiting
  * for. The 711-713 folders were once told as damage on the ground that they
  * are part of the shape a project is built with; so are the rest, and all
- * eleven are made, written and put back the same way, so all eleven are
- * told the same way.
+ * thirteen are made, written and put back the same way, so all thirteen
+ * are told the same way.
  */
 export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
   new Set<ProjectDirectoryKey>([
     "writingSessions",
     "manuscriptAnalysis",
     "mentionIndex",
+    "modificationHistory",
     "tasks",
     "foreshadowing",
     "revisions",

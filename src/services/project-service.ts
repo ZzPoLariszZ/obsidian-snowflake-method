@@ -1329,11 +1329,12 @@ export class SnowflakeProjectService {
       scenes: new Set(["scene"]),
       draft: new Set(["draft"]),
       worldbuilding: new Set(["worldbuilding"]),
-      // Session and analysis files are JSON, not managed notes: nothing to
-      // own or repair.
+      // Session, analysis and history files are JSON, not managed notes:
+      // nothing to own or repair.
       writingSessions: new Set(),
       manuscriptAnalysis: new Set(),
       mentionIndex: new Set(),
+      modificationHistory: new Set(),
       tasks: new Set(),
       foreshadowing: new Set(),
       revisions: new Set(),
@@ -7329,6 +7330,7 @@ export class SnowflakeProjectService {
       writingSessions: [],
       manuscriptAnalysis: [],
       mentionIndex: [],
+      modificationHistory: [],
       tasks: [],
       foreshadowing: [],
       revisions: [],

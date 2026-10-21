@@ -563,9 +563,10 @@ describe("SnowflakeProjectService", () => {
     expect(after.structureIssues.filter((issue) => issue.path === freeform)).toEqual([]);
   });
 
-  it("treats the three statistics folders as made on demand as well", async () => {
+  it("treats the four statistics folders as made on demand as well", async () => {
     // Built with the project like the six above, and built again by the
-    // session writer and the two caches on the way to a write. Told as damage,
+    // session writer, the two caches and the history writer on the way to
+    // a write. Told as damage,
     // a folder the README says costs nothing to lose would red the project.
     const project = await service.createProject({ name: "Older layout" });
     const statistics = `${project.rootPath}/70_Tool/71_Data_Statistics`;
@@ -573,6 +574,7 @@ describe("SnowflakeProjectService", () => {
       `${statistics}/711_Writing_Session`,
       `${statistics}/712_Prose_Analysis`,
       `${statistics}/713_Entity_Tracking`,
+      `${statistics}/714_Modification_History`,
     ]) {
       fakeVault.delete(folder);
 
@@ -601,7 +603,7 @@ describe("SnowflakeProjectService", () => {
 
     const seen = await service.loadProject(project.projectFile);
     expect(seen.structureIssues.map((issue) => issue.code)).toEqual(
-      Array.from({ length: 12 }, () => "missing-on-demand-directory"),
+      Array.from({ length: 13 }, () => "missing-on-demand-directory"),
     );
     expect(seen.structureIssues.some((issue) => issue.blocking)).toBe(false);
     expect(seen.structureIssues.every((issue) => issue.repairable)).toBe(true);
@@ -613,7 +615,7 @@ describe("SnowflakeProjectService", () => {
       timeline,
     );
     expect(fakeVault.nodes.has(timeline)).toBe(true);
-    expect(repaired.structureIssues).toHaveLength(11);
+    expect(repaired.structureIssues).toHaveLength(12);
   });
 
   it("offers every folder of the tool chain, and demands every other", () => {

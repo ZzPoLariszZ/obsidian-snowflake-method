@@ -108,6 +108,7 @@ describe("the built-in rules", () => {
 	it("claims the JSON files and the sticky notes under the tool folder, and nothing else there", () => {
 		expect(builtinRuleFor(entry(`${root}/70_Tool/72_Task_Management/721_Task/tasks.json`), root)).toBe("file");
 		expect(builtinRuleFor(entry(`${root}/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_dev_writing_session.json`), root)).toBe("file");
+		expect(builtinRuleFor(entry(`${root}/70_Tool/71_Data_Statistics/714_Modification_History/2026/2026_10_dev_note_snapshots.json`), root)).toBe("file");
 		expect(builtinRuleFor(entry(`${root}/70_Tool/72_Task_Management/724_Sticky_Note/1700000000.md`), root)).toBe("file");
 		expect(builtinRuleFor(entry(`${root}/70_工具/73_可视化/733_时间线/timeline.json`), root)).toBe("file");
 		expect(builtinRuleFor(entry(`${root}/70_Tool/73_Visualization/733_Timeline/Main.canvas`), root)).toBeNull();
