@@ -16,6 +16,7 @@ export * from './foreshadowing';
 export * from './freeform';
 export * from './gallery';
 export * from './history';
+export * from './history-merge';
 export * from './macaron';
 export * from './managed-sections';
 export * from './manuscript';
