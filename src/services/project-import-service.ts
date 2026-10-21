@@ -1231,14 +1231,20 @@ class ImportRun {
 			const rewrite = remapForeshadowing(entry.part.record.thread, entry.targetId, this.mapping);
 			const dropped = [...rewrite.dropped];
 			const occurrences: ForeshadowingOccurrence[] = [];
-			for (const occurrence of rewrite.value.occurrences) {
-				const body = await this.bodyOf(occurrence.path);
-				const anchor = body === null ? null : anchorOccurrence(body, occurrence);
-				if (anchor === null || anchor.state === "conflict") {
-					dropped.push({ field: "occurrence", target: occurrence.path });
-					continue;
+			try {
+				for (const occurrence of rewrite.value.occurrences) {
+					const body = await this.bodyOf(occurrence.path);
+					const anchor = body === null ? null : anchorOccurrence(body, occurrence);
+					if (anchor === null || anchor.state === "conflict") {
+						dropped.push({ field: "occurrence", target: occurrence.path });
+						continue;
+					}
+					occurrences.push({ ...occurrence, from: anchor.from, to: anchor.to });
 				}
-				occurrences.push({ ...occurrence, from: anchor.from, to: anchor.to });
+			} catch (error) {
+				// A chapter copy that stands but cannot be read fails this thread alone, as a failed read does in every other phase.
+				await this.settle(entry, { state: "failed", message: messageOf(error) });
+				continue;
 			}
 			pending.push({ entry, value: { ...rewrite.value, occurrences }, dropped });
 		}
@@ -1254,7 +1260,13 @@ class ImportRun {
 				await this.settle(entry, { state: "failed", message: "Its chapter was not imported." });
 				continue;
 			}
-			const body = await this.bodyOf(moved.path);
+			let body: string | null;
+			try {
+				body = await this.bodyOf(moved.path);
+			} catch (error) {
+				await this.settle(entry, { state: "failed", message: messageOf(error) });
+				continue;
+			}
 			const anchor = body === null ? null : anchorRevision(body, moved);
 			if (anchor === null || anchor.state === "conflict") {
 				await this.settle(entry, { state: "failed", message: "The words it was made over were not found in the copy." });

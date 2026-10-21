@@ -705,6 +705,25 @@ describe("ProjectImportService", () => {
 		expect(opening.characters.some((link) => link.includes("Alicia"))).toBe(true);
 	});
 
+	it("fails the thread whose chapter copy cannot be read, and goes on to the rest", async () => {
+		await seed(source);
+		const inspection = await service.importer.inspectSource(await fresh(source), target);
+		// Armed once, as the records begin: the chapters phase reads the copies itself while writing them.
+		const chapterOne = service.manuscript.plannedSegmentPath(target, "Chapter One");
+		let armed = false;
+		const report = await service.importer.runImport(await fresh(source), target, selection(inspection, chapters), {
+			onProgress: (progress) => {
+				if (progress.phase !== "records" || armed) return;
+				armed = true;
+				fakeVault.failNextReadPath = chapterOne;
+			},
+		});
+		expect(report.failed.map((item) => [item.kind, item.name])).toEqual([["foreshadowing", "The letter"]]);
+		expect(report.created.map((item) => item.kind)).toEqual(
+			expect.arrayContaining(["chapter", "revision", "sticky-note", "freeform-view", "timeline", "beat-sheet"]),
+		);
+	});
+
 	it("lets the book copied from take back what its copy changed, and keeps both records agreeing", async () => {
 		const seeded = await seed(source);
 		expect((await run(await fresh(source), target)).failed).toEqual([]);
