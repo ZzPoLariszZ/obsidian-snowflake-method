@@ -453,7 +453,9 @@ export class ProjectImportService {
 		const source = await this.projects.loadProject(sourceLocator);
 		let target = await this.projects.loadProject(targetLocator);
 		this.refuse(source, target);
-		let gathered = await this.inspectLoaded(source, target);
+		// Gathered once: the source cannot change between the plan and the re-plan below.
+		const gatheredSource = await this.gather(source);
+		let gathered = await this.inspectLoaded(source, target, gatheredSource);
 		let planned = planImport(gathered.inspection, selection, this.hooks(target));
 
 		const kindsCreated: string[] = [];
@@ -477,7 +479,7 @@ export class ProjectImportService {
 			// prefix, which only the registry knows, so the plan is made again
 			// over the target as it now stands.
 			target = await this.projects.loadProject(target.projectFile);
-			gathered = await this.inspectLoaded(source, target);
+			gathered = await this.inspectLoaded(source, target, gatheredSource);
 			planned = planImport(gathered.inspection, selection, this.hooks(target));
 		}
 
@@ -530,17 +532,19 @@ export class ProjectImportService {
 		}
 	}
 
+	/** The source, said in the target's kind ids, inspected against the target; a source gathered already is taken as given. */
 	private async inspectLoaded(
 		source: ProjectSnapshot,
 		target: ProjectSnapshot,
+		gatheredSource?: GatheredProject,
 	): Promise<{ inspection: ImportInspection; source: GatheredProject; target: GatheredProject }> {
 		const gatheredTarget = await this.gather(target);
-		const gatheredSource = await this.gather(source);
+		const held = gatheredSource ?? (await this.gather(source));
 		const aliases = kindAliases(source.worldbuildingKinds, target.worldbuildingKinds);
-		const contents = withKindAliases(gatheredSource.contents, aliases);
+		const contents = withKindAliases(held.contents, aliases);
 		// The chosen templates are looked up by the kind as written, which is the target's id where the two fold the same.
 		const templateChoices = new Map<string, string>();
-		for (const [kind, path] of gatheredSource.templateChoices) templateChoices.set(aliases.get(kind) ?? kind, path);
+		for (const [kind, path] of held.templateChoices) templateChoices.set(aliases.get(kind) ?? kind, path);
 		const provenance = await this.projects.imports.readDocument(target);
 		const sourceProvenance = await this.projects.imports.readDocument(source);
 		const inspection = inspectImport({
@@ -552,7 +556,7 @@ export class ProjectImportService {
 		});
 		return {
 			inspection,
-			source: { ...gatheredSource, contents, templateChoices },
+			source: { ...held, contents, templateChoices },
 			target: gatheredTarget,
 		};
 	}
