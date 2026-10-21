@@ -326,6 +326,17 @@ export class VaultRepository {
     | ((path: string, before: string, after: string, userInput: boolean) => void)
     | null = null;
 
+  /**
+   * Told about every managed note this repository makes, with the note as
+   * it stands once its frontmatter is in, and whether a person's input is
+   * what it carries. The modification history listens: a note made here is
+   * a note the plugin created, which no vault event can tell from one that
+   * arrived by sync.
+   */
+  onManagedFileCreated:
+    | ((path: string, content: string, userInput: boolean) => void)
+    | null = null;
+
   private async withWriteMark<T>(
     path: string,
     write: () => Promise<T>,
@@ -436,11 +447,12 @@ export class VaultRepository {
       "snowflake-schema": SCHEMA_VERSION,
     });
     // A created note is a body write from nothing, reported like any other,
-    // read back after the frontmatter lands so the observer sees the note as
+    // read back after the frontmatter lands so the observers see the note as
     // it stands rather than a bare template a type cannot be parsed from.
-    if (this.onBodyWrite !== null) {
+    if (this.onBodyWrite !== null || this.onManagedFileCreated !== null) {
       const content = await this.vault.read(file);
-      this.onBodyWrite(file.path, "", content, options.userInput);
+      this.onBodyWrite?.(file.path, "", content, options.userInput);
+      this.onManagedFileCreated?.(file.path, content, options.userInput);
     }
     return { path: file.path, file, created: true, frontmatterRepaired: false };
   }

@@ -15,6 +15,14 @@ export type TaskWrite = "written" | "absent" | "refused";
 /** What a deletion came to. */
 export type TaskDeletion = "deleted" | "absent" | "refused";
 
+/** What a write changed, told once the file holds it, for the history to record. */
+export type TaskServiceEvent =
+	| { kind: "created"; tasks: readonly Task[] }
+	/** A task now standing in another column; the task carries the new status. */
+	| { kind: "status"; task: Task }
+	| { kind: "archived"; task: Task }
+	| { kind: "deleted"; tasks: readonly Task[] };
+
 /** The limbs of a ref alone, whatever else rode in on the object. */
 const refOf = (ref: EntityRef): EntityRef => ({
 	kind: ref.kind,
@@ -36,6 +44,14 @@ const refOf = (ref: EntityRef): EntityRef => ({
 export class TaskService {
 	private readonly store: TaskStore;
 	private readonly now: () => number;
+
+	/**
+	 * Told about every write that changed what a task is or where it
+	 * stands -- never a reorder within its column -- once the file holds
+	 * it. The modification history listens. These are the acting device's
+	 * own calls, so another device's write synced in never sounds here.
+	 */
+	onEvent: ((project: ProjectRef, event: TaskServiceEvent) => void) | null = null;
 
 	constructor(
 		repository: VaultRepository,
@@ -59,11 +75,13 @@ export class TaskService {
 	}
 
 	/** Appends one task, last in its column; false when its id already stands. */
-	create(project: ProjectRef, task: Task): Promise<boolean> {
-		return this.store.updateTasks(project, (tasks) => {
+	async create(project: ProjectRef, task: Task): Promise<boolean> {
+		const wrote = await this.store.updateTasks(project, (tasks) => {
 			if (tasks.some((kept) => kept.id === task.id)) return null;
 			return [...tasks, { ...task, related: task.related.map(refOf) }];
 		});
+		if (wrote) this.tell(project, { kind: "created", tasks: [task] });
+		return wrote;
 	}
 
 	/**
@@ -71,19 +89,20 @@ export class TaskService {
 	 * in the file or earlier in the batch, is left out. The ids appended.
 	 */
 	async createMany(project: ProjectRef, tasks: readonly Task[]): Promise<string[]> {
-		let appended: string[] = [];
+		let fresh: Task[] = [];
 		const wrote = await this.store.updateTasks(project, (kept) => {
 			const standing = new Set(kept.map((task) => task.id));
-			const fresh: Task[] = [];
+			fresh = [];
 			for (const task of tasks) {
 				if (standing.has(task.id)) continue;
 				standing.add(task.id);
 				fresh.push({ ...task, related: task.related.map(refOf) });
 			}
-			appended = fresh.map((task) => task.id);
 			return fresh.length === 0 ? null : [...kept, ...fresh];
 		});
-		return wrote ? appended : [];
+		if (!wrote) return [];
+		this.tell(project, { kind: "created", tasks: fresh });
+		return fresh.map((task) => task.id);
 	}
 
 	/**
@@ -98,7 +117,8 @@ export class TaskService {
 	): Promise<TaskWrite> {
 		let asked = false;
 		let found = false;
-		await this.store.updateTasks(project, (tasks) => {
+		let moved = null as Task | null;
+		const wrote = await this.store.updateTasks(project, (tasks) => {
 			asked = true;
 			const kept = tasks.find((task) => task.id === id);
 			if (kept === undefined) return null;
@@ -109,9 +129,11 @@ export class TaskService {
 			const edited: Task = { ...kept, ...revised, updatedAt: now };
 			const written = tasks.map((task) => (task.id === id ? edited : task));
 			if (edited.status === kept.status) return written;
+			moved = edited;
 			return moveTaskBefore(written, id, edited.status, null, now) ?? written;
 		});
 		if (!asked) return "refused";
+		if (wrote && moved !== null) this.tell(project, { kind: "status", task: moved });
 		return found ? "written" : "absent";
 	}
 
@@ -127,27 +149,40 @@ export class TaskService {
 	): Promise<TaskWrite> {
 		let asked = false;
 		let found = false;
-		await this.store.updateTasks(project, (tasks) => {
+		let moved = null as Task | null;
+		const wrote = await this.store.updateTasks(project, (tasks) => {
 			asked = true;
-			if (!tasks.some((task) => task.id === id)) return null;
+			const kept = tasks.find((task) => task.id === id);
+			if (kept === undefined) return null;
 			found = true;
-			return moveTaskBefore(tasks, id, status, beforeId, this.now());
+			const next = moveTaskBefore(tasks, id, status, beforeId, this.now());
+			// A move to another column is news; a reorder within one is not.
+			if (next !== null && kept.status !== status) {
+				moved = next.find((task) => task.id === id) ?? null;
+			}
+			return next;
 		});
 		if (!asked) return "refused";
+		if (wrote && moved !== null) this.tell(project, { kind: "status", task: moved });
 		return found ? "written" : "absent";
 	}
 
 	/** Sets a task aside, or brings it back to where it stood. */
-	setArchived(
+	async setArchived(
 		project: ProjectRef,
 		id: string,
 		archived: boolean,
 	): Promise<TaskWrite> {
-		return this.revise(project, id, (kept) =>
-			kept.archived === archived
-				? null
-				: { ...kept, archived, updatedAt: this.now() },
-		);
+		let changed = null as Task | null;
+		const outcome = await this.revise(project, id, (kept) => {
+			if (kept.archived === archived) return null;
+			changed = { ...kept, archived, updatedAt: this.now() };
+			return changed;
+		});
+		if (outcome === "written" && changed !== null && archived) {
+			this.tell(project, { kind: "archived", task: changed });
+		}
+		return outcome;
 	}
 
 	/**
@@ -168,16 +203,18 @@ export class TaskService {
 		const gone = new Set(ids);
 		let asked = false;
 		let found = false;
-		await this.store.updateTasks(project, (tasks) => {
+		let removed: Task[] = [];
+		const wrote = await this.store.updateTasks(project, (tasks) => {
 			asked = true;
-			const next = tasks.filter(
-				(task) =>
-					!gone.has(task.id) || (options.archivedOnly === true && !task.archived),
-			);
+			const spared = (task: Task): boolean =>
+				!gone.has(task.id) || (options.archivedOnly === true && !task.archived);
+			const next = tasks.filter(spared);
+			removed = tasks.filter((task) => !spared(task));
 			found = next.length !== tasks.length;
 			return found ? next : null;
 		});
 		if (!asked) return "refused";
+		if (wrote && removed.length > 0) this.tell(project, { kind: "deleted", tasks: removed });
 		return found ? "deleted" : "absent";
 	}
 
@@ -209,5 +246,9 @@ export class TaskService {
 		});
 		if (!asked) return "refused";
 		return found ? "written" : "absent";
+	}
+
+	private tell(project: ProjectRef, event: TaskServiceEvent): void {
+		this.onEvent?.(project, event);
 	}
 }

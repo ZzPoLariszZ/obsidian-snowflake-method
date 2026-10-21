@@ -223,6 +223,7 @@ import {
 	type ProjectRef,
 	type ProjectSeries,
 	type ProjectSnapshot,
+	type RevisionOutcome,
 	type FreeformTransacted,
 	type GalleryWrite,
 	type SaveCustomFieldTemplateResult,
@@ -8311,7 +8312,11 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	discardRevision(projectPath: string | null, id: string): Promise<boolean> {
+	discardRevision(
+		projectPath: string | null,
+		id: string,
+		outcome: RevisionOutcome = 'discarded',
+	): Promise<boolean> {
 		// Answered on whether the record is gone, not on whether this call is
 		// what took it out. A card asking to be rid of a revision another view
 		// discarded a moment earlier has got exactly what it asked for, and
@@ -8321,8 +8326,8 @@ export default class SnowflakeMethodPlugin
 		return this.mutateMarginRecords(
 			projectPath,
 			async (project) => {
-				const outcome = await this.projects.revisions.remove(project, id);
-				return { result: outcome !== 'refused', changed: outcome === 'removed' };
+				const took = await this.projects.revisions.remove(project, id, outcome);
+				return { result: took !== 'refused', changed: took === 'removed' };
 			},
 			false,
 		);

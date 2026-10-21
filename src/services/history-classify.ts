@@ -8,6 +8,8 @@ import {
 } from "../domain";
 import {
 	documentTypeOf,
+	frontmatterLength,
+	parseMarkdownFrontmatter,
 	projectIdOf,
 	type ManagedFrontmatter,
 } from "../repository";
@@ -152,4 +154,21 @@ export function classifyHistoryPath(
 	if (SCENE_FOLDERS.has(head)) return { path, kind: "scene" };
 	if (WORLDBUILDING_FOLDERS.has(head)) return worldbuildingRef(project, path, segments, null);
 	return { path, kind: "other" };
+}
+
+/**
+ * A note's text as the history reads it: the frontmatter, null where there
+ * is none or it holds YAML that will not parse, and the body everything
+ * after the fences either way, as the count reads a note.
+ */
+export function splitNoteText(text: string): {
+	frontmatter: ManagedFrontmatter | null;
+	body: string;
+} {
+	try {
+		const parsed = parseMarkdownFrontmatter(text);
+		return { frontmatter: parsed.hasFrontmatter ? parsed.frontmatter : null, body: parsed.body };
+	} catch {
+		return { frontmatter: null, body: text.slice(frontmatterLength(text)) };
+	}
 }

@@ -61,6 +61,7 @@ import type {
 	ProjectSeries,
 	ProjectStructureIssueCode,
 	RankRevisionChange,
+	RevisionOutcome,
 	SaveCustomFieldTemplateResult,
 	ScenePatch,
 	MemberMoveTarget,
@@ -596,7 +597,11 @@ export interface ManuscriptHost {
 	 * A revision another view removed first answers true: it is gone, which
 	 * is what was asked.
 	 */
-	discardRevision(projectPath: string | null, id: string): Promise<boolean>;
+	discardRevision(
+		projectPath: string | null,
+		id: string,
+		outcome?: RevisionOutcome,
+	): Promise<boolean>;
 	/** A fresh id for a revision about to be captured. */
 	mintRevisionId(): string;
 	/** The project's foreshadowing, for the feed both halves share. */

@@ -66,6 +66,7 @@ import {
 	type WritingCountHeadings,
 	type WritingCountMode,
 } from '../domain';
+import type { RevisionOutcome } from '../services';
 import {
 	activeSegmentAt,
 	isReadingPlace,
@@ -2739,7 +2740,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				if (entry !== undefined) rethrow(this.acceptRevision(entry, revision));
 			},
 			onRetire: (revision) => {
-				rethrow(this.retireRevision(revision));
+				rethrow(this.retireRevision(revision, 'discarded'));
 			},
 			onEditSave: async (revision, proposed, comment) => {
 				// An insertion proposing nothing would insert nothing: the
@@ -3134,10 +3135,14 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/** Takes a revision out and says so when the write is refused. */
-	private async retireRevision(revision: Revision): Promise<void> {
+	private async retireRevision(
+		revision: Revision,
+		outcome: RevisionOutcome,
+	): Promise<void> {
 		const gone = await this.host.discardRevision(
 			this.model?.projectPath ?? this.projectPath,
 			revision.id,
+			outcome,
 		);
 		if (!gone) new Notice(this.t('manuscript.revision.refused'));
 	}
@@ -3511,7 +3516,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			// back as a conflict -- which the author is owed a word about
 			// rather than left to discover in the margin. `retireRevision`
 			// says it.
-			await this.retireRevision(revision);
+			await this.retireRevision(revision, 'accepted');
 			return;
 		}
 		if (
@@ -3541,7 +3546,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			stamp: saved.stamp,
 		};
 		await this.renderSegmentBody(entry);
-		await this.retireRevision(revision);
+		await this.retireRevision(revision, 'accepted');
 	}
 
 	private primeEditorMentions(entry: MountedSegment): void {

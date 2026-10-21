@@ -10,6 +10,14 @@ import type { VaultRepository } from "../repository";
 import { RevisionStore } from "./revision-store";
 import type { ProjectRef } from "./types";
 
+/** How a revision left the record: applied to the text, or let go. */
+export type RevisionOutcome = "accepted" | "discarded";
+
+/** What a write changed, told once the file holds it, for the history to record. */
+export type RevisionServiceEvent =
+	| { kind: "created"; revisions: readonly Revision[] }
+	| { kind: "removed"; revision: Revision; outcome: RevisionOutcome };
+
 /**
  * The revisions of one project, as the hosts ask about them: a list to read,
  * mutations that land in the file at once -- a revision is a decision the
@@ -20,6 +28,13 @@ import type { ProjectRef } from "./types";
  */
 export class RevisionService {
 	private readonly store: RevisionStore;
+
+	/**
+	 * Told about every revision proposed and every one taken out, and how,
+	 * once the file holds it. The modification history listens; these are
+	 * the acting device's own calls.
+	 */
+	onEvent: ((project: ProjectRef, event: RevisionServiceEvent) => void) | null = null;
 
 	constructor(
 		repository: VaultRepository,
@@ -42,11 +57,13 @@ export class RevisionService {
 	}
 
 	/** Appends one revision; false when its id already stands. */
-	create(project: ProjectRef, revision: Revision): Promise<boolean> {
-		return this.store.updateRevisions(project, (revisions) => {
+	async create(project: ProjectRef, revision: Revision): Promise<boolean> {
+		const wrote = await this.store.updateRevisions(project, (revisions) => {
 			if (revisions.some((kept) => kept.id === revision.id)) return null;
 			return [...revisions, revision];
 		});
+		if (wrote) this.tell(project, { kind: "created", revisions: [revision] });
+		return wrote;
 	}
 
 	/**
@@ -54,19 +71,20 @@ export class RevisionService {
 	 * stands, in the file or earlier in the batch, is left out. The ids appended.
 	 */
 	async createMany(project: ProjectRef, revisions: readonly Revision[]): Promise<string[]> {
-		let appended: string[] = [];
+		let fresh: Revision[] = [];
 		const wrote = await this.store.updateRevisions(project, (kept) => {
 			const standing = new Set(kept.map((revision) => revision.id));
-			const fresh: Revision[] = [];
+			fresh = [];
 			for (const revision of revisions) {
 				if (standing.has(revision.id)) continue;
 				standing.add(revision.id);
 				fresh.push(revision);
 			}
-			appended = fresh.map((revision) => revision.id);
 			return fresh.length === 0 ? null : [...kept, ...fresh];
 		});
-		return wrote ? appended : [];
+		if (!wrote) return [];
+		this.tell(project, { kind: "created", revisions: fresh });
+		return fresh.map((revision) => revision.id);
 	}
 
 	/**
@@ -116,24 +134,35 @@ export class RevisionService {
 	 * write the store refused both end with nothing written, but they are not
 	 * the same news: the first is what was asked for, the second leaves the
 	 * record standing, and a caller that has already applied the proposal to
-	 * the author's text is owed the difference.
+	 * the author's text is owed the difference. `outcome` says how it went
+	 * out -- applied to the text, or let go -- for the history alone.
 	 */
 	async remove(
 		project: ProjectRef,
 		id: string,
+		outcome: RevisionOutcome = "discarded",
 	): Promise<'removed' | 'absent' | 'refused'> {
 		// The store calls the mutate only over a file it will write; a
 		// refused file never reaches it.
 		let asked = false;
 		let found = false;
-		await this.store.updateRevisions(project, (revisions) => {
+		let removed = null as Revision | null;
+		const wrote = await this.store.updateRevisions(project, (revisions) => {
 			asked = true;
+			removed = revisions.find((revision) => revision.id === id) ?? null;
 			const next = revisions.filter((revision) => revision.id !== id);
 			found = next.length !== revisions.length;
 			return found ? next : null;
 		});
 		if (!asked) return 'refused';
+		if (wrote && removed !== null) {
+			this.tell(project, { kind: "removed", revision: removed, outcome });
+		}
 		return found ? 'removed' : 'absent';
+	}
+
+	private tell(project: ProjectRef, event: RevisionServiceEvent): void {
+		this.onEvent?.(project, event);
 	}
 
 	/**

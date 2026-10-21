@@ -15,14 +15,9 @@ import {
 	type NoteSnapshotRecord,
 } from "../domain";
 import { isPathAtOrBelow } from "../project-root";
-import {
-	frontmatterLength,
-	parseMarkdownFrontmatter,
-	type ManagedFrontmatter,
-	type VaultRepository,
-} from "../repository";
+import type { ManagedFrontmatter, VaultRepository } from "../repository";
 import type { SnapshotRow, SnapshotStoreReader } from "./file-recovery";
-import { classifyHistoryPath } from "./history-classify";
+import { classifyHistoryPath, splitNoteText } from "./history-classify";
 import { appendJsonRecordFile, parseJsonObject } from "./json-store";
 import { getProjectPathLayout, type ProjectRef } from "./types";
 import type { NoteCountOptions, WritingCountService } from "./writing-count";
@@ -413,7 +408,7 @@ export class SnapshotHarvester {
 			return false;
 		}
 		const rel = row.path.slice(project.rootPath.length + 1);
-		const { frontmatter, body } = splitSnapshot(row.data);
+		const { frontmatter, body } = splitNoteText(row.data);
 		const ref = classifyHistoryPath(project, rel, [frontmatter, this.deps.frontmatterNow(row.path)]);
 		if (ref === null) return false;
 
@@ -576,20 +571,6 @@ export class SnapshotHarvester {
 
 	private emit(event: HarvesterEvent): void {
 		for (const listener of [...this.listeners]) listener(event);
-	}
-}
-
-/**
- * A copy's frontmatter and body: the frontmatter null where the copy has
- * none or holds YAML that will not parse, and the body everything after
- * the fences either way, as the count reads a note.
- */
-function splitSnapshot(data: string): { frontmatter: ManagedFrontmatter | null; body: string } {
-	try {
-		const parsed = parseMarkdownFrontmatter(data);
-		return { frontmatter: parsed.hasFrontmatter ? parsed.frontmatter : null, body: parsed.body };
-	} catch {
-		return { frontmatter: null, body: data.slice(frontmatterLength(data)) };
 	}
 }
 

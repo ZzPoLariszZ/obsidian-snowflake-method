@@ -20,6 +20,13 @@ export type ForeshadowingWrite = "written" | "absent" | "refused";
 /** What a deletion came to. */
 export type ForeshadowingDeletion = "deleted" | "absent" | "refused";
 
+/** What a write changed, told once the file holds it, for the history to record. */
+export type ForeshadowingServiceEvent =
+	| { kind: "created"; items: readonly Foreshadowing[] }
+	/** A thread now in another part of its life; the item carries the new status. */
+	| { kind: "status"; item: Foreshadowing }
+	| { kind: "deleted"; item: Foreshadowing };
+
 /** The limbs of a ref alone, whatever else rode in on the object. */
 const refOf = (ref: EntityRef): EntityRef => ({
 	kind: ref.kind,
@@ -68,6 +75,13 @@ export class ForeshadowingService {
 	private readonly store: ForeshadowingStore;
 	private readonly now: () => number;
 
+	/**
+	 * Told about every write that added a thread, moved one through its
+	 * life or took one out, once the file holds it. The modification
+	 * history listens; these are the acting device's own calls.
+	 */
+	onEvent: ((project: ProjectRef, event: ForeshadowingServiceEvent) => void) | null = null;
+
 	constructor(
 		repository: VaultRepository,
 		deps: {
@@ -90,11 +104,13 @@ export class ForeshadowingService {
 	}
 
 	/** Appends one thread; false when its id already stands. */
-	create(project: ProjectRef, item: Foreshadowing): Promise<boolean> {
-		return this.store.updateForeshadowings(project, (items) => {
+	async create(project: ProjectRef, item: Foreshadowing): Promise<boolean> {
+		const wrote = await this.store.updateForeshadowings(project, (items) => {
 			if (items.some((kept) => kept.id === item.id)) return null;
 			return [...items, item];
 		});
+		if (wrote) this.tell(project, { kind: "created", items: [item] });
+		return wrote;
 	}
 
 	/**
@@ -102,19 +118,20 @@ export class ForeshadowingService {
 	 * stands, in the file or earlier in the batch, is left out. The ids appended.
 	 */
 	async createMany(project: ProjectRef, items: readonly Foreshadowing[]): Promise<string[]> {
-		let appended: string[] = [];
+		let fresh: Foreshadowing[] = [];
 		const wrote = await this.store.updateForeshadowings(project, (kept) => {
 			const standing = new Set(kept.map((item) => item.id));
-			const fresh: Foreshadowing[] = [];
+			fresh = [];
 			for (const item of items) {
 				if (standing.has(item.id)) continue;
 				standing.add(item.id);
 				fresh.push({ ...item, related: item.related.map(refOf) });
 			}
-			appended = fresh.map((item) => item.id);
 			return fresh.length === 0 ? null : [...kept, ...fresh];
 		});
-		return wrote ? appended : [];
+		if (!wrote) return [];
+		this.tell(project, { kind: "created", items: fresh });
+		return fresh.map((item) => item.id);
 	}
 
 	/**
@@ -129,12 +146,13 @@ export class ForeshadowingService {
 	 * a write was needed to make it say so: a form saved over its own words
 	 * is a finished edit rather than a refused one.
 	 */
-	edit(
+	async edit(
 		project: ProjectRef,
 		id: string,
 		next: ForeshadowingEdit,
 	): Promise<ForeshadowingWrite> {
-		return this.revise(project, id, (kept) => {
+		let moved = null as Foreshadowing | null;
+		const outcome = await this.revise(project, id, (kept) => {
 			const asked = new Map(
 				next.occurrences.map((occurrence) => [occurrence.id, occurrence] as const),
 			);
@@ -158,8 +176,14 @@ export class ForeshadowingService {
 				occurrences,
 			};
 			if (sameThread(kept, revised)) return null;
-			return { ...revised, updatedAt: this.now() };
+			const written = { ...revised, updatedAt: this.now() };
+			if (written.status !== kept.status) moved = written;
+			return written;
 		});
+		if (outcome === "written" && moved !== null) {
+			this.tell(project, { kind: "status", item: moved });
+		}
+		return outcome;
 	}
 
 	/**
@@ -175,13 +199,16 @@ export class ForeshadowingService {
 		// refused file never reaches it.
 		let asked = false;
 		let found = false;
-		await this.store.updateForeshadowings(project, (items) => {
+		let removed = null as Foreshadowing | null;
+		const wrote = await this.store.updateForeshadowings(project, (items) => {
 			asked = true;
+			removed = items.find((item) => item.id === id) ?? null;
 			const next = items.filter((item) => item.id !== id);
 			found = next.length !== items.length;
 			return found ? next : null;
 		});
 		if (!asked) return "refused";
+		if (wrote && removed !== null) this.tell(project, { kind: "deleted", item: removed });
 		return found ? "deleted" : "absent";
 	}
 
@@ -416,6 +443,10 @@ export class ForeshadowingService {
 		});
 		if (!asked) return "refused";
 		return found ? "written" : "absent";
+	}
+
+	private tell(project: ProjectRef, event: ForeshadowingServiceEvent): void {
+		this.onEvent?.(project, event);
 	}
 
 	/** One occurrence of one thread changed in one write; absent when either is gone. */

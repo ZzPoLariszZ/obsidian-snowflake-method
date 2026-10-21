@@ -50,6 +50,36 @@ describe("VaultRepository", () => {
     expect(record.body).toContain("# One-Sentence Summary");
   });
 
+  it("tells a managed note's observers once, with the note as it stands", async () => {
+    const created: [string, string, boolean][] = [];
+    const bodies: [string, string, string, boolean][] = [];
+    repository.onManagedFileCreated = (path, content, userInput) => {
+      created.push([path, content, userInput]);
+    };
+    repository.onBodyWrite = (path, before, after, userInput) => {
+      bodies.push([path, before, after, userInput]);
+    };
+
+    const made = await repository.createManagedFile({
+      userInput: true,
+      path: "Projects/Novel/20_Character/Ada.md",
+      template: { body: "# Ada\n", sections: [] },
+      frontmatter: {
+        "snowflake-document": "character",
+        "snowflake-project-id": "project-1",
+      },
+    });
+
+    expect(created).toHaveLength(1);
+    expect(created[0]?.[0]).toBe(made.path);
+    expect(created[0]?.[2]).toBe(true);
+    // Both observers see the one read, the note as it stands after its frontmatter.
+    const content = created[0]?.[1] ?? "";
+    expect(bodies).toEqual([[made.path, "", content, true]]);
+    expect(parseMarkdownFrontmatter(content).frontmatter["snowflake-document"]).toBe("character");
+    expect(content).toContain("# Ada");
+  });
+
   it("renames and trashes folders with their whole subtrees", async () => {
     await fakeVault.seedFile("Novel/21_Category/Race/_self.md", "race");
     await fakeVault.seedFile("Novel/21_Category/Race/Elf/_self.md", "elf");
