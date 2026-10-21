@@ -9,6 +9,7 @@ export * from "./foreshadowing-store";
 export * from "./freeform-service";
 export * from "./freeform-store";
 export * from "./gallery-service";
+export * from "./history-classify";
 export * from "./history-files";
 export * from "./import-store";
 export * from "./json-document-store";
