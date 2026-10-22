@@ -7298,7 +7298,7 @@ export default class SnowflakeMethodPlugin
 
 	async openStoryStructure(
 		visualization?: StoryStructureVisualization,
-		options: { newTab?: boolean; projectPath?: string | null } = {},
+		options: { newTab?: boolean; projectPath?: string | null; corkboardView?: CorkboardView } = {},
 	): Promise<void> {
 		const projectPath = options.projectPath === undefined
 			? this.settings.recentProjectPath
@@ -7316,6 +7316,17 @@ export default class SnowflakeMethodPlugin
 		const leaf = existing ?? this.app.workspace.getLeaf('tab');
 		const saved = existing?.getViewState();
 		if (saved === undefined || saved.state?.projectPath === undefined) {
+			// A corkboard view asked for rides in the state a fresh tab starts from.
+			const board = saved?.state?.corkboard;
+			const corkboard =
+				options.corkboardView === undefined
+					? {}
+					: {
+							corkboard: {
+								...(typeof board === 'object' && board !== null ? (board as Record<string, unknown>) : {}),
+								view: options.corkboardView,
+							},
+						};
 			await leaf.setViewState({
 				...saved,
 				type: STORY_STRUCTURE_VIEW_TYPE,
@@ -7324,16 +7335,18 @@ export default class SnowflakeMethodPlugin
 					...saved?.state,
 					projectPath,
 					visualization: visualization ?? saved?.state?.visualization ?? DEFAULT_STORY_STRUCTURE_VISUALIZATION,
+					...corkboard,
 				},
 			});
 		}
 		await leaf.loadIfDeferred();
-		if (
-			existing !== undefined &&
-			visualization !== undefined &&
-			leaf.view instanceof SnowflakeStoryStructureView
-		) {
-			leaf.view.showVisualization(visualization);
+		if (leaf.view instanceof SnowflakeStoryStructureView) {
+			if (existing !== undefined && visualization !== undefined) {
+				leaf.view.showVisualization(visualization);
+			}
+			if (options.corkboardView !== undefined) {
+				leaf.view.showCorkboardView(options.corkboardView);
+			}
 		}
 		this.app.workspace.setActiveLeaf(leaf, { focus: true });
 		await this.app.workspace.revealLeaf(leaf);

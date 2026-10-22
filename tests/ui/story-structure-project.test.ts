@@ -460,7 +460,8 @@ describe('workspace project ownership', () => {
 function structureLeaf(projectPath: string, root: object, deferred = false) {
 	const view = Object.create(SnowflakeStoryStructureView.prototype) as SnowflakeStoryStructureView;
 	const showVisualization = vi.fn();
-	Object.assign(view, { showVisualization, projectPath: () => projectPath });
+	const showCorkboardView = vi.fn();
+	Object.assign(view, { showVisualization, showCorkboardView, projectPath: () => projectPath });
 	let state: ViewState = {
 		type: STORY_STRUCTURE_VIEW_TYPE,
 		state: { projectPath, visualization: 'timeline' },
@@ -473,7 +474,7 @@ function structureLeaf(projectPath: string, root: object, deferred = false) {
 		loadIfDeferred: vi.fn(async () => { await Promise.resolve(); leaf.view = view; }),
 		detach: vi.fn(),
 	};
-	return { leaf, showVisualization };
+	return { leaf, showVisualization, showCorkboardView };
 }
 
 function pluginWithProjects(deferred = false) {
@@ -574,6 +575,31 @@ describe('opening a project workspace', () => {
 		expect(first.leaf.loadIfDeferred).not.toHaveBeenCalled();
 		expect(workspace.getLeaf).toHaveBeenCalledExactlyOnceWith('tab');
 		expect(created.leaf.getViewState().state).toMatchObject({ projectPath: secondProject });
+	});
+
+	it('shows the corkboard on the view asked for in an open workspace', async () => {
+		const { plugin, workspace, second } = pluginWithProjects();
+
+		await plugin.openStoryStructure('corkboard-ordered', { corkboardView: 'character' });
+
+		expect(workspace.getLeaf).not.toHaveBeenCalled();
+		expect(second.leaf.setViewState).not.toHaveBeenCalled();
+		expect(second.showVisualization).toHaveBeenCalledExactlyOnceWith('corkboard-ordered');
+		expect(second.showCorkboardView).toHaveBeenCalledExactlyOnceWith('character');
+	});
+
+	it('starts a new workspace on the corkboard view asked for', async () => {
+		const { plugin, workspace, first, created } = pluginWithProjects();
+		workspace.getLeavesOfType.mockReturnValue([first.leaf]);
+
+		await plugin.openStoryStructure('corkboard-ordered', { corkboardView: 'character' });
+
+		expect(first.showCorkboardView).not.toHaveBeenCalled();
+		expect(created.leaf.setViewState).toHaveBeenCalledExactlyOnceWith({
+			type: STORY_STRUCTURE_VIEW_TYPE, active: true,
+			state: { projectPath: secondProject, visualization: 'corkboard-ordered', corkboard: { view: 'character' } },
+		});
+		expect(created.showCorkboardView).toHaveBeenCalledExactlyOnceWith('character');
 	});
 
 	it('uses an explicit project for a new workspace even when another dashboard is current', async () => {

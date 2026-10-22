@@ -150,9 +150,11 @@ import {
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import {
+	CORKBOARD_CHARACTER_VIEW,
 	STORY_STRUCTURE_FAMILIES,
 	familyVisualization,
 	type StoryStructureFamily,
+	type StoryStructureVisualization,
 } from './story-structure-state';
 import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
@@ -6181,9 +6183,12 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
-	 * Scenes open the visualization workspace, with their base in a separate
-	 * menu group. Other collections open their base directly. Existing views
-	 * remain available on read-only projects; only writing a base is refused.
+	 * Scenes and characters open the visualization workspace, with every
+	 * visualization and their base in the menu: the scene steps bring the tab
+	 * forward as it last stood, the character steps open the corkboard on its
+	 * character view. Worldbuilding kinds open their base directly. Existing
+	 * views remain available on read-only projects; only writing a base is
+	 * refused.
 	 */
 	private renderOpenBase(
 		actions: HTMLElement,
@@ -6191,6 +6196,8 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 	): void {
 		const scenes = id === 'scenes';
+		const characters = id === 'characters';
+		const workspace = scenes || characters;
 		const openBase = (): void => {
 			void this.runAndRefresh(() => this.host.openProjectBase(id));
 		};
@@ -6202,22 +6209,29 @@ export class SnowflakeDashboardView extends ItemView {
 					.onClick(openBase),
 			);
 		};
+		// The character steps land the corkboard on its character view; the
+		// scene steps bring the workspace forward as it stands.
+		const openWorkspace = (visualization?: StoryStructureVisualization): void => {
+			const character = characters && visualization === familyVisualization('corkboard');
+			void this.runAndRefresh(() =>
+				this.host.openStoryStructure(visualization, {
+					projectPath: this.projectPath,
+					...(character ? { corkboardView: CORKBOARD_CHARACTER_VIEW } : {}),
+				}),
+			);
+		};
 		renderSplitButton(actions, {
 			cls: 'snowflake-method-base-split-button',
 			primary: {
 				cls: 'snowflake-method-open-base',
-				label: this.t(scenes ? 'actions.openWorkspace' : 'actions.openBase'),
-				run: scenes
-					? () => {
-							void this.runAndRefresh(() =>
-								this.host.openStoryStructure(undefined, { projectPath: this.projectPath }),
-							);
-						}
+				label: this.t(workspace ? 'actions.openWorkspace' : 'actions.openBase'),
+				run: workspace
+					? () => openWorkspace(characters ? familyVisualization('corkboard') : undefined)
 					: openBase,
 			},
 			menuLabel: this.t('table.actions'),
 			items: (menu) => {
-				if (scenes) {
+				if (workspace) {
 					const icons: Record<StoryStructureFamily, string> = {
 						corkboard: 'layout-dashboard',
 						freeform: 'layout-template',
@@ -6232,13 +6246,7 @@ export class SnowflakeDashboardView extends ItemView {
 									view: this.t(`storyStructure.family.${family}`),
 								}))
 								.setIcon(icons[family])
-								.onClick(() => {
-									void this.runAndRefresh(() =>
-										this.host.openStoryStructure(familyVisualization(family), {
-											projectPath: this.projectPath,
-										}),
-									);
-								}),
+								.onClick(() => openWorkspace(familyVisualization(family))),
 						);
 					}
 					menu.addSeparator();
@@ -6258,7 +6266,7 @@ export class SnowflakeDashboardView extends ItemView {
 							}).open();
 						}),
 				);
-				if (!scenes) addOpenBase(menu);
+				if (!workspace) addOpenBase(menu);
 			},
 		});
 	}

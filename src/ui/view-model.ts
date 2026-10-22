@@ -44,7 +44,7 @@ import type { BeatSheetBridge } from './beat-sheet-bridge';
 import type { FreeformBridge, FreeformContext } from './freeform-bridge';
 import type { RelationshipGraphBridge } from './relationship-graph-bridge';
 import type { TimelineBridge } from './timeline-bridge';
-import type { StoryStructureVisualization } from './story-structure-state';
+import type { CorkboardView, StoryStructureVisualization } from './story-structure-state';
 import type { RevisionPanelBridge } from './revision-panel';
 import type { ImportSourceOption } from './series';
 import type {
@@ -1019,11 +1019,12 @@ export interface DashboardHost {
 	): Promise<void>;
 	/**
 	 * Brings the story structure view forward, on the visualization asked
-	 * for when one is; a new leaf when asked, or when none stands open.
+	 * for when one is, and the corkboard on the view named when one is; a
+	 * new leaf when asked, or when none stands open.
 	 */
 	openStoryStructure(
 		visualization?: StoryStructureVisualization,
-		options?: { newTab?: boolean; projectPath?: string | null },
+		options?: { newTab?: boolean; projectPath?: string | null; corkboardView?: CorkboardView },
 	): Promise<void>;
 	checkCurrentProject(): Promise<RepairReportViewModel>;
 	repairMissingStructureItem(path: string, field?: string): Promise<void>;

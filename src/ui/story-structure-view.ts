@@ -499,7 +499,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	/** Shows another view on the corkboard tab: the board is remade for it, its drafts settled first. */
-	private showCorkboardView(view: CorkboardView): void {
+	showCorkboardView(view: CorkboardView): void {
 		if (view === this.corkboardView) return;
 		this.corkboardView = view;
 		this.renderFrame();
