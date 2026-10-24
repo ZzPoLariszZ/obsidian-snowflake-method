@@ -579,6 +579,24 @@ describe("HistoryLedger", () => {
 		expect(timers.delays).toHaveLength(delays);
 	});
 
+	it("keeps what a previous session left under an event told before start", async () => {
+		await projects.tasks.create(project, makeTask("task-1"));
+		ledger.dispose();
+
+		// The plugin wires the services before it starts the ledger; a task
+		// made in between saves the store, with what waited there still in it.
+		ledger = buildLedger();
+		await projects.tasks.create(project, makeTask("task-2"));
+		expect(pendingStore.value?.events.map((entry) => entry.record.subject)).toEqual([
+			{ type: "task", id: "task-1", title: "Task task-1" },
+			{ type: "task", id: "task-2", title: "Task task-2" },
+		]);
+		ledger.start();
+		await timers.flush();
+		expect(filed()).toHaveLength(2);
+		expect(pendingStore.value).toBeNull();
+	});
+
 	it("sets a month file that will not parse aside, and starts afresh", async () => {
 		await fakeVault.seedFile(eventFilePath(), "{ not json");
 		await projects.tasks.create(project, makeTask("task-1"));

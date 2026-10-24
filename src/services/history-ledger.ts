@@ -146,13 +146,13 @@ export class HistoryLedger {
 
 	constructor(private readonly deps: HistoryLedgerDeps) {
 		this.now = deps.now ?? (() => Date.now());
+		// What a previous session left unfiled is the queue's from the first
+		// moment, so an event recorded before `start` saves over nothing.
+		this.queue.push(...(parsePendingHistoryFile(deps.pending.load())?.events ?? []));
 	}
 
-	/** Takes up what a previous session left unfiled, and arms its flush. */
+	/** Arms the flush of what a previous session left unfiled. */
 	start(): void {
-		const stored = parsePendingHistoryFile(this.deps.pending.load());
-		if (stored === null || stored.events.length === 0) return;
-		this.queue.push(...stored.events);
 		this.arm();
 	}
 
