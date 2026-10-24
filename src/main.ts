@@ -11156,7 +11156,10 @@ export default class SnowflakeMethodPlugin
 			this.app.vault.on('create', (file) => {
 				// Born in scope, a note baselines at nothing, so what is then
 				// written into it is credited to the session.
-				if (file instanceof TFile) this.sessions.noteCreated(file.path);
+				if (file instanceof TFile) {
+					this.sessions.noteCreated(file.path);
+					this.history.noteAppeared(file.path);
+				}
 				this.handleVaultEvent(file);
 			}),
 		);

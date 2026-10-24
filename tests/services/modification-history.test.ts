@@ -4,6 +4,7 @@ import {
 	SCHEMA_VERSION,
 	fingerprint,
 	type HistoryEventMonthFile,
+	type HistoryReading,
 	type HistoryTallyReading,
 	type NoteSnapshotMonthFile,
 } from "../../src/domain";
@@ -296,6 +297,51 @@ describe("ModificationHistoryService", () => {
 		const withSession = await service.read(project, "2026-10-21", "2026-10-21");
 		expect(withSession).not.toBe(rewritten);
 		expect(withSession.summary.sessions).toBe(1);
+	});
+
+	it("reads a span again when a note it names goes or comes back", async () => {
+		await fakeVault.seedFile(at(SCENE), note("scene", "one two three"));
+		await fakeVault.seedFile(
+			historyFile("2026_10_device-a_note_snapshots.json"),
+			snapshotFile([
+				{ path: SCENE, kind: "scene", documentType: "scene", ts: T0, words: 3, delta: null, hash: "h1" },
+			]),
+		);
+		const standing = (reading: HistoryReading): (boolean | null)[] =>
+			reading.days[0]?.entries.map((entry) => (entry.kind === "note" ? entry.note.exists : null)) ?? [];
+		const first = await service.read(project, "2026-10-21", "2026-10-21");
+		expect(standing(first)).toEqual([true]);
+
+		// Deleted: the tab is told once things settle, and the next reading says so
+		// before the ledger has filed the deletion.
+		events.length = 0;
+		fakeVault.delete(at(SCENE));
+		service.noteDeleted(at(SCENE));
+		await timers.fire(HISTORY_FILES_QUIET_MS);
+		expect(kinds()).toEqual(["data"]);
+		const gone = await service.read(project, "2026-10-21", "2026-10-21");
+		expect(gone).not.toBe(first);
+		expect(standing(gone)).toEqual([false]);
+
+		// Restored by hand, which no record of the plugin's tells: the reading comes back to it.
+		events.length = 0;
+		await fakeVault.seedFile(at(SCENE), note("scene", "one two three"));
+		service.noteAppeared(at(SCENE));
+		await timers.fire(HISTORY_FILES_QUIET_MS);
+		expect(kinds()).toEqual(["data"]);
+		const back = await service.read(project, "2026-10-21", "2026-10-21");
+		expect(back).not.toBe(gone);
+		expect(standing(back)).toEqual([true]);
+
+		// A note the reading never named, and a file that is no note, move nothing.
+		events.length = 0;
+		await fakeVault.seedFile(at("20_Character/Ada.md"), note("character", "Ada"));
+		service.noteAppeared(at("20_Character/Ada.md"));
+		service.noteAppeared(at("cover.png"));
+		service.noteDeleted("Elsewhere/Loose.md");
+		await timers.fire(HISTORY_FILES_QUIET_MS);
+		expect(kinds()).toEqual(["data"]);
+		expect(await service.read(project, "2026-10-21", "2026-10-21")).toBe(back);
 	});
 
 	it("tells a deletion another device replayed once, by the device each event file is named for", async () => {

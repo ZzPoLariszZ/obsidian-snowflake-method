@@ -78,6 +78,8 @@ export interface ModificationHistoryDeps {
 /** A span's reading kept until something it read moves. */
 interface KeptReading {
 	key: string;
+	/** Whether each note the merge asked after stood then: a different answer now is a different reading. */
+	standing: ReadonlyMap<string, boolean>;
 	reading: HistoryReading;
 }
 
@@ -189,6 +191,15 @@ export class ModificationHistoryService {
 		this.ledger.noteCreated(path, content, userInput);
 	}
 
+	/**
+	 * A note came into a project by any hand: made, restored from a copy,
+	 * synced in. The plugin's own creations the ledger writes down; here a
+	 * reading that named the note as gone is read again once things settle.
+	 */
+	noteAppeared(path: string): void {
+		if (this.isProjectNote(path)) this.filesChanged();
+	}
+
 	notePathRenamed(oldPath: string, newPath: string): void {
 		this.harvester.notePathRenamed(oldPath, newPath);
 		this.ledger.noteRenamed(oldPath, newPath);
@@ -201,6 +212,13 @@ export class ModificationHistoryService {
 	): void {
 		this.harvester.noteDeleted(path, { children: folder });
 		this.ledger.noteDeleted(path, { children });
+		// A reading that named the note shows it as gone, the ledger's word
+		// on it or not: a read-only project's notes have no ledger.
+		if ([path, ...children].some((gone) => this.isProjectNote(gone))) this.filesChanged();
+	}
+
+	private isProjectNote(path: string): boolean {
+		return path.toLowerCase().endsWith(".md") && this.deps.projectAtPath(path) !== null;
 	}
 
 	beginImport(): void {
@@ -241,9 +259,9 @@ export class ModificationHistoryService {
 
 	/**
 	 * What happened in a project between two days, inclusive, in the
-	 * device's zone. Kept until a file it read moves or a tally changes, so
-	 * a panel re-reading on every bell pays for the merge only when there
-	 * is something new to merge.
+	 * device's zone. Kept until a file it read moves, a tally changes or a
+	 * note it names comes or goes, so a panel re-reading on every bell pays
+	 * for the merge only when there is something new to merge.
 	 */
 	async read(project: ProjectRef, from: string, through: string): Promise<HistoryReading> {
 		const timeZone = this.deps.timezone();
@@ -258,9 +276,18 @@ export class ModificationHistoryService {
 			files.stamps,
 			talliesFingerprint(tallies),
 		].join("\n");
-		const kept = this.readings.get(project.id);
-		if (kept !== undefined && kept.key === key) return kept.reading;
 		const root = project.rootPath;
+		const exists = (path: string): boolean =>
+			this.deps.repository.getFile(`${root}/${path}`) !== null;
+		const kept = this.readings.get(project.id);
+		if (
+			kept !== undefined &&
+			kept.key === key &&
+			[...kept.standing].every(([path, stood]) => exists(path) === stood)
+		) {
+			return kept.reading;
+		}
+		const standing = new Map<string, boolean>();
 		const reading = mergeHistory({
 			from,
 			through,
@@ -268,11 +295,15 @@ export class ModificationHistoryService {
 			snapshots: files.snapshots,
 			events: files.events,
 			tallies,
-			exists: (path) => this.deps.repository.getFile(`${root}/${path}`) !== null,
+			exists: (path) => {
+				const stood = standing.get(path) ?? exists(path);
+				standing.set(path, stood);
+				return stood;
+			},
 			classify: (path) =>
 				classifyHistoryPath(project, path, [this.deps.frontmatterNow(`${root}/${path}`)]),
 		});
-		this.readings.set(project.id, { key, reading });
+		this.readings.set(project.id, { key, standing, reading });
 		return reading;
 	}
 
