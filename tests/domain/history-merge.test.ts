@@ -5,6 +5,7 @@ import {
 	type HistoryEntry,
 	type HistoryEventKind,
 	type HistoryEventRecord,
+	type HistoryEventSource,
 	type HistoryMergeInput,
 	type HistoryNoteEntry,
 	type HistoryNoteKind,
@@ -73,13 +74,24 @@ const session = (
 	files,
 });
 
-const merge = (overrides: Partial<HistoryMergeInput> = {}) =>
+const told = (device: string, events: readonly HistoryEventRecord[]): HistoryEventSource => ({
+	device,
+	events,
+});
+
+type MergeOverrides = Partial<Omit<HistoryMergeInput, 'events'>> & {
+	/** Device a's events, where no device's own are given. */
+	events?: readonly HistoryEventRecord[];
+	sources?: readonly HistoryEventSource[];
+};
+
+const merge = ({ events = [], sources = [told('a', events)], ...overrides }: MergeOverrides = {}) =>
 	mergeHistory({
 		from: D20,
 		through: D22,
 		timeZone: 'UTC',
 		snapshots: [],
-		events: [],
+		events: sources,
 		tallies: [],
 		exists: () => true,
 		classify: () => null,
@@ -469,20 +481,34 @@ describe('merging the three records into one history', () => {
 		expect(day.notes).toBe(1);
 	});
 
-	it('tells an event told by two devices once', () => {
+	it('tells an event told by two devices once, and a change one device made twice as twice', () => {
 		const reading = merge({
-			events: [
-				event('same', at('09:00:00'), 'task-created', { type: 'task', id: 'task-1', title: 'Write' }),
-				event('same', at('09:00:00'), 'task-created', { type: 'task', id: 'task-1', title: 'Write' }),
-				event('r-a', at('10:00:00'), 'renamed', note('B.md'), { from: 'A.md' }),
-				event('r-b', at('10:00:05'), 'renamed', note('B.md'), { from: 'A.md' }),
-				event('r-c', at('11:00:00', D22), 'renamed', note('B.md'), { from: 'A.md' }),
-				event('d-a', at('12:00:00'), 'deleted', note('C.md')),
-				event('d-b', at('12:00:40'), 'deleted', note('C.md')),
+			sources: [
+				told('a', [
+					event('same', at('09:00:00'), 'task-created', { type: 'task', id: 'task-1', title: 'Write' }),
+					event('r-a', at('10:00:00'), 'renamed', note('B.md'), { from: 'A.md' }),
+					event('d-a', at('12:00:00'), 'deleted', note('C.md')),
+					// The note made again and deleted again by the same hand within the day.
+					event('d-c', at('12:30:00'), 'deleted', note('C.md')),
+				]),
+				told('b', [
+					// The same file synced over, and device a's changes replayed by the sync.
+					event('same', at('09:00:00'), 'task-created', { type: 'task', id: 'task-1', title: 'Write' }),
+					event('r-b', at('10:00:05'), 'renamed', note('B.md'), { from: 'A.md' }),
+					event('d-b', at('12:00:40'), 'deleted', note('C.md')),
+					event('d-d', at('12:31:00'), 'deleted', note('C.md')),
+					// A day on, the same rename is another rename.
+					event('r-c', at('11:00:00', D22), 'renamed', note('B.md'), { from: 'A.md' }),
+				]),
 			],
 		});
 		const first = dayOf(reading, D21);
-		expect(first.entries.map((entry) => entry.id)).toEqual(['same', 'rename:r-a', `${D21}:C.md:deleted:d-a`]);
+		expect(first.entries.map((entry) => entry.id)).toEqual([
+			'same',
+			'rename:r-a',
+			`${D21}:C.md:deleted:d-a`,
+			`${D21}:C.md:deleted:d-c`,
+		]);
 		expect(dayOf(reading, D22).entries.map((entry) => entry.id)).toEqual(['rename:r-c']);
 	});
 

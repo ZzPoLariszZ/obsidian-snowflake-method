@@ -432,6 +432,11 @@ describe("HistoryLedger", () => {
 			subject: { type: "note", path: rel(other.path), kind: "scene" },
 		});
 		expect(filed()).toHaveLength(4);
+		// Told once more for the note itself, as a folder's deletion may be, it stands once.
+		ledger.noteDeleted(other.path);
+		expect(pendingStore.value).toBeNull();
+		await ledger.flushNow();
+		expect(filed()).toHaveLength(4);
 
 		await projects.createCharacter(project, { name: "Ada" });
 		expect(pendingStore.value?.events).toHaveLength(1);

@@ -173,6 +173,12 @@ export interface HistorySnapshotSource {
 	file: NoteSnapshotMonthFile;
 }
 
+/** One device's month file of events. */
+export interface HistoryEventSource {
+	device: string;
+	events: readonly HistoryEventRecord[];
+}
+
 export interface HistoryTallyFile {
 	/** Under the project root. */
 	path: string;
@@ -200,7 +206,7 @@ export interface HistoryMergeInput {
 	/** Every device's files for the months around the span. */
 	snapshots: readonly HistorySnapshotSource[];
 	/** Every device's events, all months: a note's identity needs the whole chain. */
-	events: readonly HistoryEventRecord[];
+	events: readonly HistoryEventSource[];
 	tallies: readonly HistoryTallyReading[];
 	/** Whether a note stands now, by its path under the root. */
 	exists: (path: string) => boolean;
@@ -268,24 +274,38 @@ const addWords = (into: HistoryWords, words: HistoryWords): void => {
 	into.net += words.net;
 };
 
+interface ToldEvent {
+	event: HistoryEventRecord;
+	device: string;
+}
+
 /**
  * Every event once: the same id told by two devices' files is one event,
- * and a rename, a deletion or an import that sync made every device see
- * is the one the earliest device wrote down.
+ * and a rename, a deletion or an import that sync made every other device
+ * see, and write down as its own, is the one the earliest device wrote
+ * down. Told again by the same device within the day, it is the same
+ * change made again, a note deleted, restored and deleted once more, and
+ * stands again; the ledger keeps one device's own echoes apart.
  */
-function dedupeEvents(events: readonly HistoryEventRecord[]): HistoryEventRecord[] {
-	const byId = new Map<string, HistoryEventRecord>();
-	for (const event of events) {
-		if (!byId.has(event.id)) byId.set(event.id, event);
+function dedupeEvents(sources: readonly HistoryEventSource[]): HistoryEventRecord[] {
+	const byId = new Map<string, ToldEvent>();
+	for (const { device, events } of sources) {
+		for (const event of events) {
+			if (!byId.has(event.id)) byId.set(event.id, { event, device });
+		}
 	}
-	const lastKept = new Map<string, number>();
+	const recent = new Map<string, ToldEvent[]>();
 	const kept: HistoryEventRecord[] = [];
-	for (const event of [...byId.values()].sort(byMoment)) {
+	for (const told of [...byId.values()].sort((left, right) => byMoment(left.event, right.event))) {
+		const { event, device } = told;
 		if (ECHOING.has(event.event)) {
 			const key = `${event.event}\n${event.from ?? ''}\n${subjectPath(event.subject) ?? ''}`;
-			const seen = lastKept.get(key);
-			if (seen !== undefined && event.ts - seen <= EVENT_ECHO_MS) continue;
-			lastKept.set(key, event.ts);
+			const within = (recent.get(key) ?? []).filter(
+				(seen) => event.ts - seen.event.ts <= EVENT_ECHO_MS,
+			);
+			if (within.some((seen) => seen.device !== device)) continue;
+			within.push(told);
+			recent.set(key, within);
 		}
 		kept.push(event);
 	}

@@ -44,11 +44,12 @@ export const LEDGER_FLUSH_QUIET_MS = 1_500;
 export const LEDGER_FLUSH_MAX_MS = 10_000;
 export const LEDGER_PENDING_SCHEMA_VERSION = 1;
 /**
- * How long a rename seen once is the same rename seen again: a folder's
- * move is told once for the folder and once for every note in it, in
- * either order, and the ledger writes each note down once.
+ * How long a change seen once is the same change seen again: a folder's
+ * move or deletion is told once for the folder and once for every note in
+ * it, in either order, and the ledger writes each note down once. Another
+ * device's telling of the same change is the merge's to let go.
  */
-const RENAME_ECHO_MS = 2_000;
+const ECHO_MS = 2_000;
 
 /** One event and the file it goes in. */
 export interface PendingHistoryEvent {
@@ -136,7 +137,7 @@ export class HistoryLedger {
 	private held: PendingHistoryEvent[] | null = null;
 	/** Events a flush is writing now: still the store's until they land. */
 	private writing: PendingHistoryEvent[] = [];
-	private readonly recentRenames = new Map<string, number>();
+	private readonly recentEchoes = new Map<string, number>();
 	private quietTick: unknown = null;
 	private ceilingTick: unknown = null;
 	private flushing: Promise<void> | null = null;
@@ -217,7 +218,7 @@ export class HistoryLedger {
 		const ts = this.now();
 		for (const { from, to } of moved) {
 			if (!to.toLowerCase().endsWith(".md")) continue;
-			if (this.echoedRename(from, to, ts)) continue;
+			if (this.echoed(`renamed\n${from}\n${to}`, ts)) continue;
 			this.noteMoved(from, to, ts);
 		}
 	}
@@ -254,6 +255,7 @@ export class HistoryLedger {
 		const ts = this.now();
 		for (const gone of [path, ...children]) {
 			if (!gone.toLowerCase().endsWith(".md")) continue;
+			if (this.echoed(`deleted\n${gone}`, ts)) continue;
 			const located = this.locate(gone);
 			if (located === null) continue;
 			const ref = classifyHistoryPath(located.project, located.rel, [
@@ -474,14 +476,13 @@ export class HistoryLedger {
 		});
 	}
 
-	/** True for a rename already written down within the echo window; the first sighting is remembered. */
-	private echoedRename(from: string, to: string, now: number): boolean {
-		for (const [key, seen] of this.recentRenames) {
-			if (now - seen > RENAME_ECHO_MS) this.recentRenames.delete(key);
+	/** True for a change already written down within the echo window; the first sighting is remembered. */
+	private echoed(key: string, now: number): boolean {
+		for (const [seenKey, seen] of this.recentEchoes) {
+			if (now - seen > ECHO_MS) this.recentEchoes.delete(seenKey);
 		}
-		const key = `${from}\n${to}`;
-		if (this.recentRenames.has(key)) return true;
-		this.recentRenames.set(key, now);
+		if (this.recentEchoes.has(key)) return true;
+		this.recentEchoes.set(key, now);
 		return false;
 	}
 

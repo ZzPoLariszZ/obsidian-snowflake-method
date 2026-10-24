@@ -9,7 +9,7 @@ import {
 	parseHistoryEventMonthFile,
 	parseNoteSnapshotMonthFile,
 	type HistoryEventMonthFile,
-	type HistoryEventRecord,
+	type HistoryEventSource,
 	type HistorySnapshotSource,
 	type NoteSnapshotMonthFile,
 } from "../domain";
@@ -88,7 +88,7 @@ export function relativizeProjectPath(rootPath: string, path: string): string | 
 /** What one reading of a project's history files found, and when it must be read again. */
 export interface HistoryFiles {
 	snapshots: HistorySnapshotSource[];
-	events: HistoryEventRecord[];
+	events: HistoryEventSource[];
 	/** Every file read, each with its stat: a different string is a different on-disk state. */
 	stamps: string;
 }
@@ -109,6 +109,10 @@ const parseSnapshotFile = (content: string | null): NoteSnapshotMonthFile | null
 const parseEventFile = (content: string | null): HistoryEventMonthFile | null =>
 	parseHistoryEventMonthFile(parseJsonObject(content));
 
+/** The device a history file is named for: what stands between its year and month and its suffix. */
+const deviceOf = (name: string, suffix: string): string =>
+	name.slice(0, -suffix.length).replace(/^\d{4}_\d{2}_/u, "");
+
 /**
  * Every device's history files a span reads: the snapshot files of the
  * months around it, since a day's first version is read against the one
@@ -127,7 +131,7 @@ export async function gatherHistoryFiles(
 ): Promise<HistoryFiles> {
 	const directory = getProjectPathLayout(project.locale).directories.modificationHistory;
 	const snapshots: HistorySnapshotSource[] = [];
-	const events: HistoryEventRecord[] = [];
+	const events: HistoryEventSource[] = [];
 	const stamps: string[] = [];
 	for (const { year, months } of monthsBetween(addMonths(from, -1), addMonths(through, 1))) {
 		const folder = historyYearFolder(project.rootPath, directory, year);
@@ -139,10 +143,7 @@ export async function gatherHistoryFiles(
 			stamps.push(`${file.path}@${fileStamp(file)}`);
 			const parsed = await readStampedJson(repository, memos.snapshots, file, parseSnapshotFile);
 			if (parsed === null) continue;
-			snapshots.push({
-				device: file.name.slice(prefix.length, -SNAPSHOT_FILE_SUFFIX.length),
-				file: parsed,
-			});
+			snapshots.push({ device: deviceOf(file.name, SNAPSHOT_FILE_SUFFIX), file: parsed });
 		}
 	}
 	for (const file of repository.listFilesBelow(historyFolder(project.rootPath, directory))) {
@@ -150,7 +151,7 @@ export async function gatherHistoryFiles(
 		stamps.push(`${file.path}@${fileStamp(file)}`);
 		const parsed = await readStampedJson(repository, memos.events, file, parseEventFile);
 		if (parsed === null) continue;
-		for (const event of parsed.events) events.push(event);
+		events.push({ device: deviceOf(file.name, EVENT_FILE_SUFFIX), events: parsed.events });
 	}
 	return { snapshots, events, stamps: stamps.join("\n") };
 }

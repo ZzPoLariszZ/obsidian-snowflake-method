@@ -298,6 +298,37 @@ describe("ModificationHistoryService", () => {
 		expect(withSession.summary.sessions).toBe(1);
 	});
 
+	it("tells a deletion another device replayed once, by the device each event file is named for", async () => {
+		const deleted = (id: string, ts: number): HistoryEventMonthFile["events"][number] => ({
+			id,
+			ts,
+			event: "deleted",
+			origin: "user",
+			subject: { type: "note", path: SCENE, kind: "scene" },
+		});
+		await fakeVault.seedFile(
+			historyFile("2026_10_device-a_history_events.json"),
+			eventFile({
+				schemaVersion: 1,
+				// Deleted, restored and deleted again by one device.
+				events: [deleted("gone-1", T0), deleted("gone-2", T0 + 2 * HOUR)],
+			}),
+		);
+		await fakeVault.seedFile(
+			historyFile("2026_10_device-b_history_events.json"),
+			eventFile({
+				schemaVersion: 1,
+				// Both deletions as the sync replayed them on the other device.
+				events: [deleted("gone-1-b", T0 + 40_000), deleted("gone-2-b", T0 + 2 * HOUR + 40_000)],
+			}),
+		);
+		const reading = await service.read(project, "2026-10-21", "2026-10-21");
+		expect(reading.days[0]?.entries.map((entry) => entry.id)).toEqual([
+			`2026-10-21:${SCENE}:deleted:gone-1`,
+			`2026-10-21:${SCENE}:deleted:gone-2`,
+		]);
+	});
+
 	it("says when there is something new to read, and when the copies' availability moved", async () => {
 		await fakeVault.seedFile(at(SCENE), note("scene", "one two three"));
 		store.add(at(SCENE), T0, note("scene", "one two three"));
