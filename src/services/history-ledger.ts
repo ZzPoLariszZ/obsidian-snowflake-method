@@ -135,7 +135,7 @@ export class HistoryLedger {
 	private queue: PendingHistoryEvent[] = [];
 	/** Events of the import under way, held until it ends and says where it came from. */
 	private held: PendingHistoryEvent[] | null = null;
-	/** Events a flush is writing now: still the store's until they land. */
+	/** Events the flush under way is filing: still the store's, and still followed, until it ends. */
 	private writing: PendingHistoryEvent[] = [];
 	private readonly recentEchoes = new Map<string, number>();
 	private quietTick: unknown = null;
@@ -489,7 +489,7 @@ export class HistoryLedger {
 	/** A project or a folder above one moved: what waits for it goes where it went. */
 	private followRoot(oldPath: string, newPath: string): void {
 		let moved = false;
-		for (const entry of [...this.queue, ...(this.held ?? [])]) {
+		for (const entry of [...this.writing, ...this.queue, ...(this.held ?? [])]) {
 			const destination = movedWithRename(entry.path, oldPath, newPath);
 			if (destination === null) continue;
 			entry.path = destination;
@@ -502,10 +502,12 @@ export class HistoryLedger {
 	private dropUnder(roots: readonly string[]): void {
 		const stays = (entry: PendingHistoryEvent): boolean =>
 			!roots.some((root) => isPathAtOrBelow(entry.path, root));
-		const before = this.queue.length + (this.held?.length ?? 0);
+		const count = (): number => this.writing.length + this.queue.length + (this.held?.length ?? 0);
+		const before = count();
+		this.writing = this.writing.filter(stays);
 		this.queue = this.queue.filter(stays);
 		if (this.held !== null) this.held = this.held.filter(stays);
-		if (this.queue.length + (this.held?.length ?? 0) !== before) this.savePending();
+		if (count() !== before) this.savePending();
 	}
 
 	private record(project: ProjectRef, draft: EventDraft): void {
@@ -567,19 +569,26 @@ export class HistoryLedger {
 		return run;
 	}
 
-	/** Files every queued event, a month file at a time; a file that fails keeps its events for the next flush. */
+	/**
+	 * Files every queued event, a month file at a time, each file's batch
+	 * gathered by the path its events have when its turn comes: a project
+	 * renamed while an earlier file is being written moves what still
+	 * waits, and a project deleted lets it go. A file that fails keeps its
+	 * events for the next flush.
+	 */
 	private async write(): Promise<void> {
 		this.writing = this.queue;
 		this.queue = [];
-		const byPath = new Map<string, HistoryEventRecord[]>();
-		for (const { path, record } of this.writing) {
-			const records = byPath.get(path) ?? [];
-			records.push(record);
-			byPath.set(path, records);
-		}
+		const done = new Set<PendingHistoryEvent>();
+		const failed = new Set<PendingHistoryEvent>();
 		let landed = 0;
-		const kept: PendingHistoryEvent[] = [];
-		for (const [path, records] of byPath) {
+		for (;;) {
+			const next = this.writing.find((entry) => !done.has(entry));
+			if (next === undefined) break;
+			const { path } = next;
+			const batch = this.writing.filter((entry) => !done.has(entry) && entry.path === path);
+			for (const entry of batch) done.add(entry);
+			const records = batch.map((entry) => entry.record);
 			try {
 				const { aside } = await appendJsonRecordFile(
 					this.deps.repository,
@@ -595,9 +604,12 @@ export class HistoryLedger {
 				landed += records.length;
 				if (aside !== null) this.emit({ kind: "corrupt-file-preserved", path: aside });
 			} catch {
-				kept.push(...records.map((record) => ({ path, record })));
+				for (const entry of batch) failed.add(entry);
 			}
 		}
+		// What failed goes back as it stands now: under the path a rename
+		// gave it meanwhile, and not at all where its project went.
+		const kept = this.writing.filter((entry) => failed.has(entry));
 		this.writing = [];
 		if (kept.length > 0) this.queue.unshift(...kept);
 		this.savePending();

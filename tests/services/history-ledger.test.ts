@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	parseHistoryEventMonthFile,
@@ -535,6 +535,63 @@ describe("HistoryLedger", () => {
 		await timers.fire(LEDGER_FLUSH_MAX_MS);
 		expect(filed()).toHaveLength(4);
 		expect(timers.handlers.size).toBe(0);
+	});
+
+	it("files what still waits under the name a project takes during the flush", async () => {
+		await projects.tasks.create(project, makeTask("task-1"));
+		clock = Date.parse("2026-11-02T10:00:00.000Z");
+		await projects.tasks.create(project, makeTask("task-2"));
+		const novemberFile = (root: string): string =>
+			`${root}/${HISTORY_DIR}/2026/2026_11_device-a_history_events.json`;
+
+		// October's file is held in the writing; November's entry waits behind it.
+		let release: () => void = () => undefined;
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		vi.spyOn(projects.repository, "createPlainFile").mockImplementationOnce(async (path, content) => {
+			await held;
+			return projects.repository.createPlainFile(path, content);
+		});
+		const flushing = ledger.flushNow();
+		await settle();
+		fakeVault.rename(project.rootPath, "Moved");
+		ledger.noteRenamed(project.rootPath, "Moved");
+		expect(pendingStore.value?.events.map((entry) => entry.path)).toEqual([
+			`Moved/${HISTORY_DIR}/${EVENT_FILE}`,
+			novemberFile("Moved"),
+		]);
+		release();
+		await flushing;
+		expect(fakeVault.contents.has(novemberFile("Moved"))).toBe(true);
+		expect(fakeVault.contents.has(novemberFile(project.rootPath))).toBe(false);
+		expect(pendingStore.value).toBeNull();
+		expect(events).toEqual([{ kind: "recorded", events: 2 }]);
+	});
+
+	it("lets what still waits go with a project deleted during the flush", async () => {
+		await projects.tasks.create(project, makeTask("task-1"));
+		clock = Date.parse("2026-11-02T10:00:00.000Z");
+		await projects.tasks.create(project, makeTask("task-2"));
+		fakeVault.failNextCreatePath = eventFilePath();
+		let release: () => void = () => undefined;
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		vi.spyOn(projects.repository, "createPlainFile").mockImplementationOnce(async (path, content) => {
+			await held;
+			return projects.repository.createPlainFile(path, content);
+		});
+		const flushing = ledger.flushNow();
+		await settle();
+		ledger.noteDeleted(project.rootPath, { children: [] });
+		expect(pendingStore.value).toBeNull();
+		release();
+		await flushing;
+		// Neither the failed October file's events nor November's come back.
+		expect(pendingStore.value).toBeNull();
+		expect(fakeVault.contents.has(`${project.rootPath}/${HISTORY_DIR}/2026/2026_11_device-a_history_events.json`)).toBe(false);
+		expect(events).toEqual([]);
 	});
 
 	it("keeps what it could not file, and files it on the next flush", async () => {
