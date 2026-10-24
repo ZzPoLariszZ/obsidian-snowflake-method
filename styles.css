@@ -12963,13 +12963,6 @@ col.snowflake-method-history-column-actions {
 	vertical-align: middle;
 }
 
-/* The rows stand as tall as the button they carry, so a one-line cell
-   centres on it rather than sitting at the top with its padding's worth
-   of room below; a wrapped sentence centres the other cells on itself. */
-.snowflake-method-table.snowflake-method-history-table tr.snowflake-method-history-row > td {
-	vertical-align: middle;
-}
-
 /* A day's head: one cell across the row with the day's name, on the
    secondary ground so the days read as bands between the rows. */
 .snowflake-method-table.snowflake-method-history-table
