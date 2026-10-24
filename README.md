@@ -101,6 +101,7 @@ Thank you for your support!
 | Writing sessions | Time each sitting, aim for a daily goal, and look back at where the words and the hours went. |
 | Prose analysis | See the draft's reading time, sentences, dialogue share, and the words you use most. |
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions in the text. |
+| Modification history | Read each day's work back: the versions Obsidian kept, your writing sessions, and the notes, tasks, foreshadowing and revisions the plugin changed. |
 | Task board | Put everything that's waiting on one Kanban board: your own tasks and the ones the plugin derives from your writing. |
 | Revision | Propose a replacement, a deletion or an insertion beside the manuscript. The chapter only changes once you accept the proposal. |
 | Foreshadowing | Follow a thread from its plant to its payoff. Each of its passages is marked in the text, and they're all listed together. |
@@ -274,7 +275,7 @@ The work around the writing has a pane of its own. The dashboard's **Task manage
 
 ### Data statistics
 
-Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane turns a project into numbers, with one tab for each question. **Writing sessions** measures the time, **Prose analysis** measures the prose, and **Entity tracking** follows who and what that prose names.
+Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane turns a project into numbers, with one tab for each question. **Writing sessions** measures the time, **Prose analysis** measures the prose, **Entity tracking** follows who and what that prose names, and **Modification history** reads each day's work back.
 
 <p align="center"><a href="assets/screenshots/data_statistics_01_en.png"><img src="assets/screenshots/data_statistics_01_en.png" width="100%" alt="The Data statistics pane's Writing sessions tab: the daily goal gauge for the project, the Pomodoro focus timer, today's summary of sessions, time, words and speed, a recent trend chart of the last thirty days with its average, highest and cumulative counts, and the annual contribution heatmap below." /></a></p>
 
@@ -293,6 +294,10 @@ Writing is easier to keep up when you can see it. The dashboard's **Data statist
 <p align="center"><a href="assets/screenshots/entity_tracking_2_en.png"><img src="assets/screenshots/entity_tracking_2_en.png" width="100%" alt="The second chapter of the manuscript stream in reading view, in focus mode with the chrome hidden. The chapter title No One Remembers and the names Mistriver, Nora, Arthur Linden, Linden's Clock Shop and Edmund Crane are marked in the accent color within the prose, each an unlinked mention of an entity." /></a></p>
 
 **The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose. Notes in your projects that use the typography get the same marks and the same menus.
+
+<p align="center"><a href="assets/screenshots/modification_history_en.png"><img src="assets/screenshots/modification_history_en.png" width="100%" alt="The Data statistics pane's Modification history tab for one week: the days newest first, each row naming what happened at what time, and Open File recovery beside every row." /></a></p>
+
+**Modification history** reads each day's work back. The tab merges three records: the versions Obsidian's File recovery keeps as you edit, your writing sessions, and the notes, tasks, foreshadowing and revisions the plugin changed for you. Pick a day, a week or a month, and every happening in it is listed by day, newest first. The plugin keeps only each version's time and word count, never the text, from when it first reads them. Restoring a version happens in Obsidian's own File recovery dialog, which every row can open, and the gear beside the filter opens File recovery's settings. If the core plugin is off, the tab says so and opens the Core plugins settings.
 
 ### Import and series
 
@@ -379,6 +384,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Open dashboard | Open the current project's dashboard, or bring it into view. |
 | Open health checker | Check the project's structure and fix any issues that are safe to fix. |
 | Open manuscript stream | Open the manuscript at the note you last wrote in. |
+| Open modification history | Open the Data statistics pane on its Modification history tab. |
 | Open project manager | Create, rename, open, archive, or trash projects. |
 | Open relationship graph workspace | Open the visualization workspace to its relationship graph, with your characters and worldbuilding notes joined by the relationships you recorded. |
 | Open scene base | Open the Bases view of the current project's scenes. |
@@ -478,6 +484,8 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Milestone mode | Per chapter | Count across the whole manuscript, or start the count again in each note. |
 | Milestone interval | 500 | The number of words between milestones. |
 | Numbering style | Off | Number each new chapter by counting on from the one before it. Choose Chinese (第一章), Chinese with Arabic numerals (第 1 章), or English (Chapter 1). You can also write rules of your own as a simplified format or a regular expression. |
+| Week starts on | Monday | The first day of each week in the data statistics. |
+| Date format | YYYY/MM/DD | How dates are written in the data statistics. |
 | Word count rule | MS Word | Choose which tool the word count matches. |
 | Count headings | Skip the first H1 only | Choose whether heading lines count as writing. |
 | Focus timer type | Pomodoro | The timer a new session starts with. |
@@ -488,14 +496,13 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Statistics scope | Whole project | Choose which words the writing statistics show. |
 | Daily goal: whole project | 6000 | Net words to write each day across the whole project. Set it to zero to turn the goal off. |
 | Daily goal: only manuscript | 4000 | Net words to write each day in the manuscript. Set it to zero to turn the goal off. |
-| Week starts on | Monday | The first day of each week in the writing statistics. |
-| Date format | YYYY/MM/DD | How dates are written in the writing statistics. |
 | Reading speed, words per minute | 250 | How fast the prose analysis assumes you read words. |
 | Reading speed, CJK characters per minute | 400 | How fast the prose analysis assumes you read CJK characters. |
 | Custom stopwords | None | Words to leave out of the frequency count, on top of the built-in lists. One per line. |
 | Custom sensitive words | None | Terms that entity tracking looks for and counts. One per line. |
 | Dialogue quote styles | All four on | Which quote marks open dialogue: “ ”, " ", 「 」 and 『 』. |
 | Custom highlight rules | None | Your own rules, as literal text or regular expressions, each shown in the color and decoration you choose. |
+| Read File recovery snapshots | On | Read the versions Obsidian's File recovery keeps. |
 | Export folder | Snowflake Export beside the projects | The folder where exported files are saved. A folder inside a project is not accepted. |
 | Export format | Plain text (.txt) | Markdown (.md) or plain text (.txt). Both contain the same plain text, with every Markdown and Obsidian mark removed. |
 | Preserve first-line indentation | On | Keep the first-line indent on paragraphs. |
@@ -559,9 +566,13 @@ Each project is stored directly inside the project root you set. Its folders, fi
     │   │   │       └── 2026_08_<device>_writing_session.json
     │   │   ├── 712_Prose_Analysis/
     │   │   │   └── <device>_analysis_stats.json
-    │   │   └── 713_Entity_Tracking/
-    │   │       ├── mention_ignores.json
-    │   │       └── <device>_mention_index.json
+    │   │   ├── 713_Entity_Tracking/
+    │   │   │   ├── mention_ignores.json
+    │   │   │   └── <device>_mention_index.json
+    │   │   └── 714_Modification_History/
+    │   │       └── 2026/
+    │   │           ├── 2026_10_<device>_note_snapshots.json
+    │   │           └── 2026_10_<device>_history_events.json
     │   ├── 72_Task_Management/
     │   │   ├── 721_Task/
     │   │   │   └── tasks.json
@@ -591,7 +602,7 @@ Each project is stored directly inside the project root you set. Its folders, fi
 
 </details>
 
-Writing sessions are recorded per device, so two machines never write to the same file when you sync. The ignore rules you write while tracking entities, the revisions you propose and your foreshadowing threads are each kept in one shared file. These files travel with the Vault. A sticky note is a Markdown file of its own. The position of its floating panel is remembered on each device, not written into the note. Unlike these records, the entity index and prose statistics stored beside them are caches. The plugin rebuilds them from the manuscript whenever they are missing or out of date. So deleting them costs nothing but the time it takes to read the book again. What a project has imported from another, and from where, is recorded in `74_Import/imports.json`. A later update from the series then knows which notes the two books share, whichever of them runs it.
+Writing sessions are recorded per device, so two machines never write to the same file when you sync. The modification history is kept the same way, in one monthly file of version counts and one of the plugin's changes per device. The ignore rules you write while tracking entities, the revisions you propose and your foreshadowing threads are each kept in one shared file. These files travel with the Vault. A sticky note is a Markdown file of its own. The position of its floating panel is remembered on each device, not written into the note. Unlike these records, the entity index and prose statistics stored beside them are caches. The plugin rebuilds them from the manuscript whenever they are missing or out of date. So deleting them costs nothing but the time it takes to read the book again. What a project has imported from another, and from where, is recorded in `74_Import/imports.json`. A later update from the series then knows which notes the two books share, whichever of them runs it.
 
 Archiving a project moves its whole folder into `Snowflake Archive`. That folder is next to your projects, not inside any of them. Nothing in the notes changes. A project keeps every reference inside its own folder, so no link breaks while it is archived. The project manager lists what is in the archive and can restore any of it. If its old name has been taken in the meantime, the project comes back under a free name. Moving a folder in or out by hand works the same way, so the archive is a place, not a mechanism.
 
@@ -660,6 +671,7 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] More views on the corkboard (0.26.0)
 - [x] Relationship graph (0.27.0)
 - [x] Import and series (0.28.0)
+- [x] Modification history (0.29.0)
 - [ ] Better display on tablets and phones
 
 <a id="development"></a>
@@ -825,6 +837,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 写作时段 | 为每次写作计时，设定每日目标，回看字数与时间都花在了哪里。 |
 | 正文分析 | 从草稿中算出阅读时间、句数和对话占比，并找出你最常用的那些词。 |
 | 实体追踪 | 追踪每个角色、地点与物品在正文中的足迹，并在原处标出对它们的提及。 |
+| 修改历史 | 按日回看做过的事：Obsidian 保留的版本、写作时段，以及插件改动过的笔记、任务、伏笔和修订。 |
 | 任务看板 | 把待办的事情放上看板，既有你自己写下的任务，也有插件根据你的写作派生出的任务。 |
 | 修订 | 在正文旁提出替换、删除或插入的建议，只有接受后才会改动正文。 |
 | 伏笔 | 追踪一条线索从埋设到回收，在每一处落点上标出，并把它们汇总列出。 |
@@ -998,7 +1011,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 ### 数据统计
 
-写作看得见，才更容易坚持下去。工作台的**数据统计**面板用数据回看项目，每个标签页回答一个问题。**写作时段**衡量时间，**正文分析**衡量正文本身，**实体追踪**则追踪正文写到了谁、写到了什么。
+写作看得见，才更容易坚持下去。工作台的**数据统计**面板用数据回看项目，每个标签页回答一个问题。**写作时段**衡量时间，**正文分析**衡量正文本身，**实体追踪**追踪正文写到了谁、写到了什么，**修改历史**则按日回看做过的事。
 
 <p align="center"><a href="assets/screenshots/data_statistics_01_cn.png"><img src="assets/screenshots/data_statistics_01_cn.png" width="100%" alt="数据统计面板的写作时段标签页：项目的每日目标仪表、番茄钟专注计时、今日总结里的时段、时长、字数与速度、近三十天的近期趋势图及其平均、最高与累计数字，以及下方的年度贡献热力图。" /></a></p>
 
@@ -1017,6 +1030,10 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 <p align="center"><a href="assets/screenshots/entity_tracking_2_cn.png"><img src="assets/screenshots/entity_tracking_2_cn.png" width="100%" alt="正文流的第二章，阅读视图，专注模式下界面元素都隐藏了。章节标题「无人记得」以及林晚、林知远、林记钟表铺、周明川与怀表这些名字，在正文原处以强调色标出，每一处都是未链接的实体提及。" /></a></p>
 
 **同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。用上排版的项目笔记也会这样标出，菜单也一样。
+
+<p align="center"><a href="assets/screenshots/modification_history_cn.png"><img src="assets/screenshots/modification_history_cn.png" width="100%" alt="数据统计面板的修改历史标签页，范围是一周：按日从新到旧列出每件事发生的时间，每一行旁边都有打开文件恢复按钮。" /></a></p>
+
+**修改历史**按日回看做过的事。这一页把三份记录合在一起：Obsidian 的文件恢复在你编辑时保留的版本、你的写作时段，以及插件替你改动过的笔记、任务、伏笔和修订。选一天、一周或一个月，这段时间发生的每件事都按日从新到旧列出。插件只保存每个版本的时间和字数，从不保存正文，从第一次读到它们时开始记。恢复某个版本在 Obsidian 自己的文件恢复对话框中进行，每一行都能打开它，筛选旁边的齿轮则打开文件恢复的设置。核心插件关闭时，这一页会提示，并能打开核心插件设置。
 
 ### 导入与系列
 
@@ -1117,6 +1134,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 新建便签 | 在当前项目中新建一张便签，并在悬浮面板中打开它。 |
 | 打开便签侧边栏 | 在独立的侧栏中打开当前项目的便签。 |
 | 切换数据统计范围 | 让统计范围在整个项目和仅正文稿之间切换。 |
+| 打开修改历史 | 打开数据统计面板的修改历史标签页。 |
 | 切换写作时段外的字数记录 | 开启或关闭写作时段以外的字数记录。 |
 | 统计项目字数 | 报告当前项目的字数，整个项目和仅正文稿各给出一份。 |
 | 将专注模式设为关／开／深度／仅正文 | 每一档各有一条命令，直接切到那一档专注深度。 |
@@ -1194,6 +1212,8 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 里程碑模式 | 按章节 | 在整部正文中连续累计，或者每篇笔记重新计数。 |
 | 里程碑间隔 | 500 | 相邻两个里程碑之间的字数。 |
 | 编号样式 | 关闭 | 新章节接着前一章的编号往下编。可选中文（第一章）、中文加阿拉伯数字（第 1 章）或英文（Chapter 1）。也可以用简化格式或正则表达式写自定义规则。 |
+| 每周起始日 | 周一 | 数据统计中每周从哪一天开始。 |
+| 日期格式 | YYYY/MM/DD | 数据统计中日期的书写格式。 |
 | 字数统计规则 | 微软 Word | 按哪一种工具的规则统计字数。 |
 | 标题计入字数 | 仅忽略第一个一级标题 | 标题行算不算进写作字数。 |
 | 专注计时方式 | 番茄钟 | 新时段默认使用哪种计时方式。 |
@@ -1204,14 +1224,13 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 数据统计范围 | 整个项目 | 写作统计显示哪一部分的字数。 |
 | 每日目标：整个项目 | 6000 | 整个项目每天要净增多少字。设为 0 就关闭这个目标。 |
 | 每日目标：仅正文稿 | 4000 | 正文稿每天要净增多少字。设为 0 就关闭这个目标。 |
-| 每周起始日 | 周一 | 写作统计中每周从哪一天开始。 |
-| 日期格式 | YYYY/MM/DD | 写作统计中日期的书写格式。 |
 | 阅读速度（词/分钟） | 250 | 正文分析估算阅读时间时，按每分钟读多少个词来算。 |
 | 阅读速度（字/分钟） | 400 | 正文分析估算阅读时间时，按每分钟读多少个中日韩文字来算。 |
 | 自定义停用词 | 无 | 内置词表之外，词频统计还要排除的词。每行一个。 |
 | 自定义敏感词 | 无 | 实体追踪要留意并统计的词。每行一个。 |
 | 对话引号样式 | 四种全部开启 | 哪些引号算作一段对话的开头：“ ”、" "、「 」和『 』。 |
 | 自定义高亮规则 | 无 | 你自己定的规则，用文本或正则表达式来写，颜色和装饰都由你选。 |
+| 读取文件恢复快照 | 开启 | 读取 Obsidian 文件恢复保留的笔记版本。 |
 | 导出文件夹 | 项目旁的 Snowflake Export | 导出文件存放的文件夹。不能设为项目内部的文件夹。 |
 | 导出格式 | 纯文本（.txt） | Markdown（.md）或纯文本（.txt）。两种格式内容相同，所有 Markdown 和 Obsidian 标记都会被去掉。 |
 | 保留首行缩进 | 开启 | 保留段落的首行缩进。 |
@@ -1271,9 +1290,13 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
     │   │   │       └── 2026_08_<设备>_writing_session.json
     │   │   ├── 712_正文分析/
     │   │   │   └── <设备>_analysis_stats.json
-    │   │   └── 713_实体追踪/
-    │   │       ├── mention_ignores.json
-    │   │       └── <设备>_mention_index.json
+    │   │   ├── 713_实体追踪/
+    │   │   │   ├── mention_ignores.json
+    │   │   │   └── <设备>_mention_index.json
+    │   │   └── 714_修改历史/
+    │   │       └── 2026/
+    │   │           ├── 2026_10_<设备>_note_snapshots.json
+    │   │           └── 2026_10_<设备>_history_events.json
     │   ├── 72_任务管理/
     │   │   ├── 721_任务/
     │   │   │   └── tasks.json
@@ -1303,7 +1326,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 </details>
 
-写作时段按设备分开记录，这样同步时就不会有两台机器争着写同一个文件。实体追踪中写下的忽略规则、你提出的修订和你追踪的伏笔，各自存为一个共享文件，跟着仓库走。每张便签都是单独的一个 Markdown 文件。便签的悬浮面板停在哪里，按设备分别记住，不写进笔记。旁边的实体索引和正文统计是缓存，不是记录。它们缺失或过期时，插件都会从正文重新建立。所以就算删掉它们，代价最多也就是插件把全书重读一遍的时间。项目从另一个项目导入了什么、来自哪里，都记在 `74_导入/imports.json` 里，之后无论哪一册运行从系列更新，都知道两册共有哪些笔记。
+写作时段按设备分开记录，这样同步时就不会有两台机器争着写同一个文件。修改历史也是如此，每台设备各自写一份按月的版本数文件和一份插件改动的文件。实体追踪中写下的忽略规则、你提出的修订和你追踪的伏笔，各自存为一个共享文件，跟着仓库走。每张便签都是单独的一个 Markdown 文件。便签的悬浮面板停在哪里，按设备分别记住，不写进笔记。旁边的实体索引和正文统计是缓存，不是记录。它们缺失或过期时，插件都会从正文重新建立。所以就算删掉它们，代价最多也就是插件把全书重读一遍的时间。项目从另一个项目导入了什么、来自哪里，都记在 `74_导入/imports.json` 里，之后无论哪一册运行从系列更新，都知道两册共有哪些笔记。
 
 归档一个项目，会把它的整个文件夹移进 `Snowflake Archive`。这个文件夹和各个项目放在同一层，不在任何项目里面。笔记本身不会有任何改动。项目的所有引用都在它自己的文件夹内，所以归档期间不会留下任何断链。项目管理器会列出归档里的项目，你随时可以取回。如果原来的名称已被占用，会给它换一个还没被用过的名称。手动把文件夹移进或移出，效果完全一样。归档只是一个存放位置，背后没有别的机制。
 
@@ -1370,6 +1393,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 卡片看板的更多视图 (0.26.0)
 - [x] 关系图 (0.27.0)
 - [x] 导入与系列 (0.28.0)
+- [x] 修改历史 (0.29.0)
 - [ ] 改进平板和手机上的显示
 
 ## 开发
