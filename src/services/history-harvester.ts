@@ -330,9 +330,10 @@ export class SnapshotHarvester {
 			.finally(() => {
 				this.running = null;
 				this.setStatus({ running: false });
-				if (this.deps.reader() !== null) {
-					this.arm(this.backoffMs === 0 ? HARVEST_INTERVAL_MS : this.backoffMs);
-				}
+				// Armed whether or not there was a store to read: a store that
+				// comes back, or File recovery turned on again, is met by the
+				// next pass without anything having to wake the harvester.
+				this.arm(this.backoffMs === 0 ? HARVEST_INTERVAL_MS : this.backoffMs);
 			});
 		this.running = run;
 		return run;

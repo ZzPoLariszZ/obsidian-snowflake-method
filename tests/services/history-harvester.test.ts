@@ -435,12 +435,17 @@ describe("SnapshotHarvester", () => {
 		expect(harvester.status().lastPassAt).not.toBeNull();
 	});
 
-	it("reads nothing, and arms nothing, while there is nothing to read", async () => {
+	it("reads nothing while there is nothing to read, and looks again on the interval", async () => {
 		readerOn = false;
 		store.add(at(SCENE), T0, note("scene", "one"));
 		await harvester.harvestNow();
 		expect(store.readCalls).toEqual([]);
-		expect(timers.delays).toEqual([]);
 		expect(harvester.status().lastPassAt).toBeNull();
+		// The store came back with nothing else to say so: the next pass reads it.
+		expect(timers.delays).toEqual([HARVEST_INTERVAL_MS]);
+		readerOn = true;
+		await timers.flush();
+		expect(store.readCalls).toHaveLength(1);
+		expect(harvester.status().lastPassAt).toBe(T0);
 	});
 });
