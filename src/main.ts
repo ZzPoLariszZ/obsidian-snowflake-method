@@ -4769,15 +4769,10 @@ export default class SnowflakeMethodPlugin
 		return availability.state === 'available' ? new IdbSnapshotStoreReader(availability.db) : null;
 	}
 
-	/** Whether the copies are being counted right now, and under what settings, as the history tab says it. */
+	/** Whether the copies are being counted right now, as the history tab says it. */
 	private historyAvailability(): HistoryAvailability {
 		const status = this.history.status();
-		const base = {
-			intervalMinutes: null,
-			keepDays: null,
-			harvesting: status.running,
-			readThrough: status.readThrough,
-		};
+		const base = { harvesting: status.running, readThrough: status.readThrough };
 		if (!this.settings.historyReadSnapshots) return { ...base, snapshots: 'setting-off' };
 		const availability = fileRecoveryAvailability(this.app);
 		switch (availability.state) {
@@ -4788,12 +4783,7 @@ export default class SnowflakeMethodPlugin
 			case 'unreadable':
 				return { ...base, snapshots: 'unreadable' };
 			case 'available':
-				return {
-					...base,
-					snapshots: status.lastError === null ? 'reading' : 'unreadable',
-					intervalMinutes: availability.intervalMinutes,
-					keepDays: availability.keepDays,
-				};
+				return { ...base, snapshots: status.lastError === null ? 'reading' : 'unreadable' };
 		}
 	}
 

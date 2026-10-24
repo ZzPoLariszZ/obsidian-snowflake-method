@@ -149,9 +149,6 @@ describe('merging the three records into one history', () => {
 			['B.md', 'edited', 30, 1],
 			['A.md', 'first-recorded', 0, 1],
 		]);
-		expect(first.notes).toBe(1);
-		expect(second.notes).toBe(2);
-		expect(reading.summary.notes).toBe(2);
 	});
 
 	it('ends a chain at a deletion, so a reused path keeps the old note under the old name', () => {
@@ -189,8 +186,7 @@ describe('merging the three records into one history', () => {
 				until: at('09:01:00'),
 			}),
 		]);
-		expect(before.events).toBe(1);
-		expect(after.events).toBe(2);
+		expect(after.entries.map((entry) => entry.kind)).toEqual(['note', 'renamed']);
 	});
 
 	it('drops the same version synced back, keeps it kept again on one device, and reads a device against the one before', () => {
@@ -295,9 +291,6 @@ describe('merging the three records into one history', () => {
 			['N.md', 'deleted', { added: 0, deleted: 120, net: -120 }, 'snapshots', 0],
 			['M.md', 'deleted', { added: 0, deleted: 0, net: 0 }, 'ledger', 0],
 		]);
-		expect(day.words).toEqual({ added: 20, deleted: 120, net: -100 });
-		expect(day.events).toBe(2);
-		expect(day.sources).toEqual(['snapshots', 'ledger']);
 	});
 
 	it("reads a day's words from one source: versions first, then sessions, never the ledger", () => {
@@ -334,7 +327,6 @@ describe('merging the three records into one history', () => {
 			until: at('10:00:00'),
 		});
 		expect(byPath.get('C.md')).toMatchObject({ action: 'created', source: 'ledger', words: { net: 0 }, createdWords: 12, sessions: 0 });
-		expect(first.sessions).toBe(1);
 		const second = dayOf(reading, D22);
 		const later = new Map(notesOf(second.entries).map((entry) => [entry.note.path, entry]));
 		expect(later.get('S.md')).toMatchObject({
@@ -349,7 +341,6 @@ describe('merging the three records into one history', () => {
 			words: { added: 8, net: 8 },
 		});
 		expect(later.has('V.md')).toBe(false);
-		expect(second.sources).toEqual(['sessions']);
 	});
 
 	it("buckets by the reader's zone", () => {
@@ -357,14 +348,16 @@ describe('merging the three records into one history', () => {
 			timeZone: 'Asia/Shanghai',
 			snapshots: [source('a', [row('S.md', Date.parse('2026-10-21T23:30:00Z'), 10, null, 'h1')])],
 			tallies: [
-				session('s', D22, Date.parse('2026-10-21T22:30:00Z'), Date.parse('2026-10-22T00:30:00Z'), []),
+				session('s', D22, Date.parse('2026-10-21T22:30:00Z'), Date.parse('2026-10-22T00:30:00Z'), [
+					{ path: 'S.md', added: 0, deleted: 0, net: 0 },
+				]),
 			],
 		});
 		expect(dayOf(reading, D21).entries).toEqual([]);
 		const day = dayOf(reading, D22);
-		expect(notesOf(day.entries)).toHaveLength(1);
-		expect(day.sessions).toBe(1);
-		expect(reading.summary.sessions).toBe(1);
+		expect(notesOf(day.entries).map((entry) => [entry.note.path, entry.versions, entry.sessions])).toEqual([
+			['S.md', 1, 1],
+		]);
 	});
 
 	it('tells renames within a moment of one another as one, and a lone rename as itself', () => {
@@ -389,8 +382,6 @@ describe('merging the three records into one history', () => {
 			['rename:r4', ['D.md>D1.md'], false],
 			['rename:r5', ['E.md>E1.md'], true],
 		]);
-		expect(day.notes).toBe(5);
-		expect(day.events).toBe(3);
 	});
 
 	it('tells the notes one import brought as one, and keeps a note worked on that day', () => {
@@ -415,9 +406,8 @@ describe('merging the three records into one history', () => {
 			],
 		});
 		const day = dayOf(reading, D21);
-		expect(day.entries.map((entry) => entry.kind === 'imported' ? ['imported', entry.notes.map((n) => n.path), entry.created, entry.replaced, entry.versions] : [entry.kind, (entry as HistoryNoteEntry).note.path, (entry as HistoryNoteEntry).action])).toEqual([
-			// The versions the import itself landed are the group's, even where the note was worked on after.
-			['imported', ['I1.md', 'I2.md', 'I3.md'], 2, 1, 3],
+		expect(day.entries.map((entry) => entry.kind === 'imported' ? ['imported', entry.notes.map((n) => n.path)] : [entry.kind, (entry as HistoryNoteEntry).note.path, (entry as HistoryNoteEntry).action])).toEqual([
+			['imported', ['I1.md', 'I2.md', 'I3.md']],
 			['note', 'J1.md', 'imported'],
 			// The note's entry starts where the day's own work did, and tells only that.
 			['note', 'I2.md', 'edited'],
@@ -430,27 +420,18 @@ describe('merging the three records into one history', () => {
 		expect(kept?.importedFrom).toBeUndefined();
 		expect(kept?.origin).toBeUndefined();
 		expect(notesOf(day.entries).find((entry) => entry.note.path === 'I1.md')).toMatchObject({ versions: 1, words: { added: 10, net: 10 }, at: at('16:00:00') });
-		expect(day.notes).toBe(4);
-		expect(day.versions).toBe(6);
-		expect(day.events).toBe(2);
-		expect(day.words).toEqual({ added: 60, deleted: 0, net: 60 });
 	});
 
-	it('keeps every day of the span, and sums them', () => {
+	it('keeps every day of the span', () => {
 		const reading = merge({
 			snapshots: [source('a', [row('S.md', at('09:00:00'), 10, 10, 'h1', { prevTs: at('08:00:00') })])],
 		});
 		expect(reading.days.map((day) => day.day)).toEqual([D20, D21, D22]);
 		expect(dayOf(reading, D20).entries).toEqual([]);
 		expect(dayOf(reading, D22).entries).toEqual([]);
-		expect(reading.summary).toMatchObject({
-			words: { added: 10, deleted: 0, net: 10 },
-			versions: 1,
-			notes: 1,
-			sessions: 0,
-			events: 0,
-			sources: ['snapshots'],
-		});
+		expect(notesOf(dayOf(reading, D21).entries)).toEqual([
+			expect.objectContaining({ versions: 1, words: { added: 10, deleted: 0, net: 10 }, source: 'snapshots' }),
+		]);
 	});
 
 	it('tells tasks, threads and revisions by their events, a revision by the name its note has now', () => {
@@ -477,8 +458,6 @@ describe('merging the three records into one history', () => {
 		expect(day.entries[2]).toMatchObject({ event: 'thread-status', status: 'resolved', thread: { id: 'fs-1', name: 'The key' } });
 		expect(day.entries[3]).toMatchObject({ event: 'revision-proposed', revision: { id: 'rev-1' }, note: { path: 'B.md', kind: 'scene' } });
 		expect(day.entries[5]).toMatchObject({ event: 'revision-accepted', note: { path: 'B.md' } });
-		expect(day.events).toBe(6);
-		expect(day.notes).toBe(1);
 	});
 
 	it('tells an event told by two devices once, and a change one device made twice as twice', () => {
@@ -512,7 +491,7 @@ describe('merging the three records into one history', () => {
 		expect(dayOf(reading, D22).entries.map((entry) => entry.id)).toEqual(['rename:r-c']);
 	});
 
-	it('sums a day across its kinds of note', () => {
+	it('reads every kind of note', () => {
 		const reading = merge({
 			snapshots: [
 				source('a', [
@@ -524,9 +503,11 @@ describe('merging the three records into one history', () => {
 			],
 		});
 		const day = dayOf(reading, D21);
-		expect(day.notes).toBe(4);
-		expect(day.versions).toBe(4);
-		expect(day.words).toEqual({ added: 19, deleted: 3, net: 16 });
-		expect(reading.summary.words).toEqual({ added: 19, deleted: 3, net: 16 });
+		expect(notesOf(day.entries).map((entry) => [entry.note.kind, entry.versions, entry.words])).toEqual([
+			['character', 1, { added: 10, deleted: 0, net: 10 }],
+			['worldbuilding', 1, { added: 5, deleted: 0, net: 5 }],
+			['scene', 1, { added: 0, deleted: 3, net: -3 }],
+			['scene', 1, { added: 4, deleted: 0, net: 4 }],
+		]);
 	});
 });

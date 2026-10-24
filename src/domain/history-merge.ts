@@ -104,10 +104,6 @@ export interface HistoryImportEntry extends HistoryEntryBase {
 	kind: 'imported';
 	from: HistoryImportSource | null;
 	notes: HistoryNoteIdentity[];
-	created: number;
-	replaced: number;
-	/** The versions the notes' own entries would have counted, kept here instead. */
-	versions: number;
 }
 
 export type HistoryTaskEvent = 'task-created' | 'task-status' | 'task-archived' | 'task-deleted';
@@ -142,19 +138,7 @@ export type HistoryEntry =
 	| HistoryThreadEntry
 	| HistoryRevisionEntry;
 
-export interface HistoryTotals {
-	words: HistoryWords;
-	versions: number;
-	/** Distinct notes with activity. */
-	notes: number;
-	/** Timed sessions. */
-	sessions: number;
-	/** What the ledger told: creations, deletions, renames, imports, tasks, threads, revisions. */
-	events: number;
-	sources: HistorySource[];
-}
-
-export interface HistoryDay extends HistoryTotals {
+export interface HistoryDay {
 	day: string;
 	/** Ascending by moment. */
 	entries: HistoryEntry[];
@@ -163,8 +147,6 @@ export interface HistoryDay extends HistoryTotals {
 export interface HistoryReading {
 	/** Every day of the span, oldest first. */
 	days: HistoryDay[];
-	/** The span as one: its words, versions, notes, sessions and events summed. */
-	summary: HistoryTotals;
 }
 
 /** One device's month file of versions. */
@@ -267,12 +249,6 @@ function noteRefOf(source: HistoryNoteRef, path: string): HistoryNoteRef {
 }
 
 const zeroWords = (): HistoryWords => ({ added: 0, deleted: 0, net: 0 });
-
-const addWords = (into: HistoryWords, words: HistoryWords): void => {
-	into.added += words.added;
-	into.deleted += words.deleted;
-	into.net += words.net;
-};
 
 interface ToldEvent {
 	event: HistoryEventRecord;
@@ -438,21 +414,6 @@ function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string
 	return groups;
 }
 
-const emptyTotals = (): HistoryTotals => ({
-	words: zeroWords(),
-	versions: 0,
-	notes: 0,
-	sessions: 0,
-	events: 0,
-	sources: [],
-});
-
-const isLedgerEvent = (entry: HistoryEntry): boolean =>
-	entry.kind !== 'note' ||
-	entry.action === 'created' ||
-	entry.action === 'imported' ||
-	entry.action === 'deleted';
-
 /** The day's work on an imported note beyond the import itself, which keeps the note's own entry. */
 interface ImportOwnWork {
 	versions: number;
@@ -464,9 +425,6 @@ interface ImportOwnWork {
 
 interface ImportCandidate {
 	entry: HistoryNoteEntry;
-	brought: 'created' | 'replaced';
-	/** The version the import itself landed, where File recovery kept one: the group's, not the note's. */
-	share: number;
 	/** The import's own moments: when it was told, through the version it landed. */
 	at: number;
 	until: number;
@@ -581,15 +539,9 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 	const span = daysBetween(input.from, input.through);
 	for (let at = 0; at <= span; at += 1) {
 		const day = addDays(input.from, at);
-		days.set(day, { ...emptyTotals(), day, entries: [] });
+		days.set(day, { day, entries: [] });
 	}
 	const dayAt = (day: string): HistoryDay | undefined => days.get(day);
-	const notesTouched = new Map<string, Set<string>>();
-	const touch = (day: string, identity: string): void => {
-		const touched = notesTouched.get(day) ?? new Set<string>();
-		touched.add(identity);
-		notesTouched.set(day, touched);
-	};
 	const candidates = new Map<string, ImportCandidate[]>();
 
 	for (const state of notes.values()) {
@@ -645,7 +597,6 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 					sessions: 0,
 				};
 				bucket.entries.push(entry);
-				touch(day, state.identity);
 				}
 
 			if (rows.length === 0 && created.length === 0 && imported.length === 0 && tallies.length === 0) {
@@ -718,7 +669,6 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 				if (sinceDay < addDays(day, -1)) entry.since = sinceDay;
 			}
 			bucket.entries.push(entry);
-			touch(day, state.identity);
 			if (action === 'imported') {
 				// The import's own version is the first one at or after its moment;
 				// versions before it and after it are the author's day.
@@ -759,8 +709,6 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 				const list = candidates.get(day) ?? [];
 				list.push({
 					entry,
-					brought: creation !== undefined ? 'created' : 'replaced',
-					share: shareRow === undefined ? 0 : 1,
 					at: importAt,
 					until: Math.max(importAt, shareRow?.ts ?? importAt),
 					own,
@@ -795,14 +743,12 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 			if (group.length < 2 || first === undefined) continue;
 			// Read before the members are rewritten below.
 			const from = first.entry.importedFrom ?? null;
-			let versions = 0;
 			for (const member of group) {
-				versions += member.share;
 				if (member.own === null) {
 					bucket.entries = bucket.entries.filter((entry) => entry !== member.entry);
 					continue;
 				}
-				// The import's share goes with the group; the day's work stays the note's.
+				// The import's own version is the import's; the day's work stays the note's.
 				const { entry } = member;
 				entry.action = 'edited';
 				delete entry.origin;
@@ -821,9 +767,6 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 				until: Math.max(...group.map((member) => member.until)),
 				from,
 				notes: group.map((member) => member.entry.note),
-				created: group.filter((member) => member.brought === 'created').length,
-				replaced: group.filter((member) => member.brought === 'replaced').length,
-				versions,
 			});
 		}
 	}
@@ -850,9 +793,6 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 				})),
 				inferred: renameGroup.every((event) => event.origin === 'inferred'),
 			});
-			for (const event of renameGroup) {
-				touch(day, identityOf(subjectPath(event.subject) ?? '', event.ts));
-			}
 		}
 		renameGroup = [];
 	};
@@ -901,46 +841,12 @@ export function mergeHistory(input: HistoryMergeInput): HistoryReading {
 	}
 	flushRenames();
 
-	// ---- the sessions ----
+	// ---- the order ----
 
-	for (const reading of input.tallies) {
-		if (reading.kind !== 'session') continue;
-		const bucket = dayAt(reading.day);
-		if (bucket === undefined) continue;
-		bucket.sessions += 1;
-	}
-
-	// ---- totals ----
-
-	const summary = emptyTotals();
-	const summaryNotes = new Set<string>();
-	const summarySources = new Set<HistorySource>();
 	for (const bucket of days.values()) {
 		bucket.entries.sort((left, right) => left.at - right.at || compareText(left.id, right.id));
-		const sources = new Set<HistorySource>();
-		for (const entry of bucket.entries) {
-			if (entry.kind === 'note') {
-				addWords(bucket.words, entry.words);
-				bucket.versions += entry.versions;
-				sources.add(entry.source);
-			} else if (entry.kind === 'imported') {
-				bucket.versions += entry.versions;
-			}
-			if (isLedgerEvent(entry)) bucket.events += 1;
-		}
-		const touched = notesTouched.get(bucket.day) ?? new Set<string>();
-		bucket.notes = touched.size;
-		for (const identity of touched) summaryNotes.add(identity);
-		bucket.sources = HISTORY_SOURCES.filter((source) => sources.has(source));
-		for (const source of sources) summarySources.add(source);
-		addWords(summary.words, bucket.words);
-		summary.versions += bucket.versions;
-		summary.sessions += bucket.sessions;
-		summary.events += bucket.events;
 	}
-	summary.notes = summaryNotes.size;
-	summary.sources = HISTORY_SOURCES.filter((source) => summarySources.has(source));
-	return { days: [...days.values()], summary };
+	return { days: [...days.values()] };
 }
 
 const isTaskEvent = (event: HistoryEventKind): event is HistoryTaskEvent =>

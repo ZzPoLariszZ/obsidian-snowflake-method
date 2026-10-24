@@ -234,13 +234,14 @@ describe("ModificationHistoryService", () => {
 
 		expect(reading.days.map((day) => day.day)).toEqual(["2026-10-20", "2026-10-21"]);
 		const today = reading.days[1];
-		expect(today?.words).toEqual({ added: 6, deleted: 0, net: 6 });
-		expect(today?.versions).toBe(3);
-		expect(today?.notes).toBe(1);
-		expect(today?.sessions).toBe(1);
 		expect(today?.entries.map((entry) => entry.kind)).toEqual(["note", "task"]);
 		const entry = today?.entries[0];
 		expect(entry?.kind === "note" ? entry.action : null).toBe("created");
+		expect(entry?.kind === "note" ? [entry.versions, entry.words, entry.source] : null).toEqual([
+			3,
+			{ added: 6, deleted: 0, net: 6 },
+			"snapshots",
+		]);
 		expect(entry?.kind === "note" ? entry.note : null).toEqual({
 			path: SCENE,
 			kind: "scene",
@@ -248,8 +249,6 @@ describe("ModificationHistoryService", () => {
 			exists: true,
 		});
 		expect(entry?.kind === "note" ? entry.sessions : null).toBe(1);
-		expect(reading.summary.notes).toBe(1);
-		expect(reading.summary.sources).toEqual(["snapshots"]);
 	});
 
 	it("keeps a reading until a file it read moves or a tally changes", async () => {
@@ -280,7 +279,7 @@ describe("ModificationHistoryService", () => {
 		);
 		const rewritten = await service.read(project, "2026-10-21", "2026-10-21");
 		expect(rewritten).not.toBe(first);
-		expect(rewritten.summary.versions).toBe(2);
+		expect(rewritten.days[0]?.entries[0]).toMatchObject({ versions: 2 });
 
 		// So does a tally: a running session's clock moving on is new data.
 		tallies = [
@@ -296,7 +295,6 @@ describe("ModificationHistoryService", () => {
 		];
 		const withSession = await service.read(project, "2026-10-21", "2026-10-21");
 		expect(withSession).not.toBe(rewritten);
-		expect(withSession.summary.sessions).toBe(1);
 	});
 
 	it("reads a span again when a note it names goes or comes back", async () => {

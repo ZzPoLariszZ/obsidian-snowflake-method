@@ -12805,9 +12805,9 @@ button.snowflake-method-kind-options {
 /* == Modification history ================================================== */
 
 /* The Modification history face of the statistics pane: the prose panel's
-   frame, and under its control band the range the reader walks with the
-   span's figures under its title, a word about File recovery where its
-   copies are not being counted, and the day list. */
+   frame, and under its control band the range the reader walks, a word
+   about File recovery where its copies are not being counted, and the day
+   list. */
 
 .snowflake-method-history-notice.is-hidden,
 .snowflake-method-history-notice-button.is-hidden,
@@ -12970,10 +12970,8 @@ col.snowflake-method-history-column-actions {
 	vertical-align: middle;
 }
 
-/* A day's head: one cell across the row, the day's name at its start and
-   its figures at its end, on the secondary ground so the days read as bands
-   between the rows. The figures wrap under the name in a narrow frame and
-   keep to the end there too. */
+/* A day's head: one cell across the row with the day's name, on the
+   secondary ground so the days read as bands between the rows. */
 .snowflake-method-table.snowflake-method-history-table
 	tr.snowflake-method-history-day
 	> td {

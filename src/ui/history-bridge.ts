@@ -22,10 +22,6 @@ export type SnapshotReadingState =
 
 export interface HistoryAvailability {
 	snapshots: SnapshotReadingState;
-	/** How often the core plugin takes a copy, when it is on. */
-	intervalMinutes: number | null;
-	/** How long it keeps one, when it is on. */
-	keepDays: number | null;
 	/** True while a pass over the store is under way. */
 	harvesting: boolean;
 	/** The moment the store has been read through, or null before any reading. */

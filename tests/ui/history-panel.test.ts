@@ -9,7 +9,6 @@ import {
 	type HistoryNoteIdentity,
 	type HistoryNoteKind,
 	type HistoryReading,
-	type HistoryTotals,
 } from '../../src/domain';
 import { t as translate } from '../../src/i18n';
 import type { HistoryAvailability, HistoryChange, HistoryPanelBridge } from '../../src/ui/history-bridge';
@@ -89,16 +88,6 @@ const note = (
 	over: Partial<HistoryNoteIdentity> = {},
 ): HistoryNoteIdentity => ({ path, kind, exists: true, ...over });
 
-const totals = (over: Partial<HistoryTotals> = {}): HistoryTotals => ({
-	words: { added: 0, deleted: 0, net: 0 },
-	versions: 0,
-	notes: 0,
-	sessions: 0,
-	events: 0,
-	sources: [],
-	...over,
-});
-
 const noteEntry = (
 	id: string,
 	day: string,
@@ -136,7 +125,6 @@ const reading = (from: string, through: string): HistoryReading => {
 	for (let day = from; day <= through; day = addDays(day, 1)) {
 		if (day === TODAY) {
 			days.push({
-				...totals({ notes: 1, versions: 1, words: { added: 120, deleted: 0, net: 120 } }),
 				day,
 				entries: [
 					noteEntry('created', day, '09:10', note(ADA, 'character'), {
@@ -150,7 +138,6 @@ const reading = (from: string, through: string): HistoryReading => {
 			});
 		} else if (day === '2026-10-20') {
 			days.push({
-				...totals({ notes: 2, versions: 3, words: { added: 150, deleted: 230, net: -80 } }),
 				day,
 				entries: [
 					noteEntry('edited', day, '09:00', note(CHAPTER, 'manuscript'), {
@@ -166,20 +153,10 @@ const reading = (from: string, through: string): HistoryReading => {
 				],
 			});
 		} else {
-			days.push({ ...totals(), day, entries: [] });
+			days.push({ day, entries: [] });
 		}
 	}
-	return {
-		days,
-		summary: {
-			...totals({
-				words: { added: 270, deleted: 230, net: 40 },
-				versions: 4,
-				notes: 3,
-				sessions: 1,
-			}),
-		},
-	};
+	return { days };
 };
 
 /** The text an element shows, its own and its children's, in order. */
@@ -200,8 +177,6 @@ function setup(options: { withActions?: boolean; deferred?: boolean } = {}) {
 	let today = TODAY;
 	const avail: HistoryAvailability = {
 		snapshots: 'reading',
-		intervalMinutes: 5,
-		keepDays: 7,
 		harvesting: false,
 		readThrough: null,
 	};

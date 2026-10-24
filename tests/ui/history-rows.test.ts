@@ -9,7 +9,6 @@ import {
 	type HistoryNoteIdentity,
 	type HistoryNoteKind,
 	type HistoryReading,
-	type HistoryTotals,
 } from '../../src/domain';
 import { t as translate, type SupportedLocale } from '../../src/i18n';
 import {
@@ -53,21 +52,7 @@ const note = (
 	over: Partial<HistoryNoteIdentity> = {},
 ): HistoryNoteIdentity => ({ path, kind, exists: true, ...over });
 
-const totals = (over: Partial<HistoryTotals> = {}): HistoryTotals => ({
-	words: { added: 0, deleted: 0, net: 0 },
-	versions: 0,
-	notes: 0,
-	sessions: 0,
-	events: 0,
-	sources: [],
-	...over,
-});
-
-const day = (
-	stamp: string,
-	entries: HistoryEntry[],
-	over: Partial<HistoryTotals> = {},
-): HistoryDay => ({ ...totals(over), day: stamp, entries });
+const day = (stamp: string, entries: HistoryEntry[]): HistoryDay => ({ day: stamp, entries });
 
 const noteEntry = (
 	id: string,
@@ -220,7 +205,6 @@ describe('the funnel over the kinds', () => {
 					noteEntry('t', '2026-10-21', '10:00', note('60_Worldbuilding/61_Time/Dawn.md', 'worldbuilding', { wbKind: 'time' })),
 				]),
 			],
-			summary: totals(),
 		};
 		expect(historyKindOptions(reading)).toEqual([...HISTORY_FIXED_KINDS, 'wb:Faction']);
 	});
@@ -347,9 +331,6 @@ describe('what a row says', () => {
 			until: 1,
 			from: { projectId: 'p', title: 'Book 1' },
 			notes: [note('a.md', 'other'), note('b.md', 'other')],
-			created: 2,
-			replaced: 0,
-			versions: 0,
 		};
 		expect(said(en, brought)).toBe('Imported 2 notes from “Book 1”');
 		expect(said(zh, brought)).toBe('从“Book 1”导入了 2 篇笔记');
