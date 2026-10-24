@@ -6723,18 +6723,13 @@ export default class SnowflakeMethodPlugin
 	 * words and one reads it character by character, and a number labelled
 	 * with the wrong one of those is a number that reads as wrong.
 	 */
-	private writingCountUnit(
-		total: number,
-		t: Translate = (key, vars) => this.projectT(key, vars),
-	): string {
+	private writingCountUnit(total: number): string {
 		if (countsCharacters(this.settings.writingCountMode)) {
-			return t(
+			return this.projectT(
 				total === 1 ? 'statusBar.unitCharacter' : 'statusBar.unitCharacters',
 			);
 		}
-		return t(
-			total === 1 ? 'statusBar.unitWord' : 'statusBar.unitWords',
-		);
+		return this.projectT(total === 1 ? 'statusBar.unitWord' : 'statusBar.unitWords');
 	}
 
 	/**
