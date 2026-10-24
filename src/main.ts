@@ -6512,8 +6512,11 @@ export default class SnowflakeMethodPlugin
 				if (file !== null) await this.revealNoteLeaf(file);
 			},
 			openFileRecovery: (path) => {
-				const file = noteAt(path);
-				return file === null ? 'gone' : openFileRecovery(this.app, file.path);
+				// By the path alone: a deleted note's copies are still there to open.
+				const project = known();
+				return project === null
+					? 'no-project'
+					: openFileRecovery(this.app, `${project.rootPath}/${path}`);
 			},
 			openCorePluginSettings: () => openSettingsTab(this.app),
 			openFileRecoverySettings: () =>

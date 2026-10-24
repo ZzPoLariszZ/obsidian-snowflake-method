@@ -814,6 +814,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'history.recovery.settingOff': '插件设置中已关闭读取文件恢复快照。',
 	'history.recovery.unreadable': '无法读取文件恢复的快照。',
 	'history.noteGone': '这篇笔记已不存在。',
+	'history.projectGone': '此项目已不存在。',
 	'errors.unknown': '发生了未知错误。',
 	'errors.dashboard': '无法载入雪花写作工作台。',
 	'errors.readOnly': '此项目为只读状态。',

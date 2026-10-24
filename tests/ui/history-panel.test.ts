@@ -486,16 +486,20 @@ describe('the modification history panel', () => {
 		task.querySelector('.snowflake-method-tracking-link')?.dispatch('click');
 		expect(panel.controls.openTasksTab).toHaveBeenCalledWith('tasks');
 		expect(task.querySelector('.snowflake-method-history-recover')?.disabled).toBe(true);
+		// A gone note has no way in, and its copies outlive it: the dialog opens on them.
 		const gone = panel.rowOf('Old');
 		expect(gone.querySelector('.snowflake-method-tracking-link')).toBeNull();
 		expect(gone.querySelector('.snowflake-method-history-name')?.classList.contains('is-missing')).toBe(true);
-		expect(gone.querySelector('.snowflake-method-history-recover')?.disabled).toBe(true);
+		expect(gone.querySelector('.snowflake-method-history-recover')?.disabled).toBe(false);
+		gone.querySelector('.snowflake-method-history-recover')?.dispatch('click');
+		expect(panel.bridge.openFileRecovery).toHaveBeenLastCalledWith(OLD);
+		expect(notices).toEqual([]);
 		panel.setRecovery('off');
 		panel.rowOf('Chapter 3').querySelector('.snowflake-method-history-recover')?.dispatch('click');
 		expect(notices).toEqual([en('history.recovery.off')]);
-		panel.setRecovery('gone');
+		panel.setRecovery('no-project');
 		panel.rowOf('Chapter 3').querySelector('.snowflake-method-history-recover')?.dispatch('click');
-		expect(notices[1]).toBe(en('history.noteGone'));
+		expect(notices[1]).toBe(en('history.projectGone'));
 		// The core plugin turned off: the dialog's button goes grey on every row.
 		panel.avail.snapshots = 'plugin-off';
 		panel.emit('availability');
@@ -519,10 +523,10 @@ describe('the modification history panel', () => {
 		]);
 		shownMenus[0]?.[0]?.click?.();
 		expect(panel.bridge.openFileRecovery).toHaveBeenCalledWith(CHAPTER);
-		// A gone note keeps its ellipsis, with the dialog greyed behind it.
+		// A gone note keeps its ellipsis, and the dialog behind it: its copies outlive it.
 		panel.rowOf('Old').querySelector('.snowflake-method-table-more')?.dispatch('click');
 		expect(shownMenus[1]?.map((item) => [item.title, item.disabled])).toEqual([
-			['Open File recovery', true],
+			['Open File recovery', false],
 		]);
 	});
 

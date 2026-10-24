@@ -403,8 +403,8 @@ export function renderHistoryPanel(
 			case 'unsupported':
 				new Notice(t('history.recovery.unsupported'));
 				return;
-			case 'gone':
-				new Notice(t('history.noteGone'));
+			case 'no-project':
+				new Notice(t('history.projectGone'));
 		}
 	};
 	const labels = {
@@ -502,11 +502,8 @@ export function renderHistoryPanel(
 				}
 				text.createSpan({ text: sentence.after });
 			}
-			const canRecover =
-				target !== null &&
-				target.kind === 'note' &&
-				target.note.exists &&
-				recoveryOpens(availability);
+			// A deleted note's copies outlive it: the dialog opens on them too.
+			const canRecover = target !== null && target.kind === 'note' && recoveryOpens(availability);
 			if (!withActions) {
 				// No column: the dialog stands behind the ellipsis at the end
 				// of the last cell, the member tables' own shape. The name in

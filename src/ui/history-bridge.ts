@@ -35,8 +35,8 @@ export interface HistoryAvailability {
 /** What moved: the readings, or whether the copies are being read. */
 export type HistoryChange = 'data' | 'availability';
 
-/** What opening the recovery dialog on a note came to. */
-export type FileRecoveryOpening = 'opened' | 'off' | 'unsupported' | 'gone';
+/** What opening the recovery dialog on a note came to; the dialog needs no note, since the copies outlive one. */
+export type FileRecoveryOpening = 'opened' | 'off' | 'unsupported' | 'no-project';
 
 export interface HistoryPanelBridge {
 	t: Translate;
@@ -57,7 +57,7 @@ export interface HistoryPanelBridge {
 	refresh(): Promise<void>;
 	/** Opens a note by its path under the project root. */
 	openNote(path: string): Promise<void>;
-	/** Opens Obsidian's own File recovery dialog on a note by its path under the root. */
+	/** Opens Obsidian's own File recovery dialog on a note by its path under the root, deleted or not. */
 	openFileRecovery(path: string): FileRecoveryOpening;
 	/** Opens the settings on the core plugins; false where the app has no settings to open. */
 	openCorePluginSettings(): boolean;

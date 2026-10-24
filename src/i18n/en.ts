@@ -884,6 +884,7 @@ export const en = {
 	'history.recovery.settingOff': 'Reading File recovery snapshots is turned off in the plugin’s settings.',
 	'history.recovery.unreadable': 'File recovery’s snapshots could not be read.',
 	'history.noteGone': 'This note no longer exists.',
+	'history.projectGone': 'This project no longer exists.',
 	'errors.unknown': 'Something went wrong.',
 	'errors.dashboard': 'The Snowflake dashboard could not be loaded.',
 	'errors.readOnly': 'This project is read-only.',
