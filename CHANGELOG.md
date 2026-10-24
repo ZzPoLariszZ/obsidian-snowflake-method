@@ -8,6 +8,17 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0]
+
+### Added
+
+- **Modification history.** The Data statistics pane has a fourth tab, which reads each day's work back. It merges three records: the versions Obsidian's File recovery keeps as you edit, your writing sessions, and the notes, tasks, foreshadowing and revisions the plugin changed for you. A day, a week or a month lists every happening by day: "Edited the scene “Twelve”", "Created the character “Ada”", "Moved the task “Outline act two” to Done". A note's name opens it, and **Open File recovery** opens Obsidian's own dialog for that note, from the row or from the note's file menu. The versions are read on this device from when the plugin first reads them, and only each version's time and word count are kept, never the text. They are stored per device and per month under `70_Tool/71_Data_Statistics/714_Modification_History/`, beside a ledger of the plugin's own changes. A gear beside the filter opens File recovery's settings, and when the core plugin is off, a callout says so and opens the Core plugins settings. The command **Open modification history** opens the tab, and the setting **Read File recovery snapshots** turns the reading off.
+
+### Changed
+
+- The settings **Week starts on** and **Date format** moved to the top of Data statistics, since the modification history follows them as the writing sessions do.
+- **独立作品.** The Chinese interface now calls a project outside a series 独立作品, a standalone work, in the create form's series field and in the project manager, where it said 不属于系列 and 无系列. The English words stay.
+
 ## [0.28.0]
 
 ### Added
@@ -661,6 +672,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.29.0]
+
+### 新增
+
+- **修改历史。** 数据统计面板多了第四个标签页，按日回看做过的事。它把三份记录合在一起：Obsidian 的文件恢复在你编辑时保留的版本、你的写作时段，以及插件替你改动过的笔记、任务、伏笔和修订。选一天、一周或一个月，就能按日看到发生了什么：“修改了场景‘十二’”“创建了角色‘阿达’”“将任务‘第二幕大纲’移到已完成”。点笔记名可以打开它，**打开文件恢复**会为这篇笔记打开 Obsidian 自己的对话框，在行里和笔记的文件菜单里都能找到。版本从插件第一次读到它们时开始在本设备上记录，只保存每个版本的时间和字数，从不保存正文。它们按设备、按月存在 `70_工具/71_数据统计/714_修改历史/` 下，旁边是插件自身改动的记录。筛选旁边的齿轮打开文件恢复的设置，核心插件关闭时，标签页里会提示，并能打开核心插件设置。命令**打开修改历史**打开这一页，设置**读取文件恢复快照**可以关掉读取。
+
+### 变更
+
+- 设置**每周起始日**和**日期格式**移到了数据统计的最前面，修改历史和写作时段一样遵循它们。
+- **独立作品。** 不属于任何系列的项目，在新建表单的系列字段和项目管理器里现在叫独立作品，原来分别写的是“不属于系列”和“无系列”。
 
 ## [0.28.0]
 
