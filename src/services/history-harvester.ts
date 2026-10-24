@@ -14,7 +14,7 @@ import {
 	type NoteSnapshotMonthFile,
 	type NoteSnapshotRecord,
 } from "../domain";
-import { isPathAtOrBelow } from "../project-root";
+import { isPathAtOrBelow, pathUnderRoot } from "../project-root";
 import type { ManagedFrontmatter, VaultRepository } from "../repository";
 import type { SnapshotRow, SnapshotStoreReader } from "./file-recovery";
 import { classifyHistoryPath, splitNoteText } from "./history-classify";
@@ -251,11 +251,9 @@ export class SnapshotHarvester {
 				moved = true;
 				continue;
 			}
-			if (!isPathAtOrBelow(oldPath, entry.root)) continue;
-			const relOld = oldPath.slice(entry.root.length + 1);
-			const relNew = isPathAtOrBelow(newPath, entry.root)
-				? newPath.slice(entry.root.length + 1)
-				: null;
+			const relOld = pathUnderRoot(oldPath, entry.root);
+			if (relOld === null) continue;
+			const relNew = pathUnderRoot(newPath, entry.root);
 			for (const key of Object.keys(entry.notes)) {
 				if (key !== relOld && !key.startsWith(`${relOld}/`)) continue;
 				const sighting = entry.notes[key];
@@ -279,8 +277,8 @@ export class SnapshotHarvester {
 				dropped = true;
 				continue;
 			}
-			if (path === entry.root || !isPathAtOrBelow(path, entry.root)) continue;
-			const rel = path.slice(entry.root.length + 1);
+			const rel = pathUnderRoot(path, entry.root);
+			if (rel === null) continue;
 			for (const key of Object.keys(entry.notes)) {
 				if (key !== rel && !(children && key.startsWith(`${rel}/`))) continue;
 				delete entry.notes[key];
@@ -405,10 +403,8 @@ export class SnapshotHarvester {
 		if (!row.path.toLowerCase().endsWith(".md")) return false;
 		const project = this.deps.projectAtPath(row.path);
 		if (project === null || project.readOnly) return false;
-		if (!isPathAtOrBelow(row.path, project.rootPath) || row.path === project.rootPath) {
-			return false;
-		}
-		const rel = row.path.slice(project.rootPath.length + 1);
+		const rel = pathUnderRoot(row.path, project.rootPath);
+		if (rel === null) return false;
 		const { frontmatter, body } = splitNoteText(row.data);
 		const ref = classifyHistoryPath(project, rel, [frontmatter, this.deps.frontmatterNow(row.path)]);
 		if (ref === null) return false;

@@ -13,7 +13,7 @@ import {
 	type HistorySnapshotSource,
 	type NoteSnapshotMonthFile,
 } from "../domain";
-import { isPathAtOrBelow } from "../project-root";
+import { pathUnderRoot } from "../project-root";
 import type { VaultRepository } from "../repository";
 import { fileStamp, parseJsonObject, readStampedJson, type StampedMemo } from "./json-store";
 import { PROJECT_PATH_LAYOUTS, getProjectPathLayout, type ProjectRef } from "./types";
@@ -72,9 +72,8 @@ const TOP_LEVEL_FOLDERS: ReadonlySet<string> = new Set(
  * note the history can name, and null. The root itself is no note either.
  */
 export function relativizeProjectPath(rootPath: string, path: string): string | null {
-	if (rootPath.length > 0 && path !== rootPath && isPathAtOrBelow(path, rootPath)) {
-		return path.slice(rootPath.length + 1);
-	}
+	const under = pathUnderRoot(path, rootPath);
+	if (under !== null) return under;
 	const segments = path.split("/");
 	// The last segment is the file itself: a file named like a folder is not in one.
 	for (let i = 0; i < segments.length - 1; i += 1) {

@@ -13,7 +13,7 @@ import {
 	type Revision,
 	type Task,
 } from "../domain";
-import { isPathAtOrBelow, movedWithRename } from "../project-root";
+import { isPathAtOrBelow, movedWithRename, pathUnderRoot } from "../project-root";
 import type { ManagedFrontmatter, VaultRepository } from "../repository";
 import type { ForeshadowingServiceEvent } from "./foreshadowing-service";
 import { classifyHistoryPath, splitNoteText } from "./history-classify";
@@ -425,10 +425,7 @@ export class HistoryLedger {
 
 	/** The revision by its id, standing in its note as the history names one. */
 	private revisionSubject(project: ProjectRef, revision: Revision): HistorySubject {
-		const rel =
-			revision.path !== project.rootPath && isPathAtOrBelow(revision.path, project.rootPath)
-				? revision.path.slice(project.rootPath.length + 1)
-				: revision.path;
+		const rel = pathUnderRoot(revision.path, project.rootPath) ?? revision.path;
 		const note = classifyHistoryPath(project, rel, [this.deps.frontmatterNow(revision.path)]) ?? {
 			path: rel,
 			kind: "other",
@@ -442,8 +439,8 @@ export class HistoryLedger {
 	private locate(path: string): { project: ProjectRef; rel: string } | null {
 		const project = this.deps.projectAtPath(path);
 		if (project === null || project.readOnly) return null;
-		if (path === project.rootPath || !isPathAtOrBelow(path, project.rootPath)) return null;
-		return { project, rel: path.slice(project.rootPath.length + 1) };
+		const rel = pathUnderRoot(path, project.rootPath);
+		return rel === null ? null : { project, rel };
 	}
 
 	/** A note moved from one vault path to another, the project or a folder above it standing still. */

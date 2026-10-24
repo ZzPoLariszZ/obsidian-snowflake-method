@@ -76,6 +76,18 @@ export function projectRootContaining(
 }
 
 /**
+ * Where `path` stands under a project root, or null when it is the root
+ * itself, lies outside it, or the root is the Vault root, which is no
+ * project's. The history names its notes by this.
+ */
+export function pathUnderRoot(path: string, rootPath: string): string | null {
+	if (rootPath.length === 0 || path === rootPath || !isPathAtOrBelow(path, rootPath)) {
+		return null;
+	}
+	return path.slice(rootPath.length + 1);
+}
+
+/**
  * Where `subject` ends up when `oldPath` is renamed to `newPath`, or null when
  * the rename does not contain it. The Vault root is an empty path and can never
  * be renamed, so it never moves.

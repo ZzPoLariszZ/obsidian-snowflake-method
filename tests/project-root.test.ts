@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { projectRootContaining } from '../src/project-root';
+import { pathUnderRoot, projectRootContaining } from '../src/project-root';
 
 describe('projectRootContaining', () => {
 	const roots = ['Snowflake Projects/Novel', 'Snowflake Archive/Old'];
@@ -16,5 +16,16 @@ describe('projectRootContaining', () => {
 		expect(projectRootContaining('Inbox/a.md', roots)).toBeNull();
 		expect(projectRootContaining('Inbox/a.md', ['', ...roots])).toBeNull();
 		expect(projectRootContaining('anything', [])).toBeNull();
+	});
+});
+
+describe('pathUnderRoot', () => {
+	it('names a path under its root, and nothing for the root, the outside or the Vault root', () => {
+		expect(pathUnderRoot('Books/Novel/40_Scene/One.md', 'Books/Novel')).toBe('40_Scene/One.md');
+		expect(pathUnderRoot('Books/Novel/Loose.md', 'Books/Novel')).toBe('Loose.md');
+		expect(pathUnderRoot('Books/Novel', 'Books/Novel')).toBeNull();
+		expect(pathUnderRoot('Books/Novella/One.md', 'Books/Novel')).toBeNull();
+		expect(pathUnderRoot('Elsewhere/One.md', 'Books/Novel')).toBeNull();
+		expect(pathUnderRoot('One.md', '')).toBeNull();
 	});
 });
