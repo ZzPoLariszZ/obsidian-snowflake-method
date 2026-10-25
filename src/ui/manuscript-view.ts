@@ -124,7 +124,7 @@ import {
 } from './segment-editor-backend';
 import {
 	ManuscriptSaveConflict,
-	NEXT_FOCUS_LEVEL,
+	nextFocusLevel,
 	type ManuscriptHost,
 	type ManuscriptModel,
 	type ManuscriptSegmentText,
@@ -132,6 +132,7 @@ import {
 	type ManuscriptWindowSettings,
 	type ManuscriptWritingContext,
 } from './view-model';
+import { isMobileDevice } from './device';
 import { keepEscapeInView } from './escape-key';
 
 export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
@@ -4222,7 +4223,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			const level = settings.focusLevel;
 			toggle.toggleClass('is-active', level !== 'off');
 			const state = this.t(`manuscript.focusLevel.${level}`);
-			const then = this.t(`manuscript.focusNext.${NEXT_FOCUS_LEVEL[level]}`);
+			const then = this.t(`manuscript.focusNext.${nextFocusLevel(level, { solo: !isMobileDevice() })}`);
 			setTooltip(toggle, `${state}\n${then}`);
 			setIcon(toggle, 'focus');
 		}

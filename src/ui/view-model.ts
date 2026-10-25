@@ -385,6 +385,15 @@ export const NEXT_FOCUS_LEVEL = {
 	solo: 'off',
 } as const satisfies Record<FocusLevel, FocusLevel>;
 
+/**
+ * One press deeper, with solo left out where the device has no full screen
+ * to give it: the ladder then ends at deep and comes back to off.
+ */
+export function nextFocusLevel(level: FocusLevel, options: { solo: boolean }): FocusLevel {
+	const next = NEXT_FOCUS_LEVEL[level];
+	return next === 'solo' && !options.solo ? 'off' : next;
+}
+
 export interface ManuscriptWindowSettings {
 	before: number;
 	after: number;

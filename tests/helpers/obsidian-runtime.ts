@@ -42,7 +42,17 @@ export class AbstractInputSuggest {
 export const moment = { locale: (): string => 'en' };
 
 /** A desktop that is not a Mac, which is what the tests' chords are written for. */
-export const Platform = { isMacOS: false, isMobile: false, isDesktop: true };
+export const Platform = {
+	isMacOS: false,
+	isMobile: false,
+	isDesktop: true,
+	isPhone: false,
+	isTablet: false,
+	isIosApp: false,
+	isAndroidApp: false,
+	isMobileApp: false,
+	isDesktopApp: true,
+};
 /** The app's reading of the modifier: Ctrl here, as off a Mac. */
 export const Keymap = {
 	isModEvent: (event?: { ctrlKey?: boolean; metaKey?: boolean } | null): 'tab' | false =>

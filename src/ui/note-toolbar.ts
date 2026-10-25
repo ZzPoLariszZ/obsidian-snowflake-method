@@ -9,7 +9,8 @@ import {
 	type MentionModeSetters,
 } from './mention-mode-menu';
 import { openPresentationPanel, type PresentationPanel } from './presentation-panel';
-import { NEXT_FOCUS_LEVEL, type FocusLevel } from './view-model';
+import { isMobileDevice } from './device';
+import { nextFocusLevel, type FocusLevel } from './view-model';
 
 /**
  * The formatting bar above a note of Obsidian's own that wears the
@@ -332,7 +333,7 @@ export class NoteToolbars {
 		setTooltip(
 			bar.focus,
 			`${t(`manuscript.focusLevel.${focusLevel}`)}\n${t(
-				`manuscript.focusNext.${NEXT_FOCUS_LEVEL[focusLevel]}`,
+				`manuscript.focusNext.${nextFocusLevel(focusLevel, { solo: !isMobileDevice() })}`,
 			)}`,
 		);
 	}

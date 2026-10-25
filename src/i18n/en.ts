@@ -91,6 +91,7 @@ export const en = {
 		'Notes will open beside the dashboard.',
 	'commands.notesBesideDashboardDisabled': 'Notes will open in tabs.',
 	'commands.toggleDashboardRail': 'Toggle the dashboard rail',
+	'commands.showMobileDiagnostics': 'Show mobile diagnostics',
 	'commands.toggleTableProgressStatus': 'Toggle progress status in tables',
 	'commands.tableProgressStatusShown': 'Tables show progress status.',
 	'commands.tableProgressStatusHidden': 'Tables no longer show progress status.',
@@ -2706,6 +2707,14 @@ export const en = {
 	'manuscript.segmentTitlePlaceholder': 'Chapter 1',
 	'manuscript.segmentTitleRequired': 'A name is required.',
 	'manuscript.defaultSegmentTitle': 'Untitled',
+	'diagnostics.title': 'Mobile diagnostics',
+	'diagnostics.hint': 'What this device tells the plugin about itself. Copy the report into a bug report.',
+	'diagnostics.copy': 'Copy report',
+	'diagnostics.copied': 'Report copied.',
+	'diagnostics.record': 'Record touches',
+	'diagnostics.recordingNotice': 'Recording touches for {seconds} s. Touch the plugin now; the report comes back after.',
+	'diagnostics.recorded': 'Touch recording',
+	'diagnostics.noTouches': 'No touches within the window.',
 } as const;
 
 export type TranslationKey = keyof typeof en;

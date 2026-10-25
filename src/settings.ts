@@ -112,6 +112,7 @@ import {
 	normalizeProjectRoot,
 } from './project-root';
 import { isExplorerScope, type ExplorerScope } from './services';
+import { isMobileDevice } from './ui/device';
 import { wireCardDrag } from './ui/entity-form';
 import { SnowflakeModal } from './ui/dialog-base';
 import { submitOnModEnter } from './ui/modal-keys';
@@ -1464,6 +1465,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				{
 					name: this.t('settings.split.name'),
 					desc: this.t('settings.split.desc'),
+					visible: () => !isMobileDevice(),
 					control: {
 						type: 'toggle',
 						key: 'openLongTextInSplit',
@@ -1500,6 +1502,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				{
 					name: this.t('settings.hideScrollbars.name'),
 					desc: this.t('settings.hideScrollbars.desc'),
+					visible: () => !isMobileDevice(),
 					control: {
 						type: 'toggle',
 						key: 'hideScrollbars',
@@ -1509,6 +1512,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				{
 					name: this.t('settings.hideTooltips.name'),
 					desc: this.t('settings.hideTooltips.desc'),
+					visible: () => !isMobileDevice(),
 					control: {
 						type: 'toggle',
 						key: 'hideTooltips',
@@ -2808,12 +2812,14 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	 */
 	private renderFocusMode(setting: Setting): void {
 		setting.settingEl.addClass('snowflake-method-focus-row');
-		const levels: readonly ManuscriptFocusLevel[] = [
-			'off',
-			'on',
-			'deep',
-			'solo',
-		];
+		// Solo wants a full screen and folded sidebars, which the mobile app
+		// has no room for: there the slider stops at deep, and a solo stored
+		// elsewhere sits on the deep stop, which is how it behaves.
+		const levels: readonly ManuscriptFocusLevel[] = isMobileDevice()
+			? ['off', 'on', 'deep']
+			: ['off', 'on', 'deep', 'solo'];
+		const shown = (level: ManuscriptFocusLevel): ManuscriptFocusLevel =>
+			levels.includes(level) ? level : 'deep';
 		const labelKeys: Record<ManuscriptFocusLevel, string> = {
 			off: 'settings.manuscriptFocus.levelOff',
 			on: 'settings.manuscriptFocus.levelOn',
@@ -2829,7 +2835,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		let reset: ExtraButtonComponent | null = null;
 		let slider: SliderComponent | null = null;
 		const dress = (): void => {
-			const level = this.owner.settings.manuscriptFocusLevel;
+			const level = shown(this.owner.settings.manuscriptFocusLevel);
 			value.setText(this.t(labelKeys[level]));
 			setting.setDesc(this.t(`settings.manuscriptFocus.${level}`));
 			// Nothing to put back while focus is already where the button would
@@ -2863,12 +2869,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			slider = component;
 			component
 				.setLimits(0, levels.length - 1, 1)
-				.setValue(
-					Math.max(
-						0,
-						levels.indexOf(this.owner.settings.manuscriptFocusLevel),
-					),
-				)
+				.setValue(levels.indexOf(shown(this.owner.settings.manuscriptFocusLevel)))
 				// Answered while the handle moves, not when it is let go: the name
 				// and the sentence under the title are how the stops are told apart,
 				// so they have to keep up with the drag.

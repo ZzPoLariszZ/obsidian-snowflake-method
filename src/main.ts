@@ -7,7 +7,6 @@ import {
 	moment,
 	normalizePath,
 	Notice,
-	Platform,
 	Plugin,
 	setIcon,
 	setTooltip,
@@ -499,7 +498,9 @@ import type {
 	WorldbuildingEntityViewModel,
 } from './ui/view-model';
 import type { EntityGroupId, PickedEntity } from './ui/entity-form';
-import { ManuscriptSaveConflict, NEXT_FOCUS_LEVEL, kindEntities } from './ui/view-model';
+import { ManuscriptSaveConflict, kindEntities, nextFocusLevel } from './ui/view-model';
+import { deviceClass, isMobileDevice, watchDeviceClass } from './ui/device';
+import { MobileDiagnosticsModal } from './ui/mobile-diagnostics';
 
 const REFRESH_DELAY_MS = 250;
 /**
@@ -553,6 +554,11 @@ const SCROLLBAR_NATIVE_WIDTH_PROPERTY = '--snowflake-method-scrollbar-native-wid
 const SCROLLBAR_PROBE_CLASS = 'snowflake-method-scrollbar-probe';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
+
+/** Whether the document can go full screen at all: WebKit on an iPhone cannot. */
+function fullscreenAvailable(doc: Document): boolean {
+	return typeof doc.documentElement.requestFullscreen === 'function' && doc.fullscreenEnabled;
+}
 
 /** A body carrying no ground at all, which is what taking it off writes. */
 const NO_TINT_REACH = tintReach('typography', { tintLight: '', tintDark: '' });
@@ -1043,7 +1049,7 @@ export default class SnowflakeMethodPlugin
 			notes: () => this.openNotes(),
 			settings: () => ({
 				typewriter: this.settings.manuscriptTypewriter,
-				focusLevel: this.settings.manuscriptFocusLevel,
+				focusLevel: this.effectiveFocusLevel(),
 				enterParagraph: this.settings.manuscriptEnterParagraph,
 				presentation: this.manuscriptPresentation(),
 				recentFonts: this.settings.manuscriptRecentFonts,
@@ -1607,6 +1613,13 @@ export default class SnowflakeMethodPlugin
 			}
 			this.applyManuscriptModePresence();
 			this.scheduleWritingCountRefresh(0);
+			// An iPad in split view flips between tablet and phone while the app
+			// runs; what is drawn for the device follows.
+			this.register(
+				watchDeviceClass(this.app.workspace.containerEl.win, () => {
+					this.deviceClassChanged();
+				}),
+			);
 			// The path-to-project map fills from the first scan, and the scan
 			// is kicked here rather than waited for from a dashboard: with no
 			// pane open, untimed words would otherwise go unclaimed until one
@@ -3731,8 +3744,10 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private canSplitWorkspace(): boolean {
-		if (Platform.isMobile) return false;
-		return this.app.workspace.containerEl.win.innerWidth >= MIN_SPLIT_WIDTH_PX;
+		const win = this.app.workspace.containerEl.win;
+		// The mobile app has no root splits, on a tablet as on a phone.
+		if (deviceClass(win) !== 'desktop') return false;
+		return win.innerWidth >= MIN_SPLIT_WIDTH_PX;
 	}
 
 	private projectIdOfPath(path: string): string | null {
@@ -4114,9 +4129,30 @@ export default class SnowflakeMethodPlugin
 	 * on its own page only, since its sidebar would fade with the rest and
 	 * fold away in solo.
 	 */
+	/**
+	 * The focus level in force: the setting, except that solo on a phone or
+	 * tablet behaves as deep. The mobile app has no element full screen to
+	 * give solo, and hiding the tab header would take away a phone's only
+	 * tab control.
+	 */
+	private effectiveFocusLevel(): ManuscriptFocusLevel {
+		const level = this.settings.manuscriptFocusLevel;
+		return level === 'solo' && isMobileDevice() ? 'deep' : level;
+	}
+
+	/**
+	 * What the device class decides is drawn again after a flip: an iPad in
+	 * split view becomes a phone and back while the app runs.
+	 */
+	private deviceClassChanged(): void {
+		this.applyManuscriptModePresence();
+		this.noteToolbars?.sync();
+		this.settingTab?.refreshRows();
+	}
+
 	private applyManuscriptModePresence(): void {
 		const body = this.app.workspace.containerEl.doc.body;
-		const level = this.settings.manuscriptFocusLevel;
+		const level = this.effectiveFocusLevel();
 		const note = this.activeProjectNote();
 		const page =
 			note !== null && note.leaf.getRoot() === this.app.workspace.rootSplit
@@ -4141,7 +4177,7 @@ export default class SnowflakeMethodPlugin
 		// solo is chosen, left once when it is put away.
 		const doc = this.app.workspace.containerEl.doc;
 		if (level === 'solo' && !this.soloFullscreen) {
-			if (doc.fullscreenElement === null) {
+			if (doc.fullscreenElement === null && fullscreenAvailable(doc)) {
 				this.soloFullscreen = true;
 				doc.documentElement.requestFullscreen().catch(() => {
 					this.soloFullscreen = false;
@@ -4211,6 +4247,11 @@ export default class SnowflakeMethodPlugin
 		});
 	}
 
+	/** Whether the scrollbars are hidden: the setting, and never on mobile. */
+	private scrollbarsHidden(): boolean {
+		return this.settings.hideScrollbars && !isMobileDevice();
+	}
+
 	/**
 	 * The author's dress choices, worn by a window's body as classes: fewer
 	 * animations, no scrollbars and no tooltips. The settings window shares
@@ -4222,13 +4263,17 @@ export default class SnowflakeMethodPlugin
 			REDUCE_MOTION_CLASS,
 			this.settings.reduceMotion,
 		);
+		// Neither dress is worn on a phone or a tablet: the scroll indicators
+		// there are overlays that take no room and are the only sign of more
+		// below, and no tooltip ever shows where nothing hovers. The settings
+		// keep their values for the desktop.
 		targetDocument.body.classList.toggle(
 			HIDE_SCROLLBARS_CLASS,
-			this.settings.hideScrollbars,
+			this.scrollbarsHidden(),
 		);
 		targetDocument.body.classList.toggle(
 			HIDE_TOOLTIPS_CLASS,
-			this.settings.hideTooltips,
+			this.settings.hideTooltips && !isMobileDevice(),
 		);
 		targetDocument.body.classList.toggle(
 			JUSTIFY_FIELDS_CLASS,
@@ -4280,7 +4325,7 @@ export default class SnowflakeMethodPlugin
 		if (native === null) return;
 		// While the setting shows the bars, the room is what a bar takes as
 		// the page draws it, which a theme or a snippet can hide on its own.
-		const room = this.settings.hideScrollbars
+		const room = this.scrollbarsHidden()
 			? 0
 			: (measureScrollbarWidth(targetDocument, { asDrawn: true }) ?? native);
 		// Written only when it has actually moved. This is asked again every
@@ -7780,7 +7825,7 @@ export default class SnowflakeMethodPlugin
 			showPath: this.settings.showManuscriptPath,
 			showSequence: this.settings.showManuscriptSequence,
 			typewriter: this.settings.manuscriptTypewriter,
-			focusLevel: this.settings.manuscriptFocusLevel,
+			focusLevel: this.effectiveFocusLevel(),
 			autoPairBrackets: this.settings.manuscriptAutoPairBrackets,
 			autoPairMarkdown: this.settings.manuscriptAutoPairMarkdown,
 			enterParagraph: this.settings.manuscriptEnterParagraph,
@@ -9140,7 +9185,7 @@ export default class SnowflakeMethodPlugin
 	async toggleManuscriptMode(mode: 'typewriter' | 'focus'): Promise<void> {
 		if (mode === 'focus') {
 			await this.setManuscriptFocus(
-				NEXT_FOCUS_LEVEL[this.settings.manuscriptFocusLevel],
+				nextFocusLevel(this.settings.manuscriptFocusLevel, { solo: !isMobileDevice() }),
 			);
 			return;
 		}
@@ -10109,31 +10154,46 @@ export default class SnowflakeMethodPlugin
 				});
 			},
 		});
+		// Overlay scrollbars take no room and nothing hovers on a touch screen:
+		// the two dressings and the split are the desktop's, so their commands
+		// are offered there alone.
 		this.addCommand({
 			id: 'toggle-scrollbars',
 			name: this.globalT('commands.toggleScrollbars'),
-			callback: () => {
-				void this.toggleScrollbars().catch((error: unknown) => {
-					this.showError(error);
-				});
+			checkCallback: (checking) => {
+				if (isMobileDevice()) return false;
+				if (!checking) {
+					void this.toggleScrollbars().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return true;
 			},
 		});
 		this.addCommand({
 			id: 'toggle-tooltips',
 			name: this.globalT('commands.toggleTooltips'),
-			callback: () => {
-				void this.toggleTooltips().catch((error: unknown) => {
-					this.showError(error);
-				});
+			checkCallback: (checking) => {
+				if (isMobileDevice()) return false;
+				if (!checking) {
+					void this.toggleTooltips().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return true;
 			},
 		});
 		this.addCommand({
 			id: 'toggle-notes-beside-dashboard',
 			name: this.globalT('commands.toggleNotesBesideDashboard'),
-			callback: () => {
-				void this.toggleNotesBesideDashboard().catch((error: unknown) => {
-					this.showError(error);
-				});
+			checkCallback: (checking) => {
+				if (isMobileDevice()) return false;
+				if (!checking) {
+					void this.toggleNotesBesideDashboard().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return true;
 			},
 		});
 		this.addCommand({
@@ -10148,6 +10208,22 @@ export default class SnowflakeMethodPlugin
 					this.dashboardViewForRecentProject();
 				if (dashboard === null || !dashboard.canToggleRail()) return false;
 				if (!checking) dashboard.toggleRail();
+				return true;
+			},
+		});
+		// The App Store build cannot be inspected, so the report is the one
+		// evidence a phone can give; the command exists only there.
+		this.addCommand({
+			id: 'show-mobile-diagnostics',
+			name: this.globalT('commands.showMobileDiagnostics'),
+			checkCallback: (checking) => {
+				if (!isMobileDevice()) return false;
+				if (!checking) {
+					new MobileDiagnosticsModal(this.app, {
+						t: this.globalT,
+						version: this.manifest.version,
+					}).open();
+				}
 				return true;
 			},
 		});
@@ -10742,8 +10818,10 @@ export default class SnowflakeMethodPlugin
 				id: `set-focus-mode-${level}`,
 				name: this.globalT(`commands.setFocusMode.${level}`),
 				checkCallback: (checking) => {
+					// Solo is the desktop's: a phone or tablet goes no deeper than deep.
 					const available =
-						this.activeManuscriptView() !== null || this.activeProjectNote() !== null;
+						(level !== 'solo' || !isMobileDevice()) &&
+						(this.activeManuscriptView() !== null || this.activeProjectNote() !== null);
 					if (!checking && available) {
 						void this.setManuscriptFocus(level).catch((error: unknown) => {
 							this.showError(error);
