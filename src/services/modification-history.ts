@@ -71,6 +71,9 @@ export interface ModificationHistoryDeps {
 	deviceId: () => string;
 	timezone: () => string;
 	timers: WritingSessionTimers;
+	/** The harvester's rest between passes, and whether the app is out of sight; see its deps. */
+	intervalMs?: () => number;
+	hidden?: () => boolean;
 	now?: () => number;
 	batchRows?: number;
 }
@@ -106,6 +109,8 @@ export class ModificationHistoryService {
 			deviceId: deps.deviceId,
 			timezone: deps.timezone,
 			timers: deps.timers,
+			...(deps.intervalMs === undefined ? {} : { intervalMs: deps.intervalMs }),
+			...(deps.hidden === undefined ? {} : { hidden: deps.hidden }),
 			...(deps.now === undefined ? {} : { now: deps.now }),
 			...(deps.batchRows === undefined ? {} : { batchRows: deps.batchRows }),
 		});

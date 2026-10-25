@@ -4,6 +4,7 @@ import { SCHEMA_VERSION, fingerprint, type NoteSnapshotMonthFile } from "../../s
 import {
 	HARVEST_BACKOFF_MAX_MS,
 	HARVEST_FIRST_PASS_MS,
+	HARVEST_INTERVAL_MOBILE_MS,
 	HARVEST_INTERVAL_MS,
 	SnapshotHarvester,
 	SnowflakeProjectService,
@@ -37,6 +38,8 @@ describe("SnapshotHarvester", () => {
 	let frontmatterNow: Map<string, Record<string, unknown>>;
 	let events: HarvesterEvent[];
 	let onBreath: (() => void) | null;
+	let intervalMs: (() => number) | undefined;
+	let hidden: (() => boolean) | undefined;
 	let timers: {
 		handlers: Map<number, () => void>;
 		delays: number[];
@@ -68,6 +71,8 @@ describe("SnapshotHarvester", () => {
 			},
 			deviceId: () => "device-a",
 			timezone: () => timeZone,
+			...(intervalMs === undefined ? {} : { intervalMs }),
+			...(hidden === undefined ? {} : { hidden }),
 			now: () => {
 				clock += tickMs;
 				return clock;
@@ -113,6 +118,8 @@ describe("SnapshotHarvester", () => {
 		frontmatterNow = new Map();
 		events = [];
 		onBreath = null;
+		intervalMs = undefined;
+		hidden = undefined;
 		const handlers = new Map<number, () => void>();
 		timers = {
 			handlers,
@@ -447,5 +454,34 @@ describe("SnapshotHarvester", () => {
 		await timers.flush();
 		expect(store.readCalls).toHaveLength(1);
 		expect(harvester.status().lastPassAt).toBe(T0);
+	});
+
+	it("rests as long as it is told between passes: a phone's quarter hour", async () => {
+		intervalMs = () => HARVEST_INTERVAL_MOBILE_MS;
+		harvester = buildHarvester();
+		harvester.start();
+		await timers.flush();
+		expect(timers.delays).toEqual([HARVEST_FIRST_PASS_MS, HARVEST_INTERVAL_MOBILE_MS]);
+		expect(HARVEST_INTERVAL_MOBILE_MS).toBe(3 * HARVEST_INTERVAL_MS);
+	});
+
+	it("lets a pass due while the app is hidden wait for the next tick", async () => {
+		let out = true;
+		hidden = () => out;
+		harvester = buildHarvester();
+		store.add(at(SCENE), T0, note("scene", "one"));
+		harvester.start();
+		await timers.flush();
+		expect(store.readCalls).toEqual([]);
+		expect(harvester.status().lastPassAt).toBeNull();
+		expect(timers.delays).toEqual([HARVEST_FIRST_PASS_MS, HARVEST_INTERVAL_MS]);
+		out = false;
+		await timers.flush();
+		expect(store.readCalls).toHaveLength(1);
+		expect(harvester.status().lastPassAt).toBe(T0);
+		// Asked for outright, a pass runs hidden or not.
+		out = true;
+		await harvester.harvestNow();
+		expect(store.readCalls).toHaveLength(2);
 	});
 });

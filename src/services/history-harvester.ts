@@ -43,6 +43,8 @@ import type { WritingSessionTimers } from "./writing-session";
 export const HARVEST_BATCH_ROWS = 200;
 export const HARVEST_FIRST_PASS_MS = 30_000;
 export const HARVEST_INTERVAL_MS = 5 * 60_000;
+/** The rest between passes on a phone or tablet, which reads the store on battery. */
+export const HARVEST_INTERVAL_MOBILE_MS = 15 * 60_000;
 export const HARVEST_BACKOFF_MAX_MS = 30 * 60_000;
 const HARVEST_BREATH_MS = 12;
 /**
@@ -169,6 +171,14 @@ export interface SnapshotHarvesterDeps {
 	deviceId: () => string;
 	timezone: () => string;
 	timers: WritingSessionTimers;
+	/** The rest between passes, read as each is armed; a mobile device rests longer. */
+	intervalMs?: () => number;
+	/**
+	 * Whether the app is out of sight. A pass that comes due then waits for
+	 * the next tick: nothing is written while the app is hidden, and a phone
+	 * in a pocket should not read the store for it.
+	 */
+	hidden?: () => boolean;
 	now?: () => number;
 	batchRows?: number;
 }
@@ -200,10 +210,14 @@ export class SnapshotHarvester {
 	};
 	private readonly now: () => number;
 	private readonly batchRows: number;
+	private readonly interval: () => number;
+	private readonly hidden: () => boolean;
 
 	constructor(private readonly deps: SnapshotHarvesterDeps) {
 		this.now = deps.now ?? (() => Date.now());
 		this.batchRows = deps.batchRows ?? HARVEST_BATCH_ROWS;
+		this.interval = deps.intervalMs ?? (() => HARVEST_INTERVAL_MS);
+		this.hidden = deps.hidden ?? (() => false);
 		// The stored cursor is read at once, so a rename or a deletion before
 		// the first pass moves the sightings it names; one that is missing or
 		// unreadable is rebuilt from this device's files when the pass comes.
@@ -295,6 +309,10 @@ export class SnapshotHarvester {
 		this.clearTick();
 		this.tick = this.deps.timers.set(() => {
 			this.tick = null;
+			if (this.hidden()) {
+				this.arm(this.interval());
+				return;
+			}
 			void this.pass();
 		}, ms);
 	}
@@ -317,7 +335,7 @@ export class SnapshotHarvester {
 					// a store that cannot be read is not read every five minutes
 					// for the rest of the session.
 					this.backoffMs = Math.min(
-						this.backoffMs === 0 ? HARVEST_INTERVAL_MS : this.backoffMs * 2,
+						this.backoffMs === 0 ? this.interval() : this.backoffMs * 2,
 						HARVEST_BACKOFF_MAX_MS,
 					);
 					this.setStatus({
@@ -331,7 +349,7 @@ export class SnapshotHarvester {
 				// Armed whether or not there was a store to read: a store that
 				// comes back, or File recovery turned on again, is met by the
 				// next pass without anything having to wake the harvester.
-				this.arm(this.backoffMs === 0 ? HARVEST_INTERVAL_MS : this.backoffMs);
+				this.arm(this.backoffMs === 0 ? this.interval() : this.backoffMs);
 			});
 		this.running = run;
 		return run;

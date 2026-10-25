@@ -246,6 +246,8 @@ import {
 	type SnapshotStoreReader,
 	fileRecoveryAvailability,
 	FILE_RECOVERY_SETTINGS_TAB,
+	HARVEST_INTERVAL_MOBILE_MS,
+	HARVEST_INTERVAL_MS,
 	IdbSnapshotStoreReader,
 	isModificationHistoryPath,
 	openFileRecovery,
@@ -1363,6 +1365,10 @@ export default class SnowflakeMethodPlugin
 				set: (handler, ms) => window.setTimeout(handler, ms),
 				clear: (handle) => window.clearTimeout(handle as number),
 			},
+			// A phone reads the store on battery: it rests three times as long
+			// between passes, and a pass due while the app is out of sight waits.
+			intervalMs: () => (isMobileDevice() ? HARVEST_INTERVAL_MOBILE_MS : HARVEST_INTERVAL_MS),
+			hidden: () => this.app.workspace.containerEl.doc.hidden,
 		});
 		this.stickyNoteHub = new StickyNoteHub({
 			load: () => this.app.loadLocalStorage(STICKY_NOTE_LOCAL_STATE_KEY) as unknown,
