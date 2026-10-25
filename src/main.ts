@@ -8,8 +8,6 @@ import {
 	normalizePath,
 	Notice,
 	Plugin,
-	setIcon,
-	setTooltip,
 	TFile,
 	TFolder,
 	type Editor,
@@ -499,7 +497,8 @@ import type {
 } from './ui/view-model';
 import type { EntityGroupId, PickedEntity } from './ui/entity-form';
 import { ManuscriptSaveConflict, kindEntities, nextFocusLevel } from './ui/view-model';
-import { deviceClass, isMobileDevice, watchDeviceClass } from './ui/device';
+import { deviceClass, isMobileDevice, statusBarShown, watchDeviceClass } from './ui/device';
+import { TOOLBAR_FACES_CLASS, WritingFaces } from './ui/writing-faces';
 import { MobileDiagnosticsModal } from './ui/mobile-diagnostics';
 
 const REFRESH_DELAY_MS = 250;
@@ -781,9 +780,23 @@ export default class SnowflakeMethodPlugin
 	});
 	/** The freeform workspaces' bell, for any of a project's views. */
 	private readonly freeformBell = this.documentBell('a freeform workspace');
-	/** The writing count in the status bar, and the text span inside it. */
-	private writingCountItem: HTMLElement | null = null;
-	private writingCountText: HTMLElement | null = null;
+	/**
+	 * The writing count and the writing session wherever they show: the
+	 * status bar on the desktop, and on mobile, where the app hides the
+	 * status bar, the stream's and the dressed notes' toolbars.
+	 */
+	private readonly writingFaces = new WritingFaces({
+		openCountMenu: (event) => {
+			this.openWritingCountMenu(event);
+		},
+		openSessionMenu: (event) => {
+			this.openWritingSessionMenu(event);
+		},
+		appeared: (kind) => {
+			if (kind === 'count') this.scheduleWritingCountRefresh(0);
+			else this.repaintWritingSession();
+		},
+	});
 	sessions!: WritingSessionService;
 	history!: ModificationHistoryService;
 	/** What every sticky-note surface shares: claims, the device's memory of the panels, the bell. */
@@ -795,9 +808,6 @@ export default class SnowflakeMethodPlugin
 	/** The chapters the relink sweep read, each under the stamp it was read at. */
 	private readonly sweptBodies = new Map<string, { stamp: string; body: string }>();
 	private lastFocusLevel: ManuscriptFocusLevel = 'off';
-	private sessionItem: HTMLElement | null = null;
-	private sessionIconEl: HTMLElement | null = null;
-	private sessionText: HTMLElement | null = null;
 	private sessionShown: { text: string; tooltip: string; look: string } | null =
 		null;
 	private writingCountTimer: number | null = null;
@@ -1072,6 +1082,7 @@ export default class SnowflakeMethodPlugin
 				setCustomHighlights: (on) => this.setCustomHighlights(on),
 			},
 			exportNote: (path) => this.exportNote(path),
+			mountFaces: (bar) => this.mountWritingFaces(bar),
 			showError: (error) => {
 				this.showError(error);
 			},
@@ -4385,16 +4396,11 @@ export default class SnowflakeMethodPlugin
 	 * keystroke.
 	 */
 	private registerWritingCount(): void {
-		const item = this.addStatusBarItem();
-		item.addClass('mod-clickable', 'snowflake-method-word-count');
-		const icon = item.createSpan({ cls: 'snowflake-method-word-count-icon' });
-		setIcon(icon, 'snowflake');
-		this.writingCountText = item.createSpan();
-		this.writingCountItem = item;
-		item.hide();
-		this.registerDomEvent(item, 'click', (event) => {
-			this.openWritingCountMenu(event);
-		});
+		// The app hides the status bar on mobile, so no item is made there:
+		// the faces ride the toolbars instead, mounted as those are drawn.
+		if (statusBarShown()) {
+			this.register(this.writingFaces.mount(this.addStatusBarItem(), 'count', 'status-bar'));
+		}
 		this.registerEditorExtension(
 			createSelectionWatchExtension((report) => {
 				// The caret is half of the answer, not only the selection: it
@@ -4455,6 +4461,13 @@ export default class SnowflakeMethodPlugin
 				this.scheduleWritingCountRefresh();
 			});
 		}
+		// Nothing is counted or repainted while the window is hidden; what
+		// changed meanwhile is caught up the moment it shows again.
+		this.registerDomEvent(doc, 'visibilitychange', () => {
+			if (doc.hidden) return;
+			this.scheduleWritingCountRefresh(0);
+			this.repaintWritingSession();
+		});
 		this.register(() => {
 			// The flag as well as the timer: a count already in flight resumes
 			// after its await, and the status bar item it was going to paint
@@ -4471,19 +4484,12 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private registerWritingSessions(): void {
-		const item = this.addStatusBarItem();
-		item.addClass('mod-clickable', 'snowflake-method-session');
-		const icon = item.createSpan({ cls: 'snowflake-method-session-icon' });
-		setIcon(icon, 'clock');
-		this.sessionIconEl = icon;
-		this.sessionText = item.createSpan();
-		this.sessionItem = item;
-		// Always on show: with no session running, the icon is how a session
-		// is started, and a control that vanishes cannot be clicked.
-		setTooltip(item, this.projectT('statusBar.sessionStart'));
-		this.registerDomEvent(item, 'click', (event) => {
-			this.openWritingSessionMenu(event);
-		});
+		// Always on show where there is a status bar: with no session running,
+		// the icon is how a session is started, and a control that vanishes
+		// cannot be clicked. Mobile has no bar, and the toolbars carry the face.
+		if (statusBarShown()) {
+			this.register(this.writingFaces.mount(this.addStatusBarItem(), 'session', 'status-bar'));
+		}
 		this.register(
 			this.sessions.subscribe((event) => this.handleSessionEvent(event)),
 		);
@@ -4846,12 +4852,8 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private repaintWritingSession(): LiveWritingSession | null {
-		const item = this.sessionItem;
-		const icon = this.sessionIconEl;
-		const text = this.sessionText;
-		if (item === null || icon === null || text === null || this.unloading) {
-			return null;
-		}
+		if (this.unloading || !this.writingFaces.anyShown('session')) return null;
+		if (this.app.workspace.containerEl.doc.hidden) return null;
 		const live = this.sessions.live();
 		const iconName =
 			live === null || live.type === 'stopwatch'
@@ -4884,12 +4886,14 @@ export default class SnowflakeMethodPlugin
 			return live;
 		}
 		this.sessionShown = { text: line, tooltip, look };
-		setIcon(icon, iconName);
-		text.setText(line);
-		item.toggleClass('is-paused', live?.state === 'paused');
-		item.toggleClass('is-idle', live?.state === 'idle');
-		item.toggleClass('is-break', live?.pomodoro?.phase === 'break');
-		setTooltip(item, tooltip);
+		this.writingFaces.paintSession({
+			icon: iconName,
+			line,
+			tooltip,
+			paused: live?.state === 'paused',
+			idle: live?.state === 'idle',
+			break: live?.pomodoro?.phase === 'break',
+		});
 		return live;
 	}
 
@@ -6800,7 +6804,11 @@ export default class SnowflakeMethodPlugin
 	 */
 	private scheduleWritingCountRefresh(delay = 250): void {
 		if (this.unloading) return;
-		const win = this.app.workspace.containerEl.win;
+		// Nothing counts while nothing would show the number: mobile has no
+		// status bar, so a stream or a dressed note has to be open for a face
+		// to be there; and a hidden window waits until it shows again.
+		const { win, doc } = this.app.workspace.containerEl;
+		if (doc.hidden || !this.writingFaces.anyShown('count')) return;
 		const due = Date.now() + delay;
 		if (this.writingCountTimer !== null) {
 			if (due >= this.writingCountDue) return;
@@ -6819,16 +6827,32 @@ export default class SnowflakeMethodPlugin
 		this.scheduleWritingCountRefresh();
 	}
 
+	/**
+	 * The count and the session on a toolbar, for mobile, where the app
+	 * hides the status bar; null on the desktop, where the bar has them and
+	 * the toolbar carries nothing. The release takes them down with the bar.
+	 */
+	mountWritingFaces(bar: HTMLElement): (() => void) | null {
+		if (!isMobileDevice()) return null;
+		const slot = bar.createDiv({ cls: TOOLBAR_FACES_CLASS });
+		const releases = [
+			this.writingFaces.mount(slot, 'count', 'toolbar'),
+			this.writingFaces.mount(slot, 'session', 'toolbar'),
+		];
+		return () => {
+			for (const release of releases) release();
+			slot.remove();
+		};
+	}
+
 	private async refreshWritingCount(): Promise<void> {
-		const item = this.writingCountItem;
-		const text = this.writingCountText;
-		if (item === null || text === null || this.unloading) return;
+		if (this.unloading || !this.writingFaces.anyShown('count')) return;
 		const sequence = ++this.writingCountSequence;
 		const shown = await this.currentWritingCount();
 		if (sequence !== this.writingCountSequence || this.unloading) return;
 		if (shown === null) {
 			this.writingCountShown = null;
-			item.hide();
+			this.writingFaces.paintCount(null);
 			return;
 		}
 		const line = this.projectT(
@@ -6847,13 +6871,7 @@ export default class SnowflakeMethodPlugin
 			this.writingCountShown.breakdown !== breakdown
 		) {
 			this.writingCountShown = { line, breakdown };
-			text.setText(line);
-			// The breakdown is the item's name as well as its tooltip: Obsidian
-			// keeps a tooltip in `aria-label`, so a label written after this one
-			// would take the numbers away from the pointer and leave nothing in
-			// their place.
-			setTooltip(item, breakdown);
-			item.show();
+			this.writingFaces.paintCount({ line, breakdown });
 		}
 		// The chain ends of its own accord: the first count taken after the
 		// field is gone is not a field's count, and arms nothing.

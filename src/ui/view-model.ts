@@ -465,6 +465,12 @@ export interface ManuscriptHost {
 		vars?: Record<string, string | number>,
 	): string;
 	manuscriptWindowSettings(): ManuscriptWindowSettings;
+	/**
+	 * The writing count and session faces on the stream's bar, where the
+	 * device has no status bar to carry them; null where it has one, and
+	 * the bar carries nothing. The release takes them down with the bar.
+	 */
+	mountWritingFaces(bar: HTMLElement): (() => void) | null;
 	loadManuscript(projectPath: string | null): Promise<ManuscriptModel | null>;
 	/**
 	 * The entities the wikilink popup may offer for one project, each name

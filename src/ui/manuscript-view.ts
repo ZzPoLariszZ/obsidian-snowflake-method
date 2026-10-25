@@ -320,6 +320,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private streamEl: HTMLElement | null = null;
 	/** The formatting bar's buttons, greyed together while nothing is edited. */
 	private toolbarButtons: HTMLButtonElement[] = [];
+	/** Takes down the writing faces the bar carries on mobile, where it carries any. */
+	private releaseWritingFaces: (() => void) | null = null;
 	/** The toolbar's two writing-mode buttons, repainted as settings move. */
 	private readonly modeToggles: Partial<
 		Record<'typewriter' | 'focus', HTMLButtonElement>
@@ -687,6 +689,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		}
 		// Whatever the loop could not take down, the backend still destroys.
 		this.backend.destroyAll();
+		this.releaseWritingFaces?.();
+		this.releaseWritingFaces = null;
 		this.contentEl.empty();
 	}
 
@@ -1048,6 +1052,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async render(): Promise<void> {
 		for (const path of [...this.mounted.keys()]) await this.unmountSegment(path);
 		this.closePresentationPanel();
+		this.releaseWritingFaces?.();
+		this.releaseWritingFaces = null;
 		this.contentEl.empty();
 		this.contentEl.removeClass('is-toolbar');
 		this.toolbarButtons = [];
@@ -1218,6 +1224,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		separator();
 		this.renderModeToggle(bar, 'typewriter');
 		this.renderModeToggle(bar, 'focus');
+		// On mobile the app hides the status bar, so the writing count and
+		// the session ride the stream's bar instead.
+		this.releaseWritingFaces = this.host.mountWritingFaces(bar);
 		this.refreshToolbar();
 	}
 

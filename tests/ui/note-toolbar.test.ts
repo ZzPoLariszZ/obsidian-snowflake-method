@@ -122,6 +122,7 @@ describe('NoteToolbars', () => {
 		inProject: (path: string) => boolean = () => true,
 	) {
 		const calls: string[] = [];
+		const faces: string[] = [];
 		let typewriter = false;
 		let focusLevel: FocusLevel = 'off';
 		const record = (call: string): Promise<void> => {
@@ -169,6 +170,14 @@ describe('NoteToolbars', () => {
 				calls.push(`export:${path}`);
 				return Promise.resolve();
 			},
+			mountFaces: (host) => {
+				const slot = host.createDiv({ cls: 'snowflake-method-toolbar-faces' });
+				faces.push('mount');
+				return () => {
+					faces.push('release');
+					slot.remove();
+				};
+			},
 			showError: (error) => {
 				calls.push(`error:${String(error)}`);
 			},
@@ -176,6 +185,7 @@ describe('NoteToolbars', () => {
 		return {
 			toolbars,
 			calls,
+			faces,
 			setTypewriter: (on: boolean) => {
 				typewriter = on;
 			},
@@ -229,6 +239,22 @@ describe('NoteToolbars', () => {
 		// Undo, redo, two headings and the ladder, five marks, the dress, the
 		// mentions, the export, the two modes.
 		expect(mounted.querySelectorAll('button')).toHaveLength(15);
+	});
+
+	it('carries the writing faces at its end where the device asks, and lets go with the bar', () => {
+		let dressed = true;
+		const one = note('Novel/Chapter.md');
+		const { toolbars, faces } = harness([one], () => dressed);
+		toolbars.apply();
+		const mounted = bar(one) as HTMLElement;
+		expect(mounted.lastElementChild?.classList.contains('snowflake-method-toolbar-faces')).toBe(true);
+		expect(faces).toEqual(['mount']);
+		toolbars.apply();
+		expect(faces).toEqual(['mount']);
+		dressed = false;
+		toolbars.apply();
+		expect(bar(one)).toBeNull();
+		expect(faces).toEqual(['mount', 'release']);
 	});
 
 	it('greys the editing buttons while the note is read, and lights the modes', () => {

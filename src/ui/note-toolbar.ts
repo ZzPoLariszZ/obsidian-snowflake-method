@@ -95,6 +95,12 @@ export interface NoteToolbarDeps {
 	mentionModes: MentionModeSetters;
 	/** The note at a path written out as plain text, as the export settings say. */
 	exportNote(path: string): Promise<void>;
+	/**
+	 * The writing count and session faces on a bar, where the device has no
+	 * status bar to carry them; null where it has one. The release takes
+	 * them down with the bar.
+	 */
+	mountFaces(bar: HTMLElement): (() => void) | null;
 	showError(error: unknown): void;
 }
 
@@ -107,6 +113,8 @@ interface MountedBar {
 	typewriter: HTMLButtonElement;
 	/** Focus mode's button, inert on a note no project holds as the marks' is. */
 	focus: HTMLButtonElement;
+	/** Takes down the faces the bar carries, where it carries any. */
+	releaseFaces: (() => void) | null;
 	/** The modes as the two buttons were last painted, so a repaint is cheap. */
 	face: string | null;
 	/** One of the bar's own words as it was drawn, which says what language it speaks. */
@@ -179,6 +187,7 @@ export class NoteToolbars {
 
 	/** A note's bar taken down, and the fade it switched with it. */
 	private unmount(root: HTMLElement, bar: MountedBar): void {
+		bar.releaseFaces?.();
 		bar.el.remove();
 		this.bars.delete(root);
 		root.removeClass(NOTE_FOCUS_CLASS);
@@ -295,6 +304,7 @@ export class NoteToolbars {
 			mentions,
 			typewriter,
 			focus,
+			releaseFaces: this.deps.mountFaces(el),
 			face: null,
 			tongue: t(TONGUE_KEY),
 		};
