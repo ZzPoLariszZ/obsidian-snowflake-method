@@ -161,3 +161,51 @@ export function addOrderMenuItems(
 			.onClick(insert),
 	);
 }
+
+/**
+ * A grip that answers a press, Enter, Space or a right-click with a menu
+ * under it: the drag's twin, for a hand that cannot drag. A touch never
+ * starts an HTML5 drag, and a keyboard never did.
+ */
+export function wireGripMenu(handle: HTMLElement, build: () => Menu | null): void {
+	handle.setAttribute('aria-haspopup', 'menu');
+	if (!handle.hasAttribute('tabindex')) handle.setAttribute('tabindex', '0');
+	const open = (event: Event): void => {
+		event.preventDefault();
+		event.stopPropagation();
+		const menu = build();
+		if (menu === null) return;
+		const box = handle.getBoundingClientRect();
+		menu.showAtPosition({ x: box.left, y: box.bottom });
+	};
+	handle.addEventListener('click', open);
+	handle.addEventListener('contextmenu', open);
+	handle.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter' || event.key === ' ') open(event);
+	});
+}
+
+/** Move up and Move down alone, for a short list with no position dialog of its own. */
+export function addMoveNeighbourItems(
+	menu: Menu,
+	options: { t: Translate; up: (() => void) | null; down: (() => void) | null },
+): void {
+	menu.addItem((item) =>
+		item
+			.setTitle(options.t('actions.moveUp'))
+			.setIcon('arrow-up')
+			.setDisabled(options.up === null)
+			.onClick(() => {
+				options.up?.();
+			}),
+	);
+	menu.addItem((item) =>
+		item
+			.setTitle(options.t('actions.moveDown'))
+			.setIcon('arrow-down')
+			.setDisabled(options.down === null)
+			.onClick(() => {
+				options.down?.();
+			}),
+	);
+}

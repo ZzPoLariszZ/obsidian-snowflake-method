@@ -1,5 +1,7 @@
 import { App, setIcon, setTooltip } from 'obsidian';
 
+import { wireCaretKeepingPress } from './caret-press';
+
 import { isNameTaken } from '../domain';
 import { FieldSuggest } from './field-suggest';
 
@@ -645,10 +647,7 @@ function buildPickerFrame(
 /** Wires the frame's chevron and its click-anywhere-to-type behaviour. */
 function wireFrame(frame: PickerFrame, suggest: OptionSuggest): void {
 	// The chevron opens the list rather than taking focus off the search box.
-	frame.selector.addEventListener('mousedown', (event) => {
-		event.preventDefault();
-	});
-	frame.selector.addEventListener('click', () => {
+	wireCaretKeepingPress(frame.selector, () => {
 		suggest.showAllSuggestions();
 	});
 	// Clicking the padding around the contents should land in the search box, the
@@ -708,10 +707,7 @@ export function buildOptionPicker(
 			// Taking focus would blur the search box, and the framework closes the
 			// list on blur — so the × would dismiss the list and the refresh would
 			// bring it back from the top, which backspacing never does.
-			remove.addEventListener('mousedown', (event) => {
-				event.preventDefault();
-			});
-			remove.addEventListener('click', () => {
+			wireCaretKeepingPress(remove, () => {
 				unpick(option.value);
 				input.focus({ preventScroll: true });
 			});

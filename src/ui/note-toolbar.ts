@@ -10,6 +10,7 @@ import {
 } from './mention-mode-menu';
 import { openPresentationPanel, type PresentationPanel } from './presentation-panel';
 import { isMobileDevice } from './device';
+import { wireCaretKeepingPress } from './caret-press';
 import { nextFocusLevel, type FocusLevel } from './view-model';
 
 /**
@@ -101,6 +102,8 @@ export interface NoteToolbarDeps {
 	 * them down with the bar.
 	 */
 	mountFaces(bar: HTMLElement): (() => void) | null;
+	/** The selected words' entries under the bar's button: made into something, or written out. */
+	openSelectionMenu(path: string, selection: string, save: () => Promise<void>, event: MouseEvent): void;
 	showError(error: unknown): void;
 }
 
@@ -217,10 +220,7 @@ export class NoteToolbars {
 			if (label.length > 0) setTooltip(control, label);
 			// Pressing a button must not lift the caret out of the editor:
 			// the command acts on the selection the author is holding there.
-			control.addEventListener('mousedown', (event) => {
-				event.preventDefault();
-			});
-			control.addEventListener('click', act);
+			wireCaretKeepingPress(control, act);
 			return control;
 		};
 		const command = (id: EditorCommandId, icon: string, key: string): void => {
@@ -249,6 +249,13 @@ export class NoteToolbars {
 		command('strikethrough', 'strikethrough', 'manuscript.toolbar.strikethrough');
 		command('underline', 'underline', 'manuscript.toolbar.underline');
 		command('highlight', 'highlighter', 'manuscript.toolbar.highlight');
+		// The selected words' entries for a hand without a right button: on a
+		// touch screen a long press in the text is the system's own selection.
+		const selection = button('text-select', t('manuscript.toolbar.selection'), (event) => {
+			this.openSelectionMenu(note, event);
+		});
+		selection.addClass('snowflake-method-toolbar-selection');
+		editing.push(selection);
 		separator();
 		// The dress, live while reading too: it is how the page is read.
 		const dress = button(
@@ -346,6 +353,15 @@ export class NoteToolbars {
 				`manuscript.focusNext.${nextFocusLevel(focusLevel, { solo: !isMobileDevice() })}`,
 			)}`,
 		);
+	}
+
+	/** The selected words' entries, under the button rather than at a right-click. */
+	private openSelectionMenu(note: ToolbarNote, event: MouseEvent): void {
+		const path = note.path;
+		const view = note.editor();
+		if (path === null || view === null) return;
+		const { from, to } = view.state.selection.main;
+		this.deps.openSelectionMenu(path, view.state.sliceDoc(from, to), () => note.save(), event);
 	}
 
 	/** A bar press, delivered to the note's editor as the author's own edit. */

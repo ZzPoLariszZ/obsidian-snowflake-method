@@ -499,6 +499,7 @@ import type { EntityGroupId, PickedEntity } from './ui/entity-form';
 import { ManuscriptSaveConflict, kindEntities, nextFocusLevel } from './ui/view-model';
 import { deviceClass, isMobileDevice, statusBarShown, watchDeviceClass } from './ui/device';
 import { TOOLBAR_FACES_CLASS, WritingFaces } from './ui/writing-faces';
+import { floatPolicy } from './ui/sticky-note-layout';
 import { MobileDiagnosticsModal } from './ui/mobile-diagnostics';
 
 const REFRESH_DELAY_MS = 250;
@@ -1083,6 +1084,9 @@ export default class SnowflakeMethodPlugin
 			},
 			exportNote: (path) => this.exportNote(path),
 			mountFaces: (bar) => this.mountWritingFaces(bar),
+			openSelectionMenu: (path, selection, save, event) => {
+				this.openNoteSelectionMenu(path, selection, save, event);
+			},
 			showError: (error) => {
 				this.showError(error);
 			},
@@ -4159,6 +4163,9 @@ export default class SnowflakeMethodPlugin
 		this.applyManuscriptModePresence();
 		this.noteToolbars?.sync();
 		this.settingTab?.refreshRows();
+		void this.reconcileStickyFloats().catch((error: unknown) => {
+			this.showError(error);
+		});
 	}
 
 	private applyManuscriptModePresence(): void {
@@ -4681,6 +4688,31 @@ export default class SnowflakeMethodPlugin
 			selection: span.text,
 			projectPath,
 			exportSelection: (text) => this.exportFieldPassage(projectPath, text),
+		});
+		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * The selected words' entries under a note's toolbar button: what the
+	 * note's right-click menu carries of the plugin's, for a touch screen
+	 * whose long press in the text is the system's own selection.
+	 */
+	private openNoteSelectionMenu(
+		path: string,
+		selection: string,
+		save: () => Promise<void>,
+		event: MouseEvent,
+	): void {
+		const t: Translate = (key, vars) =>
+			this.translateForProject(this.noteStanding(path).locale, key, vars);
+		const menu = new Menu();
+		this.addSelectionEntries(menu, {
+			t,
+			section: 'snowflake-method',
+			selection,
+			projectPath: path,
+			exportNote: () => save().then(() => this.exportNote(path)),
+			exportSelection: (text) => this.exportPassage(path, text),
 		});
 		menu.showAtMouseEvent(event);
 	}
@@ -8441,6 +8473,12 @@ export default class SnowflakeMethodPlugin
 		win: Window,
 		options: StickyNoteFloatOptions = {},
 	): Promise<void> {
+		// A phone has one leaf and no room beside it: a panel would cover
+		// the page and the navbar both, so the board stands in for it there.
+		if (floatPolicy(deviceClass(win)) === 'board') {
+			await this.openStickyNotesView();
+			return;
+		}
 		const project = await this.resolveProject(null);
 		if (project === null) return;
 		const note = (await this.projects.stickyNotes.list(project)).find(
@@ -8471,6 +8509,12 @@ export default class SnowflakeMethodPlugin
 	private async reconcileStickyFloats(): Promise<void> {
 		const recent = this.settings.recentProjectPath;
 		this.stickyFloatsProject = recent;
+		// Nothing floats on a phone; what stood is put away with its memory
+		// kept, so a tablet turned phone-narrow gets it back when it widens.
+		if (floatPolicy(deviceClass(this.app.workspace.containerEl.win)) === 'board') {
+			for (const layer of this.stickyLayers.values()) layer.closeAll();
+			return;
+		}
 		// Nothing standing and nothing remembered open: nothing to put away
 		// and nothing to bring back, so the project is not loaded for it.
 		const standing = [...this.stickyLayers.values()].some((layer) => layer.hasAny());

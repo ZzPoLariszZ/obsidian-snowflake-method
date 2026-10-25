@@ -132,6 +132,7 @@ import {
 	type ManuscriptWindowSettings,
 	type ManuscriptWritingContext,
 } from './view-model';
+import { wireCaretKeepingPress } from './caret-press';
 import { isMobileDevice } from './device';
 import { keepEscapeInView } from './escape-key';
 
@@ -1130,7 +1131,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			icon: string,
 			label: string,
 			act: (event: MouseEvent) => void,
-		): void => {
+		): HTMLButtonElement => {
 			const el = bar.createEl('button', {
 				cls: 'clickable-icon snowflake-method-toolbar-button',
 				attr: { type: 'button' },
@@ -1139,11 +1140,9 @@ export class SnowflakeManuscriptView extends ItemView {
 			setTooltip(el, label);
 			// Pressing a button must not lift the caret out of the editor:
 			// the command acts on the selection the author is holding there.
-			el.addEventListener('mousedown', (event) => {
-				event.preventDefault();
-			});
-			el.addEventListener('click', act);
+			wireCaretKeepingPress(el, act);
 			this.toolbarButtons.push(el);
+			return el;
 		};
 		const command = (
 			id: SegmentEditorCommandId,
@@ -1171,6 +1170,11 @@ export class SnowflakeManuscriptView extends ItemView {
 		command('strikethrough', 'strikethrough', 'manuscript.toolbar.strikethrough');
 		command('underline', 'underline', 'manuscript.toolbar.underline');
 		command('highlight', 'highlighter', 'manuscript.toolbar.highlight');
+		// The segment menu's door for a hand without a right button: on a
+		// touch screen a long press in the text is the system's own selection.
+		button('text-select', this.t('manuscript.toolbar.selection'), (event) => {
+			this.openSelectionMenu(event);
+		}).addClass('snowflake-method-toolbar-selection');
 		separator();
 		// The page's dress, offered where the page is: the same controls as
 		// the settings tab, over the manuscript, so a change is seen as it is
@@ -1182,10 +1186,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		setIcon(dress, 'palette');
 		setTooltip(dress, this.t('manuscript.toolbar.presentation'));
-		dress.addEventListener('mousedown', (event) => {
-			event.preventDefault();
-		});
-		dress.addEventListener('click', () => {
+		wireCaretKeepingPress(dress, () => {
 			this.togglePresentationPanel(dress);
 		});
 		// Which mentions the page marks, live while reading for the same
@@ -1196,10 +1197,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		setIcon(mentions, 'scan-text');
 		setTooltip(mentions, this.t('manuscript.toolbar.mentions'));
-		mentions.addEventListener('mousedown', (event) => {
-			event.preventDefault();
-		});
-		mentions.addEventListener('click', (event) => {
+		wireCaretKeepingPress(mentions, (event) => {
 			this.openMentionModeMenu(event);
 		});
 		// The manuscript as plain text, live while reading for the same reason
@@ -1210,10 +1208,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		setIcon(exporter, 'book-down');
 		setTooltip(exporter, this.t('manuscript.toolbar.export'));
-		exporter.addEventListener('mousedown', (event) => {
-			event.preventDefault();
-		});
-		exporter.addEventListener('click', () => {
+		wireCaretKeepingPress(exporter, () => {
 			void this.exportWholeManuscript().catch((error: unknown) => {
 				this.showError(error);
 			});
@@ -4199,10 +4194,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		// Like the other toolbar buttons: pressing it must not lift the caret
 		// out of whichever editor is holding it.
-		toggle.addEventListener('mousedown', (event) => {
-			event.preventDefault();
-		});
-		toggle.addEventListener('click', () => {
+		wireCaretKeepingPress(toggle, () => {
 			void this.host.toggleManuscriptMode(mode).catch((error: unknown) => {
 				this.showError(error);
 			});
@@ -4983,245 +4975,267 @@ export class SnowflakeManuscriptView extends ItemView {
 	): void {
 		el.addEventListener('contextmenu', (event) => {
 			event.preventDefault();
-			const menu = new Menu();
+			this.buildSegmentMenu(segment, event).showAtMouseEvent(event);
+		});
+	}
 
-			const section = 'snowflake-method';
+	/** The editing segment's menu under the toolbar's button, for a hand with no right button. */
+	private openSelectionMenu(event: MouseEvent): void {
+		const path = this.editingPath;
+		const segment = this.model?.segments.find((candidate) => candidate.path === path);
+		if (segment === undefined) return;
+		this.buildSegmentMenu(segment, null).showAtMouseEvent(event);
+	}
 
-			const selection = this.contentEl.win.getSelection()?.toString() ?? '';
-			if (selection.length > 0) {
-				menu.addItem((item) =>
-					item
-						.setTitle(this.t('manuscript.copySelection'))
-						.setIcon('copy')
-						.onClick(() => {
-							void navigator.clipboard.writeText(selection);
-						}),
-				);
-			}
+	/**
+	 * A segment's menu. `at` is the right-click it answers, whose place says
+	 * which mention it fell on; the toolbar's button has no place in the
+	 * text, passes null, and gets the standing entries alone.
+	 */
+	private buildSegmentMenu(
+		segment: ManuscriptSegmentViewModel,
+		at: MouseEvent | null,
+	): Menu {
+		const menu = new Menu();
 
-			// A right-click on a mention offers what can be done about it at
-			// the head of the plugin's group, whichever half it landed in: the
-			// editor answers by coordinates, the rendered half by the element
-			// under the pointer. The click's own subject outranks the standing
-			// entries below it.
-			const entry = this.mounted.get(segment.path);
-			const mention =
-				entry?.editor?.mentionAt(event.clientX, event.clientY) ??
-				this.renderedMentionAt(entry, event);
-			const mentionLead = (into: Menu): void => {
-				if (entry === undefined || mention === null || entry.mentions === null) {
-					return;
-				}
-				// Sensitive and custom marks are dress alone: no menu entries.
-				if (mention.occurrence.type !== 'entity') return;
-				const editing = entry.editor;
-				// The editor's answer is mapped to the document as it stands
-				// mid-debounce, while `entry.mentions` still holds the last
-				// plan's offsets; an ignore ordinal counted across those two
-				// spaces silences the wrong occurrence. Fresh analysis of the
-				// live text puts the count in the click's own space.
-				const feed = this.mentionState;
-				const noteOccurrences =
-					editing !== null && feed !== null
-						? analyzeMentions(
-								segment.path,
-								editing.read(),
-								[],
-								feed.matcher,
-								splitMentionIgnores(feed.ignores).candidate,
-							)
-						: entry.mentions.occurrences;
-				addMentionMenuItems(into, {
-					occurrence: mention.occurrence,
-					noteOccurrences,
-					t: this.t,
-					section,
-					...(this.model?.readOnly === true
-						? {}
-						: {
-								onConvert: (candidate: MentionCandidate) => {
-									if (editing !== null) {
-										const done = editing.splice(
-											mention.from,
-											mention.to,
-											mention.occurrence.matchedText,
-											candidate.insert,
-										);
-										if (!done) {
-											new Notice(this.t('manuscript.mention.stale'));
-										}
-										return;
-									}
-									void this.convertRendered(entry, mention, candidate).catch(
-										(error: unknown) => {
-											this.showError(error);
-										},
-									);
-								},
-							}),
-					onOpen: (candidate) => {
-						void this.host.openManagedFile(candidate.memberPath).catch(
-							(error: unknown) => {
-								this.showError(error);
-							},
-						);
-					},
-					onIgnore: (rule) => {
-						void this.host
-							.addMentionIgnore(
-								this.model?.projectPath ?? this.projectPath,
-								rule,
-							)
-							.catch((error: unknown) => {
-								this.showError(error);
-							});
-					},
-				});
-			};
+		const section = 'snowflake-method';
 
-			// The manuscript's own two, in the plugin's section rather than loose
-			// among Obsidian's, so the whole group reads in one language.
-			this.host.addProjectMenuSection(
-				menu,
-				segment.path,
-				MANUSCRIPT_VIEW_TYPE,
-				mentionLead,
+		const selection = this.contentEl.win.getSelection()?.toString() ?? '';
+		if (selection.length > 0) {
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('manuscript.copySelection'))
+					.setIcon('copy')
+					.onClick(() => {
+						void navigator.clipboard.writeText(selection);
+					}),
 			);
-			const guarded = (work: Promise<void>): void => {
-				void work.catch((error: unknown) => {
-					this.showError(error);
-				});
-			};
-			if (this.model?.readOnly !== true && entry?.text.readOnly !== true) {
-				menu.addItem((item) =>
-					item
-						.setSection(section)
-						.setTitle(this.t('manuscript.revision.create'))
-						.setIcon('message-square-plus')
-						// A revision is made at the cursor, so it is offered
-						// where there is one, exactly as splitting is: on a note
-						// being read the entry stands greyed rather than
-						// answering a right-click by walking into the text on
-						// its own.
-						.setDisabled(this.editingPath !== segment.path)
-						.onClick(() => {
-							if (entry !== undefined) this.beginRevisionDraft(entry);
-						}),
-				);
-				// A foreshadowing is anchored to a passage, so its entries are
-				// offered where one is selected and greyed where none is: on a
-				// note being read, and at a bare caret, which marks nothing.
-				const passage =
-					entry === undefined ? null : this.selectedPassage(entry);
-				const threads = this.mentionState?.foreshadowings ?? [];
-				menu.addItem((item) =>
-					item
-						.setSection(section)
-						.setTitle(this.t('manuscript.foreshadowing.create'))
-						.setIcon('sparkles')
-						.setDisabled(passage === null)
-						.onClick(() => {
-							guarded(this.openCreateForeshadowing(segment.path));
-						}),
-				);
-				if (threads.length > 0) {
-					menu.addItem((item) =>
-						item
-							.setSection(section)
-							.setTitle(this.t('manuscript.foreshadowing.addExisting'))
-							.setIcon('bookmark-plus')
-							.setDisabled(passage === null)
-							.onClick(() => {
-								guarded(this.openAddToForeshadowing(segment.path));
-							}),
-					);
-				}
-				// Offered only while something waits to be relinked: an entry
-				// whose dialog could only say there is nothing is no entry.
-				if (this.hasUnresolvedOccurrence()) {
-					menu.addItem((item) =>
-						item
-							.setSection(section)
-							.setTitle(this.t('manuscript.foreshadowing.relink'))
-							.setIcon('link')
-							.setDisabled(passage === null)
-							.onClick(() => {
-								guarded(this.openRelinkOccurrence(segment.path));
-							}),
-					);
-				}
+		}
+
+		// A right-click on a mention offers what can be done about it at
+		// the head of the plugin's group, whichever half it landed in: the
+		// editor answers by coordinates, the rendered half by the element
+		// under the pointer. The click's own subject outranks the standing
+		// entries below it.
+		const entry = this.mounted.get(segment.path);
+		const mention =
+			at === null
+				? null
+				: (entry?.editor?.mentionAt(at.clientX, at.clientY) ??
+					this.renderedMentionAt(entry, at));
+		const mentionLead = (into: Menu): void => {
+			if (entry === undefined || mention === null || entry.mentions === null) {
+				return;
 			}
-			// The words selected, made into something new or written out, as a
-			// project note's own menu offers them too. Making needs a project
-			// that may be written; writing out only reads.
-			const selected = this.menuSelection(segment.path);
-			const projectPath = this.model?.projectPath ?? this.projectPath;
-			if (this.model?.readOnly !== true) {
-				addSelectionMakers(menu, {
-					t: this.t,
-					section,
-					selection: selected,
-					addEntity: (name) => {
-						guarded(this.host.addEntityFromText(projectPath, name));
-					},
-					addAlias: (name) => {
-						guarded(this.host.addAliasFromText(projectPath, name));
-					},
-					addStickyNote: (text) => {
-						guarded(this.host.addStickyNoteFromText(projectPath, text));
-					},
-				});
-			}
+			// Sensitive and custom marks are dress alone: no menu entries.
+			if (mention.occurrence.type !== 'entity') return;
+			const editing = entry.editor;
+			// The editor's answer is mapped to the document as it stands
+			// mid-debounce, while `entry.mentions` still holds the last
+			// plan's offsets; an ignore ordinal counted across those two
+			// spaces silences the wrong occurrence. Fresh analysis of the
+			// live text puts the count in the click's own space.
+			const feed = this.mentionState;
+			const noteOccurrences =
+				editing !== null && feed !== null
+					? analyzeMentions(
+							segment.path,
+							editing.read(),
+							[],
+							feed.matcher,
+							splitMentionIgnores(feed.ignores).candidate,
+						)
+					: entry.mentions.occurrences;
+			addMentionMenuItems(into, {
+				occurrence: mention.occurrence,
+				noteOccurrences,
+				t: this.t,
+				section,
+				...(this.model?.readOnly === true
+					? {}
+					: {
+							onConvert: (candidate: MentionCandidate) => {
+								if (editing !== null) {
+									const done = editing.splice(
+										mention.from,
+										mention.to,
+										mention.occurrence.matchedText,
+										candidate.insert,
+									);
+									if (!done) {
+										new Notice(this.t('manuscript.mention.stale'));
+									}
+									return;
+								}
+								void this.convertRendered(entry, mention, candidate).catch(
+									(error: unknown) => {
+										this.showError(error);
+									},
+								);
+							},
+						}),
+				onOpen: (candidate) => {
+					void this.host.openManagedFile(candidate.memberPath).catch(
+						(error: unknown) => {
+							this.showError(error);
+						},
+					);
+				},
+				onIgnore: (rule) => {
+					void this.host
+						.addMentionIgnore(
+							this.model?.projectPath ?? this.projectPath,
+							rule,
+						)
+						.catch((error: unknown) => {
+							this.showError(error);
+						});
+				},
+			});
+		};
+
+		// The manuscript's own two, in the plugin's section rather than loose
+		// among Obsidian's, so the whole group reads in one language.
+		this.host.addProjectMenuSection(
+			menu,
+			segment.path,
+			MANUSCRIPT_VIEW_TYPE,
+			mentionLead,
+		);
+		const guarded = (work: Promise<void>): void => {
+			void work.catch((error: unknown) => {
+				this.showError(error);
+			});
+		};
+		if (this.model?.readOnly !== true && entry?.text.readOnly !== true) {
 			menu.addItem((item) =>
 				item
 					.setSection(section)
-					.setTitle(this.t('manuscript.splitHere'))
-					.setIcon('scissors')
-					.setDisabled(
-						this.editingPath !== segment.path || this.model?.readOnly === true,
-					)
+					.setTitle(this.t('manuscript.revision.create'))
+					.setIcon('message-square-plus')
+					// A revision is made at the cursor, so it is offered
+					// where there is one, exactly as splitting is: on a note
+					// being read the entry stands greyed rather than
+					// answering a right-click by walking into the text on
+					// its own.
+					.setDisabled(this.editingPath !== segment.path)
 					.onClick(() => {
-						void this.splitAtCursor();
+						if (entry !== undefined) this.beginRevisionDraft(entry);
 					}),
 			);
-			if (this.model?.readOnly !== true) {
+			// A foreshadowing is anchored to a passage, so its entries are
+			// offered where one is selected and greyed where none is: on a
+			// note being read, and at a bare caret, which marks nothing.
+			const passage =
+				entry === undefined ? null : this.selectedPassage(entry);
+			const threads = this.mentionState?.foreshadowings ?? [];
+			menu.addItem((item) =>
+				item
+					.setSection(section)
+					.setTitle(this.t('manuscript.foreshadowing.create'))
+					.setIcon('sparkles')
+					.setDisabled(passage === null)
+					.onClick(() => {
+						guarded(this.openCreateForeshadowing(segment.path));
+					}),
+			);
+			if (threads.length > 0) {
 				menu.addItem((item) =>
 					item
 						.setSection(section)
-						.setTitle(this.t('manuscript.insertSegment'))
-						.setIcon('file-plus')
+						.setTitle(this.t('manuscript.foreshadowing.addExisting'))
+						.setIcon('bookmark-plus')
+						.setDisabled(passage === null)
 						.onClick(() => {
-							void this.createSegment({ after: segment.path });
+							guarded(this.openAddToForeshadowing(segment.path));
 						}),
 				);
 			}
-			addExportEntries(menu, {
+			// Offered only while something waits to be relinked: an entry
+			// whose dialog could only say there is nothing is no entry.
+			if (this.hasUnresolvedOccurrence()) {
+				menu.addItem((item) =>
+					item
+						.setSection(section)
+						.setTitle(this.t('manuscript.foreshadowing.relink'))
+						.setIcon('link')
+						.setDisabled(passage === null)
+						.onClick(() => {
+							guarded(this.openRelinkOccurrence(segment.path));
+						}),
+				);
+			}
+		}
+		// The words selected, made into something new or written out, as a
+		// project note's own menu offers them too. Making needs a project
+		// that may be written; writing out only reads.
+		const selected = this.menuSelection(segment.path);
+		const projectPath = this.model?.projectPath ?? this.projectPath;
+		if (this.model?.readOnly !== true) {
+			addSelectionMakers(menu, {
 				t: this.t,
 				section,
 				selection: selected,
-				exportNote: () => {
-					guarded(this.exportSegment(segment.path));
+				addEntity: (name) => {
+					guarded(this.host.addEntityFromText(projectPath, name));
 				},
-				exportManuscript: () => {
-					guarded(this.exportWholeManuscript());
+				addAlias: (name) => {
+					guarded(this.host.addAliasFromText(projectPath, name));
 				},
-				exportSelection: (text) => {
-					guarded(this.host.exportManuscriptPassage(projectPath, segment.path, text));
+				addStickyNote: (text) => {
+					guarded(this.host.addStickyNoteFromText(projectPath, text));
 				},
 			});
-
-			const file = this.app.vault.getFileByPath(segment.path);
-			if (file !== null) {
-				this.app.workspace.trigger(
-					'file-menu',
-					menu,
-					file,
-					MANUSCRIPT_VIEW_TYPE,
-					this.leaf,
-				);
-			}
-			menu.showAtMouseEvent(event);
+		}
+		menu.addItem((item) =>
+			item
+				.setSection(section)
+				.setTitle(this.t('manuscript.splitHere'))
+				.setIcon('scissors')
+				.setDisabled(
+					this.editingPath !== segment.path || this.model?.readOnly === true,
+				)
+				.onClick(() => {
+					void this.splitAtCursor();
+				}),
+		);
+		if (this.model?.readOnly !== true) {
+			menu.addItem((item) =>
+				item
+					.setSection(section)
+					.setTitle(this.t('manuscript.insertSegment'))
+					.setIcon('file-plus')
+					.onClick(() => {
+						void this.createSegment({ after: segment.path });
+					}),
+			);
+		}
+		addExportEntries(menu, {
+			t: this.t,
+			section,
+			selection: selected,
+			exportNote: () => {
+				guarded(this.exportSegment(segment.path));
+			},
+			exportManuscript: () => {
+				guarded(this.exportWholeManuscript());
+			},
+			exportSelection: (text) => {
+				guarded(this.host.exportManuscriptPassage(projectPath, segment.path, text));
+			},
 		});
+
+		const file = this.app.vault.getFileByPath(segment.path);
+		if (file !== null) {
+			this.app.workspace.trigger(
+				'file-menu',
+				menu,
+				file,
+				MANUSCRIPT_VIEW_TYPE,
+				this.leaf,
+			);
+		}
+		return menu;
 	}
 
 	/**

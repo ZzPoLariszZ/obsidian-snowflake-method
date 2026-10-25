@@ -5,10 +5,11 @@
  * through. Each is a labelled form, as every form the plugin opens is.
  */
 
-import { Notice, Setting, setIcon, setTooltip, type App, type Modal } from 'obsidian';
+import { Menu, Notice, Setting, setIcon, setTooltip, type App, type Modal } from 'obsidian';
 
 import type { EntityRef, EntityRosterEntry, Timeline } from '../domain';
 import { entityGroupLabel, renderRecordPickFrame, wireCardDrag } from './entity-form';
+import { addMoveNeighbourItems, wireGripMenu } from './order-menu';
 import {
 	ConfirmModal,
 	SnowflakeFormModal,
@@ -442,6 +443,29 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 				if (other === undefined) return;
 				this.moveLine(id, other);
 				this.focusHandle(id);
+			});
+			// The grip's menu, the drag's twin for a touch.
+			wireGripMenu(handle, () => {
+				const at = this.timelines.indexOf(id);
+				const above = this.timelines[at - 1];
+				const below = this.timelines[at + 1];
+				const menu = new Menu();
+				addMoveNeighbourItems(menu, {
+					t: this.t,
+					up:
+						above === undefined
+							? null
+							: () => {
+									this.moveLine(id, above);
+								},
+					down:
+						below === undefined
+							? null
+							: () => {
+									this.moveLine(id, below);
+								},
+				});
+				return menu;
 			});
 		}
 		const offered = this.available();

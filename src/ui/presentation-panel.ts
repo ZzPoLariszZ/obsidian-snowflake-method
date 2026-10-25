@@ -305,7 +305,7 @@ export function openPresentationPanel(
 	const close = (how: PanelCloseReason = 'view'): void => {
 		if (!open) return;
 		open = false;
-		win.removeEventListener('mousedown', dismiss, true);
+		win.removeEventListener('pointerdown', dismiss, true);
 		win.removeEventListener('keydown', onKey, true);
 		unfollow();
 		anchor.setAttribute('aria-expanded', 'false');
@@ -337,7 +337,7 @@ export function openPresentationPanel(
 		if (suggestions() !== null) return;
 		close('keyboard');
 	};
-	win.addEventListener('mousedown', dismiss, true);
+	win.addEventListener('pointerdown', dismiss, true);
 	win.addEventListener('keydown', onKey, true);
 
 	return { el: panel, sync, close };

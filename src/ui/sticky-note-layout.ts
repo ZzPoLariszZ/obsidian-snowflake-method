@@ -8,6 +8,8 @@
 
 import { STICKY_NOTE_ALPHA_MAX, type StickyNoteFloatState } from '../domain';
 
+import type { DeviceClass } from './device';
+
 export interface FloatGeometry {
 	x: number;
 	y: number;
@@ -18,6 +20,21 @@ export interface FloatGeometry {
 export interface Viewport {
 	width: number;
 	height: number;
+}
+
+/** The window's edges a panel keeps clear of: the phone's safe area and the keyboard the app reports. */
+export interface ViewportInsets {
+	top: number;
+	bottom: number;
+}
+
+export const NO_INSETS: ViewportInsets = { top: 0, bottom: 0 };
+
+/** Where a floated note goes on a device: its own panel, or the board on a phone, whose one leaf a panel would cover. */
+export type FloatPolicy = 'float' | 'board';
+
+export function floatPolicy(device: DeviceClass): FloatPolicy {
+	return device === 'phone' ? 'board' : 'float';
 }
 
 export interface PointerPoint {
@@ -58,9 +75,12 @@ export function clampFloatGeometry(
 	geometry: FloatGeometry,
 	viewport: Viewport,
 	remPx: number,
+	insets: ViewportInsets = NO_INSETS,
 ): FloatGeometry {
 	const minWidth = FLOAT_MIN_REM.width * remPx;
 	const minHeight = FLOAT_MIN_REM.height * remPx;
+	// The lowest edge a panel may reach: above the keyboard and the safe area.
+	const floor = Math.max(insets.top, viewport.height - insets.bottom);
 	const width = clamp(
 		finite(geometry.width, minWidth),
 		minWidth,
@@ -69,7 +89,7 @@ export function clampFloatGeometry(
 	const height = clamp(
 		finite(geometry.height, minHeight),
 		minHeight,
-		Math.max(minHeight, viewport.height),
+		Math.max(minHeight, floor - insets.top),
 	);
 	const leftmost = FLOAT_HEAD_REACH - width;
 	const x = clamp(
@@ -78,9 +98,9 @@ export function clampFloatGeometry(
 		Math.max(leftmost, viewport.width - FLOAT_HEAD_REACH),
 	);
 	const y = clamp(
-		finite(geometry.y, 0),
-		0,
-		Math.max(0, viewport.height - FLOAT_HEAD_REACH / 2),
+		finite(geometry.y, insets.top),
+		insets.top,
+		Math.max(insets.top, floor - FLOAT_HEAD_REACH / 2),
 	);
 	return { x, y, width, height };
 }
@@ -90,17 +110,19 @@ export function defaultFloatGeometry(
 	viewport: Viewport,
 	openCount: number,
 	remPx: number,
+	insets: ViewportInsets = NO_INSETS,
 ): FloatGeometry {
 	const step = (openCount % FLOAT_CASCADE_WRAP) * FLOAT_CASCADE_PX;
 	return clampFloatGeometry(
 		{
 			x: FLOAT_ORIGIN_PX + step,
-			y: FLOAT_ORIGIN_PX + step,
+			y: insets.top + FLOAT_ORIGIN_PX + step,
 			width: FLOAT_DEFAULT_REM.width * remPx,
 			height: FLOAT_DEFAULT_REM.height * remPx,
 		},
 		viewport,
 		remPx,
+		insets,
 	);
 }
 

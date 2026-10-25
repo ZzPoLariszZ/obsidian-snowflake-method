@@ -11,6 +11,7 @@ import {
 	planCardMoves,
 	planCardRepaint,
 	resizeGeometry,
+	floatPolicy,
 } from '../../src/ui/sticky-note-layout';
 
 const VIEWPORT = { width: 1000, height: 800 };
@@ -179,5 +180,38 @@ describe('created label', () => {
 		expect(formatStickyCreated(instant, 'zh-CN', 'UTC').short).toBe('2026-09-04 05:14:32');
 		expect(formatStickyCreated(instant, 'zh-CN', 'UTC').full).toContain('2026');
 		expect(formatStickyCreated(Number.NaN, 'en', 'UTC')).toEqual({ short: '', full: '' });
+	});
+});
+
+describe('floatPolicy', () => {
+	it('floats on a desktop and a tablet, and sends a phone to the board', () => {
+		expect(floatPolicy('desktop')).toBe('float');
+		expect(floatPolicy('tablet')).toBe('float');
+		expect(floatPolicy('phone')).toBe('board');
+	});
+});
+
+describe('clampFloatGeometry with insets', () => {
+	const REM = 16;
+	const VIEWPORT = { width: 1180, height: 820 };
+	const INSETS = { top: 24, bottom: 336 + 20 };
+
+	it('keeps a panel below the safe area and above the keyboard', () => {
+		const geometry = clampFloatGeometry({ x: 100, y: 0, width: 24 * REM, height: 18 * REM }, VIEWPORT, REM, INSETS);
+		expect(geometry.y).toBe(24);
+		const low = clampFloatGeometry({ x: 100, y: 800, width: 24 * REM, height: 18 * REM }, VIEWPORT, REM, INSETS);
+		expect(low.y).toBe(820 - 356 - 32);
+	});
+
+	it('shortens a panel to the room between the insets, never under the floor', () => {
+		const tall = clampFloatGeometry({ x: 0, y: 24, width: 24 * REM, height: 900 }, VIEWPORT, REM, INSETS);
+		expect(tall.height).toBe(820 - 356 - 24);
+		const floor = clampFloatGeometry({ x: 0, y: 24, width: 24 * REM, height: 900 }, VIEWPORT, REM, { top: 0, bottom: 2000 });
+		expect(floor.height).toBe(8 * REM);
+		expect(floor.y).toBe(0);
+	});
+
+	it('opens a new panel under the safe area', () => {
+		expect(defaultFloatGeometry(VIEWPORT, 0, REM, INSETS)).toMatchObject({ x: 24, y: 48 });
 	});
 });

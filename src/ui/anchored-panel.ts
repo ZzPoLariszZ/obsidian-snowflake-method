@@ -101,13 +101,13 @@ export function hangPanel(
 		spec.onClose();
 		anchor.focus();
 	};
-	win.addEventListener('mousedown', dismiss, true);
+	win.addEventListener('pointerdown', dismiss, true);
 	win.addEventListener('keydown', onKey, true);
 	anchor.setAttribute('aria-expanded', 'true');
 	return {
 		el: panel,
 		release: () => {
-			win.removeEventListener('mousedown', dismiss, true);
+			win.removeEventListener('pointerdown', dismiss, true);
 			win.removeEventListener('keydown', onKey, true);
 			unfollow();
 			anchor.setAttribute('aria-expanded', 'false');

@@ -17,6 +17,8 @@
 
 import { Platform, Scope, setIcon, setTooltip, type Modifier } from 'obsidian';
 
+import { wireCaretKeepingPress } from './caret-press';
+
 import type { TextSearchOptions } from '../domain';
 import type { StreamSearchCount } from './stream-search';
 
@@ -104,10 +106,7 @@ export class StreamSearchBar {
 			setIcon(el, icon);
 			setTooltip(el, label, { placement: 'top' });
 			// The caret stays in the box it was in, as it does on the app's bar.
-			el.addEventListener('mousedown', (event) => {
-				event.preventDefault();
-			});
-			el.addEventListener('click', (event) => {
+			wireCaretKeepingPress(el, (event) => {
 				event.preventDefault();
 				act();
 			});
@@ -141,10 +140,7 @@ export class StreamSearchBar {
 				`${t(option.label)}\n${chordLabel(mac ? ['Mod', 'Alt'] : ['Alt'], option.key, mac)}`,
 				{ placement: 'top' },
 			);
-			el.addEventListener('mousedown', (event) => {
-				event.preventDefault();
-			});
-			el.addEventListener('click', (event) => {
+			wireCaretKeepingPress(el, (event) => {
 				event.preventDefault();
 				this.flip(option.name);
 			});

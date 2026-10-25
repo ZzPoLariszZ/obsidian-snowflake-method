@@ -1,4 +1,7 @@
-import { Notice, getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
+import { Menu, Notice, getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
+
+import { wireCaretKeepingPress } from './caret-press';
+import { addMoveNeighbourItems, wireGripMenu } from './order-menu';
 
 import {
 	FORESHADOWING_STATUSES,
@@ -165,10 +168,7 @@ export class ChipListField {
 			});
 			setIcon(remove, 'x');
 			// Taking focus would blur the input and commit whatever is half-typed.
-			remove.addEventListener('mousedown', (event) => {
-				event.preventDefault();
-			});
-			remove.addEventListener('click', () => {
+			wireCaretKeepingPress(remove, () => {
 				this.values.splice(index, 1);
 				this.renderTags();
 				this.inputEl?.focus();
@@ -1047,6 +1047,29 @@ export class RecordCardsEditor {
 		wireCardDrag(el, handle, this.dragState, card, (dragged) => {
 			this.moveCard(dragged, card);
 		});
+		// The grip's menu, the drag's twin for a touch or a keyboard.
+		wireGripMenu(handle, () => {
+			const index = this.cards.indexOf(card);
+			const above = this.cards[index - 1];
+			const below = this.cards[index + 1];
+			const menu = new Menu();
+			addMoveNeighbourItems(menu, {
+				t: this.context.t,
+				up:
+					above === undefined
+						? null
+						: () => {
+								this.moveCard(card, above);
+							},
+				down:
+					below === undefined
+						? null
+						: () => {
+								this.moveCard(card, below);
+							},
+			});
+			return menu;
+		});
 
 		// Every field says what it is in its own placeholder, so a card carries
 		// no titles: the fields are the card.
@@ -1512,12 +1535,35 @@ export class CustomFieldsEditor {
 			// The drop reorders the shared rows and redraws, which is also what
 			// retires every listener the old cards held. An index survives the
 			// trip because the redraw rebuilds them all.
-			wireCardDrag(el, handle, this.dragState, index, (from) => {
+			const moveRow = (from: number, to: number): void => {
 				const [moved] = this.context.rows.splice(from, 1);
 				if (moved === undefined) return;
-				this.context.rows.splice(index, 0, moved);
+				this.context.rows.splice(to, 0, moved);
 				this.context.markTouched();
 				this.renderRows();
+			};
+			wireCardDrag(el, handle, this.dragState, index, (from) => {
+				moveRow(from, index);
+			});
+			// The grip's menu, the drag's twin for a touch or a keyboard.
+			wireGripMenu(handle, () => {
+				const menu = new Menu();
+				addMoveNeighbourItems(menu, {
+					t: this.context.t,
+					up:
+						index > 0
+							? () => {
+									moveRow(index, index - 1);
+								}
+							: null,
+					down:
+						index < this.context.rows.length - 1
+							? () => {
+									moveRow(index, index + 1);
+								}
+							: null,
+				});
+				return menu;
 			});
 			const body = el.createDiv({ cls: 'snowflake-method-record-body' });
 			const title = body.createEl('input', {

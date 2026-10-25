@@ -1,5 +1,7 @@
 import { App, setIcon } from 'obsidian';
 
+import { wireCaretKeepingPress } from './caret-press';
+
 import { FieldSuggest } from './field-suggest';
 
 /**
@@ -101,10 +103,7 @@ export function buildSeriesField(
 		config.onChange(input.value);
 	});
 	// The chevron opens the list rather than taking focus off the text box.
-	selector.addEventListener('mousedown', (event) => {
-		event.preventDefault();
-	});
-	selector.addEventListener('click', () => {
+	wireCaretKeepingPress(selector, () => {
 		suggest.showAllSuggestions();
 	});
 

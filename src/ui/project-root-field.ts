@@ -1,5 +1,7 @@
 import { App, TFolder, setIcon } from 'obsidian';
 
+import { wireCaretKeepingPress } from './caret-press';
+
 import { displayProjectRoot, normalizeProjectRoot } from '../project-root';
 import { FieldSuggest } from './field-suggest';
 
@@ -133,10 +135,7 @@ export function buildProjectRootField(
 		config.onChooseRoot,
 	);
 	// The chevron opens the list rather than taking focus off the text box.
-	selector.addEventListener('mousedown', (event) => {
-		event.preventDefault();
-	});
-	selector.addEventListener('click', () => {
+	wireCaretKeepingPress(selector, () => {
 		suggest.showAllSuggestions();
 	});
 

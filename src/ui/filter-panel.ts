@@ -215,12 +215,12 @@ export class FilterPanel {
 			this.close();
 			anchor.focus();
 		};
-		view.addEventListener('mousedown', dismiss, true);
+		view.addEventListener('pointerdown', dismiss, true);
 		view.addEventListener('keydown', onKey, true);
 		this.panel = {
 			el: panel,
 			release: () => {
-				view.removeEventListener('mousedown', dismiss, true);
+				view.removeEventListener('pointerdown', dismiss, true);
 				view.removeEventListener('keydown', onKey, true);
 				unfollow();
 				anchor.setAttribute('aria-expanded', 'false');

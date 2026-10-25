@@ -1,5 +1,6 @@
 import {
 	App,
+	Menu,
 	Notice,
 	moment,
 	normalizePath,
@@ -115,6 +116,7 @@ import { isExplorerScope, type ExplorerScope } from './services';
 import { isMobileDevice } from './ui/device';
 import { wireCardDrag } from './ui/entity-form';
 import { SnowflakeModal } from './ui/dialog-base';
+import { addMoveNeighbourItems, wireGripMenu } from './ui/order-menu';
 import { submitOnModEnter } from './ui/modal-keys';
 import {
 	addFontFamilyPicker,
@@ -2505,6 +2507,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		wireCardDrag(card, handle, dragState, index, (from) => {
 			void this.reorderCustomRules(from, index);
 		});
+		this.wireRuleGripMenu(handle, index, this.owner.settings.customHighlightRules.length, (from, to) =>
+			this.reorderCustomRules(from, to),
+		);
 		const body = card.createDiv({
 			cls: 'snowflake-method-record-body snowflake-method-settings-rule-body',
 			attr: { role: 'button', tabindex: '0' },
@@ -2615,6 +2620,34 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		this.update();
 	}
 
+	/** The grip's menu, the drag's twin for a touch or a keyboard: one step up or down the rules. */
+	private wireRuleGripMenu(
+		handle: HTMLElement,
+		index: number,
+		total: number,
+		reorder: (from: number, to: number) => Promise<void>,
+	): void {
+		wireGripMenu(handle, () => {
+			const menu = new Menu();
+			addMoveNeighbourItems(menu, {
+				t: (key, vars) => this.t(key, vars),
+				up:
+					index > 0
+						? () => {
+								void reorder(index, index - 1);
+							}
+						: null,
+				down:
+					index < total - 1
+						? () => {
+								void reorder(index, index + 1);
+							}
+						: null,
+			});
+			return menu;
+		});
+	}
+
 	private async reorderCustomRules(from: number, to: number): Promise<void> {
 		const rules = [...this.owner.settings.customHighlightRules];
 		const [moved] = rules.splice(from, 1);
@@ -2670,6 +2703,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		wireCardDrag(card, handle, dragState, index, (from) => {
 			void this.reorderNumberRules(from, index);
 		});
+		this.wireRuleGripMenu(handle, index, this.owner.settings.manuscriptChapterNumberRules.length, (from, to) =>
+			this.reorderNumberRules(from, to),
+		);
 		const body = card.createDiv({
 			cls: 'snowflake-method-record-body snowflake-method-settings-rule-body',
 			attr: { role: 'button', tabindex: '0' },

@@ -58,7 +58,9 @@ import {
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
+import { coarsePointer } from './device';
 import { CANVAS_EDGE_Z, canvasDepth, handleBoxes, nearestSide, sideMiddle, wheelZoomFactor, zoomedAbout } from './freeform-canvas-model';
+import { wireLongPress } from './long-press';
 import {
 	CANVAS_FAR_KIND,
 	CANVAS_FIELD_SELECTOR,
@@ -666,9 +668,18 @@ function Flow(): ReactElement {
 		};
 	}, [flow, options, store]);
 
+	// A finger held on the canvas is its right-click: d3 stops the app's own
+	// long press at the surface, so the canvas keeps one of its own.
+	useEffect(() => {
+		const host = wrapper.current;
+		if (host === null) return undefined;
+		return wireLongPress(host);
+	}, []);
+
 	// Asked at every drawing, which costs nothing and is never stale: a view
 	// moved to another screen is drawn again there.
-	const coarse = wrapper.current?.ownerDocument.defaultView?.matchMedia('(pointer: coarse)').matches === true;
+	const view = wrapper.current?.ownerDocument.defaultView;
+	const coarse = view !== null && view !== undefined && coarsePointer(view);
 
 	const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
 		deps.nodesChanged(nodeChanges(changes));

@@ -170,6 +170,9 @@ describe('NoteToolbars', () => {
 				calls.push(`export:${path}`);
 				return Promise.resolve();
 			},
+			openSelectionMenu: (path, selection) => {
+				calls.push(`selection:${path}:${selection}`);
+			},
 			mountFaces: (host) => {
 				const slot = host.createDiv({ cls: 'snowflake-method-toolbar-faces' });
 				faces.push('mount');
@@ -236,9 +239,24 @@ describe('NoteToolbars', () => {
 		const exporter = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-export');
 		expect(exporter?.getAttribute('data-tooltip')).toBe('manuscript.exportNote');
 		expect(exporter?.previousElementSibling).toBe(mentions);
-		// Undo, redo, two headings and the ladder, five marks, the dress, the
-		// mentions, the export, the two modes.
-		expect(mounted.querySelectorAll('button')).toHaveLength(15);
+		// Undo, redo, two headings and the ladder, five marks, the selection,
+		// the dress, the mentions, the export, the two modes.
+		expect(mounted.querySelectorAll('button')).toHaveLength(16);
+	});
+
+	it('offers the selected words’ entries under its own button, greyed while the note is read', () => {
+		const one = note('Novel/Chapter.md');
+		const { toolbars, calls } = harness([one], () => true);
+		toolbars.apply();
+		const mounted = bar(one) as HTMLElement;
+		const selection = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-selection');
+		expect(selection?.getAttribute('data-tooltip')).toBe('manuscript.toolbar.selection');
+		expect(selection?.previousElementSibling?.classList.contains('snowflake-method-toolbar-separator')).toBe(false);
+		selection?.click();
+		expect(calls).toEqual(['selection:Novel/Chapter.md:word']);
+		one.mode = 'preview';
+		toolbars.apply();
+		expect(selection?.disabled).toBe(true);
 	});
 
 	it('carries the writing faces at its end where the device asks, and lets go with the bar', () => {

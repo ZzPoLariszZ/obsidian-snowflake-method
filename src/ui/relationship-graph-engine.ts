@@ -79,6 +79,7 @@ import type {
 	GraphScene,
 	MountRelationshipGraph,
 } from './relationship-graph-port';
+import { wireLongPress } from './long-press';
 import { watchFrameSize } from './workspace-frame';
 
 interface SimNode extends SimulationNodeDatum {
@@ -308,6 +309,9 @@ class RelationshipGraphEngine implements GraphHandle {
 		});
 		this.listen('contextmenu', (event) => {
 			event.preventDefault();
+			// A press that became a menu is no click: the lift after it must
+			// not open what the menu already offers.
+			this.press = null;
 			const point = this.pointOf(event);
 			const node = this.nodeAt(point);
 			if (node !== null) {
@@ -319,6 +323,9 @@ class RelationshipGraphEngine implements GraphHandle {
 			else this.port.backgroundMenu(event);
 		});
 		select(this.canvas).call(dragger).call(this.zoomer).on('dblclick.zoom', null);
+		// A finger held on the canvas is its right-click: d3 stops the app's
+		// own long press at the surface, so the canvas keeps one of its own.
+		this.listeners.push(wireLongPress(this.canvas));
 
 		this.stopWatching = watchFrameSize(host, [host], () => this.remeasure());
 		this.remeasure();

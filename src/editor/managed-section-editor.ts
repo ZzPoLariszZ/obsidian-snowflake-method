@@ -25,6 +25,7 @@ import {
 } from 'obsidian';
 
 import { GENERATED_SECTION_IDS, PROTECTED_SECTION_IDS } from '../domain';
+import { wireCaretKeepingPress } from '../ui/caret-press';
 import {
 	changeIntersectsReadOnlyContent,
 	containsManagedMarkerText,
@@ -743,8 +744,7 @@ class EmptyManagedSectionWidget extends WidgetType {
 			});
 			view.focus();
 		};
-		element.addEventListener('mousedown', (event) => event.preventDefault());
-		element.addEventListener('click', activate);
+		wireCaretKeepingPress(element, activate);
 		element.addEventListener('keydown', (event) => {
 			if (event.key !== 'Enter' && event.key !== ' ') return;
 			event.preventDefault();

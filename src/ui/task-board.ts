@@ -61,6 +61,22 @@ export interface TaskBoardHandle {
 }
 
 const TASK_DRAG_TYPE = 'application/x-snowflake-task';
+
+/**
+ * Where a card lands when moved one place up or down its column: the id it
+ * goes before, null for the foot, undefined where there is nowhere to go.
+ */
+export function inColumnMove(
+	order: readonly string[],
+	id: string,
+	direction: 'up' | 'down',
+): string | null | undefined {
+	const at = order.indexOf(id);
+	if (at === -1) return undefined;
+	if (direction === 'up') return at === 0 ? undefined : order[at - 1];
+	if (at >= order.length - 1) return undefined;
+	return order[at + 2] ?? null;
+}
 /** How often the board checks whether the day has turned. */
 const DAY_WATCH_MS = 60_000;
 
@@ -404,7 +420,7 @@ export function renderTaskBoard(
 			resolveEntityRefs(task.related, current.roster).map((ref) => ref.name),
 	});
 
-	/** The card's menu: its edit, a way to another column without a drag, the archive, and the delete behind its confirmation. */
+	/** The card's menu: its edit, a step up or down its column and a way to another one without a drag, the archive, and the delete behind its confirmation. */
 	const openMenu = (event: MouseEvent, task: Task): void => {
 		const menu = new Menu();
 		menu.addItem((item) => {
@@ -416,6 +432,28 @@ export function renderTaskBoard(
 					void bridge.edit(task.id).catch(() => undefined);
 				});
 		});
+		menu.addSeparator();
+		// Up and down its own column, the drag's twin: a touch never starts
+		// the drag that orders a column, and a keyboard never did.
+		const lane = lanes.get(task.status);
+		const order =
+			lane === undefined
+				? []
+				: Array.from(
+						lane.body.querySelectorAll<HTMLElement>('.snowflake-method-task-card[data-origin="manual"]'),
+					).map((el) => el.getAttribute('data-id') ?? '');
+		for (const direction of ['up', 'down'] as const) {
+			const landing = inColumnMove(order, task.id, direction);
+			menu.addItem((item) => {
+				item
+					.setTitle(t(direction === 'up' ? 'actions.moveUp' : 'actions.moveDown'))
+					.setIcon(direction === 'up' ? 'arrow-up' : 'arrow-down')
+					.setDisabled(readOnly || landing === undefined)
+					.onClick(() => {
+						if (landing !== undefined) act(bridge.move(task.id, task.status, landing));
+					});
+			});
+		}
 		menu.addSeparator();
 		for (const status of TASK_STATUSES) {
 			if (status === task.status) continue;

@@ -24,6 +24,7 @@ import { renderStickyNoteCard, type StickyNoteCardHandle } from './sticky-note-c
 import {
 	clampFloatGeometry,
 	defaultFloatGeometry,
+	type ViewportInsets,
 	defaultFloatState,
 	dragGeometry,
 	FLOAT_MIN_REM,
@@ -122,7 +123,7 @@ export class StickyNoteFloatLayer {
 		const remembered = this.deps.bridge.hub.floatState(note.id);
 		const geometry =
 			remembered === null
-				? defaultFloatGeometry(this.viewport(), this.panels.size, this.remPx())
+				? defaultFloatGeometry(this.viewport(), this.panels.size, this.remPx(), this.insets())
 				: this.clamp(remembered);
 		const state: StickyNoteFloatState =
 			remembered === null
@@ -441,12 +442,26 @@ export class StickyNoteFloatLayer {
 	}
 
 	private clamp(geometry: FloatGeometry): FloatGeometry {
-		return clampFloatGeometry(geometry, this.viewport(), this.remPx());
+		return clampFloatGeometry(geometry, this.viewport(), this.remPx(), this.insets());
 	}
 
 	private viewport(): Viewport {
 		const win = this.root.win;
 		return { width: win.innerWidth, height: win.innerHeight };
+	}
+
+	/** The safe area and the keyboard, as the app writes them on the body; nothing on a desktop. */
+	private insets(): ViewportInsets {
+		const win = this.root.win;
+		const style = win.getComputedStyle(win.document.body);
+		const px = (name: string): number => {
+			const value = Number.parseFloat(style.getPropertyValue(name));
+			return Number.isFinite(value) ? Math.max(0, value) : 0;
+		};
+		return {
+			top: px('--safe-area-inset-top'),
+			bottom: px('--safe-area-inset-bottom') + px('--keyboard-height'),
+		};
 	}
 
 	private remPx(): number {
