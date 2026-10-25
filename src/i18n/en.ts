@@ -488,6 +488,7 @@ export const en = {
 		'This project uses an unsupported newer schema and is open read-only.',
 	'dashboard.readOnlyTitle': 'Newer project format',
 	'dashboard.steps': 'Steps',
+	'dashboard.navigate': 'Go to',
 	'dashboard.collapseRail': 'Collapse the rail',
 	'dashboard.expandRail': 'Expand the rail',
 	'dashboard.emptyTitle': 'No projects',

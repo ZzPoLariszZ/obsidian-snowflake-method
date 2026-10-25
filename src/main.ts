@@ -497,7 +497,7 @@ import type {
 } from './ui/view-model';
 import type { EntityGroupId, PickedEntity } from './ui/entity-form';
 import { ManuscriptSaveConflict, kindEntities, nextFocusLevel } from './ui/view-model';
-import { deviceClass, isMobileDevice, statusBarShown, watchDeviceClass } from './ui/device';
+import { deviceClass, isMobileDevice, isPhoneBody, statusBarShown, watchDeviceClass } from './ui/device';
 import { TOOLBAR_FACES_CLASS, WritingFaces } from './ui/writing-faces';
 import { floatPolicy } from './ui/sticky-note-layout';
 import { MobileDiagnosticsModal } from './ui/mobile-diagnostics';
@@ -1473,6 +1473,7 @@ export default class SnowflakeMethodPlugin
 					relationshipGraph: renderRelationshipGraph,
 					relationshipGraphCanvas: relationshipGraphMount(() => import('./ui/relationship-graph-engine')),
 					unloading: () => this.unloading,
+					phone: () => isPhoneBody(this.app.workspace.containerEl.doc),
 				}),
 		);
 		this.registerView(
@@ -4163,6 +4164,9 @@ export default class SnowflakeMethodPlugin
 		this.applyManuscriptModePresence();
 		this.noteToolbars?.sync();
 		this.settingTab?.refreshRows();
+		for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
+			if (leaf.view instanceof SnowflakeDashboardView) leaf.view.deviceClassChanged();
+		}
 		void this.reconcileStickyFloats().catch((error: unknown) => {
 			this.showError(error);
 		});

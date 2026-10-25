@@ -76,7 +76,8 @@ import {
 	type MemberFormContext,
 	type Translate,
 } from './modals';
-import { fillProjectSwitcherMenu } from './project-switcher-menu';
+import { isPhoneBody } from './device';
+import { fillProjectSwitcherMenu, type ProjectSwitcherMenuConfig } from './project-switcher-menu';
 import { seriesNames } from './series';
 import {
 	STATISTICS_TABS,
@@ -261,7 +262,7 @@ function forestTree(
  * kind's icon; the indicator is how many notes stand behind the row, or how
  * far along the step is.
  */
-interface RailRowSpec {
+export interface RailRowSpec {
 	leading: { icon: string } | { text: string };
 	label: string;
 	active: boolean;
@@ -273,6 +274,39 @@ interface RailRowSpec {
 	/** Absent on a row with nothing to count and nothing to report; an icon says the row leads away. */
 	indicator?: { count: number } | { status: StepStatus } | { icon: string };
 	onClick: () => void;
+}
+
+/** The rail as a menu reads it: its rows in order, a rule between the groups. */
+type RailMenuEntry = RailRowSpec | 'divider';
+
+/**
+ * The icon a rail row's menu twin carries. A kind's row keeps its own, a
+ * link its arrow's, and a step's shows how far along it is, since the disc
+ * that said so in the rail has no place in a menu row. A warning takes
+ * the icon's place as it takes the count's in the rail.
+ */
+export function railMenuIcon(row: Pick<RailRowSpec, 'leading' | 'indicator' | 'damaged'>): string {
+	if (row.damaged) return 'triangle-alert';
+	if ('icon' in row.leading) return row.leading.icon;
+	const status =
+		row.indicator !== undefined && 'status' in row.indicator ? row.indicator.status : 'not-started';
+	switch (status) {
+		case 'complete':
+			return 'circle-check';
+		case 'in-progress':
+			return 'circle-dot';
+		case 'in-revision':
+			return 'rotate-ccw';
+		case 'skipped':
+			return 'circle-minus';
+		case 'not-started':
+			return 'circle';
+	}
+}
+
+/** A step's menu row says its number before its name; every other row is its name alone. */
+export function railMenuTitle(row: Pick<RailRowSpec, 'leading' | 'label'>): string {
+	return 'text' in row.leading ? `${row.leading.text} · ${row.label}` : row.label;
 }
 
 const DEFINITION_ICONS: Record<DefinitionFileChoice, string> = {
@@ -388,6 +422,17 @@ export class SnowflakeDashboardView extends ItemView {
 	private railNarrow = false;
 	private railObserver: ResizeObserver | null = null;
 	private railToggle: HTMLButtonElement | null = null;
+	/**
+	 * The rail away altogether, which a phone asks for: a rail beside the
+	 * panel leaves a 390px screen some 230px of panel. A menu over the
+	 * panel stands in for it, built from the rows the rail drew.
+	 */
+	private railHidden = false;
+	/** The rail's rows as last drawn, in order, with a rule between the groups. */
+	private railRows: RailMenuEntry[] = [];
+	private railMenuButton: HTMLButtonElement | null = null;
+	/** Fills a menu with the project switcher's rows, as the rail's footer would. */
+	private fillProjectMenu: ((menu: Menu) => void) | null = null;
 	/**
 	 * The session panel, kept across refreshes: it keeps itself current
 	 * through its own subscription, so a dashboard refresh rebuilds the frame
@@ -1351,8 +1396,12 @@ export class SnowflakeDashboardView extends ItemView {
 
 	private paintRail(): void {
 		const compact = this.railNarrow || this.railCompact;
+		// Read here rather than kept: the body's class is the app's, and it
+		// changes under a tablet that is split to a phone's width.
+		this.railHidden = isPhoneBody(this.contentEl.doc);
 		this.contentEl.toggleClass('is-rail-narrow', this.railNarrow);
 		this.contentEl.toggleClass('is-rail-compact', compact);
+		this.contentEl.toggleClass('is-rail-hidden', this.railHidden);
 		const toggle = this.railToggle;
 		if (toggle === null) return;
 		setIcon(toggle, getIcon('sidebar-toggle-button-icon') !== null
@@ -1371,7 +1420,12 @@ export class SnowflakeDashboardView extends ItemView {
 	 * and a choice made there would only surprise a wider day.
 	 */
 	canToggleRail(): boolean {
-		return this.rendered && !this.railNarrow;
+		return this.rendered && !this.railNarrow && !this.railHidden;
+	}
+
+	/** The device's class changed under the view: the rail comes or goes with it. */
+	deviceClassChanged(): void {
+		if (this.rendered) this.paintRail();
 	}
 
 	/** Folds the rail to its marks, or opens it out again, and keeps the choice with the view. */
@@ -1649,8 +1703,10 @@ export class SnowflakeDashboardView extends ItemView {
 			this.renderManagedSectionIssues(root, globalStructureIssues);
 		}
 
+		this.renderRailMenu(root);
 		const layout = root.createDiv({ cls: 'snowflake-method-layout' });
 		this.renderStepNavigation(layout, model, projects);
+		this.paintRailMenu(model);
 		this.renderSelectedStep(layout, model);
 		// Deferred to here so both scrollers are measured against the finished
 		// layout: the rail and the main panel share a grid row, and the row's
@@ -1726,6 +1782,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
 	): void {
+		this.railRows = [];
 		const nav = layout.createEl('nav', {
 			cls: 'snowflake-method-step-nav',
 			attr: {
@@ -1775,40 +1832,45 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-project-switcher-label',
 			text: model.title,
 		});
+		const switcher: ProjectSwitcherMenuConfig = {
+			projects,
+			currentPath: model.path,
+			t: this.t,
+			onSelect: (path) => {
+				void this.host
+					.selectProject(path)
+					.catch((error: unknown) => this.renderError(error));
+			},
+			onManage: () => {
+				void this.host
+					.openProjectManager(this.projectLocale)
+					.catch((error: unknown) => this.renderError(error));
+			},
+			onImport: () => {
+				void this.host
+					.openImportDialog(model.path)
+					.catch((error: unknown) => this.renderError(error));
+			},
+			// Offered only once a sibling has been imported from: before
+			// that there is nothing to update, and the row would only ask.
+			onUpdate:
+				model.series !== null && model.updatableFrom.length > 0
+					? () => {
+							void this.host
+								.openUpdateFromSeries(model.path)
+								.catch((error: unknown) => this.renderError(error));
+						}
+					: undefined,
+			canImport: !model.readOnly,
+		};
+		// The same rows serve the rail's stand-in on a phone, where this footer is away.
+		this.fillProjectMenu = (menu) => {
+			fillProjectSwitcherMenu(menu, switcher);
+		};
 		projectControl.addEventListener('click', () => {
 			const menu = new Menu();
 			menu.setParentElement(projectFooter);
-			fillProjectSwitcherMenu(menu, {
-				projects,
-				currentPath: model.path,
-				t: this.t,
-				onSelect: (path) => {
-					void this.host
-						.selectProject(path)
-						.catch((error: unknown) => this.renderError(error));
-				},
-				onManage: () => {
-					void this.host
-						.openProjectManager(this.projectLocale)
-						.catch((error: unknown) => this.renderError(error));
-				},
-				onImport: () => {
-					void this.host
-						.openImportDialog(model.path)
-						.catch((error: unknown) => this.renderError(error));
-				},
-				// Offered only once a sibling has been imported from: before
-				// that there is nothing to update, and the row would only ask.
-				onUpdate:
-					model.series !== null && model.updatableFrom.length > 0
-						? () => {
-								void this.host
-									.openUpdateFromSeries(model.path)
-									.catch((error: unknown) => this.renderError(error));
-							}
-						: undefined,
-				canImport: !model.readOnly,
-			});
+			fillProjectSwitcherMenu(menu, switcher);
 			projectControl.setAttribute('aria-expanded', 'true');
 			menu.onHide(() => {
 				projectControl.setAttribute('aria-expanded', 'false');
@@ -2000,7 +2062,97 @@ export class SnowflakeDashboardView extends ItemView {
 	 * A row with something to report wears the warning in place of its circle,
 	 * because that one of them needs looking at matters more than how many.
 	 */
+	/**
+	 * The rail's stand-in on a phone: a bar over the panel naming the pane on
+	 * show, which opens a sheet of every rail row and the project switcher.
+	 * Drawn with every dashboard and shown by the stylesheet only where the
+	 * rail is away, so a tablet split to a phone's width needs no redraw.
+	 */
+	private renderRailMenu(root: HTMLElement): void {
+		const row = root.createDiv({ cls: 'snowflake-method-rail-menu-row' });
+		const button = row.createEl('button', {
+			cls: 'snowflake-method-rail-menu',
+			attr: { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
+		});
+		button.createSpan({
+			cls: 'snowflake-method-rail-menu-mark',
+			attr: { 'aria-hidden': 'true' },
+		});
+		button.createSpan({ cls: 'snowflake-method-rail-menu-label' });
+		const chevron = button.createSpan({
+			cls: 'snowflake-method-rail-menu-chevron',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(chevron, 'chevrons-up-down');
+		button.addEventListener('click', () => {
+			this.openRailMenu(button);
+		});
+		this.railMenuButton = button;
+	}
+
+	/** Names the pane on show on the rail's stand-in, from the rows the rail drew. */
+	private paintRailMenu(model: ProjectDashboardModel): void {
+		const button = this.railMenuButton;
+		if (button === null) return;
+		const active = this.railRows.find(
+			(entry): entry is RailRowSpec => entry !== 'divider' && entry.active,
+		);
+		const mark = button.querySelector<HTMLElement>('.snowflake-method-rail-menu-mark');
+		const label = button.querySelector<HTMLElement>('.snowflake-method-rail-menu-label');
+		if (mark === null || label === null) return;
+		mark.empty();
+		if (active === undefined) {
+			setIcon(mark, 'book');
+		} else if ('icon' in active.leading) {
+			setIcon(mark, active.leading.icon);
+		} else {
+			mark.setText(active.leading.text);
+		}
+		const name = active?.label ?? model.title;
+		label.setText(name);
+		button.setAttribute('aria-label', `${this.t('dashboard.navigate')}: ${name}`);
+	}
+
+	/** The sheet the rail's stand-in opens: the rail's rows, then the project switcher's. */
+	private openRailMenu(button: HTMLButtonElement): void {
+		const menu = new Menu();
+		// A rule between two groups, never two rules together or one before the
+		// first row: a group with no rows on this project leaves no gap.
+		let rows = 0;
+		let rule = false;
+		for (const entry of this.railRows) {
+			if (entry === 'divider') {
+				rule = rows > 0;
+				continue;
+			}
+			if (rule) menu.addSeparator();
+			rule = false;
+			rows += 1;
+			menu.addItem((item) => {
+				item
+					.setTitle(railMenuTitle(entry))
+					.setIcon(railMenuIcon(entry))
+					.setChecked(entry.active)
+					.onClick(() => {
+						entry.onClick();
+					});
+			});
+		}
+		const fill = this.fillProjectMenu;
+		if (fill !== null) {
+			menu.addSeparator();
+			fill(menu);
+		}
+		button.setAttribute('aria-expanded', 'true');
+		menu.onHide(() => {
+			button.setAttribute('aria-expanded', 'false');
+		});
+		const box = button.getBoundingClientRect();
+		menu.showAtPosition({ x: box.left, y: box.bottom });
+	}
+
 	private renderRailRow(list: HTMLElement, row: RailRowSpec): HTMLButtonElement {
+		this.railRows.push(row);
 		const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
 		const button = item.createEl('button', {
 			cls: `snowflake-method-step-button${row.active ? ' is-active' : ''}${
@@ -2109,6 +2261,7 @@ export class SnowflakeDashboardView extends ItemView {
 		title: string,
 	): HTMLElement {
 		const group = nav.createDiv({ cls: 'snowflake-method-rail-group' });
+		if (this.railRows.length > 0) this.railRows.push('divider');
 		const header = group.createEl('button', {
 			cls: 'snowflake-method-step-nav-header snowflake-method-rail-group-header',
 			attr: {
@@ -2348,6 +2501,7 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-rail-divider',
 			attr: { role: 'presentation' },
 		});
+		this.railRows.push('divider');
 		for (const definitionId of DEFINITION_FILE_IDS) {
 			const trees = entityKindIds(model.worldbuildingKinds).map((kind) =>
 				forestTree(model.definitions[definitionId], kind),

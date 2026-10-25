@@ -1318,4 +1318,60 @@ describe('styles.css', () => {
 		);
 		expect(styles).not.toMatch(/app-region:\s*drag/u);
 	});
+
+	/**
+	 * What the plugin does differently on a phone or a tablet stands in one
+	 * section, under the body classes the app sets, so a desktop reader of
+	 * the sheet never meets it unawares: every rule there is rooted at
+	 * `body.is-mobile`, `body.is-phone` or `body.is-tablet`, or repeats, in a
+	 * coarse-pointer block, a selector written earlier in the sheet, since a
+	 * media query adds no specificity of its own. The app's phone and tablet
+	 * classes appear nowhere else but the explorer's drawer rules, which came
+	 * first. The section measures nothing by the window, which the keyboard
+	 * shrinks without telling `vh`, and asks for no safe area the app does
+	 * not name; the one rule the section reveals on a phone, the rail's
+	 * stand-in, is hidden where it is drawn.
+	 */
+	it('keeps the mobile rules to their section, rooted at the app’s body classes', () => {
+		const mobile = section('Mobile').replace(/\/\*[\s\S]*?\*\//gu, ' ');
+		const from = styles.indexOf('/* == Mobile ');
+		const earlier = styles.slice(0, from).replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/\s+/gu, ' ');
+		const coarse: string[] = [];
+		const plain = mobile.replace(/@media \(pointer: coarse\) \{([\s\S]*?)\n\}/gu, (_match, block: string) => {
+			coarse.push(block);
+			return ' ';
+		});
+		expect(coarse.length).toBeGreaterThan(0);
+		const selectors = (sheet: string): string[] =>
+			[...sheet.matchAll(/([^{}]+)\{/gu)]
+				.flatMap((rule) => (rule[1] ?? '').split(','))
+				.map((one) => one.trim().replace(/\s+/gu, ' '))
+				.filter((one) => one !== '');
+		const rooted = selectors(plain);
+		expect(rooted.length).toBeGreaterThan(20);
+		for (const selector of rooted) {
+			expect(selector, selector).toMatch(/^body\.is-(?:mobile|phone|tablet)\b/u);
+		}
+		for (const selector of coarse.flatMap(selectors)) {
+			expect(earlier.includes(`${selector} {`) || earlier.includes(`${selector},`), selector).toBe(true);
+		}
+		expect(mobile).not.toMatch(/\d(?:vh|vw|dvh)\b|env\(|!important|:has\(|#[0-9a-f]{3}|rgb\(|position: sticky|@container/u);
+		const elsewhere = styles.replace(section('Mobile'), ' ').replace(section('File explorer'), ' ');
+		expect(elsewhere).not.toMatch(/is-phone|is-tablet/u);
+		expect(declarations('.snowflake-method-rail-menu-row')).toContain('display: none');
+		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row')).toContain('display: flex');
+		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-step-nav')).toContain('display: none');
+		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-layout')).toContain(
+			'grid-template-columns: minmax(0, 1fr)',
+		);
+		expect(declarations('body.is-phone .modal.snowflake-method-dialog')).toContain(
+			'max-height: calc(100% - var(--safe-area-inset-top, 0px) - var(--keyboard-height, 0px))',
+		);
+		expect(declarations('body.is-phone .snowflake-method-filter-panel')).toContain('inset: auto 0 var(--keyboard-height, 0px) 0');
+		expect(declarations('body.is-phone .snowflake-method-sticky-layer')).toContain('display: none');
+		expect(
+			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),
+		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');
+		expect(declarations('.snowflake-method-diagnostics-report')).toContain('white-space: pre-wrap');
+	});
 });

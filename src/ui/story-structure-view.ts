@@ -107,6 +107,12 @@ export interface StoryStructureViewDeps {
 	relationshipGraphCanvas: MountRelationshipGraph;
 	/** Remains truthful for drafts from leaves that closed before the plugin unloads. */
 	unloading?(): boolean;
+	/**
+	 * Whether the app runs on a phone, where a new tab starts the timeline's
+	 * and the beat sheet's pools folded away: a lane and a pool do not both
+	 * fit a phone's width, and the lane is what the tab was opened for.
+	 */
+	phone?(): boolean;
 }
 
 export class SnowflakeStoryStructureView extends ItemView {
@@ -153,6 +159,15 @@ export class SnowflakeStoryStructureView extends ItemView {
 	) {
 		super(leaf);
 		this.filterPanel = new FilterPanel(this.app, this.t);
+		if (deps.phone?.() === true) {
+			this.state = {
+				...this.state,
+				timeline: { ...this.state.timeline, poolCollapsed: true },
+				beatSheet: { ...this.state.beatSheet, poolCollapsed: true },
+			};
+			this.timelineMemory.poolCollapsed = true;
+			this.beatSheetMemory.poolCollapsed = true;
+		}
 		// The app's keymap reads Mod+Enter at the window, ahead of any control
 		// in the leaf; a scope of the view's own is what stands ahead of it
 		// while the leaf is active, so a card's body box can save on the chord.

@@ -70,6 +70,7 @@ function dashboard() {
 		releaseMemberControls: vi.fn(),
 		renderMigrationCallout: vi.fn(),
 		renderStepNavigation: vi.fn(),
+		renderRailMenu: vi.fn(),
 		renderSelectedStep: () => {
 			main = { scrollTop: 0 };
 			tab = { scrollTop: 0 };

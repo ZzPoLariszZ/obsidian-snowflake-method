@@ -15,6 +15,7 @@
  * own field opened, say); the two that need that still spell their own.
  */
 
+import { isPhoneBody } from './device';
 import { DIALOG_CLASS } from './dialog-class';
 
 /** The gap between a panel and the button it hangs from. */
@@ -33,6 +34,14 @@ export const PANEL_EDGE_GAP = 8;
  * scroller do the rest.
  */
 export function placePanel(panel: HTMLElement, anchor: HTMLElement, win: Window): void {
+	// On a phone the panel is a sheet at the foot of the screen, which the
+	// stylesheet places; a left and top written here would only pull it
+	// back under the button.
+	if (isPhoneBody(panel.doc)) {
+		panel.style.removeProperty('top');
+		panel.style.removeProperty('left');
+		return;
+	}
 	const box = anchor.getBoundingClientRect();
 	const room = win.innerWidth - panel.offsetWidth - PANEL_EDGE_GAP;
 	const height = panel.offsetHeight;

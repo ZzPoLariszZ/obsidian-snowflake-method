@@ -56,6 +56,9 @@ export function installObsidianDom(win: Window & typeof globalThis): void {
 	element.createDiv = function (this: Element, spec?: ElementSpec): Element { return create.call(this, 'div', spec); };
 	element.createSpan = function (this: Element, spec?: ElementSpec): Element { return create.call(this, 'span', spec); };
 	element.setText = function (this: Element, text: string): void { this.textContent = text; };
+	element.setCssProps = function (this: HTMLElement, props: Record<string, string>): void {
+		for (const [name, value] of Object.entries(props)) this.style.setProperty(name, value);
+	};
 	element.empty = function (this: Element): void { this.replaceChildren(); };
 	element.detach = function (this: Element): void { this.remove(); };
 	// Hidden by the attribute here rather than the style the app writes:

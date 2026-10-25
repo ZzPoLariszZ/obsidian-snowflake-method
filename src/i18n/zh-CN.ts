@@ -443,6 +443,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 		'此项目使用了插件尚不支持的更新数据格式，现以只读方式打开。',
 	'dashboard.readOnlyTitle': '较新的项目格式',
 	'dashboard.steps': '步骤',
+	'dashboard.navigate': '前往',
 	'dashboard.collapseRail': '收起导航栏',
 	'dashboard.expandRail': '展开导航栏',
 	'dashboard.emptyTitle': '暂无项目',

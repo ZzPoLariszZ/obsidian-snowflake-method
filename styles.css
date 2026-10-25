@@ -815,6 +815,13 @@
 	padding-inline: var(--size-2-1);
 }
 
+/* The rail's stand-in on a phone, drawn with every dashboard so a tablet
+   split to a phone's width needs no redraw, and shown only where the rail
+   is away (see the Mobile rules at the end of the sheet). */
+.snowflake-method-rail-menu-row {
+	display: none;
+}
+
 .snowflake-method-progress-meta {
 	display: flex;
 	align-items: baseline;
@@ -8196,6 +8203,10 @@ col.snowflake-method-foreshadowing-column-actions {
 		minmax(6rem, var(--snowflake-method-toolbar-search-width, 22rem))
 		minmax(var(--snowflake-method-toolbar-side), 1fr);
 	align-items: center;
+	/* The band's end alignment, kept, would set the tracks against the end
+	   and spill what does not fit past the start, where no finger reaches:
+	   the tracks stand from the start, and the finger draws the rest in. */
+	justify-content: start;
 	gap: var(--size-2-2);
 	overflow-x: auto;
 	overscroll-behavior-x: contain;
@@ -19606,4 +19617,594 @@ body.mod-macos.theme-dark.snowflake-method-tint-snowflake-dark
 	) {
 	--interactive-normal: var(--background-modifier-border);
 	--interactive-hover: var(--background-modifier-border);
+}
+
+/* == Diagnostics =========================================================== */
+
+/* The mobile diagnostics dialog: a line on what the report is for, then the
+   report as one block of monospace lines that wrap rather than run off a
+   phone's screen, and that a finger can select for a copy by hand beside
+   the button's. */
+.snowflake-method-diagnostics-hint {
+	margin: 0 0 var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-diagnostics-report {
+	margin: 0;
+	padding: var(--size-4-3);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+/* == Mobile ================================================================ */
+
+/* What the plugin does differently on a phone or a tablet, in one place,
+   under the body classes the app sets: `is-mobile` on both, `is-phone`
+   under 600px of width or height, `is-tablet` above. A media query adds no
+   specificity of its own, so a reveal for a coarse pointer repeats the
+   hiding rule's selector. The app's measures are read where it names them:
+   `--touch-size-m` for a finger's target, `--view-top-spacing` and
+   `--view-bottom-spacing` for the room its fixed header and navbar take on
+   a phone, `--safe-area-inset-*` and `--keyboard-height` for the screen's
+   own edges, each with a fallback for a body that never sets them. */
+
+/* -- Touch targets --------------------------------------------------------- */
+
+/* The dashboard's icon buttons and row menus grow to the app's finger size,
+   and the tables' last column, sized by the same measure, with them. */
+body.is-mobile .snowflake-method-dashboard {
+	--snowflake-row-more: var(--touch-size-m, 2.75rem);
+}
+
+body.is-mobile .snowflake-method-dashboard button.snowflake-method-toolbar-button {
+	width: var(--touch-size-m, 2.75rem);
+	min-width: var(--touch-size-m, 2.75rem);
+	height: var(--touch-size-m, 2.75rem);
+	min-height: var(--touch-size-m, 2.75rem);
+}
+
+body.is-mobile .snowflake-method-dashboard button.snowflake-method-project-control {
+	height: var(--touch-size-m, 2.75rem);
+	/* In the compact rail the toggle beside it has grown to the finger size,
+	   and the control, which shrinks first, kept a sliver: a finger's least. */
+	min-width: var(--touch-size-s, 2.5rem);
+}
+
+body.is-mobile .snowflake-method-character-action-menu-trigger {
+	width: var(--touch-size-m, 2.75rem);
+	min-width: var(--touch-size-m, 2.75rem);
+}
+
+body.is-mobile .snowflake-method-definition-inspector {
+	--snowflake-inspector-more: var(--touch-size-s, 2.5rem);
+}
+
+body.is-mobile .snowflake-method-project-manager-sidebar {
+	--snowflake-method-row-action-size: var(--touch-size-s, 2.5rem);
+}
+
+/* The grips that open a card's or a rule's order menu, wide enough to find. */
+body.is-mobile .snowflake-method-record-editors,
+body.is-mobile
+	.snowflake-method-settings
+	.setting-group
+	.setting-item.snowflake-method-settings-rules {
+	--snowflake-record-handle: 2.25rem;
+}
+
+/* The cards' actions, their grips and the inserts between them, on every
+   board that deals scene cards. */
+body.is-mobile .snowflake-method-scene-cards,
+body.is-mobile .snowflake-method-relationship-graph {
+	--snowflake-method-corkboard-action-size: var(--touch-size-s, 2.5rem);
+}
+
+body.is-mobile .snowflake-method-corkboard {
+	--snowflake-method-corkboard-insert-size: var(--touch-size-s, 2.5rem);
+}
+
+/* The icon buttons on every control band, the chapter's actions and the
+   controls between two segments in the stream, the kebab and the colour on
+   a card and on a lane's head: each the app's small finger size, where the
+   pointer's 32 by 28 was enough. The picker's own button stands the field's
+   full height beside the words. */
+body.is-mobile .snowflake-method-prose-controls .clickable-icon,
+body.is-mobile .snowflake-method-segment-actions .clickable-icon,
+body.is-mobile .snowflake-method-segment-boundary-actions .clickable-icon,
+body.is-mobile .snowflake-method-corkboard-card .clickable-icon,
+body.is-mobile .snowflake-method-timeline-lane-head .clickable-icon {
+	min-width: var(--touch-size-s, 2.5rem);
+	min-height: var(--touch-size-s, 2.5rem);
+}
+
+body.is-mobile .snowflake-method-option-picker-selector.clickable-icon {
+	flex-basis: var(--touch-size-s, 2.5rem);
+	align-self: stretch;
+}
+
+/* The statistics widgets' settings buttons and the session's Start and
+   Stop, the sticky board's band and the tools on every sticky card, on the
+   board, afloat and on the canvas, and a canvas node's kebab and frame
+   colour: the same small finger size. A node's buttons scale with the
+   canvas, so they hold it at the canvas's own size. */
+body.is-mobile .snowflake-method-widget-header .clickable-icon,
+body.is-mobile .snowflake-method-sticky-controls .clickable-icon,
+body.is-mobile .snowflake-method-sticky-card .clickable-icon,
+body.is-mobile .snowflake-method-freeform-face .clickable-icon.snowflake-method-freeform-node-more,
+body.is-mobile .snowflake-method-freeform-face .clickable-icon.snowflake-method-freeform-frame-color {
+	min-width: var(--touch-size-s, 2.5rem);
+	min-height: var(--touch-size-s, 2.5rem);
+}
+
+body.is-mobile .snowflake-method-widget-controls button.snowflake-method-widget-control {
+	min-height: var(--touch-size-s, 2.5rem);
+}
+
+/* The icon buttons on the boards' own bands (the timeline, the beat sheet,
+   the canvas and the graph share one balanced band), the calendar's steps
+   on the history panel, and the folder button inside the project root
+   field, which grows to the finger and moves to the field's edge. */
+body.is-mobile .snowflake-method-balanced-toolbar .clickable-icon,
+body.is-mobile .snowflake-method-history-range .clickable-icon {
+	min-width: var(--touch-size-s, 2.5rem);
+	min-height: var(--touch-size-s, 2.5rem);
+}
+
+body.is-mobile .snowflake-method-root-field-selector {
+	inset-inline-end: var(--size-2-1);
+	width: var(--touch-size-s, 2.5rem);
+	height: var(--touch-size-s, 2.5rem);
+}
+
+/* The stream's and a note's formatting bar: each button a finger wide and
+   the app's finger tall. */
+body.is-mobile .snowflake-method-manuscript-toolbar .clickable-icon.snowflake-method-toolbar-button {
+	flex: 0 0 auto;
+	min-width: 2.5rem;
+	min-height: var(--touch-size-m, 2.75rem);
+}
+
+/* The writing count and the session on the bar, which on the desktop stand
+   in the status bar the app hides here: two buttons in a row, each its icon
+   and its figures, dimmed as the status bar item is while the session
+   rests, so the state reads at a glance. */
+body.is-mobile .snowflake-method-toolbar-faces {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-1);
+}
+
+body.is-mobile .snowflake-method-manuscript-toolbar .clickable-icon.snowflake-method-writing-face {
+	gap: var(--size-2-2);
+	width: auto;
+	padding-inline: var(--size-4-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+body.is-mobile .snowflake-method-writing-face.is-idle,
+body.is-mobile .snowflake-method-writing-face.is-paused,
+body.is-mobile .snowflake-method-writing-face.is-break {
+	opacity: 0.6;
+}
+
+/* -- Phone: the formatting bar in one scrolling row ------------------------ */
+
+/* Sixteen buttons wrap to three rows on a phone, which with the keyboard
+   up leaves little of the page. One row scrolls sideways instead, its bar
+   hidden, with the count and the session first so they are never scrolled
+   out of sight. */
+body.is-phone .snowflake-method-manuscript-toolbar {
+	flex-wrap: nowrap;
+	justify-content: flex-start;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+body.is-phone .snowflake-method-manuscript-toolbar::-webkit-scrollbar {
+	display: none;
+}
+
+body.is-phone .snowflake-method-manuscript-toolbar .snowflake-method-toolbar-faces {
+	order: -1;
+}
+
+/* -- Phone: a note's bar under the app's fixed header ---------------------- */
+
+/* On a phone the app's header floats over the top of the leaf, fixed, and
+   gives the content a margin to start under it. A bar mounted before the
+   content takes that margin instead, and the content starts flush below
+   the bar: the editor's padding, which let the page scroll under the
+   transparent header, comes down to a breath, and the fade the app lays
+   over the content's top edge for what scrolls under the header goes. */
+body.is-phone .mod-root .workspace-leaf-content .snowflake-method-note-toolbar {
+	margin-top: calc(
+		var(--view-header-top-offset, var(--safe-area-inset-top, 0px)) + var(--view-header-height, 0px) +
+			var(--size-4-2)
+	);
+}
+
+body.is-phone .mod-root .workspace-leaf-content .snowflake-method-note-toolbar + .view-content {
+	margin-top: 0;
+}
+
+body.is-phone
+	.mod-root
+	.workspace-leaf-content
+	.snowflake-method-note-toolbar
+	+ .view-content
+	.markdown-source-view
+	> .cm-editor
+	> .cm-scroller,
+body.is-phone
+	.mod-root
+	.workspace-leaf-content
+	.snowflake-method-note-toolbar
+	+ .view-content
+	.markdown-reading-view
+	> .markdown-preview-view {
+	padding-top: var(--size-4-4);
+}
+
+body.is-phone.is-floating-nav
+	.mod-root
+	.workspace-leaf-content[data-type='markdown']
+	.snowflake-method-note-toolbar
+	+ .view-content {
+	mask-image: none;
+}
+
+/* -- Phone: the plugin's views above the floating navbar ------------------- */
+
+/* The app's own views end above its navbar by the room it names; the
+   plugin's, laid out as columns that fill the leaf, are told the same. The
+   measure goes negative while the keyboard is up and the navbar away, so
+   it is floored. */
+body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content {
+	margin-bottom: max(0px, var(--view-bottom-spacing, 0px));
+}
+
+/* -- Phone: a short leaf scrolls the column ------------------------------- */
+
+/* A phone on its side, or one with the keyboard up, leaves the dashboard's
+   column a few hundred pixels: the progress row, the Steps row and the tab
+   strip take them all, and the field under the tabs is left with none. On a
+   phone the layout keeps a working height, and the column scrolls instead;
+   the structure view's field does the same under its strip. A board that
+   scrolls itself still does, and hands the rest of a swipe to the column
+   once it has reached its end. */
+body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard,
+body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-story-structure {
+	overflow-y: auto;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-layout {
+	min-height: 32rem;
+}
+
+body.is-phone .snowflake-method-story-structure .snowflake-method-tab-panel {
+	min-height: 20rem;
+}
+
+/* -- Phone: the dashboard's rail as a menu --------------------------------- */
+
+/* The rail goes, the panel takes the width, and a bar above the panel names
+   the pane on show and opens the rail's rows as a sheet. */
+body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-step-nav {
+	display: none;
+}
+
+body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-layout {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row {
+	display: flex;
+	flex: 0 0 auto;
+}
+
+body.is-phone .snowflake-method-dashboard button.snowflake-method-rail-menu {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-width: 0;
+	height: var(--touch-size-m, 2.75rem);
+	padding: 0 var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	box-shadow: none;
+	color: var(--text-normal);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-medium);
+	text-align: start;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-rail-menu-mark {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: 50%;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	font-variant-numeric: tabular-nums;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-rail-menu-mark > svg,
+body.is-phone .snowflake-method-dashboard .snowflake-method-rail-menu-chevron > svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-rail-menu-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-rail-menu-chevron {
+	display: inline-flex;
+	flex: 0 0 auto;
+	color: var(--text-muted);
+}
+
+/* The panels' insets and the tabs' paddings, set from the tab height, come
+   in on a phone, and a tab is as wide as a word needs. The field keeps its
+   top inset, where a board's controls band rides, and the scroller keeps
+   its reach past the frame for the bar, measured from the new inset. */
+body.is-phone .snowflake-method-panel {
+	--snowflake-method-tab-width: 7rem;
+	padding: var(--size-4-3);
+}
+
+body.is-phone .snowflake-method-story-structure {
+	--snowflake-method-tab-width: 7rem;
+}
+
+body.is-phone .snowflake-method-tabs {
+	padding-inline: var(--size-4-3);
+}
+
+body.is-phone .snowflake-method-tab-scroll {
+	padding: var(--snowflake-method-tab-height) var(--size-4-3) var(--size-4-3);
+	padding-inline-end: calc(
+		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px -
+			var(--snowflake-method-scrollbar-width, 0px)
+	);
+}
+
+body.is-phone .snowflake-method-tab-scroll.is-self-scrolling {
+	padding-inline-end: calc(
+		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px
+	);
+}
+
+body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
+body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list,
+body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-corkboard-scroll {
+	margin-inline-end: calc(
+		-1 * (var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px)
+	);
+	padding-inline-end: calc(
+		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px -
+			var(--snowflake-method-scrollbar-width, 0px)
+	);
+}
+
+/* -- Phone: dialogs -------------------------------------------------------- */
+
+/* A dialog takes the app's phone width, no more of the screen than stands
+   above the keyboard, and stands above the keyboard rather than centred
+   under it. It rises from the bottom as the app's own sheets do, with their
+   corners, so a tall one begins at the safe line and never under the notch,
+   where a centred one of the full height began. The app pads a phone's
+   dialog through its content and the plugin's dialogs pad themselves, so
+   they keep the desktop inset here and the content gives the app's back; a
+   form's content keeps the inline arithmetic its scrollbar lane is built on. */
+body.is-phone .modal.snowflake-method-dialog {
+	--snowflake-form-pad: var(--size-4-4);
+	--modal-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
+	width: var(--dialog-width, 100%);
+	max-width: var(--dialog-max-width, none);
+	max-height: calc(100% - var(--safe-area-inset-top, 0px) - var(--keyboard-height, 0px));
+	margin-top: auto;
+	margin-bottom: var(--keyboard-height, 0px);
+	padding: var(--size-4-4) max(var(--size-4-4), var(--safe-area-inset-right, 0px))
+		var(--size-4-4) max(var(--size-4-4), var(--safe-area-inset-left, 0px));
+}
+
+body.is-phone .modal.snowflake-method-dialog .modal-content {
+	padding-block: 0;
+}
+
+body.is-phone .modal.snowflake-method-dialog:not(.snowflake-method-form-modal) .modal-content {
+	padding-inline: 0;
+}
+
+/* The two that fill a window on the desktop fill the screen here. */
+body.is-phone .modal.snowflake-method-dialog.snowflake-method-project-manager-modal,
+body.is-phone .modal.snowflake-method-dialog.snowflake-method-import-modal {
+	height: calc(100% - var(--safe-area-inset-top, 0px) - var(--keyboard-height, 0px));
+}
+
+/* Lists capped at a share of the window scroll inside the dialog's own
+   height instead, which the keyboard shortens and a window share does not. */
+body.is-phone .snowflake-method-repair-report-modal .modal-content {
+	min-height: 0;
+	max-height: none;
+}
+
+body.is-phone .snowflake-method-tracking-modal-list {
+	max-height: none;
+}
+
+/* -- Phone: hung panels as sheets ------------------------------------------ */
+
+/* A panel hung under a button on the desktop -- the filter, the typography,
+   a card's colours -- is a sheet at the foot of the screen on a phone, as
+   the app's menus are: the width of the screen, above the keyboard, padded
+   past the safe area. The view code writes it no top or left (placePanel). */
+body.is-phone .snowflake-method-filter-panel,
+body.is-phone .snowflake-method-presentation-panel,
+body.is-phone .snowflake-method-corkboard-color-panel {
+	position: fixed;
+	inset: auto 0 var(--keyboard-height, 0px) 0;
+	z-index: var(--layer-menu);
+	width: auto;
+	max-width: none;
+	max-height: calc(70% - var(--keyboard-height, 0px));
+	padding-bottom: calc(var(--size-4-4) + var(--safe-area-inset-bottom, 0px));
+	border-width: 0;
+	border-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
+	box-shadow: var(--shadow-l);
+}
+
+/* The graph's controls, hung in a corner on the desktop, cover a phone's
+   whole canvas; as a sheet over its lower half they leave the graph in view. */
+body.is-phone .snowflake-method-graph-controls {
+	inset: auto 0 0 0;
+	width: auto;
+	max-height: 50%;
+	border-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
+}
+
+/* The view field at the start of the graph's and the corkboard's bands is a
+   card's width on the desktop, which is a phone's whole band: narrower
+   there, so the band's first screen shows that there is more to draw in. */
+body.is-phone .snowflake-method-relationship-graph-toolbar,
+body.is-phone .snowflake-method-corkboard-band.snowflake-method-balanced-toolbar {
+	--snowflake-method-toolbar-start: 9rem;
+}
+
+/* -- Phone: boards --------------------------------------------------------- */
+
+/* The task lanes come one to a screen and snap to it. */
+body.is-phone .snowflake-method-task-lanes {
+	scroll-snap-type: x mandatory;
+}
+
+body.is-phone .snowflake-method-task-lane {
+	flex-basis: min(20rem, 100%);
+	width: min(20rem, 100%);
+	scroll-snap-align: start;
+}
+
+/* The sticky board's cards take the width where a column of 18rem will not fit. */
+body.is-phone .snowflake-method-sticky-grid {
+	grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+}
+
+/* No floating notes on a phone: the ribbon and the command open the board
+   instead (see floatPolicy), and the layer that would hold them is away. */
+body.is-phone .snowflake-method-sticky-layer {
+	display: none;
+}
+
+/* The freeform canvas's minimap and the button that folds it: a phone's
+   corner has no room for either, and the quick strip comes in to the edge. */
+body.is-phone .snowflake-method-freeform-canvas .react-flow__minimap,
+body.is-phone .snowflake-method-freeform-minimap-collapse {
+	display: none;
+}
+
+body.is-phone .snowflake-method-freeform-quick {
+	inset-block-end: var(--size-4-3);
+	max-width: calc(100% - 2 * var(--size-4-3));
+}
+
+/* The gallery's pictures, and the step between them, at a phone's width. */
+body.is-phone .snowflake-method-gallery {
+	--snowflake-method-gallery-size: 11rem;
+	--snowflake-method-gallery-shift: 5rem;
+}
+
+/* -- Tablet: floating notes ------------------------------------------------ */
+
+/* A finger finds a wider edge than a pointer does: a floating note's resize
+   grips are half a finger wide on a tablet, its corners more. */
+body.is-tablet .snowflake-method-sticky-resize[data-edge='n'],
+body.is-tablet .snowflake-method-sticky-resize[data-edge='s'] {
+	height: 0.875rem;
+}
+
+body.is-tablet .snowflake-method-sticky-resize[data-edge='e'],
+body.is-tablet .snowflake-method-sticky-resize[data-edge='w'] {
+	width: 0.875rem;
+}
+
+body.is-tablet .snowflake-method-sticky-resize[data-edge='ne'],
+body.is-tablet .snowflake-method-sticky-resize[data-edge='nw'],
+body.is-tablet .snowflake-method-sticky-resize[data-edge='se'],
+body.is-tablet .snowflake-method-sticky-resize[data-edge='sw'] {
+	width: 1.5rem;
+	height: 1.5rem;
+}
+
+/* -- Focus mode on a touch screen ------------------------------------------ */
+
+/* The app's chrome on a mobile body is its drawers and its tab strip, which
+   a finger has no hover to bring back from a fade: they stay bright. */
+body.is-mobile.snowflake-method-focus-app .workspace-tab-header-container,
+body.is-mobile.snowflake-method-focus-app .workspace-split.mod-left-split,
+body.is-mobile.snowflake-method-focus-app .workspace-split.mod-right-split {
+	opacity: 1;
+}
+
+/* What a hover revealed, a finger has no way to: the chapter's actions and
+   the controls between two segments stand shown, a locked marker reads at
+   more than a quarter, the insert between two cards is there to be found,
+   and the note in hand's header and boundary stay a touch away under focus. */
+@media (pointer: coarse) {
+	.snowflake-method-segment-write,
+	.snowflake-method-segment-copy,
+	.snowflake-method-segment-export,
+	.snowflake-method-segment-open {
+		opacity: 1;
+	}
+
+	.snowflake-method-segment-boundary-actions {
+		opacity: 1;
+	}
+
+	.cm-line.snowflake-managed-boundary-line.is-locked > * {
+		opacity: 0.6;
+	}
+
+	.snowflake-method-corkboard .clickable-icon.snowflake-method-corkboard-insert {
+		opacity: 1;
+	}
+
+	.snowflake-method-focus
+		.snowflake-method-manuscript-stream.is-writing
+		.snowflake-method-segment.is-writing
+		> .snowflake-method-segment-header,
+	.snowflake-method-focus
+		.snowflake-method-manuscript-stream.is-writing
+		.snowflake-method-segment.is-writing
+		> .snowflake-method-segment-boundary {
+		opacity: 0.6;
+	}
 }
