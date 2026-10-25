@@ -185,6 +185,12 @@ class RelationshipGraphEngine implements GraphHandle {
 	/** No view was set: the graph is fitted to the box once the layout settles, and the origin kept centred until then. */
 	private fitPending = true;
 	private settledOnce = false;
+	/**
+	 * A view set from outside has not been looked at against the nodes yet.
+	 * One that shows none of them is replaced by a fit: a phone's box shows
+	 * a corner of the view a desktop kept, and that corner is often empty.
+	 */
+	private sightPending = false;
 	private width = 0;
 	private height = 0;
 	private dpr = 1;
@@ -221,6 +227,8 @@ class RelationshipGraphEngine implements GraphHandle {
 				if (this.fitPending) {
 					this.fitPending = false;
 					this.fit(false);
+				} else {
+					this.checkSight();
 				}
 			});
 
@@ -245,6 +253,7 @@ class RelationshipGraphEngine implements GraphHandle {
 				this.requestFrame();
 				if (this.settingView) return;
 				this.fitPending = false;
+				this.sightPending = false;
 				this.port.viewportMoved(this.nativeView(this.view));
 			});
 		const dragger = drag<HTMLCanvasElement, unknown, DragSubject | undefined>()
@@ -399,6 +408,7 @@ class RelationshipGraphEngine implements GraphHandle {
 	}
 
 	setViewport(view: GraphViewport | null): void {
+		this.sightPending = false;
 		if (view === null) {
 			if (this.settledOnce) {
 				this.fitPending = false;
@@ -411,6 +421,24 @@ class RelationshipGraphEngine implements GraphHandle {
 		}
 		this.fitPending = false;
 		this.applyView(this.viewFromNative(view), false);
+		this.sightPending = true;
+		this.checkSight();
+	}
+
+	/**
+	 * Looks at a view set from outside once nodes have places and the box
+	 * has its size: one that shows none of them is replaced by a fit, which
+	 * is not announced, so the view kept in the file stays the desktop's.
+	 * The places are the file's or the layout's as it stands; the layout's
+	 * end looks again only while no look has been taken.
+	 */
+	private checkSight(): void {
+		if (!this.sightPending || this.width === 0 || this.height === 0) return;
+		const standing = this.nodes.filter(placed);
+		if (standing.length === 0) return;
+		this.sightPending = false;
+		if (standing.some((sim) => inBox(toScreen(sim, this.view), this.width, this.height, 0))) return;
+		this.fit(false);
 	}
 
 	/**
@@ -544,6 +572,8 @@ class RelationshipGraphEngine implements GraphHandle {
 			} else {
 				this.applyView(homeViewport(width, height, dpr), false);
 			}
+		} else if (width > 0 && height > 0) {
+			this.checkSight();
 		}
 		this.requestFrame();
 	}
@@ -625,6 +655,7 @@ class RelationshipGraphEngine implements GraphHandle {
 
 	/** The view set on the zoom behaviour, which keeps it; announced to the port unless the engine is only following. */
 	private applyView(view: GraphViewport, announce: boolean): void {
+		if (announce) this.sightPending = false;
 		this.settingView = !announce;
 		try {
 			this.zoomer.transform(select(this.canvas), zoomIdentity.translate(view.x, view.y).scale(view.k));
