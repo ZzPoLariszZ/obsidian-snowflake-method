@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildTableFrame, rowOffsets, VirtualTable, virtualWindow } from '../../src/ui/virtual-table';
+import { buildTableFrame, rowOffsets, scrollerOf, VirtualTable, virtualWindow } from '../../src/ui/virtual-table';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
 const uniform = rowOffsets(new Array<number>(100).fill(40));
@@ -213,5 +213,131 @@ describe('table frame', () => {
 		refresh.mockClear();
 		popout.resize(600);
 		expect(refresh).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * A phone's dashboard scrolls as one page, and a table's frame stands
+ * somewhere down it: the window is read from the page's scroll and the
+ * frame's place in it, and the page's listener is let go with the frame.
+ */
+describe('a table windowed by the page it stands down', () => {
+	/** A page 400 high with a frame 300 below its top, holding rows of 40 where none is measured yet. */
+	const paged = () => {
+		const dom = new CorkboardDom();
+		dom.resize(600, 400);
+		const page = dom.container;
+		const frame = buildTableFrame(page as unknown as HTMLElement, {
+			tableCls: 'snowflake-method-character-table',
+			columns: ['order', 'name'],
+			headers: ['#', 'Name'],
+		});
+		Object.defineProperty(page, 'clientTop', { get: () => 0 });
+		Object.defineProperty(page, 'getBoundingClientRect', { value: () => ({ top: 0, height: 400 }) });
+		Object.defineProperty(frame.bodyWrap, 'getBoundingClientRect', {
+			value: () => ({ top: 300 - page.scrollTop, height: 4000 }),
+		});
+		const onScroll = vi.fn();
+		const table = new VirtualTable({
+			scroller: page as unknown as HTMLElement,
+			frame: frame.bodyWrap,
+			body: frame.body,
+			columns: 2,
+			estimatedRowHeight: 40,
+			overscan: 0,
+			rowKey: (index) => String(index),
+			heights: new Map(),
+			renderRow: (body, index) => {
+				body.createEl('tr').createEl('td', { text: String(index) });
+			},
+			renderTail: () => undefined,
+			onScroll,
+			onMeasure: () => undefined,
+		});
+		/** The rows drawn, between the two spacers. */
+		const drawn = (): string[] =>
+			(frame.body as unknown as CorkboardElement).children
+				.filter((row) => !row.classes.has('snowflake-method-virtual-spacer'))
+				.map((row) => row.querySelector('td')?.textContent ?? '');
+		return { dom, page, frame, table, onScroll, drawn };
+	};
+
+	it('opens on the head of the list and shows only what the page has left under the frame’s top', () => {
+		const { table, drawn } = paged();
+		table.setTotal(100);
+		// The fake measures every row at 37, so 100 pixels of page hold three.
+		expect(drawn()).toEqual(['0', '1', '2']);
+	});
+
+	it('moves the window with the page and reports the page’s scroll', () => {
+		const { dom, page, table, onScroll, drawn } = paged();
+		table.setTotal(100);
+		page.scrollTop = 1300;
+		page.dispatch('scroll');
+		dom.flushFrame();
+		expect(onScroll).toHaveBeenCalledWith(1300);
+		// A thousand pixels into rows of 37, for a page 400 high.
+		expect(drawn()[0]).toBe('27');
+		expect(drawn()).toHaveLength(11);
+	});
+
+	it('reveals a row by the frame’s place down the page, and puts the page back where a scroll stood', () => {
+		const { page, table } = paged();
+		table.setTotal(100);
+		page.scrollTop = 1300;
+		table.reveal(50);
+		// The frame's top at 300, the row at 50 rows of 37, a third of the page up.
+		expect(page.scrollTop).toBeCloseTo(300 + 50 * 37 - 400 / 3, 3);
+		table.restore(120);
+		expect(page.scrollTop).toBe(120);
+	});
+
+	it('lets go of the page once its frame has left the document', () => {
+		const { dom, page, frame, table, onScroll } = paged();
+		table.setTotal(100);
+		frame.wrap.remove();
+		page.dispatch('scroll');
+		dom.flushFrame();
+		expect(onScroll).not.toHaveBeenCalled();
+		expect(page.listeners.get('scroll') ?? []).toHaveLength(0);
+	});
+
+	it('takes its listener off the page when destroyed', () => {
+		const { page, table } = paged();
+		table.destroy();
+		expect(page.listeners.get('scroll') ?? []).toHaveLength(0);
+	});
+});
+
+describe('the scroller of a frame', () => {
+	/** A window whose stylesheet gives each element the overflow its class names. */
+	const styled = (overflow: Record<string, string>) => {
+		const dom = new CorkboardDom();
+		(dom.win as unknown as { getComputedStyle: (element: CorkboardElement) => unknown }).getComputedStyle = (element) => ({
+			overflowY: Object.entries(overflow).find(([cls]) => element.classList.contains(cls))?.[1] ?? 'visible',
+			getPropertyValue: (): string => '',
+		});
+		const page = dom.container.createDiv({ cls: 'page' });
+		const frame = buildTableFrame(page as unknown as HTMLElement, {
+			tableCls: 'snowflake-method-character-table',
+			columns: ['order', 'name'],
+			headers: ['#', 'Name'],
+		});
+		return { page, frame };
+	};
+
+	it('is the frame itself where it scrolls, as on the desktop', () => {
+		const { frame } = styled({ 'snowflake-method-table-body': 'scroll', page: 'auto' });
+		expect(scrollerOf(frame.bodyWrap)).toBe(frame.bodyWrap);
+	});
+
+	it('is the nearest ancestor that scrolls where the frame runs on, as on a phone', () => {
+		const { page, frame } = styled({ page: 'auto' });
+		expect(scrollerOf(frame.bodyWrap)).toBe(page);
+	});
+
+	it('is the frame where nothing is laid out to scroll at all', () => {
+		const { frame } = styled({});
+		expect(scrollerOf(frame.bodyWrap)).toBe(frame.bodyWrap);
 	});
 });

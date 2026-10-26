@@ -177,7 +177,7 @@ import {
 import { renderTaskBoard, type TaskBoardHandle } from './task-board';
 import { taskBoardMemory, type TaskBoardMemory } from './task-board-rows';
 import type { TaskNavigationTarget } from './task-bridge';
-import { buildTableFrame, VirtualTable } from './virtual-table';
+import { buildTableFrame, scrollerOf, VirtualTable } from './virtual-table';
 import type {
 	CharacterViewModel,
 	CreatedProject,
@@ -2706,7 +2706,8 @@ export class SnowflakeDashboardView extends ItemView {
 
 		let entries: { entity: WorldbuildingEntityViewModel; index: number }[] = [];
 		const virtual = new VirtualTable({
-			scroller: bodyWrap,
+			scroller: scrollerOf(bodyWrap),
+			frame: bodyWrap,
 			body,
 			columns: this.tableColumnClasses().length,
 			estimatedRowHeight: this.entityRowHeight,
@@ -2748,7 +2749,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const feed = (resetScroll: boolean): void => {
 			if (resetScroll) {
 				this.entityScroll.set(kind, 0);
-				bodyWrap.scrollTop = 0;
+				virtual.restore(0);
 			}
 			entries = this.entityEntries(model, kind);
 			count.setText(
@@ -2784,7 +2785,7 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 		});
 		feed(false);
-		bodyWrap.scrollTop = this.entityScroll.get(kind) ?? 0;
+		virtual.restore(this.entityScroll.get(kind) ?? 0);
 		virtual.refresh();
 	}
 
@@ -6693,7 +6694,8 @@ export class SnowflakeDashboardView extends ItemView {
 
 		let entries: { character: CharacterViewModel; index: number }[] = [];
 		const virtual = new VirtualTable({
-			scroller: bodyWrap,
+			scroller: scrollerOf(bodyWrap),
+			frame: bodyWrap,
 			body,
 			columns: this.tableColumnClasses().length,
 			estimatedRowHeight: this.characterRowHeight,
@@ -6736,7 +6738,7 @@ export class SnowflakeDashboardView extends ItemView {
 			// was on, so the list starts back at its head.
 			if (resetScroll) {
 				this.characterScroll = 0;
-				bodyWrap.scrollTop = 0;
+				virtual.restore(0);
 			}
 			entries = this.characterEntries(model);
 			count.setText(
@@ -6772,7 +6774,7 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 		});
 		feed(false);
-		bodyWrap.scrollTop = this.characterScroll;
+		virtual.restore(this.characterScroll);
 		virtual.refresh();
 	}
 
@@ -7067,7 +7069,8 @@ export class SnowflakeDashboardView extends ItemView {
 		let entries: { scene: SceneViewModel; index: number }[] = [];
 		const shownPositions = new Map<string, number>();
 		const virtual = new VirtualTable({
-			scroller: bodyWrap,
+			scroller: scrollerOf(bodyWrap),
+			frame: bodyWrap,
 			body,
 			columns: this.tableColumnClasses().length,
 			estimatedRowHeight: this.sceneRowHeight,
@@ -7118,7 +7121,7 @@ export class SnowflakeDashboardView extends ItemView {
 			// was on, so the list starts back at its head.
 			if (resetScroll) {
 				this.sceneScroll = 0;
-				bodyWrap.scrollTop = 0;
+				virtual.restore(0);
 			}
 			entries = this.sceneEntries(model);
 			// Retained virtual rows keep this map in their drop callbacks.
@@ -7160,7 +7163,7 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 		});
 		feed(false);
-		bodyWrap.scrollTop = this.sceneScroll;
+		virtual.restore(this.sceneScroll);
 		virtual.refresh();
 	}
 

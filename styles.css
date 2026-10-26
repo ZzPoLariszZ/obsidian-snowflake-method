@@ -19878,22 +19878,97 @@ body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] 
 	margin-bottom: max(0px, var(--view-bottom-spacing, 0px));
 }
 
-/* -- Phone: a short leaf scrolls the column ------------------------------- */
+/* -- Phone: the dashboard as one page ------------------------------------- */
 
-/* A phone on its side, or one with the keyboard up, leaves the dashboard's
-   column a few hundred pixels: the progress row, the Steps row and the tab
-   strip take them all, and the field under the tabs is left with none. On a
-   phone the layout keeps a working height, and the column scrolls instead;
-   the structure view's field does the same under its strip. A board that
-   scrolls itself still does, and hands the rest of a swipe to the column
-   once it has reached its end. */
+/* The desktop frames every panel in its column and scrolls what stands
+   inside the frame: a table's rows run in their own box under its header,
+   a synopsis in its own under its count. A phone's column is a few hundred
+   pixels, and a frame given what the progress row, the Steps row and the
+   panel's own bar left of them showed two cards of a cast of thirty, every
+   swipe inside it fighting the page's for the finger. So the page is the
+   one thing that scrolls: the layout and the column take the height of
+   what they hold, every frame runs on to its content, and the rows stand
+   down the page under the bar that searches them. The virtual table reads
+   which element scrolls off this layout (scrollerOf) and windows its rows
+   by the page. */
 body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard,
 body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-story-structure {
 	overflow-y: auto;
 }
 
 body.is-phone .snowflake-method-dashboard .snowflake-method-layout {
-	min-height: 32rem;
+	flex: 0 0 auto;
+	min-height: 0;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-main {
+	overflow-y: visible;
+	scrollbar-gutter: auto;
+}
+
+/* A member step's panel and its table frame take their content's height,
+   and the frame stops scrolling: its header is away on a phone, where every
+   table is laid out as cards, and its body runs down the page. The reach
+   the body kept past the frame for a bar it no longer holds is given back,
+   so the cards end at the frame's edge. */
+body.is-phone .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-member-panel {
+	flex: 0 0 auto;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-table-wrap {
+	flex: 0 0 auto;
+	min-height: 0;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-table-body {
+	flex: 0 0 auto;
+	overflow: visible;
+	scrollbar-gutter: auto;
+	margin-inline-end: 0;
+	padding-inline-end: 0;
+}
+
+/* A tabbed pane's field does the same, and a board that scrolled itself
+   inside the field runs with the page as well. */
+body.is-phone .snowflake-method-dashboard .snowflake-method-tab-panel {
+	flex: 0 0 auto;
+	min-height: 0;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll,
+body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling {
+	flex: 0 0 auto;
+	overflow-y: visible;
+	margin-inline-end: 0;
+	padding-inline-end: var(--size-4-3);
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
+body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
+	overflow: visible;
+	margin-inline-end: 0;
+	padding-inline-end: 0;
+}
+
+/* A synopsis grows with its words and the page scrolls past them, as the
+   app's own notes do; a box that scrolled inside a page that scrolls took
+   the finger's swipe for its own. The quote of the step before keeps a
+   height of its own above the box and scrolls inside it: a column that
+   takes the height of its content measures no third to hold it to. */
+body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box {
+	flex: 0 0 auto;
+	height: auto;
+	max-height: none;
+	overflow-y: visible;
+	resize: none;
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-synopsis-field {
+	flex: 0 0 auto;
+}
+
+body.is-phone .snowflake-method-source-summary-body {
+	max-height: 14rem;
 }
 
 body.is-phone .snowflake-method-story-structure .snowflake-method-tab-panel {

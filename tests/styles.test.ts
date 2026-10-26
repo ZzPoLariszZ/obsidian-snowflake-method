@@ -1373,5 +1373,12 @@ describe('styles.css', () => {
 			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),
 		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');
 		expect(declarations('.snowflake-method-diagnostics-report')).toContain('white-space: pre-wrap');
+		// The dashboard scrolls as one page on a phone and its frames run to
+		// their content.
+		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-layout')).toContain('flex: 0 0 auto');
+		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-table-body')).toContain('overflow: visible');
+		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box')).toContain(
+			'overflow-y: visible',
+		);
 	});
 });

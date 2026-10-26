@@ -93,6 +93,13 @@ type MeasuringWindow = Window & {
 interface VirtualTableOptions {
 	/** The element that scrolls, and whose height frames the window. */
 	scroller: HTMLElement;
+	/**
+	 * The frame the rows are drawn in, named only where the scroller is an
+	 * ancestor of it: a phone's dashboard scrolls as one page, and the rows
+	 * stand somewhere down it. The frame's place in the scroller then offsets
+	 * the window. Left out, the scroller is the frame.
+	 */
+	frame?: HTMLElement;
 	/** The tbody the rows go into. */
 	body: HTMLElement;
 	/** How many columns a spacer row must span. */
@@ -134,17 +141,26 @@ export class VirtualTable {
 	private frame = 0;
 	private resized: { disconnect(): void } | null = null;
 	private unmigrate: (() => void) | null = null;
+	private readonly onScroll: () => void;
 
 	constructor(private readonly options: VirtualTableOptions) {
 		this.estimate = Math.max(1, options.estimatedRowHeight);
-		options.scroller.addEventListener('scroll', () => {
+		const onScroll = (): void => {
+			// A page scroller outlives the frames drawn down it: a frame the
+			// last render discarded takes its listener off at the next scroll.
+			if (!(this.options.frame ?? this.options.scroller).isConnected) {
+				this.options.scroller.removeEventListener('scroll', onScroll);
+				return;
+			}
 			this.options.onScroll(this.options.scroller.scrollTop);
 			if (this.frame !== 0) return;
 			this.frame = this.options.scroller.win.requestAnimationFrame(() => {
 				this.frame = 0;
 				this.refresh();
 			});
-		});
+		};
+		this.onScroll = onScroll;
+		options.scroller.addEventListener('scroll', onScroll);
 		// A frame that changes size changes what fits in it, and a frame
 		// that stacks its table into cards, or lays the cards back out as
 		// rows, changes every row's height under the window. Either way the
@@ -169,16 +185,17 @@ export class VirtualTable {
 	}
 
 	/**
-	 * Drops a frame still waiting to run, and the watch on the frame's size,
-	 * for a table whose elements are going away. The scroll listener needs
-	 * no such care: it lives on the scroller, which the next render discards
-	 * along with it.
+	 * Drops a frame still waiting to run, the watch on the frame's size and
+	 * the scroll listener, for a table whose elements are going away. A
+	 * scroller that is the frame takes the listener with it anyway; a page
+	 * scroller stays, and would hear every scroll for a table long gone.
 	 */
 	destroy(): void {
 		this.unmigrate?.();
 		this.unmigrate = null;
 		this.resized?.disconnect();
 		this.resized = null;
+		this.options.scroller.removeEventListener('scroll', this.onScroll);
 		if (this.frame === 0) return;
 		this.options.scroller.win.cancelAnimationFrame(this.frame);
 		this.frame = 0;
@@ -201,16 +218,55 @@ export class VirtualTable {
 		const { scroller } = this.options;
 		const offsets = this.offsets();
 		const top = offsets[Math.max(0, Math.min(index, this.total - 1))] ?? 0;
-		scroller.scrollTop = Math.max(0, top - scroller.clientHeight / 3);
+		scroller.scrollTop = Math.max(0, this.frameTop() + top - scroller.clientHeight / 3);
 		this.refresh();
 	}
 
+	/** Puts the scroller where a scroll it reported once stood. */
+	restore(scrollTop: number): void {
+		this.options.scroller.scrollTop = scrollTop;
+	}
+
+	/**
+	 * Where the frame starts, measured down the scroller's content: nothing
+	 * where the scroller is the frame, and the rows' own offsets count from
+	 * there.
+	 */
+	private frameTop(): number {
+		const { scroller, frame } = this.options;
+		if (frame === undefined || frame === scroller) return 0;
+		return (
+			frame.getBoundingClientRect().top -
+			(scroller.getBoundingClientRect().top + scroller.clientTop) +
+			scroller.scrollTop
+		);
+	}
+
+	/**
+	 * The slice of the frame the scroller shows: how far down the frame its
+	 * top edge stands, and how much of the frame fits under it. A frame that
+	 * begins below the scroller's top edge shows only what the scroller has
+	 * left under that beginning.
+	 */
+	private viewport(): { top: number; height: number } {
+		const { scroller, frame } = this.options;
+		if (frame === undefined || frame === scroller) {
+			return { top: scroller.scrollTop, height: scroller.clientHeight };
+		}
+		const top =
+			scroller.getBoundingClientRect().top +
+			scroller.clientTop -
+			frame.getBoundingClientRect().top;
+		return { top, height: scroller.clientHeight + Math.min(0, top) };
+	}
+
 	refresh(): void {
-		const { scroller, body } = this.options;
+		const { body } = this.options;
 		const offsets = this.offsets();
+		const viewport = this.viewport();
 		const shown = virtualWindow(
-			scroller.scrollTop,
-			scroller.clientHeight,
+			viewport.top,
+			viewport.height,
 			offsets,
 			this.options.overscan,
 		);
@@ -323,6 +379,22 @@ export class VirtualTable {
 		this.options.heights.set(key, height);
 		return true;
 	}
+}
+
+/**
+ * The element whose scroll moves the rows: the frame itself where it
+ * scrolls, as it does on the desktop, else the nearest ancestor that does.
+ * A phone's dashboard lets its frames run to their content and scrolls the
+ * whole page, and the stylesheet alone says which it is, so the answer is
+ * read from the layout rather than from the device. A frame not laid out,
+ * as a test's is, scrolls itself.
+ */
+export function scrollerOf(frame: HTMLElement): HTMLElement {
+	for (let candidate: HTMLElement | null = frame; candidate !== null; candidate = candidate.parentElement) {
+		const style = frame.win.getComputedStyle(candidate);
+		if (style.overflowY === 'auto' || style.overflowY === 'scroll') return candidate;
+	}
+	return frame;
 }
 
 /** The pieces of a split-header table frame a caller fills and scrolls. */

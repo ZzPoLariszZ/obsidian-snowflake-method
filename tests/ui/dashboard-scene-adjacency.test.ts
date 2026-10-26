@@ -63,6 +63,7 @@ vi.mock('../../src/ui/virtual-table', async (importOriginal) => {
 				}
 			}
 			refresh(): void {}
+			restore(): void {}
 		},
 	};
 });
