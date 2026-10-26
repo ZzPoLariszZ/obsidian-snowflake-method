@@ -256,6 +256,32 @@ describe('dashboard restored state', () => {
 			wbKind: 'Faction',
 		});
 	});
+
+	it('lets a saved step pane name the step when the two disagree', () => {
+		const current = {
+			projectPath: 'Snowflake Projects/Novel/metadata.md',
+			projectTitle: 'Novel',
+			selectedStep: 3 as const,
+			selectedPane: { kind: 'step', step: 3 } as const,
+			railCollapsed: OPEN_RAIL,
+			railCompact: false,
+			statisticsTab: 'sessions' as const,
+			tasksTab: 'revision' as const,
+		};
+		const update = mergeDashboardViewState(current, {
+			selectedStep: 8,
+			selectedPane: { kind: 'step', step: 5 },
+		});
+		expect(update.changed).toBe(true);
+		expect(update.state.selectedStep).toBe(5);
+		expect(update.state.selectedPane).toEqual({ kind: 'step', step: 5 });
+		// A kind pane names no step, so the saved step stands.
+		const kind = mergeDashboardViewState(current, {
+			selectedStep: 8,
+			selectedPane: { kind: 'worldbuilding', wbKind: 'Faction' },
+		});
+		expect(kind.state.selectedStep).toBe(8);
+	});
 });
 
 describe('dashboard render continuity', () => {

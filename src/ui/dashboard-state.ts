@@ -142,11 +142,6 @@ export function mergeDashboardViewState(
 		candidate.projectTitle === null
 			? candidate.projectTitle
 			: current.projectTitle;
-	const selectedStep =
-		typeof candidate.selectedStep === 'number' &&
-		isStepId(candidate.selectedStep)
-			? candidate.selectedStep
-			: current.selectedStep;
 	// A pane saved by this build wins; a state from an older build carries only
 	// the step, which is a pane all the same.
 	const selectedPane =
@@ -155,6 +150,16 @@ export function mergeDashboardViewState(
 		isStepId(candidate.selectedStep)
 			? { kind: 'step' as const, step: candidate.selectedStep }
 			: current.selectedPane);
+	// A step pane and the step it names are one thing: a state that carries
+	// both and disagrees (a layout written by hand, or two saves merged by a
+	// sync) would draw one step's panel under another step's mark on the rail.
+	const selectedStep =
+		selectedPane.kind === 'step'
+			? selectedPane.step
+			: typeof candidate.selectedStep === 'number' &&
+				  isStepId(candidate.selectedStep)
+				? candidate.selectedStep
+				: current.selectedStep;
 	const collapseCandidate = candidate.railCollapsed as
 		| Record<string, unknown>
 		| undefined;
