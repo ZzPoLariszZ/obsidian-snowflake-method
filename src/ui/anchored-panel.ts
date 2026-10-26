@@ -95,7 +95,8 @@ export function hangPanel(
 		spec.onClose();
 	};
 	const onKey = (event: KeyboardEvent): void => {
-		if (event.key !== 'Escape') return;
+		// An Escape struck while an input method is composing is the composition's.
+		if (event.key !== 'Escape' || event.isComposing) return;
 		event.preventDefault();
 		spec.onClose();
 		anchor.focus();

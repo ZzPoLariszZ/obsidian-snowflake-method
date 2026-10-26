@@ -330,7 +330,8 @@ export function openPresentationPanel(
 		close('pointer');
 	};
 	const onKey = (event: KeyboardEvent): void => {
-		if (event.key !== 'Escape') return;
+		// An Escape struck while an input method is composing is the composition's.
+		if (event.key !== 'Escape' || event.isComposing) return;
 		// A list open over the panel answers the key first: one Escape puts the
 		// list away, the next puts the panel away.
 		if (suggestions() !== null) return;

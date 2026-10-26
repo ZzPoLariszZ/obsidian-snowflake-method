@@ -7,7 +7,7 @@
  * is the timeline's too, which says nothing of timelines.
  */
 
-import { Modal, Notice, Setting, setTooltip, type App } from 'obsidian';
+import { Notice, Setting, setTooltip, type App } from 'obsidian';
 
 import {
 	FREEFORM_ARROWS,
@@ -25,6 +25,7 @@ import {
 	type Translate,
 } from './modals';
 import { buildOptionField, buildOptionPicker, type OptionPicker, type PickerOption } from './option-picker';
+import { SnowflakeModal } from './dialog-base';
 import { DIALOG_CLASS } from './dialog-class';
 
 export interface FreeformViewFormOptions {
@@ -130,7 +131,7 @@ export interface RecoveredFreeformText {
  * text node's words live nowhere but on its view, so words the view would
  * not take are handed back here for the author to copy.
  */
-export class FreeformTextModal extends Modal {
+export class FreeformTextModal extends SnowflakeModal {
 	constructor(
 		app: App,
 		private readonly t: Translate,

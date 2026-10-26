@@ -102,7 +102,19 @@ export class Scope {
 export class Modal {
 	readonly scope = new Scope();
 	modalEl = { addClass: (..._classes: string[]): void => undefined };
-	constructor(..._arguments: unknown[]) {}
+	constructor(..._arguments: unknown[]) {
+		// As Obsidian's own constructor does: Escape rides the dialog's scope
+		// through this method, bound here, so a subclass's override is what
+		// the key reaches.
+		this.scope.register([], 'Escape', this.onEscapeKey.bind(this));
+	}
+	/** Obsidian's own answer to Escape: the dialog closes unless the key was answered already. */
+	onEscapeKey(event: KeyboardEvent): false | undefined {
+		if (event.defaultPrevented) return undefined;
+		event.preventDefault();
+		this.close();
+		return undefined;
+	}
 	open(): void {}
 	close(): void {}
 }

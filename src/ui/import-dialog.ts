@@ -1,6 +1,5 @@
 import {
 	App,
-	Modal,
 	Notice,
 	SearchComponent,
 	Setting,
@@ -23,6 +22,7 @@ import {
 } from '../domain';
 import type { ImportReport, ProjectSeries } from '../services';
 import { memberMatches } from './dashboard-state';
+import { SnowflakeModal } from './dialog-base';
 import { DIALOG_CLASS } from './dialog-class';
 import {
 	ConfirmModal,
@@ -675,7 +675,7 @@ export class ImportProjectModal extends SnowflakeFormModal<ImportChoice> {
 		// Escape clears a search before it closes the dialog: the key is
 		// taken here, on the box, so the dialog's own handler never sees it.
 		box.inputEl.addEventListener('keydown', (event) => {
-			if (event.key !== 'Escape' || this.query.trim().length === 0) return;
+			if (event.isComposing || event.key !== 'Escape' || this.query.trim().length === 0) return;
 			event.preventDefault();
 			event.stopPropagation();
 			box.setValue('');
@@ -1211,7 +1211,7 @@ const SKIP_REASON_WORDS: Record<string, string> = {
  * What a run has to say when its notice would not do: what was skipped and
  * why, which links were dropped, and what failed. One surface, Close only.
  */
-export class ImportReportModal extends Modal {
+export class ImportReportModal extends SnowflakeModal {
 	constructor(
 		app: App,
 		private readonly t: Translate,

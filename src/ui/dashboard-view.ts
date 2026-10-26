@@ -121,6 +121,7 @@ import {
 	type ProsePanelHandle,
 } from './prose-panel';
 import { PROSE_BOX_CLASS, ProseBox, placeProseBoxCaret, proseBoxCaret } from './prose-box';
+import { keepEscapeInView } from './escape-key';
 import { FilterPanel } from './filter-panel';
 import type { FilterRow, LentFilterPopover } from './filter-rows';
 import {
@@ -872,6 +873,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.opened = true;
+		keepEscapeInView(this);
 		this.registerDomEvent(this.contentEl, 'pointerdown', () => {
 			this.activateProjectContext();
 		});

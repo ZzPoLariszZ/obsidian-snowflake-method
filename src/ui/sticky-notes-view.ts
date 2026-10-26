@@ -5,6 +5,7 @@ import {
 	stickyBoardMemory,
 	type StickyNoteBoardHandle,
 } from './sticky-note-board';
+import { keepEscapeInView } from './escape-key';
 import type { StickyNoteBridge } from './sticky-note-bridge';
 
 export const STICKY_NOTES_VIEW_TYPE = 'snowflake-method-sticky-notes';
@@ -52,6 +53,7 @@ export class SnowflakeStickyNotesView extends ItemView {
 
 	onOpen(): Promise<void> {
 		this.contentEl.addClass('snowflake-method-sticky-notes-view');
+		keepEscapeInView(this);
 		this.mount();
 		return Promise.resolve();
 	}

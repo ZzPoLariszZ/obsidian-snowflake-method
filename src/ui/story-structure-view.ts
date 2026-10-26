@@ -27,6 +27,7 @@ import type {
 	CorkboardHandle,
 	RenderCorkboard,
 } from './corkboard-bridge';
+import { keepEscapeInView } from './escape-key';
 import { FilterPanel } from './filter-panel';
 import type {
 	FreeformBridge,
@@ -334,6 +335,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	async onOpen(): Promise<void> {
 		this.opened = true;
 		this.contentEl.addClass('snowflake-method-story-structure');
+		keepEscapeInView(this);
 		this.registerDomEvent(this.contentEl, 'pointerdown', () => this.activateProjectContext());
 		this.registerDomEvent(this.contentEl, 'focusin', () => this.activateProjectContext());
 		if (this.app.workspace.layoutReady) {

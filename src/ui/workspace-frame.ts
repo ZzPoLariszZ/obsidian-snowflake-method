@@ -236,6 +236,8 @@ export function createSearchField(toolbar: HTMLElement, deps: SearchFieldDeps): 
 		}, SEARCH_DEBOUNCE_MS);
 	});
 	search.inputEl.addEventListener('keydown', (event) => {
+		// A key struck while an input method is composing is the composition's: the Escape that takes syllables back must not take the search with them.
+		if (event.isComposing) return;
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			// Words typed and not yet marked are marked now, so the step lands on what was asked for.

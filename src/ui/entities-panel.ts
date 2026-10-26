@@ -6,7 +6,7 @@
  * the roomier telling of it.
  */
 
-import { Modal, SearchComponent, setIcon, setTooltip, type App } from 'obsidian';
+import { SearchComponent, setIcon, setTooltip, type App } from 'obsidian';
 
 import {
 	occurrenceContext,
@@ -30,6 +30,7 @@ import type { Translate } from './modals';
 import { paintCount } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { buildTableFrame } from './virtual-table';
+import { SnowflakeModal } from './dialog-base';
 import { DIALOG_CLASS } from './dialog-class';
 
 /** One kind's table: its label and its mentioned members, busiest first. */
@@ -126,7 +127,7 @@ interface ModalGroup {
  * order and expands or collapses every fold at once; the click on a line
  * jumps, and the modal steps aside.
  */
-class MentionListModal extends Modal {
+class MentionListModal extends SnowflakeModal {
 	private readonly expanded = new Set<string>();
 	private newestFirst = false;
 	/** Lines already read, kept across sort flips and fold toggles. */

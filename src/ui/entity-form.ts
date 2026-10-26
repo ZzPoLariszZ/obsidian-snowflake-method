@@ -108,6 +108,8 @@ export class ChipListField {
 			this.inputEl?.focus();
 		});
 		this.inputEl.addEventListener('keydown', (event) => {
+			// The Enter that confirms a composition is the input method's, not a tag's.
+			if (event.isComposing) return;
 			if (event.key === 'Enter' || event.key === ',' || event.key === '、') {
 				event.preventDefault();
 				this.commitInput();

@@ -1,6 +1,7 @@
-import { Modal, type App } from 'obsidian';
+import type { App } from 'obsidian';
 
 import type { Translate } from './modals';
+import { SnowflakeModal } from './dialog-base';
 import { DIALOG_CLASS } from './dialog-class';
 
 export interface RecoveredCorkboardDraft {
@@ -13,7 +14,7 @@ export interface RecoveredCorkboardDraft {
 }
 
 /** Keeps refused card text outside the board that may already be closing. */
-export class CorkboardDraftModal extends Modal {
+export class CorkboardDraftModal extends SnowflakeModal {
 	constructor(app: App, private readonly t: Translate, private readonly drafts: readonly RecoveredCorkboardDraft[]) {
 		super(app);
 		this.modalEl.addClass(DIALOG_CLASS);

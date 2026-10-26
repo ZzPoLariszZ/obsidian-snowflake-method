@@ -205,7 +205,8 @@ export class FilterPanel {
 			this.close();
 		};
 		const onKey = (event: KeyboardEvent): void => {
-			if (event.key !== 'Escape') return;
+			// An Escape struck while an input method is composing is the composition's.
+			if (event.key !== 'Escape' || event.isComposing) return;
 			// The field's own list answers Escape first, and closing the panel
 			// under it would take the field away mid-correction.
 			if (view.activeDocument.querySelector('.suggestion-container') !== null) {

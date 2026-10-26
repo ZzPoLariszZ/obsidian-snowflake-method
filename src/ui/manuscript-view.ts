@@ -132,6 +132,7 @@ import {
 	type ManuscriptWindowSettings,
 	type ManuscriptWritingContext,
 } from './view-model';
+import { keepEscapeInView } from './escape-key';
 
 export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
 
@@ -629,6 +630,7 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.contentEl.addClass('snowflake-method-manuscript-view');
+		keepEscapeInView(this);
 		// The dress popover shows the ground for the mode in force; a theme
 		// change may have swapped the mode under it, so it closes and reopens
 		// right rather than showing the other mode's tints.

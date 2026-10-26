@@ -1,11 +1,9 @@
 import {
 	App,
-	FuzzySuggestModal,
 	Menu,
-	Modal,
+	type Modal,
 	Notice,
 	Setting,
-	SuggestModal,
 	TFolder,
 	ToggleComponent,
 	type TFile,
@@ -113,6 +111,7 @@ import type {
 	DefinitionFileChoice,
 	RepairReportViewModel,
 } from './view-model';
+import { SnowflakeFuzzySuggestModal, SnowflakeModal, SnowflakeSuggestModal } from './dialog-base';
 import { DIALOG_CLASS } from './dialog-class';
 
 const PROJECT_LIST_SELECTOR = '.snowflake-method-project-manager-list';
@@ -404,7 +403,7 @@ interface GallerySourceChoice {
 }
 
 /** Asks where a picture comes from: the vault's pictures, or the device's file chooser. */
-class GallerySourceModal extends SuggestModal<GallerySourceChoice> {
+class GallerySourceModal extends SnowflakeSuggestModal<GallerySourceChoice> {
 	private answered: GallerySource | null = null;
 	private readonly choices: readonly GallerySourceChoice[];
 
@@ -728,7 +727,7 @@ function markFormProject(modal: Modal, context: MemberFormContext | undefined): 
 	if (context !== undefined) modal.modalEl.dataset.snowflakeProject = context.projectPath;
 }
 
-export abstract class SnowflakeFormModal<T> extends Modal {
+export abstract class SnowflakeFormModal<T> extends SnowflakeModal {
 	protected t: Translate;
 	private readonly submitHandler: SubmitHandler<T>;
 	private readonly submitLabelKey: string;
@@ -1236,7 +1235,7 @@ export function promptForSegmentTitle(
 	});
 }
 
-export class ManageProjectsModal extends Modal {
+export class ManageProjectsModal extends SnowflakeModal {
 	private t: Translate;
 	private locale: ProjectLocale;
 	private projects: readonly ManageProjectOption[];
@@ -1540,7 +1539,7 @@ export class ManageProjectsModal extends Modal {
 			commit();
 		});
 		input.addEventListener('keydown', (event) => {
-			if (event.key !== 'Enter') return;
+			if (event.isComposing || event.key !== 'Enter') return;
 			event.preventDefault();
 			commit();
 		});
@@ -2575,7 +2574,7 @@ export function promptForNewCharacter(
  * for is the moment it is invented -- and the description is optional because
  * some categories really do explain themselves.
  */
-class NewDefinitionModal extends Modal {
+class NewDefinitionModal extends SnowflakeModal {
 	private pathEl: HTMLInputElement | null = null;
 	private descriptionEl: HTMLTextAreaElement | null = null;
 	private decided = false;
@@ -2695,7 +2694,7 @@ export interface DefinitionKindChoice {
  * itself. Each kind keeps its own vocabulary, so this is the first thing an
  * entry needs to know about itself.
  */
-class DefinitionKindModal extends SuggestModal<DefinitionKindChoice> {
+class DefinitionKindModal extends SnowflakeSuggestModal<DefinitionKindChoice> {
 	private answered: EntityKindId | null = null;
 
 	constructor(
@@ -2760,7 +2759,7 @@ export interface DefinitionEditResult {
  * the line under the field says — the ancestors have rows of their own, and
  * this dialog renames the one entry it was opened on.
  */
-class EditDefinitionModal extends Modal {
+class EditDefinitionModal extends SnowflakeModal {
 	private nameEl: HTMLInputElement | null = null;
 	private descriptionEl: HTMLTextAreaElement | null = null;
 	private decided = false;
@@ -2885,7 +2884,7 @@ export interface DefinitionDeletionCost {
  * -- button, Escape, or the title bar -- counts as declining, and no caller is
  * ever left waiting on a question the author walked away from.
  */
-export abstract class ConfirmModal extends Modal {
+export abstract class ConfirmModal extends SnowflakeModal {
 	private confirmed = false;
 
 	protected constructor(
@@ -2982,7 +2981,7 @@ export class ConfirmDefinitionDeletionModal extends ConfirmModal {
  * one dialog that moves on is steadier than a second one opened while the
  * first is still closing.
  */
-class EntityReferenceModal extends SuggestModal<ReferenceChoice> {
+class EntityReferenceModal extends SnowflakeSuggestModal<ReferenceChoice> {
 	private group: EntityGroupId | null = null;
 	private answered: PickedEntity | null = null;
 	private pending: Promise<PickedEntity | null> | null = null;
@@ -3113,7 +3112,7 @@ export function promptForEntityReference(
 }
 
 /** The manuscript-only chooser under a scene's linked-note rows. */
-class SceneManuscriptReferenceModal extends FuzzySuggestModal<PickerOption> {
+class SceneManuscriptReferenceModal extends SnowflakeFuzzySuggestModal<PickerOption> {
 	constructor(
 		app: App,
 		placeholder: string,
@@ -3140,7 +3139,7 @@ class SceneManuscriptReferenceModal extends FuzzySuggestModal<PickerOption> {
 }
 
 /** The chooser under a gallery's Add from vault: every picture of the vault but the ones the gallery holds. */
-class GalleryPictureModal extends FuzzySuggestModal<TFile> {
+class GalleryPictureModal extends SnowflakeFuzzySuggestModal<TFile> {
 	private chosen = false;
 
 	constructor(
@@ -4465,7 +4464,7 @@ export interface MoveAfterEntry {
  * so the destination is found by name even when the rows between are off
  * screen or filtered out of the table.
  */
-export class MoveAfterModal extends FuzzySuggestModal<MoveAfterEntry> {
+export class MoveAfterModal extends SnowflakeFuzzySuggestModal<MoveAfterEntry> {
 	constructor(
 		app: App,
 		t: Translate,
@@ -4493,7 +4492,7 @@ export class MoveAfterModal extends FuzzySuggestModal<MoveAfterEntry> {
 	}
 }
 
-export class RepairReportModal extends Modal {
+export class RepairReportModal extends SnowflakeModal {
 	constructor(
 		app: App,
 		private readonly t: Translate,
@@ -4901,7 +4900,7 @@ function knownIconId(value: string): boolean {
 	return ids.includes(value) || ids.includes(`lucide-${value}`);
 }
 
-class KindFormModal extends Modal {
+class KindFormModal extends SnowflakeModal {
 	private answered: KindFormResult | null = null;
 	private iconSuggest: IconSuggest | null = null;
 
@@ -4969,7 +4968,7 @@ class KindFormModal extends Modal {
 				showObjection();
 			});
 			text.inputEl.addEventListener('keydown', (event) => {
-				if (event.key === 'Enter') {
+				if (event.key === 'Enter' && !event.isComposing) {
 					event.preventDefault();
 					submit();
 				}
@@ -5094,7 +5093,7 @@ export function promptForCustomFieldTemplate(
 	});
 }
 
-class CustomFieldTemplateModal extends Modal {
+class CustomFieldTemplateModal extends SnowflakeModal {
 	private answered: CustomFieldTemplateFormResult | null = null;
 	private readonly state: { rows: CustomField[]; touched: boolean };
 
@@ -5172,7 +5171,7 @@ class CustomFieldTemplateModal extends Modal {
 				showObjection();
 			});
 			text.inputEl.addEventListener('keydown', (event) => {
-				if (event.key === 'Enter') {
+				if (event.key === 'Enter' && !event.isComposing) {
 					event.preventDefault();
 					submit();
 				}
@@ -5406,7 +5405,7 @@ export function confirmSegmentMerge(
  * red. An author being asked whether to throw a note away should be looking at
  * the dialog they already know, not at this plugin's idea of one.
  */
-class ConfirmSegmentMergeModal extends Modal {
+class ConfirmSegmentMergeModal extends SnowflakeModal {
 	private confirmed = false;
 	private renumber = true;
 	private buttons: HTMLElement | null = null;
@@ -5549,7 +5548,7 @@ export function confirmDraftDiscard(app: App, t: Translate): Promise<boolean> {
 	});
 }
 
-export class ManagedBoundaryUnlockModal extends Modal {
+export class ManagedBoundaryUnlockModal extends SnowflakeModal {
 	constructor(
 		app: App,
 		private readonly t: Translate,
@@ -5921,7 +5920,7 @@ function brokenPatternLines(kind: HighlightRuleKind, text: string): number[] {
 	return lines;
 }
 
-class HighlightRuleModal extends Modal {
+class HighlightRuleModal extends SnowflakeModal {
 	private answered: HighlightRuleFormResult | null = null;
 
 	constructor(
@@ -6001,7 +6000,7 @@ class HighlightRuleModal extends Modal {
 				name = next;
 			});
 			text.inputEl.addEventListener('keydown', (event) => {
-				if (event.key === 'Enter') {
+				if (event.key === 'Enter' && !event.isComposing) {
 					event.preventDefault();
 					submit();
 				}
@@ -6169,7 +6168,7 @@ function describeLines(setting: Setting, text: string): void {
 	}
 }
 
-class ChapterNumberRuleModal extends Modal {
+class ChapterNumberRuleModal extends SnowflakeModal {
 	private answered: ChapterNumberRuleFormResult | null = null;
 
 	constructor(
@@ -6252,7 +6251,7 @@ class ChapterNumberRuleModal extends Modal {
 		};
 		const submitOnEnter = (input: HTMLInputElement): void => {
 			input.addEventListener('keydown', (event) => {
-				if (event.key !== 'Enter') return;
+				if (event.isComposing || event.key !== 'Enter') return;
 				event.preventDefault();
 				submit();
 			});

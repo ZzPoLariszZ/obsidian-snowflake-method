@@ -1,6 +1,5 @@
 import {
 	App,
-	Modal,
 	Notice,
 	moment,
 	normalizePath,
@@ -114,6 +113,7 @@ import {
 } from './project-root';
 import { isExplorerScope, type ExplorerScope } from './services';
 import { wireCardDrag } from './ui/entity-form';
+import { SnowflakeModal } from './ui/dialog-base';
 import { submitOnModEnter } from './ui/modal-keys';
 import {
 	addFontFamilyPicker,
@@ -1150,7 +1150,7 @@ interface HighlightOptionsDraft {
  * Dialogues and Custom highlight each a dropdown, applied only when Save is
  * pressed -- closing any other way keeps what stood.
  */
-class HighlightOptionsModal extends Modal {
+class HighlightOptionsModal extends SnowflakeModal {
 	constructor(
 		app: App,
 		private readonly options: {
@@ -3117,7 +3117,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			commit();
 		});
 		field.inputEl.addEventListener('keydown', (event) => {
-			if (event.key !== 'Enter') return;
+			if (event.isComposing || event.key !== 'Enter') return;
 			event.preventDefault();
 			commit();
 		});

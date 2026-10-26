@@ -15,22 +15,42 @@ describe('dialogs', () => {
 		eager: true,
 	});
 
-	it('all wear the plugin’s dialog class', () => {
-		const dialogs: string[] = [];
-		const bare: string[] = [];
+	/** Every dialog declared in the sources, with the file it stands in and the base it is built on. */
+	function declared(): { path: string; name: string; base: string; body: string }[] {
+		const found: { path: string; name: string; base: string; body: string }[] = [];
 		const declaration =
-			/class (\w+)(?:<[^>]*>)? extends (?:Modal|SuggestModal<[^>]*>|FuzzySuggestModal<[^>]*>)\s*\{/gu;
+			/class (\w+)(?:<[^>]*>)? extends ((?:Snowflake)?(?:Modal|SuggestModal|FuzzySuggestModal))(?:<[^>]*>)?\s*\{/gu;
 		for (const [path, text] of Object.entries(sources)) {
 			for (const match of text.matchAll(declaration)) {
-				// The class reads to the next one declared in the file. A dialog
-				// built on one of the plugin's own bases wears what its base puts on.
+				// The class reads to the next one declared in the file.
 				const rest = text.slice(match.index);
 				const next = rest.slice(1).search(/\n(?:export )?(?:abstract )?class /u);
 				const body = next === -1 ? rest : rest.slice(0, next + 1);
-				dialogs.push(match[1] ?? '');
-				if (!body.includes(`this.modalEl.addClass(${'DIALOG_CLASS'}`)) {
-					bare.push(`${path}: ${match[1] ?? ''}`);
-				}
+				found.push({ path, name: match[1] ?? '', base: match[2] ?? '', body });
+			}
+		}
+		return found;
+	}
+
+	it('all build on the plugin’s own bases, which leave a composing Escape to the input method', () => {
+		const onObsidian = declared()
+			.filter((dialog) => !dialog.path.endsWith('/dialog-base.ts') && !dialog.base.startsWith('Snowflake'))
+			.map((dialog) => `${dialog.path}: ${dialog.name}`);
+		expect(onObsidian).toEqual([]);
+	});
+
+	it('all wear the plugin’s dialog class', () => {
+		const dialogs: string[] = [];
+		const bare: string[] = [];
+		for (const { path, name, body } of declared()) {
+			// The three bases wear nothing themselves: they are Obsidian's
+			// dialogs with one key answered differently.
+			if (path.endsWith('/dialog-base.ts')) continue;
+			// A dialog built on one of the plugin's form or confirm bases wears
+			// what its base puts on.
+			dialogs.push(name);
+			if (!body.includes(`this.modalEl.addClass(${'DIALOG_CLASS'}`)) {
+				bare.push(`${path}: ${name}`);
 			}
 		}
 		expect(dialogs.length).toBeGreaterThan(20);

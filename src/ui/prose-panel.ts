@@ -233,7 +233,7 @@ export function renderProsePanel(
 				confirm.addEventListener('click', apply);
 				for (const input of [min, max]) {
 					input.addEventListener('keydown', (event) => {
-						if (event.key === 'Enter') apply();
+						if (event.key === 'Enter' && !event.isComposing) apply();
 					});
 				}
 			},

@@ -765,8 +765,9 @@ class StickyNoteCard implements StickyNoteCardHandle {
 	private onKeyDown(event: KeyboardEvent): void {
 		// The editor's own bindings answer first: its completion popup takes
 		// Escape. (Mod+E is the app's own reading-view hotkey and never reaches
-		// a card, so the mode button and Escape are the ways between faces.)
-		if (event.defaultPrevented) return;
+		// a card, so the mode button and Escape are the ways between faces.) A
+		// key struck while an input method is composing is the composition's.
+		if (event.defaultPrevented || event.isComposing) return;
 		if (event.key === 'Escape' && this.mode === 'editing') {
 			event.preventDefault();
 			void this.setMode('viewing');

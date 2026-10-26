@@ -1,5 +1,6 @@
 import { ItemView, type WorkspaceLeaf } from 'obsidian';
 
+import { keepEscapeInView } from './escape-key';
 import { renderSessionPanel, type SessionPanelBridge } from './session-panel';
 
 export const STATISTICS_VIEW_TYPE = 'snowflake-method-statistics';
@@ -42,6 +43,7 @@ export class SnowflakeStatisticsView extends ItemView {
 
 	onOpen(): Promise<void> {
 		this.contentEl.addClass('snowflake-method-statistics-view');
+		keepEscapeInView(this);
 		this.mount();
 		return Promise.resolve();
 	}

@@ -5,7 +5,7 @@
  * through. Each is a labelled form, as every form the plugin opens is.
  */
 
-import { FuzzySuggestModal, Modal, Notice, Setting, setIcon, setTooltip, type App } from 'obsidian';
+import { Notice, Setting, setIcon, setTooltip, type App, type Modal } from 'obsidian';
 
 import type { EntityRef, EntityRosterEntry, Timeline } from '../domain';
 import { entityGroupLabel, renderRecordPickFrame, wireCardDrag } from './entity-form';
@@ -17,6 +17,7 @@ import {
 	type Translate,
 } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
+import { SnowflakeFuzzySuggestModal, SnowflakeModal } from './dialog-base';
 import { DIALOG_CLASS } from './dialog-class';
 
 interface NameFormSpec {
@@ -240,7 +241,7 @@ export interface TimelineViewDraft {
 }
 
 /** The times offered when a sub-description moves within its timeline. */
-export class TimelineTimePickModal extends FuzzySuggestModal<PickerOption> {
+export class TimelineTimePickModal extends SnowflakeFuzzySuggestModal<PickerOption> {
 	constructor(
 		app: App,
 		placeholder: string,
@@ -266,7 +267,7 @@ export class TimelineTimePickModal extends FuzzySuggestModal<PickerOption> {
 }
 
 /** The timelines the project has that a view does not show yet, picked by name. */
-class TimelinePickModal extends FuzzySuggestModal<Timeline> {
+class TimelinePickModal extends SnowflakeFuzzySuggestModal<Timeline> {
 	constructor(
 		app: App,
 		placeholder: string,
@@ -551,7 +552,7 @@ export interface RecoveredTimelineDraft {
 }
 
 /** Keeps refused sub-description text outside the workspace that has already gone. */
-export class TimelineDraftModal extends Modal {
+export class TimelineDraftModal extends SnowflakeModal {
 	constructor(app: App, private readonly t: Translate, private readonly drafts: readonly RecoveredTimelineDraft[]) {
 		super(app);
 		this.modalEl.addClass(DIALOG_CLASS);

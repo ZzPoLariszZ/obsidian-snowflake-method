@@ -1122,6 +1122,7 @@ export function createMemberCardDeck<
 			commitBody(card);
 		});
 		card.body.addEventListener('keydown', (event) => {
+			if (event.isComposing) return;
 			if (event.key === 'Enter' && Keymap.isModifier(event, 'Mod')) {
 				event.preventDefault();
 				commitBody(card);
