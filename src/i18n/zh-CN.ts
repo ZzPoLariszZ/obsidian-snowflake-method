@@ -1172,6 +1172,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'storyStructure.titleFor.relationship-graph': '{project} · 关系图',
 	'storyStructure.noProject': '打开一个雪花写作项目以查看它的故事结构。',
 	'storyStructure.loadFailed': '无法读取故事结构。',
+	'storyStructure.phone': '可视化工作区在手机上不可用。请在平板或桌面端打开，场景和角色可以在工作台的表格中查看。',
 	'corkboard.display': '显示',
 	'corkboard.cards': '卡片',
 	'corkboard.cards.compact': '紧凑',

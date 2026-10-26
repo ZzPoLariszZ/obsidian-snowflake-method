@@ -1517,11 +1517,14 @@ export default class SnowflakeMethodPlugin
 				void this.openCurrentManuscript();
 			},
 		);
+		// The workspace is not offered on a phone (workspaceOffered): the
+		// stylesheet puts its ribbon action away there, following the body's
+		// class as an iPad splits and widens.
 		this.addRibbonIcon('orbit', this.globalT('commands.openStoryStructure'), () => {
 			void this.openStoryStructure().catch((error: unknown) => {
 				this.showError(error);
 			});
-		});
+		}).addClass('snowflake-method-workspace-ribbon');
 		this.addRibbonIcon('sticker', this.globalT('commands.newStickyNote'), () => {
 			void this.createStickyNoteAndFloat().catch((error: unknown) => {
 				this.showError(error);
@@ -4172,6 +4175,9 @@ export default class SnowflakeMethodPlugin
 		this.settingTab?.refreshRows();
 		for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
 			if (leaf.view instanceof SnowflakeDashboardView) leaf.view.deviceClassChanged();
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)) {
+			if (leaf.view instanceof SnowflakeStoryStructureView) leaf.view.deviceClassChanged();
 		}
 		void this.reconcileStickyFloats().catch((error: unknown) => {
 			this.showError(error);
@@ -7647,6 +7653,18 @@ export default class SnowflakeMethodPlugin
 		this.app.saveLocalStorage(key, { ...saved, ...patch });
 	}
 
+	/**
+	 * Whether the visualization workspace is offered here: a project is
+	 * open, and the screen is not a phone's. A phone's screen leaves the
+	 * boards no room worth exploring, and the dashboard's tables carry the
+	 * scenes and the characters there; a tablet keeps the workspace whole.
+	 * Every door follows this: the commands, the ribbon action, and the
+	 * dashboard's buttons, menu row and hint.
+	 */
+	private workspaceOffered(): boolean {
+		return this.settings.recentProjectPath !== null && !isPhoneBody(this.app.workspace.containerEl.doc);
+	}
+
 	async openStoryStructure(
 		visualization?: StoryStructureVisualization,
 		options: { newTab?: boolean; projectPath?: string | null; corkboardView?: CorkboardView } = {},
@@ -10607,7 +10625,7 @@ export default class SnowflakeMethodPlugin
 			id: 'open-story-structure',
 			name: this.globalT('commands.openStoryStructure'),
 			checkCallback: (checking) => {
-				const available = this.settings.recentProjectPath !== null;
+				const available = this.workspaceOffered();
 				if (!checking && available) {
 					void this.openStoryStructure().catch((error: unknown) => {
 						this.showError(error);
@@ -10621,7 +10639,7 @@ export default class SnowflakeMethodPlugin
 			id: 'open-ordered-corkboard',
 			name: this.globalT('commands.openCorkboard'),
 			checkCallback: (checking) => {
-				const available = this.settings.recentProjectPath !== null;
+				const available = this.workspaceOffered();
 				if (!checking && available) {
 					void this.openStoryStructure('corkboard-ordered').catch(
 						(error: unknown) => {
@@ -10636,7 +10654,7 @@ export default class SnowflakeMethodPlugin
 			id: 'open-freeform',
 			name: this.globalT('commands.openFreeform'),
 			checkCallback: (checking) => {
-				const available = this.settings.recentProjectPath !== null;
+				const available = this.workspaceOffered();
 				if (!checking && available) {
 					// The tab's saved key is the one it has always had, so layouts kept before the canvas was built still open.
 					void this.openStoryStructure('corkboard-freeform').catch((error: unknown) => {
@@ -10650,7 +10668,7 @@ export default class SnowflakeMethodPlugin
 			id: 'open-timeline',
 			name: this.globalT('commands.openTimeline'),
 			checkCallback: (checking) => {
-				const available = this.settings.recentProjectPath !== null;
+				const available = this.workspaceOffered();
 				if (!checking && available) {
 					void this.openStoryStructure('timeline').catch((error: unknown) => {
 						this.showError(error);
@@ -10663,7 +10681,7 @@ export default class SnowflakeMethodPlugin
 			id: 'open-beat-sheet',
 			name: this.globalT('commands.openBeatSheet'),
 			checkCallback: (checking) => {
-				const available = this.settings.recentProjectPath !== null;
+				const available = this.workspaceOffered();
 				if (!checking && available) {
 					void this.openStoryStructure('beat-sheet').catch((error: unknown) => {
 						this.showError(error);
@@ -10676,7 +10694,7 @@ export default class SnowflakeMethodPlugin
 			id: 'open-relationship-graph',
 			name: this.globalT('commands.openRelationshipGraph'),
 			checkCallback: (checking) => {
-				const available = this.settings.recentProjectPath !== null;
+				const available = this.workspaceOffered();
 				if (!checking && available) {
 					void this.openStoryStructure('relationship-graph').catch((error: unknown) => {
 						this.showError(error);

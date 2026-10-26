@@ -1374,11 +1374,18 @@ describe('styles.css', () => {
 		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');
 		expect(declarations('.snowflake-method-diagnostics-report')).toContain('white-space: pre-wrap');
 		// The dashboard scrolls as one page on a phone and its frames run to
-		// their content.
+		// their content. The workspace is not offered there: its ribbon action
+		// is away, a tab that opens all the same shows its note, and no phone
+		// rule lays out a board of it.
 		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-layout')).toContain('flex: 0 0 auto');
 		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-table-body')).toContain('overflow: visible');
 		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box')).toContain(
 			'overflow-y: visible',
+		);
+		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
+		expect(declarations('body.is-phone .snowflake-method-workspace-phone')).toContain('display: flex');
+		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(
+			/body\.is-phone[^{]*snowflake-method-(?:timeline|beat-sheet|freeform|relationship-graph|graph-controls|corkboard)/u,
 		);
 	});
 });

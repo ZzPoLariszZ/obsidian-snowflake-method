@@ -108,9 +108,9 @@ export interface StoryStructureViewDeps {
 	/** Remains truthful for drafts from leaves that closed before the plugin unloads. */
 	unloading?(): boolean;
 	/**
-	 * Whether the app runs on a phone, where a new tab starts the timeline's
-	 * and the beat sheet's pools folded away: a lane and a pool do not both
-	 * fit a phone's width, and the lane is what the tab was opened for.
+	 * Whether the app runs on a phone, where the workspace is not offered:
+	 * a tab that opens there all the same, kept from a wider screen, says
+	 * so and draws no board.
 	 */
 	phone?(): boolean;
 }
@@ -159,15 +159,6 @@ export class SnowflakeStoryStructureView extends ItemView {
 	) {
 		super(leaf);
 		this.filterPanel = new FilterPanel(this.app, this.t);
-		if (deps.phone?.() === true) {
-			this.state = {
-				...this.state,
-				timeline: { ...this.state.timeline, poolCollapsed: true },
-				beatSheet: { ...this.state.beatSheet, poolCollapsed: true },
-			};
-			this.timelineMemory.poolCollapsed = true;
-			this.beatSheetMemory.poolCollapsed = true;
-		}
 		// The app's keymap reads Mod+Enter at the window, ahead of any control
 		// in the leaf; a scope of the view's own is what stands ahead of it
 		// while the leaf is active, so a card's body box can save on the chord.
@@ -512,7 +503,25 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	private frameKey(): string {
-		return `${this.shownFingerprint ?? ''}|${this.model?.projectId ?? ''}|${this.model?.locale ?? ''}|${this.state.visualization}|${this.corkboardView}`;
+		return `${this.shownFingerprint ?? ''}|${this.model?.projectId ?? ''}|${this.model?.locale ?? ''}|${this.state.visualization}|${this.corkboardView}|${this.onPhone() ? 'phone' : 'wide'}`;
+	}
+
+	/** Whether the tab stands on a phone, where it shows its note instead of a board. */
+	private onPhone(): boolean {
+		return this.deps.phone?.() === true;
+	}
+
+	/**
+	 * Draws again after the device class flips: an iPad split to a phone's
+	 * width puts the board away for the note, and widening brings it back.
+	 */
+	deviceClassChanged(): void {
+		if (!this.opened) return;
+		if (!this.containerEl.isShown()) {
+			this.queueRefreshWhenShown();
+			return;
+		}
+		void this.refresh();
 	}
 
 	/** Shows another view on the corkboard tab: the board is remade for it, its drafts settled first. */
@@ -563,6 +572,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 		const root = this.contentEl;
 		root.empty();
 		this.shownFrame = this.frameKey();
+		if (this.onPhone()) {
+			this.renderPhoneNote(root);
+			return;
+		}
 		const family = visualizationFamily(this.state.visualization);
 		const families = renderTabStrip(root, {
 			label: this.t('storyStructure.family'),
@@ -801,6 +814,29 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private disposeBoard(): void {
 		this.board?.dispose();
 		this.board = null;
+	}
+
+	/**
+	 * The workspace is not offered on a phone: its boards want more room
+	 * than a phone's screen has, and the dashboard's tables carry the scenes
+	 * and the characters there. A tab that opens on one all the same, kept
+	 * from a wider screen, says so and leads to the dashboard.
+	 */
+	private renderPhoneNote(root: HTMLElement): void {
+		const note = root.createDiv({ cls: 'snowflake-method-workspace-phone' });
+		note.createEl('p', { cls: 'snowflake-method-tab-planned', text: this.t('storyStructure.phone') });
+		const path = this.state.projectPath;
+		if (path === null) return;
+		const open = note.createEl('button', {
+			cls: 'snowflake-method-workspace-phone-open',
+			text: this.t('commands.openDashboard'),
+			attr: { type: 'button' },
+		});
+		open.addEventListener('click', () => {
+			void this.deps.host.selectProject(path).catch((error: unknown) => {
+				new Notice(error instanceof Error ? error.message : this.t('errors.unknown'));
+			});
+		});
 	}
 
 	private renderError(error: unknown): void {

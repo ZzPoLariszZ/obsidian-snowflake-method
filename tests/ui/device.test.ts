@@ -49,7 +49,11 @@ function mediaWindow(answers: Record<string, boolean>) {
 
 afterEach(() => {
 	Platform.isMobile = false;
+	document.body.className = '';
 });
+
+/** A turn of the event loop, for the body's observer to report. */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('device class', () => {
 	it('is a desktop whatever the window says while the app is not the mobile one', () => {
@@ -76,26 +80,37 @@ describe('device class', () => {
 		expect(coarsePointer(mediaWindow({}).win)).toBe(false);
 	});
 
-	it('watches the flip between tablet and phone and releases its listener', () => {
+	it('watches the body for the flip between tablet and phone and releases its watch', async () => {
 		Platform.isMobile = true;
-		const media = mediaWindow({ [TABLET_QUERY]: true });
+		document.body.classList.add('is-tablet');
 		const seen = vi.fn();
-		const release = watchDeviceClass(media.win, seen);
-		expect(media.count(TABLET_QUERY)).toBe(1);
-		media.flip(TABLET_QUERY, true);
+		const release = watchDeviceClass(window, seen);
+		document.body.classList.add('theme-dark');
+		await settle();
 		expect(seen).not.toHaveBeenCalled();
-		media.flip(TABLET_QUERY, false);
-		expect(seen).toHaveBeenCalledWith('phone', 'tablet');
-		media.flip(TABLET_QUERY, true);
+		document.body.classList.remove('is-tablet');
+		document.body.classList.add('is-phone');
+		await settle();
+		expect(seen).toHaveBeenCalledExactlyOnceWith('phone', 'tablet');
+		document.body.classList.remove('theme-dark');
+		await settle();
+		expect(seen).toHaveBeenCalledTimes(1);
+		document.body.classList.remove('is-phone');
+		document.body.classList.add('is-tablet');
+		await settle();
 		expect(seen).toHaveBeenLastCalledWith('tablet', 'phone');
 		release();
-		expect(media.count(TABLET_QUERY)).toBe(0);
+		document.body.classList.add('is-phone');
+		await settle();
+		expect(seen).toHaveBeenCalledTimes(2);
 	});
 
-	it('watches nothing on a desktop', () => {
-		const media = mediaWindow({ [TABLET_QUERY]: true });
-		const release = watchDeviceClass(media.win, vi.fn());
-		expect(media.count(TABLET_QUERY)).toBe(0);
+	it('watches nothing on a desktop', async () => {
+		const seen = vi.fn();
+		const release = watchDeviceClass(window, seen);
+		document.body.classList.add('is-phone');
+		await settle();
+		expect(seen).not.toHaveBeenCalled();
 		release();
 	});
 });

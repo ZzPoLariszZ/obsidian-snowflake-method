@@ -100,7 +100,7 @@ async function flush(): Promise<void> {
 	for (let round = 0; round < 10; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mount() {
+function mount(step = 3) {
 	const model = makeModel();
 	const selectStep = vi.fn(() => Promise.resolve());
 	const host = {
@@ -133,8 +133,8 @@ function mount() {
 		projectPath: PROJECT,
 		stateDelivered: true,
 		stepChosen: true,
-		selectedStep: 3,
-		selectedPane: { kind: 'step', step: 3 },
+		selectedStep: step,
+		selectedPane: { kind: 'step', step },
 		updateViewTitle: vi.fn(),
 		renderMigrationCallout: vi.fn(),
 		renderStepHeader: vi.fn(),
@@ -193,7 +193,6 @@ describe('the dashboard rail on a phone', () => {
 			'---',
 			'dashboard.statistics',
 			'dashboard.tasks',
-			'dashboard.visualizationWorkspace',
 			'---',
 			'Novel',
 			'---',
@@ -235,5 +234,75 @@ describe('a rail row as a menu row', () => {
 		expect(railMenuTitle({ leading: { icon: 'map' }, label: 'Places' })).toBe('Places');
 		expect(railMenuIcon({ leading: { icon: 'map' }, indicator: { count: 4 }, damaged: false })).toBe('map');
 		expect(railMenuIcon({ leading: { icon: 'map' }, indicator: { count: 4 }, damaged: true })).toBe('triangle-alert');
+	});
+});
+
+/**
+ * The doors to the visualization workspace, which is not offered on a phone:
+ * the member steps' button opens the base there, its menu names no
+ * visualization, the scene list's hint leaves the workspace out, and the
+ * rail's menu leaves out its row (above). A device class that flips while
+ * the dashboard stands draws the doors again.
+ */
+describe('the doors to the workspace on a phone', () => {
+	beforeAll(() => {
+		installObsidianDom(window);
+	});
+
+	beforeEach(() => {
+		menus.length = 0;
+		document.body.replaceChildren();
+	});
+
+	afterEach(() => {
+		document.body.classList.remove('is-phone');
+	});
+
+	const trigger = (root: HTMLElement): void => {
+		root.querySelector<HTMLButtonElement>('.snowflake-method-base-split-button .snowflake-method-character-action-menu-trigger')?.click();
+	};
+
+	it('open the workspace from the character step off a phone, every visualization in the menu', async () => {
+		const { view, root } = mount();
+		await view.refresh();
+		expect(root.querySelector('.snowflake-method-open-base')?.textContent).toBe('actions.openWorkspace');
+		trigger(root);
+		const rows = menus[menus.length - 1] ?? [];
+		expect(titles(rows).filter((title) => title === 'actions.openVisualization')).toHaveLength(5);
+		expect(root.querySelector('.snowflake-method-workspace-entry')).not.toBeNull();
+	});
+
+	it('open the base from the character step on a phone, no visualization in the menu', async () => {
+		document.body.classList.add('is-phone');
+		const { view, root } = mount();
+		await view.refresh();
+		expect(root.querySelector('.snowflake-method-open-base')?.textContent).toBe('actions.openBase');
+		trigger(root);
+		const rows = menus[menus.length - 1] ?? [];
+		expect(titles(rows)).not.toContain('actions.openVisualization');
+		expect(titles(rows)).toContain('actions.restoreBase');
+	});
+
+	it('leave the scene list’s hint without the workspace on a phone, and keep it elsewhere', async () => {
+		const wide = mount(8);
+		await wide.view.refresh();
+		expect(wide.root.querySelector('.snowflake-method-hint-link')).not.toBeNull();
+		document.body.classList.add('is-phone');
+		const phone = mount(8);
+		await phone.view.refresh();
+		expect(phone.root.querySelector('.snowflake-method-hint-link')).toBeNull();
+		expect(phone.root.querySelectorAll('.snowflake-method-hint-emphasis').length).toBe(
+			wide.root.querySelectorAll('.snowflake-method-hint-emphasis').length,
+		);
+	});
+
+	it('draw the doors again when the device class flips', async () => {
+		const { view, root } = mount();
+		await view.refresh();
+		expect(root.querySelector('.snowflake-method-open-base')?.textContent).toBe('actions.openWorkspace');
+		document.body.classList.add('is-phone');
+		view.deviceClassChanged();
+		await flush();
+		expect(root.querySelector('.snowflake-method-open-base')?.textContent).toBe('actions.openBase');
 	});
 });

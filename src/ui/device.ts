@@ -39,25 +39,29 @@ export function statusBarShown(): boolean {
 }
 
 /**
- * Calls back when the device class flips while the app runs. Nothing to
- * watch on a desktop. Returns the release.
+ * Calls back when the device class flips while the app runs, read from the
+ * body: Obsidian answers the same media query through a short debounce and
+ * then dresses the body, and the stylesheet and the plugin's own readers go
+ * by the body, so the query alone would report a flip the body has not yet
+ * made. Nothing to watch on a desktop. Returns the release.
  */
 export function watchDeviceClass(
-	win: MediaWindow,
+	win: Pick<Window, 'document'>,
 	callback: (next: DeviceClass, previous: DeviceClass) => void,
 ): () => void {
 	if (!isMobileDevice()) return () => {};
-	const query = win.matchMedia(TABLET_QUERY);
-	let previous: DeviceClass = query.matches ? 'tablet' : 'phone';
-	const onChange = (): void => {
-		const next: DeviceClass = query.matches ? 'tablet' : 'phone';
+	const body = win.document.body;
+	const read = (): DeviceClass => (body.classList.contains('is-phone') ? 'phone' : 'tablet');
+	let previous = read();
+	const observer = new MutationObserver(() => {
+		const next = read();
 		if (next === previous) return;
 		const was = previous;
 		previous = next;
 		callback(next, was);
-	};
-	query.addEventListener('change', onChange);
+	});
+	observer.observe(body, { attributes: true, attributeFilter: ['class'] });
 	return () => {
-		query.removeEventListener('change', onChange);
+		observer.disconnect();
 	};
 }

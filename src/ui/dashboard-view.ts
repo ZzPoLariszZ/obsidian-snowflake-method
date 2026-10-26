@@ -271,6 +271,8 @@ export interface RailRowSpec {
 	damaged: boolean;
 	/** A row that opens somewhere else rather than a pane here, read as a link. */
 	kind?: 'link';
+	/** A row for a tool a phone has not got: the rail's menu there leaves it out. */
+	notOnPhone?: true;
 	/** Absent on a row with nothing to count and nothing to report; an icon says the row leads away. */
 	indicator?: { count: number } | { status: StepStatus } | { icon: string };
 	onClick: () => void;
@@ -1425,7 +1427,11 @@ export class SnowflakeDashboardView extends ItemView {
 
 	/** The device's class changed under the view: the rail comes or goes with it. */
 	deviceClassChanged(): void {
-		if (this.rendered) this.paintRail();
+		if (!this.rendered) return;
+		this.paintRail();
+		// The doors to the workspace are drawn by the device class too: a tablet
+		// split to a phone's width loses them, and widening brings them back.
+		void this.refresh();
 	}
 
 	/** Folds the rail to its marks, or opens it out again, and keeps the choice with the view. */
@@ -2120,11 +2126,13 @@ export class SnowflakeDashboardView extends ItemView {
 		// first row: a group with no rows on this project leaves no gap.
 		let rows = 0;
 		let rule = false;
+		const phone = isPhoneBody(this.contentEl.doc);
 		for (const entry of this.railRows) {
 			if (entry === 'divider') {
 				rule = rows > 0;
 				continue;
 			}
+			if (phone && entry.notOnPhone === true) continue;
 			if (rule) menu.addSeparator();
 			rule = false;
 			rows += 1;
@@ -2338,6 +2346,7 @@ export class SnowflakeDashboardView extends ItemView {
 			current: 'true',
 			damaged: false,
 			indicator: { icon: 'square-arrow-out-up-right' },
+			notOnPhone: true,
 			onClick: () => {
 				void this.host.openStoryStructure(undefined, { projectPath: this.projectPath })
 					.catch((error: unknown) => new Notice(error instanceof Error ? error.message : this.t('errors.unknown')));
@@ -6440,9 +6449,10 @@ export class SnowflakeDashboardView extends ItemView {
 	 * Scenes and characters open the visualization workspace, with every
 	 * visualization and their base in the menu: the scene steps bring the tab
 	 * forward as it last stood, the character steps open the corkboard on its
-	 * character view. Worldbuilding kinds open their base directly. Existing
-	 * views remain available on read-only projects; only writing a base is
-	 * refused.
+	 * character view. Worldbuilding kinds open their base directly, and so do
+	 * the scenes and characters on a phone, where the workspace is not
+	 * offered. Existing views remain available on read-only projects; only
+	 * writing a base is refused.
 	 */
 	private renderOpenBase(
 		actions: HTMLElement,
@@ -6451,7 +6461,7 @@ export class SnowflakeDashboardView extends ItemView {
 	): void {
 		const scenes = id === 'scenes';
 		const characters = id === 'characters';
-		const workspace = scenes || characters;
+		const workspace = (scenes || characters) && !isPhoneBody(this.contentEl.doc);
 		const openBase = (): void => {
 			void this.runAndRefresh(() => this.host.openProjectBase(id));
 		};
@@ -7730,30 +7740,33 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		imaginationHint.addClass('snowflake-method-hint-emphasis');
 		// The hint leads to the visualization workspace, as the creation tools'
-		// own row does, with the workspace opened on whatever view it last showed.
-		const workspaceHint = hintsList.createEl('li');
-		workspaceHint.createSpan({ text: this.t('step8.hints.workspaceBefore') });
-		const workspaceAction = workspaceHint.createEl('button', {
-			cls: 'snowflake-method-hint-link',
-			attr: {
-				'aria-label': this.t('step8.hints.workspaceAria'),
-				type: 'button',
-			},
-		});
-		const workspaceIcon = workspaceAction.createSpan({
-			cls: 'snowflake-method-hint-link-icon',
-		});
-		setIcon(workspaceIcon, 'orbit');
-		workspaceAction.createSpan({
-			cls: 'snowflake-method-hint-link-label',
-			text: this.t('step8.hints.workspaceAction'),
-		});
-		workspaceAction.addEventListener('click', () => {
-			void this.runAndRefresh(() =>
-				this.host.openStoryStructure(undefined, { projectPath: this.projectPath }),
-			);
-		});
-		workspaceHint.createSpan({ text: this.t('step8.hints.workspaceAfter') });
+		// own row does, with the workspace opened on whatever view it last
+		// showed. Not on a phone, where the workspace is not offered.
+		if (!isPhoneBody(this.contentEl.doc)) {
+			const workspaceHint = hintsList.createEl('li');
+			workspaceHint.createSpan({ text: this.t('step8.hints.workspaceBefore') });
+			const workspaceAction = workspaceHint.createEl('button', {
+				cls: 'snowflake-method-hint-link',
+				attr: {
+					'aria-label': this.t('step8.hints.workspaceAria'),
+					type: 'button',
+				},
+			});
+			const workspaceIcon = workspaceAction.createSpan({
+				cls: 'snowflake-method-hint-link-icon',
+			});
+			setIcon(workspaceIcon, 'orbit');
+			workspaceAction.createSpan({
+				cls: 'snowflake-method-hint-link-label',
+				text: this.t('step8.hints.workspaceAction'),
+			});
+			workspaceAction.addEventListener('click', () => {
+				void this.runAndRefresh(() =>
+					this.host.openStoryStructure(undefined, { projectPath: this.projectPath }),
+				);
+			});
+			workspaceHint.createSpan({ text: this.t('step8.hints.workspaceAfter') });
+		}
 		const revisionHint = hintsList.createEl('li', {
 			text: this.t('step8.hints.revision'),
 		});

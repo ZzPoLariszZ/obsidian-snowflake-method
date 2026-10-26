@@ -1277,6 +1277,8 @@ export const en = {
 	'storyStructure.noProject':
 		'Open a Snowflake project to see its story structure.',
 	'storyStructure.loadFailed': 'The story structure could not be read.',
+	'storyStructure.phone':
+		'The visualization workspace is not available on a phone. Open it on a tablet or on the desktop. The scenes and characters are in the dashboard\'s tables.',
 	'corkboard.display': 'Display',
 	'corkboard.cards': 'Cards',
 	'corkboard.cards.compact': 'Compact',

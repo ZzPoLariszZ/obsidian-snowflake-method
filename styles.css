@@ -19891,8 +19891,7 @@ body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] 
    down the page under the bar that searches them. The virtual table reads
    which element scrolls off this layout (scrollerOf) and windows its rows
    by the page. */
-body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard,
-body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-story-structure {
+body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard {
 	overflow-y: auto;
 }
 
@@ -19969,10 +19968,6 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowf
 
 body.is-phone .snowflake-method-source-summary-body {
 	max-height: 14rem;
-}
-
-body.is-phone .snowflake-method-story-structure .snowflake-method-tab-panel {
-	min-height: 20rem;
 }
 
 /* -- Phone: the dashboard's rail as a menu --------------------------------- */
@@ -20055,10 +20050,6 @@ body.is-phone .snowflake-method-panel {
 	padding: var(--size-4-3);
 }
 
-body.is-phone .snowflake-method-story-structure {
-	--snowflake-method-tab-width: 7rem;
-}
-
 body.is-phone .snowflake-method-tabs {
 	padding-inline: var(--size-4-3);
 }
@@ -20078,8 +20069,7 @@ body.is-phone .snowflake-method-tab-scroll.is-self-scrolling {
 }
 
 body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
-body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list,
-body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-corkboard-scroll {
+body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
 	margin-inline-end: calc(
 		-1 * (var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px)
 	);
@@ -20138,13 +20128,12 @@ body.is-phone .snowflake-method-tracking-modal-list {
 
 /* -- Phone: hung panels as sheets ------------------------------------------ */
 
-/* A panel hung under a button on the desktop -- the filter, the typography,
-   a card's colours -- is a sheet at the foot of the screen on a phone, as
-   the app's menus are: the width of the screen, above the keyboard, padded
-   past the safe area. The view code writes it no top or left (placePanel). */
+/* A panel hung under a button on the desktop -- the filter, the typography
+   -- is a sheet at the foot of the screen on a phone, as the app's menus
+   are: the width of the screen, above the keyboard, padded past the safe
+   area. The view code writes it no top or left (placePanel). */
 body.is-phone .snowflake-method-filter-panel,
-body.is-phone .snowflake-method-presentation-panel,
-body.is-phone .snowflake-method-corkboard-color-panel {
+body.is-phone .snowflake-method-presentation-panel {
 	position: fixed;
 	inset: auto 0 var(--keyboard-height, 0px) 0;
 	z-index: var(--layer-menu);
@@ -20155,23 +20144,6 @@ body.is-phone .snowflake-method-corkboard-color-panel {
 	border-width: 0;
 	border-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
 	box-shadow: var(--shadow-l);
-}
-
-/* The graph's controls, hung in a corner on the desktop, cover a phone's
-   whole canvas; as a sheet over its lower half they leave the graph in view. */
-body.is-phone .snowflake-method-graph-controls {
-	inset: auto 0 0 0;
-	width: auto;
-	max-height: 50%;
-	border-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
-}
-
-/* The view field at the start of the graph's and the corkboard's bands is a
-   card's width on the desktop, which is a phone's whole band: narrower
-   there, so the band's first screen shows that there is more to draw in. */
-body.is-phone .snowflake-method-relationship-graph-toolbar,
-body.is-phone .snowflake-method-corkboard-band.snowflake-method-balanced-toolbar {
-	--snowflake-method-toolbar-start: 9rem;
 }
 
 /* -- Phone: boards --------------------------------------------------------- */
@@ -20198,22 +20170,29 @@ body.is-phone .snowflake-method-sticky-layer {
 	display: none;
 }
 
-/* The freeform canvas's minimap and the button that folds it: a phone's
-   corner has no room for either, and the quick strip comes in to the edge. */
-body.is-phone .snowflake-method-freeform-canvas .react-flow__minimap,
-body.is-phone .snowflake-method-freeform-minimap-collapse {
-	display: none;
-}
-
-body.is-phone .snowflake-method-freeform-quick {
-	inset-block-end: var(--size-4-3);
-	max-width: calc(100% - 2 * var(--size-4-3));
-}
-
 /* The gallery's pictures, and the step between them, at a phone's width. */
 body.is-phone .snowflake-method-gallery {
 	--snowflake-method-gallery-size: 11rem;
 	--snowflake-method-gallery-shift: 5rem;
+}
+
+/* -- Phone: the workspace put away ----------------------------------------- */
+
+/* The visualization workspace is not offered on a phone (workspaceOffered
+   in the plugin): its boards want more room than a phone's screen has, and
+   the dashboard's tables carry the scenes and the characters there. The
+   ribbon action that opens it is away, and a tab kept from a wider screen
+   shows a note and the way to the dashboard. */
+body.is-phone .snowflake-method-workspace-ribbon {
+	display: none;
+}
+
+body.is-phone .snowflake-method-workspace-phone {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--size-4-3);
+	padding: var(--size-4-4);
 }
 
 /* -- Tablet: floating notes ------------------------------------------------ */
