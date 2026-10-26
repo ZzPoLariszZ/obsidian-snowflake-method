@@ -1,6 +1,7 @@
-import { App, Modal, Notice, Platform } from 'obsidian';
+import { App, Notice, Platform } from 'obsidian';
 
 import { TABLET_QUERY } from './device';
+import { SnowflakeModal } from './dialog-base';
 import { DIALOG_CLASS } from './dialog-class';
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string;
@@ -181,7 +182,7 @@ export function reportText(lines: [string, string][], recording: RecordedEvent[]
  * evidence a phone can give. Recording closes the dialog, since a touch
  * outside it would only close it, and the dialog returns with the recording.
  */
-export class MobileDiagnosticsModal extends Modal {
+export class MobileDiagnosticsModal extends SnowflakeModal {
 	constructor(
 		app: App,
 		private readonly deps: MobileDiagnosticsDeps,
