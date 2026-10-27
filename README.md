@@ -82,7 +82,7 @@ Thank you for your support!
 | Feature | What it provides |
 |---|---|
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
-| Guided dashboard | Move through all ten steps and mark your own progress, with no validation rules to block you. Fold the dashboard's rail down to its numbers and icons whenever you need more room. |
+| Guided dashboard | Move through all ten steps and mark your own progress, with no validation rules to block you. Fold the dashboard's rail down to its numbers and icons whenever you need more room. Ctrl+Enter, or Cmd+Enter on a Mac, saves the step you're writing, as it submits the plugin's dialogs. |
 | Freeform mode | Set the ten steps aside and work straight from characters, scenes, and worldbuilding. |
 | Worldbuilding | Track times, locations, and items beside characters and scenes. Add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
@@ -90,7 +90,7 @@ Thank you for your support!
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
 | Import and series | Bring any part of a story's design in from another project, and keep the books of a series in step with each other. |
 | Story structure | See every scene as a card in narrative order, or switch to your characters or a worldbuilding kind, and reorder and edit them right on the cards. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. The relationship graph draws the relationships you recorded as labeled lines between your characters and worldbuilding notes, and opens Obsidian's own graph on the scenes and their chapters. |
-| Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. |
+| Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. Bring notes from anywhere in the vault in as chapters. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. Keep the look to the manuscript stream, or apply it to your Snowflake projects or the whole vault. |
 | Typewriter scrolling | Keep the line you are writing in the middle of the page. |
 | Focus mode | Fade everything except the paragraph you are writing, with four levels to choose from. |
@@ -240,6 +240,8 @@ In the manuscript stream, click any chapter and it switches to an editing view. 
 **Search and replace** reaches the whole manuscript. Press Ctrl+F, or Cmd+F on a Mac, and a bar like Obsidian's own opens above the page. It finds every match in every chapter, even the ones the stream hasn't loaded yet, and Enter takes you to the next one. Buttons in the box match case, match whole words or read the query as a regular expression. The arrow at the left, or Ctrl+Alt+F, opens the replace row. In the note you're writing in, Undo takes a replacement back. Replace all asks before it changes other notes, because those are saved straight away. Replacing text a revision or foreshadowing marks asks first too, since the mark would lose its place.
 
 **The right-click menu** has more for the words you select. It works in the manuscript stream, in your projects' notes, and in the text boxes of the dashboard, the plugin's dialogs and the visualization workspace's cards. **Add as entity** asks which kind of note to make, from characters, scenes and your worldbuilding kinds. That kind's form then opens with the words as its name, while the page you're on stays in front. **Add to existing entity as alias** asks for a kind and then a note, and adds the words to its aliases. **Add as sticky note** puts the words on a new sticky note. The menu also exports the selected words as plain text, to a new numbered excerpt file each time. In a note it exports the whole note too, and in the manuscript stream the whole manuscript. In a text box, right-click words you've already selected to get this menu, with Cut, Copy and Paste at its top.
+
+**Import into manuscript stream** brings notes from anywhere in the vault into the book. Right-click a file or folder in Obsidian's file explorer, or several selected at once, and the plugin's section of the menu offers it. The Markdown and plain-text files among them are copied to the end of the current project's manuscript as new chapters named after their files, in the order the explorer shows them, with folders opened all the way down. A dialog first says how many notes come, how many files are skipped and that the import can't be undone. Files that aren't notes, notes already in the manuscript and the project's own records are left out. The originals stay where they are, and the words brought in are never counted as writing.
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_en.png"><img src="assets/screenshots/manuscript_typography_en.png" width="100%" alt="The first chapter of the manuscript stream open for writing in focus mode, with the ribbon, tab bar and status bar hidden. The prose is set in a handwriting style font on a tinted page, justified, with indented first lines and a dashed guide down the left edge of the text column. The paragraph with the caret stays at full contrast while the heading and the other paragraphs are faded, and the names Mistriver and Nora are marked in the accent color." /></a></p>
 
@@ -818,7 +820,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 功能 | 说明 |
 |---|---|
 | Obsidian 原生项目 | 概述、角色、场景与初稿都保存为普通的本地笔记。 |
-| 十步引导工作台 | 浏览完整流程，自己掌握进度，不会被校验拦住。需要空间时，可以把旁边的导航栏收成一列图标。 |
+| 十步引导工作台 | 浏览完整流程，自己掌握进度，不会被校验拦住。需要空间时，可以把旁边的导航栏收成一列图标。Ctrl+Enter（Mac 上是 Cmd+Enter）可以保存正在写的一步，插件的对话框也用它提交。 |
 | 自由模式 | 把十个步骤放到一边，直接从角色、场景与世界观入手。 |
 | 世界观 | 在角色与场景之外，还能管理时间、地点与物品，也可以自建种类。每类成员都可以配置类别、状态与关系。 |
 | 自定义字段 | 给任意笔记加上故事需要的字段，常用的一组字段可以存为该种类的模板。 |
@@ -826,7 +828,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 项目归档 | 把暂时写完的项目收起来，需要时再取回。 |
 | 导入与系列 | 从另一个项目导入故事设计的任何部分，同一系列的几册书也能保持一致。 |
 | 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。看板也可以换成角色或任一类世界观。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。关系图把你记下的关系画成角色与世界观笔记之间带标签的连线，场景与正文章节的联系则交给 Obsidian 自带的关系图谱来显示。 |
-| 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。 |
+| 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。仓库里任何位置的笔记都能作为章节导入。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。这套版面可以只用在正文流，也可以用到雪花项目或整个仓库的笔记上。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落以外的一切。 |
@@ -976,6 +978,8 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 **查找和替换**覆盖整部正文。按 Ctrl+F（Mac 上是 Cmd+F），页面上方就会打开一个和 Obsidian 自带的一样的查找栏。它会找出每一章里的每一处匹配，正文流还没有载入的章节也不例外，按 Enter 就能跳到下一处。输入框里的按钮可以区分大小写、全字匹配，或者把查询当作正则表达式。点左侧的箭头或按 Ctrl+Alt+F，可以打开替换栏。在正在写的笔记里，替换可以撤销。全部替换要改动其他笔记时，会先请你确认，因为那些笔记会立即保存。替换修订或伏笔标记的文字时，也会先请你确认，因为标记会因此失效。
 
 **右键菜单**为选中的文字提供了更多操作，正文流、项目的笔记，以及工作台、插件对话框和可视化工作区卡片上的文本框都可以使用。**添加为实体**会先问要建哪一类实体，可以是角色、场景，也可以是你的任一类世界观，然后打开这一类的表单，并把选中的文字填作名称，你所在的页面保持不变。**加入已有实体作为别名**会先问种类，再选一篇笔记，把选中的文字加进它的别名。**添加为便签**会把这些文字写进一张新便签。菜单还能把选中的文字导出为纯文本，每次都写进一个新的带编号的节选文件。在笔记里还能导出整篇笔记，在正文流里还能导出整部正文。在文本框里，先选中文字再在上面点击右键，就会出现这个菜单，顶部仍有剪切、复制和粘贴。
+
+**导入正文流**能把仓库中任意位置的笔记收进这本书。在 Obsidian 的文件列表中右键一个文件或文件夹，或同时选中的多个，插件的菜单区就会提供这一项。其中的 Markdown 笔记和纯文本文件会复制到当前项目正文流的末尾，成为以文件名命名的新章节，顺序与文件列表中显示的一致，文件夹会一层层展开。对话框会先说明将导入几篇笔记、跳过几个文件，以及此操作无法撤销。不是笔记的文件、已在正文流中的笔记和项目自己的记录都会被跳过。原文件保持不变，导入的文字也不会计入写作字数。
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_cn.png"><img src="assets/screenshots/manuscript_typography_cn.png" width="100%" alt="正文流的第一章在专注模式下打开写作，功能区、标签栏和状态栏都隐藏了。正文用楷体字排在带底色的纸面上，两端对齐，首行缩进两字，文字栏左缘有一道虚线参考线。光标所在的段落保持全黑，标题和其他段落都变淡了，雾川镇、林晚与钟楼等名字以强调色标出，右下角露出一张修订卡片。" /></a></p>
 
