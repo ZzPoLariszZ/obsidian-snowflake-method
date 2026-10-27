@@ -13527,6 +13527,19 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	pointer-events: none;
 }
 
+/* Obsidian marks every body child after the app container as ground the
+   window cannot be dragged by, so that a menu or popup over the tab strip
+   does not carry the strip's drag. The layer spans the whole window, and
+   marked so it took every drag region with it: on a Mac the tab strip and
+   the ribbon's top no longer moved the window while the plugin was on. It
+   answers as Obsidian's own modal container does, with no region of its
+   own, and leaves refusing the drag to the cards standing on it. Written
+   under Obsidian's own selector so that it outweighs it whichever
+   stylesheet loads last. */
+body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
+	-webkit-app-region: initial;
+}
+
 .snowflake-method-sticky-card.is-floating {
 	position: absolute;
 	top: var(--snowflake-method-sticky-y, 24px);
@@ -13540,6 +13553,9 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	max-height: 100vh;
 	box-shadow: var(--shadow-l);
 	pointer-events: auto;
+	/* A card can stand over the tab strip, and a press on it is for the card,
+	   never a drag of the window. */
+	-webkit-app-region: no-drag;
 }
 
 .snowflake-method-sticky-card.is-floating .snowflake-method-sticky-head {

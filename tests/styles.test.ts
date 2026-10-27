@@ -1300,4 +1300,22 @@ describe('styles.css', () => {
 		// own wearing the same dress.
 		expect(spacers?.length).toBe(4);
 	});
+
+	/**
+	 * Obsidian marks every body child after the app container as ground the
+	 * window cannot be dragged by, so that its menus and popups do not carry
+	 * the tab strip's drag. The floating layer spans the window, and marked so
+	 * it took every drag region with it: the window could not be moved while
+	 * the plugin was on. The layer claims no region, the cards on it refuse
+	 * the drag, and nothing of the plugin's ever claims a drag of its own.
+	 */
+	it('lets the window be dragged past the floating layer, and never by a floating card', () => {
+		expect(
+			declarations('body.is-frameless > .app-container ~ .snowflake-method-sticky-layer'),
+		).toContain('-webkit-app-region: initial');
+		expect(declarations('.snowflake-method-sticky-card.is-floating')).toContain(
+			'-webkit-app-region: no-drag',
+		);
+		expect(styles).not.toMatch(/app-region:\s*drag/u);
+	});
 });
