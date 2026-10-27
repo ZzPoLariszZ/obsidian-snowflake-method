@@ -57,46 +57,70 @@ function parentPaths(path: string): string[] {
 }
 
 /**
- * The plan for a selection: every entry once, however many times it was
- * picked or however many of its parents were, each note in the place the
- * explorer shows it. A folder brings everything below it; a note picked
- * inside a picked folder comes with the folder and not again on its own.
+ * Walks the selection as the explorer shows it: every entry once, however
+ * many times it was picked or however many of its parents were, each note in
+ * the place the explorer shows it. A folder brings everything below it; a
+ * note picked inside a picked folder comes with the folder and not again on
+ * its own. `visit` sees each file and answers whether to go on.
  */
+function walkSelection(
+	selection: readonly TAbstractFile[],
+	deps: StreamImportDeps,
+	visit: (file: TFile) => boolean,
+): void {
+	const takeAll = (folder: TFolder): boolean =>
+		deps.children(folder).every((child) => {
+			if (child instanceof TFolder) return takeAll(child);
+			return child instanceof TFile ? visit(child) : true;
+		});
+	const root = deps.root();
+	if (selection.some((entry) => entry === root || entry.path === root.path)) {
+		takeAll(root);
+		return;
+	}
+	const picked = new Set(selection.map((entry) => entry.path));
+	const above = new Set(selection.flatMap((entry) => parentPaths(entry.path)));
+	const walk = (folder: TFolder): boolean =>
+		deps.children(folder).every((child) => {
+			if (picked.has(child.path)) {
+				if (child instanceof TFolder) return takeAll(child);
+				return child instanceof TFile ? visit(child) : true;
+			}
+			return child instanceof TFolder && above.has(child.path) ? walk(child) : true;
+		});
+	walk(root);
+}
+
+/** The plan for a selection: what an import would bring, and what it would leave. */
 export function planStreamImport(
 	selection: readonly TAbstractFile[],
 	deps: StreamImportDeps,
 ): StreamImportPlan {
 	const plan: StreamImportPlan = { files: [], skipped: 0, inStream: 0 };
-	const judge = (file: TFile): void => {
+	walkSelection(selection, deps, (file) => {
 		if (!isMarkdown(file) || !nameable(file)) plan.skipped += 1;
 		else if (deps.inStream(file.path)) plan.inStream += 1;
 		else plan.files.push(file);
-	};
-	const takeAll = (folder: TFolder): void => {
-		for (const child of deps.children(folder)) {
-			if (child instanceof TFolder) takeAll(child);
-			else if (child instanceof TFile) judge(child);
-		}
-	};
-	const root = deps.root();
-	if (selection.some((entry) => entry === root || entry.path === root.path)) {
-		takeAll(root);
-		return plan;
-	}
-	const picked = new Set(selection.map((entry) => entry.path));
-	const above = new Set(selection.flatMap((entry) => parentPaths(entry.path)));
-	const walk = (folder: TFolder): void => {
-		for (const child of deps.children(folder)) {
-			if (picked.has(child.path)) {
-				if (child instanceof TFolder) takeAll(child);
-				else if (child instanceof TFile) judge(child);
-			} else if (child instanceof TFolder && above.has(child.path)) {
-				walk(child);
-			}
-		}
-	};
-	walk(root);
+		return true;
+	});
 	return plan;
+}
+
+/**
+ * Whether an import would bring anything: what a menu needs to know before
+ * it offers the item, settled at the first note that qualifies rather than
+ * by a plan of the whole selection.
+ */
+export function holdsImportableNote(
+	selection: readonly TAbstractFile[],
+	deps: StreamImportDeps,
+): boolean {
+	let found = false;
+	walkSelection(selection, deps, (file) => {
+		found = isMarkdown(file) && nameable(file) && !deps.inStream(file.path);
+		return !found;
+	});
+	return found;
 }
 
 /** Obsidian's own order when nothing says otherwise: folders first, then names. */

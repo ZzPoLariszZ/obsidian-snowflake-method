@@ -277,7 +277,9 @@ import {
 } from './ui/file-explorer';
 import {
 	explorerOrder,
+	holdsImportableNote,
 	planStreamImport,
+	type StreamImportDeps,
 	type StreamImportPlan,
 } from './ui/explorer-import';
 import {
@@ -10868,12 +10870,15 @@ export default class SnowflakeMethodPlugin
 	): void {
 		const target = this.streamImportTarget();
 		if (target === null) return;
-		const plan = planStreamImport(files, {
+		const deps: StreamImportDeps = {
 			children: explorerOrder(this.app),
 			root: () => this.app.vault.getRoot(),
-			inStream: (path) => this.projects.manuscript.isInManuscriptFolder(target, path),
-		});
-		if (plan.files.length === 0) return;
+			inStream: this.projects.manuscript.inManuscriptFolderOf(target),
+		};
+		// The menu asks only whether there is a note to bring, and stops at the
+		// first; the plan is drawn up when the item is chosen, from the vault as
+		// it stands then.
+		if (!holdsImportableNote(files, deps)) return;
 		// The item speaks the language of the project the notes land in, as the
 		// confirmation and the notice after it do, whichever project the entry is in.
 		const t: Translate = (key, vars) => this.translateForProject(target.locale, key, vars);
@@ -10884,9 +10889,11 @@ export default class SnowflakeMethodPlugin
 				.setTitle(t('manuscript.menu.importToStream'))
 				.setIcon('file-input')
 				.onClick(() => {
-					void this.importIntoStream(target.projectFile, plan).catch((error: unknown) => {
-						this.showError(error);
-					});
+					void this.importIntoStream(target.projectFile, planStreamImport(files, deps)).catch(
+						(error: unknown) => {
+							this.showError(error);
+						},
+					);
 				}),
 		);
 	}

@@ -137,7 +137,7 @@ function pluginWith(options: {
 		worldbuildingKinds: [],
 	};
 	const manuscript = {
-		isInManuscriptFolder: (_project: unknown, path: string) => path.startsWith('Novel/50_Manuscript/'),
+		inManuscriptFolderOf: () => (path: string) => path.startsWith('Novel/50_Manuscript/'),
 		importNotes: vi.fn(importing(landing)),
 	};
 	const addProjectMenuSection = vi.fn();
@@ -268,6 +268,22 @@ describe('the explorer’s import into the stream', () => {
 		await settle();
 		expect(asked).toEqual([{ project: 'Novel', count: 1, skipped: 0, inStream: 0 }]);
 		expect(notices).toEqual(['en:messages.streamImportedOne{"count":1,"project":"Novel","skipped":0}']);
+	});
+
+	it('draws the plan up when the item is chosen, from the vault as it stands then', async () => {
+		const { over, files, manuscript } = pluginWith({ paths: PATHS });
+		const menu = over('Inbox');
+		// A note that arrived after the menu opened goes with the rest.
+		files.file('Inbox/late.md');
+		menu.press(IMPORT);
+		await settle();
+		expect(asked).toEqual([{ project: 'Novel', count: 4, skipped: 1, inStream: 0 }]);
+		expect(manuscript.importNotes.mock.calls[0]?.[1]).toEqual([
+			'Inbox/Sub/c.md',
+			'Inbox/a.md',
+			'Inbox/b.md',
+			'Inbox/late.md',
+		]);
 	});
 
 	it('counts a note gone before the import among the skipped', async () => {

@@ -52,6 +52,18 @@ describe("ManuscriptService", () => {
     expect(sequenceOf(segments[0]?.path ?? "")).toBeUndefined();
   });
 
+  it("answers whether a note sits in a manuscript folder, asked once or for many", () => {
+    const inStream = service.manuscript.inManuscriptFolderOf(project);
+    expect(inStream("Snowflake Projects/Novel/50_Manuscript/Draft.md")).toBe(true);
+    expect(inStream("Snowflake Projects/Novel/80_Material/Idea.md")).toBe(false);
+    expect(
+      service.manuscript.isInManuscriptFolder(
+        project,
+        "Snowflake Projects/Novel/50_Manuscript/Sub/Ch.md",
+      ),
+    ).toBe(true);
+  });
+
   it("reports nothing wrong with a manuscript of one", async () => {
     expect(findSequenceIssues(await manuscript())).toEqual({
       missing: [],

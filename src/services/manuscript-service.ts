@@ -229,10 +229,21 @@ export class ManuscriptService {
 
   /** Whether a note sits in one of the folders a manuscript is scanned from. */
   isInManuscriptFolder(project: ProjectRef, path: string): boolean {
-    const note = normalizePath(path);
-    return draftFolders(project).some(
-      (folder) => note === folder || note.startsWith(`${folder}/`),
-    );
+    return this.inManuscriptFolderOf(project)(path);
+  }
+
+  /**
+   * The same question for many notes at once: the folders are settled once,
+   * and each answer costs a path comparison.
+   */
+  inManuscriptFolderOf(project: ProjectRef): (path: string) => boolean {
+    const folders = draftFolders(project);
+    return (path) => {
+      const note = normalizePath(path);
+      return folders.some(
+        (folder) => note === folder || note.startsWith(`${folder}/`),
+      );
+    };
   }
 
   /** Everything below the frontmatter of one segment, ready to render or edit. */

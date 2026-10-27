@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { App, TAbstractFile, TFolder } from 'obsidian';
 
-import { explorerOrder, planStreamImport, type StreamImportDeps } from '../../src/ui/explorer-import';
+import {
+	explorerOrder,
+	holdsImportableNote,
+	planStreamImport,
+	type StreamImportDeps,
+} from '../../src/ui/explorer-import';
 import { CorkboardDom } from '../helpers/corkboard-dom';
 import { FakeApp, FakeExplorerView, FakeFiles, FakeLeaf } from '../helpers/explorer-fake';
 
@@ -93,6 +98,26 @@ describe('planning an import from the explorer', () => {
 		const files = vaultOf(['Inbox/pic.png', 'Inbox/Empty/']);
 		const plan = planStreamImport(pick(files, 'Inbox'), depsOf(files));
 		expect(plan).toEqual({ files: [], skipped: 1, inStream: 0 });
+	});
+});
+
+describe('whether a selection holds a note to bring', () => {
+	it('answers yes at the first note it could bring, without walking the rest', () => {
+		const files = vaultOf(['Inbox/a.md', 'Inbox/b.md', 'Inbox/Sub/c.md', 'Other/d.md']);
+		const asked: string[] = [];
+		const deps = depsOf(files, (path) => {
+			asked.push(path);
+			return false;
+		});
+		expect(holdsImportableNote(pick(files, 'Inbox', 'Other'), deps)).toBe(true);
+		expect(asked).toEqual(['Inbox/Sub/c.md']);
+	});
+
+	it('answers no for pictures and for notes the stream holds, however they are picked', () => {
+		const files = vaultOf(['Inbox/pic.png', 'Novel/50_Manuscript/One.md']);
+		const deps = depsOf(files, (path) => path.startsWith('Novel/50_Manuscript/'));
+		expect(holdsImportableNote(pick(files, 'Inbox', 'Novel/50_Manuscript/One.md'), deps)).toBe(false);
+		expect(holdsImportableNote([files.root], deps)).toBe(false);
 	});
 });
 
