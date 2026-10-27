@@ -154,6 +154,11 @@ function pluginWith(options: {
 				getLeavesOfType: () => [],
 			},
 			vault: { getRoot: () => files.root },
+			metadataCache: {
+				// The metadata note carries the project's stamp; the author's own notes carry none.
+				getFileCache: (file: TAbstractFile) =>
+					file.path === PROJECT ? { frontmatter: { 'snowflake-project-id': 'novel' } } : null,
+			},
 		},
 		registerEvent: () => undefined,
 		settings: { recentProjectPath: options.current === undefined ? PROJECT : options.current },
@@ -234,6 +239,15 @@ describe('the explorer’s import into the stream', () => {
 		const menu = over('Novel/80_Material/Idea.md');
 		expect(addProjectMenuSection).toHaveBeenCalledTimes(1);
 		expect(menu.titles()).toEqual([IMPORT]);
+	});
+
+	it('leaves the project’s own records out, counting them among the skipped, and keeps the author’s notes in its folder', async () => {
+		const { over, overAll } = pluginWith({ paths: PATHS });
+		expect(over(PROJECT).titles()).toEqual([]);
+		expect(over('Novel/80_Material/Idea.md').titles()).toEqual([IMPORT]);
+		overAll([PROJECT, 'Inbox/a.md']).press(IMPORT);
+		await settle();
+		expect(asked).toEqual([{ project: 'Novel', count: 1, skipped: 1, inStream: 0 }]);
 	});
 
 	it('stays away from other menus, from a selection with no note to bring, and from a note the stream holds', () => {

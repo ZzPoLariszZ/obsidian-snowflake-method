@@ -16,7 +16,7 @@ import { isExplorerView } from './file-explorer-shapes';
 export interface StreamImportPlan {
 	/** The notes to copy, in the explorer's order. */
 	files: TFile[];
-	/** Files that are not Markdown notes, or that no note can be named after. */
+	/** Files that are not Markdown notes, that no note can be named after, or that are the project's own records. */
 	skipped: number;
 	/** Notes already in the stream, which an import would only double. */
 	inStream: number;
@@ -29,6 +29,8 @@ export interface StreamImportDeps {
 	root(): TFolder;
 	/** Whether a note already stands in the stream. */
 	inStream(path: string): boolean;
+	/** Whether a note is one of the project's own records, which hold no prose to bring. */
+	ownNote(file: TFile): boolean;
 }
 
 /** Obsidian reads one extension as a note, whatever its case on disk. */
@@ -100,6 +102,7 @@ export function planStreamImport(
 	walkSelection(selection, deps, (file) => {
 		if (!isMarkdown(file) || !nameable(file)) plan.skipped += 1;
 		else if (deps.inStream(file.path)) plan.inStream += 1;
+		else if (deps.ownNote(file)) plan.skipped += 1;
 		else plan.files.push(file);
 		return true;
 	});
@@ -117,7 +120,7 @@ export function holdsImportableNote(
 ): boolean {
 	let found = false;
 	walkSelection(selection, deps, (file) => {
-		found = isMarkdown(file) && nameable(file) && !deps.inStream(file.path);
+		found = isMarkdown(file) && nameable(file) && !deps.inStream(file.path) && !deps.ownNote(file);
 		return !found;
 	});
 	return found;

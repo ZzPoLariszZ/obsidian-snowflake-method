@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { App, TAbstractFile, TFolder } from 'obsidian';
+import type { App, TAbstractFile, TFile, TFolder } from 'obsidian';
 
 import {
 	explorerOrder,
@@ -29,7 +29,7 @@ function listedBy(files: FakeFiles): (folder: TFolder) => TAbstractFile[] {
 }
 
 function depsOf(files: FakeFiles, inStream: (path: string) => boolean = () => false): StreamImportDeps {
-	return { children: listedBy(files), root: () => files.root, inStream };
+	return { children: listedBy(files), root: () => files.root, inStream, ownNote: () => false };
 }
 
 const paths = (plan: { files: { path: string }[] }): string[] => plan.files.map((file) => file.path);
@@ -78,6 +78,15 @@ describe('planning an import from the explorer', () => {
 		expect(paths(plan)).toEqual(['Novel/80_Material/Idea.md']);
 		expect(plan.inStream).toBe(1);
 		expect(plan.skipped).toBe(1);
+	});
+
+	it('leaves the project’s own records out, counted with the files that are no notes', () => {
+		const files = vaultOf(['Novel/00_System/Metadata.md', 'Novel/80_Material/Idea.md', 'Novel/80_Material/map.png']);
+		const deps = { ...depsOf(files), ownNote: (file: TFile) => file.path.startsWith('Novel/00_System/') };
+		const plan = planStreamImport(pick(files, 'Novel'), deps);
+		expect(paths(plan)).toEqual(['Novel/80_Material/Idea.md']);
+		expect(plan.skipped).toBe(2);
+		expect(holdsImportableNote(pick(files, 'Novel/00_System/Metadata.md'), deps)).toBe(false);
 	});
 
 	it('skips a file no note can be named after', () => {

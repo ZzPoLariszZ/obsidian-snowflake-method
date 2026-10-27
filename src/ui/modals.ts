@@ -6589,7 +6589,7 @@ export function confirmStreamReplaceMarked(
 export interface StreamImportSummary {
 	project: string;
 	count: number;
-	/** Files the import leaves out: not Markdown notes, or notes no copy can be named after. */
+	/** Files the import leaves out: not Markdown notes, notes no copy can be named after, or the project's own records. */
 	skipped: number;
 	/** Notes the stream already holds. */
 	inStream: number;

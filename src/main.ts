@@ -10874,6 +10874,10 @@ export default class SnowflakeMethodPlugin
 			children: explorerOrder(this.app),
 			root: () => this.app.vault.getRoot(),
 			inStream: this.projects.manuscript.inManuscriptFolderOf(target),
+			// The project's own records, its metadata note and its sheets among
+			// them, hold no prose to bring; a note of the author's in the project
+			// folder carries no stamp and comes if picked.
+			ownNote: (file) => this.projectIdOfFile(file) === target.id,
 		};
 		// The menu asks only whether there is a note to bring, and stops at the
 		// first; the plan is drawn up when the item is chosen, from the vault as
