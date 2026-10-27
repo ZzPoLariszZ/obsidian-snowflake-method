@@ -664,7 +664,7 @@ export const en = {
 	'messages.streamImportedOne': 'Imported {count} note into the manuscript stream of “{project}”.',
 	'messages.streamImportedSkipped':
 		'Imported {count} notes into the manuscript stream of “{project}”. Skipped {skipped}.',
-	'messages.streamImportedOneSkipped':
+	'messages.streamImportedSkippedOne':
 		'Imported {count} note into the manuscript stream of “{project}”. Skipped {skipped}.',
 	'messages.projectCreated': 'Created Snowflake project “{name}”.',
 	'messages.projectRenamed': 'Renamed project to “{name}”.',

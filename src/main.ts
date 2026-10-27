@@ -438,6 +438,7 @@ import {
 	confirmSegmentMerge,
 	confirmExportReplace,
 	confirmStreamImport,
+	counted,
 	type SegmentTitlePrompt,
 	type CharacterOption,
 	type CreateCharacterRequest,
@@ -10920,8 +10921,12 @@ export default class SnowflakeMethodPlugin
 		);
 		await this.refreshManuscriptStreams();
 		const left = plan.skipped + plan.inStream;
-		const key = `messages.streamImported${paths.length === 1 ? 'One' : ''}${left > 0 ? 'Skipped' : ''}`;
-		new Notice(t(key, { count: paths.length, project: project.title, skipped: left }));
+		new Notice(
+			counted(t, left > 0 ? 'messages.streamImportedSkipped' : 'messages.streamImported', paths.length, {
+				project: project.title,
+				skipped: left,
+			}),
+		);
 	}
 
 	/**

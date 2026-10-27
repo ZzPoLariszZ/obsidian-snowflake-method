@@ -27,6 +27,7 @@ import { DIALOG_CLASS } from './dialog-class';
 import {
 	ConfirmModal,
 	SnowflakeFormModal,
+	counted,
 	type SubmitHandler,
 	type Translate,
 } from './modals';
@@ -366,11 +367,6 @@ export function updateTree(inspection: ImportInspection, t: Translate, book: str
 }
 
 // ---- The words ------------------------------------------------------------------
-
-/** One translation per count, in the singular where the count is one. */
-function counted(t: Translate, key: string, count: number): string {
-	return t(count === 1 ? `${key}One` : key, { count });
-}
 
 interface ImportUnit {
 	readonly key: string;

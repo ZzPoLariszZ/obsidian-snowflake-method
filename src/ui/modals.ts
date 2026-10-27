@@ -6595,14 +6595,14 @@ export interface StreamImportSummary {
 	inStream: number;
 }
 
-/** The key with its singular twin: `{key}One` for a count of one. */
-function countedText(
+/** One translation per count, in the singular where the count is one: the key with `One` appended. */
+export function counted(
 	t: Translate,
 	key: string,
 	count: number,
 	vars: Record<string, string | number> = {},
 ): string {
-	return t(count === 1 ? `${key}One` : key, { ...vars, count });
+	return t(count === 1 ? `${key}One` : key, { count, ...vars });
 }
 
 /** What importing notes into the stream does, and that it cannot be undone, before it runs. */
@@ -6615,7 +6615,7 @@ class ConfirmStreamImportModal extends ConfirmModal {
 	) {
 		super(app, t, { label: t('modal.streamImport.confirm'), style: 'mod-cta' }, onResolve);
 		this.setTitle(
-			countedText(t, 'modal.streamImport.title', summary.count, { project: summary.project }),
+			counted(t, 'modal.streamImport.title', summary.count, { project: summary.project }),
 		);
 		this.proceedOnModEnter();
 	}
@@ -6624,12 +6624,12 @@ class ConfirmStreamImportModal extends ConfirmModal {
 		body.createEl('p', { text: this.t('modal.streamImport.note') });
 		if (this.summary.skipped > 0) {
 			body.createEl('p', {
-				text: countedText(this.t, 'modal.streamImport.skipped', this.summary.skipped),
+				text: counted(this.t, 'modal.streamImport.skipped', this.summary.skipped),
 			});
 		}
 		if (this.summary.inStream > 0) {
 			body.createEl('p', {
-				text: countedText(this.t, 'modal.streamImport.inStream', this.summary.inStream),
+				text: counted(this.t, 'modal.streamImport.inStream', this.summary.inStream),
 			});
 		}
 		body.createEl('p', { text: this.t('modal.streamImport.consequence') });
