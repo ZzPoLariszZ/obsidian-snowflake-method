@@ -8,6 +8,21 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0]
+
+### Added
+
+- **Import into manuscript stream.** Right-click a file or folder in Obsidian's file explorer, or several selected at once, and the plugin's section offers **Import into manuscript stream**. The Markdown and plain-text notes among them are copied to the end of the current project's manuscript as new notes named after their files. They come in the order the explorer shows them, folders included. A dialog says how many notes come, how many files are skipped, and that the import can't be undone. Notes already in the stream and the project's own records are left out. The originals stay where they are.
+
+### Changed
+
+- Mod+Enter (Cmd+Enter on a Mac) saves the dashboard's boxes of steps 1, 2, 4 and 6 from the keyboard, as it submits the plugin's dialogs. A save now says so in a notice, as creating does: the dashboard names the step, and the character, scene and entity dialogs name what they saved.
+
+### Fixed
+
+- Pressing Escape to take back a half-typed word in a Chinese input method closed the plugin's dialogs, and on the dashboard it moved the focus into the note open beside it. An Escape struck while an input method is composing now belongs to the composition alone: dialogs stay open, the plugin's views keep the focus, and the card bodies, searches, hung panels and sticky notes that answer Escape or Enter leave a composing key to the input method. An Escape that nothing in the dashboard, the stream or the story structure answered also stays in that view, where Obsidian used to move the focus to the last edited note. A view docked at a side keeps Obsidian's return to the editor.
+- With the plugin on, the Obsidian window could not be moved by its tab strip under the hidden title bar that is Obsidian's default. Obsidian marks every element after the app container in a window's body as ground the window cannot be dragged by, and the plugin's floating sticky-note layer, which spans the whole window and is made at every start, took the tab strip's drag with it. The layer now claims no region of its own, as Obsidian's modal container does, and only a floating card itself refuses the drag.
+
 ## [0.29.0]
 
 ### Added
@@ -672,6 +687,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.30.0]
+
+### 新增
+
+- **导入正文流。** 在 Obsidian 的文件列表中右键一个文件或文件夹，或同时选中的多个，插件的菜单区会出现 **导入正文流**。其中的 Markdown 笔记和纯文本文件会复制到当前项目正文流的末尾，成为以文件名命名的新笔记，顺序与文件列表中显示的一致，文件夹内的也会一并带入。对话框会说明将导入几篇笔记、跳过几个文件，以及此操作无法撤销。已在正文流中的笔记和项目自己的记录会被跳过。原文件保持不变。
+
+### 变更
+
+- 在工作台第 1、2、4、6 步的文本框里按 Mod+Enter（Mac 上为 Cmd+Enter）即可保存，与插件对话框的提交方式一致。保存成功后会像创建成功一样弹出通知：工作台会说明保存的是第几步，角色、场景和实体的编辑对话框会说明保存了什么。
+
+### 修复
+
+- 在中文输入法里按 Escape 撤回尚未上屏的拼音时，插件的对话框会被关闭，在工作台上焦点还会跳进旁边打开的笔记。现在，输入法组合期间按下的 Escape 只属于输入法：对话框保持打开，插件的视图保留焦点，卡片正文、搜索框、悬挂面板和便签等响应 Escape 或 Enter 的地方，也会把组合期间的按键留给输入法。工作台、正文流和故事结构里无人响应的 Escape 现在也留在该视图内，此前 Obsidian 会把焦点移到最近编辑的笔记。停靠在侧栏的视图仍沿用 Obsidian 返回编辑器的习惯。
+- 启用插件后，Obsidian 窗口拖不动了。Obsidian 把窗口 body 里应用容器之后的每个元素都标成不能用来拖动窗口的区域，而插件的便签浮层每次启动都会建立、铺满整个窗口，于是把标签栏的拖动区域全部抵消。现在浮层不再声明任何区域，与 Obsidian 自己的对话框容器一致，只有浮着的便签卡片本身拒绝拖动窗口。
 
 ## [0.29.0]
 
