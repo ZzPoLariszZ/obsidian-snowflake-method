@@ -113,7 +113,13 @@ const importing =
 		return Promise.resolve(paths);
 	};
 
-function pluginWith(options: { current?: string | null; readOnly?: boolean; paths: string[] }) {
+function pluginWith(options: {
+	current?: string | null;
+	readOnly?: boolean;
+	paths: string[];
+	/** The language of the project an entry is in, as the plugin reads it from the path. */
+	localeOf?: (path: string) => string;
+}) {
 	const files = new FakeFiles();
 	for (const path of options.paths) {
 		if (path.endsWith('/')) files.folder(path.slice(0, -1));
@@ -155,7 +161,7 @@ function pluginWith(options: { current?: string | null; readOnly?: boolean; path
 		explorer: null,
 		projects: { manuscript, loadProject: vi.fn(() => Promise.resolve(ref)) },
 		touchesProject: (path: string) => path.startsWith('Novel/'),
-		projectLocaleOfPath: () => 'en',
+		projectLocaleOfPath: options.localeOf ?? (() => 'en'),
 		translateForProject: (locale: string, key: string, vars?: Record<string, string | number>) =>
 			`${locale}:${key}${vars === undefined ? '' : JSON.stringify(vars)}`,
 		addProjectMenuSection,
@@ -212,6 +218,15 @@ describe('the explorer’s import into the stream', () => {
 		expect(folder.items[0]?.label).toBe(true);
 		expect(folder.items[1]?.icon).toBe('file-input');
 		expect(overAll(['Inbox/a.md', 'Inbox/b.md']).titles()).toEqual([HEADING, IMPORT]);
+	});
+
+	it('words the heading and the item in the language of the project the notes land in, whatever project the entry is in', () => {
+		const { over } = pluginWith({
+			paths: [...PATHS, 'Other/note.md'],
+			// The entry belongs to a Chinese project; the notes land in the English one.
+			localeOf: (path) => (path.startsWith('Other/') ? 'zh-CN' : 'en'),
+		});
+		expect(over('Other/note.md').titles()).toEqual([HEADING, IMPORT]);
 	});
 
 	it('joins the project section over a project note without a second heading', () => {

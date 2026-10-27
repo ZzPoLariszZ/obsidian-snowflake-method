@@ -10801,8 +10801,7 @@ export default class SnowflakeMethodPlugin
 				// While arrange mode is on, the explorer's menu carries the move
 				// items in the plugin's section, ahead of the standing entries.
 				const arrange = explorer ? (this.explorer?.arrangeMenu(file) ?? null) : null;
-				const t = this.menuTranslator(file.path);
-				const head = this.menuHeading(menu, t);
+				const head = this.menuHeading(menu);
 				if (file instanceof TFile && this.touchesProject(file.path)) {
 					head.done();
 					this.addProjectMenuSection(
@@ -10812,11 +10811,11 @@ export default class SnowflakeMethodPlugin
 						arrange === null ? undefined : (lead) => arrange(lead, EXPLORER_MENU_SECTION),
 					);
 				} else if (arrange !== null) {
-					head.put();
+					head.put(this.menuTranslator(file.path));
 					arrange(menu, EXPLORER_MENU_SECTION);
 				}
 				// The explorer's own menu is where notes are brought into the stream.
-				if (explorer) this.addStreamImportItem(menu, [file], head.put, t);
+				if (explorer) this.addStreamImportItem(menu, [file], head.put);
 			}),
 		);
 		// Several entries picked at once: their menu offers the import alone,
@@ -10824,8 +10823,7 @@ export default class SnowflakeMethodPlugin
 		this.registerEvent(
 			this.app.workspace.on('files-menu', (menu, files, source) => {
 				if (source !== EXPLORER_MENU_SOURCE) return;
-				const t = this.menuTranslator(files[0]?.path ?? '');
-				this.addStreamImportItem(menu, files, this.menuHeading(menu, t).put, t);
+				this.addStreamImportItem(menu, files, this.menuHeading(menu).put);
 			}),
 		);
 	}
@@ -10838,15 +10836,16 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * The plugin's heading over its share of a menu, put up once by whichever
-	 * entry comes first, or marked done by a section that draws its own.
+	 * entry comes first, in that entry's words, or marked done by a section
+	 * that draws its own.
 	 */
-	private menuHeading(menu: Menu, t: Translate): { put: () => void; done: () => void } {
+	private menuHeading(menu: Menu): { put: (t: Translate) => void; done: () => void } {
 		let headed = false;
 		return {
 			done: () => {
 				headed = true;
 			},
-			put: () => {
+			put: (t) => {
 				if (headed) return;
 				headed = true;
 				menu.addItem((item) =>
@@ -10865,8 +10864,7 @@ export default class SnowflakeMethodPlugin
 	private addStreamImportItem(
 		menu: Menu,
 		files: readonly TAbstractFile[],
-		head: () => void,
-		t: Translate,
+		head: (t: Translate) => void,
 	): void {
 		const target = this.streamImportTarget();
 		if (target === null) return;
@@ -10876,7 +10874,10 @@ export default class SnowflakeMethodPlugin
 			inStream: (path) => this.projects.manuscript.isInManuscriptFolder(target, path),
 		});
 		if (plan.files.length === 0) return;
-		head();
+		// The item speaks the language of the project the notes land in, as the
+		// confirmation and the notice after it do, whichever project the entry is in.
+		const t: Translate = (key, vars) => this.translateForProject(target.locale, key, vars);
+		head(t);
 		menu.addItem((item) =>
 			item
 				.setSection(EXPLORER_MENU_SECTION)
