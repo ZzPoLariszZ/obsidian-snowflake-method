@@ -6582,3 +6582,67 @@ export function confirmStreamReplaceMarked(
 		new ConfirmStreamReplaceMarkedModal(app, t, prompt, resolve).open();
 	});
 }
+
+// ---- Importing notes into the stream -------------------------------------------
+
+/** What an import from the file explorer holds: the project, what comes, what stays. */
+export interface StreamImportSummary {
+	project: string;
+	count: number;
+	/** Files that are not Markdown notes. */
+	skipped: number;
+	/** Notes the stream already holds. */
+	inStream: number;
+}
+
+/** The key with its singular twin: `{key}One` for a count of one. */
+function countedText(
+	t: Translate,
+	key: string,
+	count: number,
+	vars: Record<string, string | number> = {},
+): string {
+	return t(count === 1 ? `${key}One` : key, { ...vars, count });
+}
+
+/** What importing notes into the stream does, and that it cannot be undone, before it runs. */
+class ConfirmStreamImportModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly summary: StreamImportSummary,
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(app, t, { label: t('modal.streamImport.confirm'), style: 'mod-cta' }, onResolve);
+		this.setTitle(
+			countedText(t, 'modal.streamImport.title', summary.count, { project: summary.project }),
+		);
+		this.proceedOnModEnter();
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t('modal.streamImport.note') });
+		if (this.summary.skipped > 0) {
+			body.createEl('p', {
+				text: countedText(this.t, 'modal.streamImport.skipped', this.summary.skipped),
+			});
+		}
+		if (this.summary.inStream > 0) {
+			body.createEl('p', {
+				text: countedText(this.t, 'modal.streamImport.inStream', this.summary.inStream),
+			});
+		}
+		body.createEl('p', { text: this.t('modal.streamImport.consequence') });
+	}
+}
+
+/** True when the author agreed to copy the notes to the end of the stream. */
+export function confirmStreamImport(
+	app: App,
+	t: Translate,
+	summary: StreamImportSummary,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmStreamImportModal(app, t, summary, resolve).open();
+	});
+}

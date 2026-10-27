@@ -15,9 +15,11 @@ import {
   type StoredSegment,
 } from "../domain";
 import {
+  InvalidManagedDocumentError,
   ManagedFileNotFoundError,
   PathConflictError,
   UnsupportedSchemaError,
+  parseMarkdownFrontmatter,
   projectIdOf,
   type ManagedEntryRecord,
   type VaultRepository,
@@ -313,6 +315,29 @@ export class ManuscriptService {
       sequence = next;
     }
     return paths;
+  }
+
+  /**
+   * Copies notes from anywhere in the Vault to the end of the manuscript, in
+   * the order given: each becomes a new note named after its file, holding
+   * the file's words below frontmatter of the manuscript's own. The file's
+   * own frontmatter stays behind with it, and so does the file. The words
+   * are the plugin's to have written, as an import's are, and count as no
+   * writing. A source gone since it was chosen is passed over. Answers the
+   * paths made, in order.
+   */
+  async importNotes(
+    project: ProjectRef,
+    sources: readonly string[],
+    onCreated?: (path: string) => void,
+  ): Promise<string[]> {
+    const drafts: { title: string; body: string }[] = [];
+    for (const source of sources) {
+      const content = await this.repository.readPlainFile(source);
+      if (content === null) continue;
+      drafts.push({ title: fileStem(source), body: proseOf(content) });
+    }
+    return this.appendSegments(project, drafts, { userInput: false, onCreated });
   }
 
   async prependSegment(
@@ -872,6 +897,19 @@ function asStored(record: ManagedEntryRecord): StoredSegment {
  * under the layout of the language it was made in and may be opened under the
  * other -- the same reason the rest of the service looks in both.
  */
+/**
+ * A note's words without its frontmatter. A fence the YAML parser refuses is
+ * the author's text as far as the manuscript is concerned, and comes whole.
+ */
+function proseOf(content: string): string {
+  try {
+    return parseMarkdownFrontmatter(content).body;
+  } catch (error) {
+    if (error instanceof InvalidManagedDocumentError) return content;
+    throw error;
+  }
+}
+
 function draftFolders(project: ProjectRef): string[] {
   const primary = getProjectPathLayout(project.locale).directories.draft;
   const names = new Set([

@@ -67,6 +67,8 @@ import { addOrderMenuItems, listNeighbours } from './order-menu';
 
 export const EXPLORER_VIEW_TYPE = 'file-explorer';
 export const EXPLORER_MENU_SECTION = 'snowflake-method';
+/** The `source` Obsidian hands the file menu raised over the explorer's rows. */
+export const EXPLORER_MENU_SOURCE = 'file-explorer-context-menu';
 const BADGE_CLASS = 'snowflake-method-explorer-count';
 const BUTTON_CLASS = 'snowflake-method-explorer-button';
 /** The box the four buttons stand in, kept together at the end of the explorer's row. */

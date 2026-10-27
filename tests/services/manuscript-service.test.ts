@@ -1232,6 +1232,51 @@ describe("appending manuscript notes in a batch", () => {
     expect(writes).toEqual([{ path: `${folder}/Draft (2).md`, userInput: true }]);
   });
 
+  it("copies notes from anywhere in the vault to the end, without their frontmatter, and leaves the originals", async () => {
+    const two = "---\ntags: [idea]\n---\n# Two\n\nWords of two.\n";
+    const three = "Words of three, with no heading.\n";
+    await fakeVault.seedFile("Inbox/Two.md", two);
+    await fakeVault.seedFile("Inbox/Deep/Three.md", three);
+    const told: string[] = [];
+
+    const paths = await service.manuscript.importNotes(
+      project,
+      ["Inbox/Two.md", "Inbox/Deep/Three.md"],
+      (path) => told.push(path),
+    );
+
+    expect(paths).toEqual([`${folder}/Two.md`, `${folder}/Three.md`]);
+    expect(told).toEqual(paths);
+    expect(await titles()).toEqual(["Draft", "Two", "Three"]);
+    expect(bodyOf(`${folder}/Two.md`)).toBe("# Two\n\nWords of two.");
+    expect(bodyOf(`${folder}/Three.md`)).toBe("Words of three, with no heading.");
+    // The copy's frontmatter is the manuscript's own: a position, and no tag of the source's.
+    const copied = parseMarkdownFrontmatter(fakeVault.contents.get(`${folder}/Two.md`) ?? "").frontmatter;
+    expect(typeof copied[FRONTMATTER_KEYS.manuscriptSequence]).toBe("number");
+    expect(copied).not.toHaveProperty("tags");
+    // The words count as nobody's writing, and the sources stand as they were.
+    expect(writes.map((write) => write.path)).toEqual(paths);
+    expect(writes.every((write) => !write.userInput)).toBe(true);
+    expect(fakeVault.contents.get("Inbox/Two.md")).toBe(two);
+    expect(fakeVault.contents.get("Inbox/Deep/Three.md")).toBe(three);
+  });
+
+  it("passes over a source that has gone, keeps a fence the parser refuses as words, and numbers a taken title", async () => {
+    const broken = "---\nkey: [unclosed\n---\nStill words.\n";
+    await fakeVault.seedFile("Inbox/Broken.md", broken);
+    await fakeVault.seedFile("Inbox/Draft.md", "# Draft\n\nAgain.\n");
+
+    const paths = await service.manuscript.importNotes(project, [
+      "Inbox/Gone.md",
+      "Inbox/Broken.md",
+      "Inbox/Draft.md",
+    ]);
+
+    expect(paths).toEqual([`${folder}/Broken.md`, `${folder}/Draft (2).md`]);
+    expect(bodyOf(`${folder}/Broken.md`)).toBe(broken.trim());
+    expect(await titles()).toEqual(["Draft", "Broken", "Draft (2)"]);
+  });
+
   it("plans a note's path before it is made", () => {
     expect(service.manuscript.plannedSegmentPath(project, "  Four  ")).toBe(`${folder}/Four.md`);
     expect(service.manuscript.plannedSegmentPath(project, "A: B?")).toBe(`${folder}/A- B-.md`);

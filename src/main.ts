@@ -270,10 +270,16 @@ import {
 } from './project-root';
 import {
 	EXPLORER_MENU_SECTION,
+	EXPLORER_MENU_SOURCE,
 	ExplorerEnhancer,
 	IMMERSIVE_ICON,
 	IMMERSIVE_ICON_SVG,
 } from './ui/file-explorer';
+import {
+	explorerOrder,
+	planStreamImport,
+	type StreamImportPlan,
+} from './ui/explorer-import';
 import {
 	DEFAULT_SETTINGS,
 	SnowflakeSettingTab,
@@ -431,6 +437,7 @@ import {
 	promptForSegmentTitle,
 	confirmSegmentMerge,
 	confirmExportReplace,
+	confirmStreamImport,
 	type SegmentTitlePrompt,
 	type CharacterOption,
 	type CreateCharacterRequest,
@@ -10789,31 +10796,132 @@ export default class SnowflakeMethodPlugin
 				// Not our own menu: the stream adds these before it asks Obsidian
 				// for the rest, and would otherwise be answered by itself.
 				if (source === MANUSCRIPT_VIEW_TYPE) return;
+				const explorer = source === EXPLORER_MENU_SOURCE;
 				// While arrange mode is on, the explorer's menu carries the move
 				// items in the plugin's section, ahead of the standing entries.
-				const arrange =
-					source === 'file-explorer-context-menu'
-						? (this.explorer?.arrangeMenu(file) ?? null)
-						: null;
+				const arrange = explorer ? (this.explorer?.arrangeMenu(file) ?? null) : null;
+				const t = this.menuTranslator(file.path);
+				const head = this.menuHeading(menu, t);
 				if (file instanceof TFile && this.touchesProject(file.path)) {
+					head.done();
 					this.addProjectMenuSection(
 						menu,
 						file.path,
 						undefined,
 						arrange === null ? undefined : (lead) => arrange(lead, EXPLORER_MENU_SECTION),
 					);
-					return;
+				} else if (arrange !== null) {
+					head.put();
+					arrange(menu, EXPLORER_MENU_SECTION);
 				}
-				if (arrange === null) return;
-				menu.addItem((item) =>
-					item
-						.setSection(EXPLORER_MENU_SECTION)
-						.setIsLabel(true)
-						.setTitle(this.translateForProject(this.projectLocaleOfPath(file.path), 'plugin.name')),
-				);
-				arrange(menu, EXPLORER_MENU_SECTION);
+				// The explorer's own menu is where notes are brought into the stream.
+				if (explorer) this.addStreamImportItem(menu, [file], head.put, t);
 			}),
 		);
+		// Several entries picked at once: their menu offers the import alone,
+		// since the standing entries are one note's.
+		this.registerEvent(
+			this.app.workspace.on('files-menu', (menu, files, source) => {
+				if (source !== EXPLORER_MENU_SOURCE) return;
+				const t = this.menuTranslator(files[0]?.path ?? '');
+				this.addStreamImportItem(menu, files, this.menuHeading(menu, t).put, t);
+			}),
+		);
+	}
+
+	/** A file menu's words: the language of the project the entry is in, else the current one's. */
+	private menuTranslator(path: string): Translate {
+		const locale = this.projectLocaleOfPath(path);
+		return (key, vars) => this.translateForProject(locale, key, vars);
+	}
+
+	/**
+	 * The plugin's heading over its share of a menu, put up once by whichever
+	 * entry comes first, or marked done by a section that draws its own.
+	 */
+	private menuHeading(menu: Menu, t: Translate): { put: () => void; done: () => void } {
+		let headed = false;
+		return {
+			done: () => {
+				headed = true;
+			},
+			put: () => {
+				if (headed) return;
+				headed = true;
+				menu.addItem((item) =>
+					item.setSection(EXPLORER_MENU_SECTION).setIsLabel(true).setTitle(t('plugin.name')),
+				);
+			},
+		};
+	}
+
+	/**
+	 * The explorer's way into the stream: the Markdown notes among the entries
+	 * under the pointer, folders opened all the way down, copied to the end of
+	 * the current project's manuscript. Offered while a project is current and
+	 * can be written, and the selection holds a note the stream does not.
+	 */
+	private addStreamImportItem(
+		menu: Menu,
+		files: readonly TAbstractFile[],
+		head: () => void,
+		t: Translate,
+	): void {
+		const target = this.streamImportTarget();
+		if (target === null) return;
+		const plan = planStreamImport(files, {
+			children: explorerOrder(this.app),
+			root: () => this.app.vault.getRoot(),
+			inStream: (path) => this.projects.manuscript.isInManuscriptFolder(target, path),
+		});
+		if (plan.files.length === 0) return;
+		head();
+		menu.addItem((item) =>
+			item
+				.setSection(EXPLORER_MENU_SECTION)
+				.setTitle(t('manuscript.menu.importToStream'))
+				.setIcon('file-input')
+				.onClick(() => {
+					void this.importIntoStream(target.projectFile, plan).catch((error: unknown) => {
+						this.showError(error);
+					});
+				}),
+		);
+	}
+
+	/** The project an explorer import lands in: the current one, while it can be written. */
+	private streamImportTarget(): ProjectRef | null {
+		const recent = this.settings.recentProjectPath;
+		if (recent === null) return null;
+		const ref = this.projectRefAtPath(recent);
+		return ref === null || ref.readOnly ? null : ref;
+	}
+
+	/**
+	 * Copies the planned notes to the end of the project's manuscript once the
+	 * author has agreed to an import that cannot be taken back, tells the open
+	 * streams, and says what landed and what was left where it was.
+	 */
+	async importIntoStream(projectPath: string, plan: StreamImportPlan): Promise<void> {
+		const project = await this.projects.loadProject(projectPath);
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		if (project.readOnly) throw new Error(t('errors.readOnly'));
+		const confirmed = await confirmStreamImport(this.app, t, {
+			project: project.title,
+			count: plan.files.length,
+			skipped: plan.skipped,
+			inStream: plan.inStream,
+		});
+		if (!confirmed) return;
+		const paths = await this.projects.manuscript.importNotes(
+			project,
+			plan.files.map((file) => file.path),
+		);
+		await this.refreshManuscriptStreams();
+		const left = plan.skipped + plan.inStream;
+		const key = `messages.streamImported${paths.length === 1 ? 'One' : ''}${left > 0 ? 'Skipped' : ''}`;
+		new Notice(t(key, { count: paths.length, project: project.title, skipped: left }));
 	}
 
 	/**
