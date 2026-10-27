@@ -1261,20 +1261,22 @@ describe("appending manuscript notes in a batch", () => {
     expect(fakeVault.contents.get("Inbox/Deep/Three.md")).toBe(three);
   });
 
-  it("passes over a source that has gone, keeps a fence the parser refuses as words, and numbers a taken title", async () => {
+  it("passes over a source that has gone, keeps a fence the parser refuses as words, numbers a taken title, and names a note after its file in any extension case", async () => {
     const broken = "---\nkey: [unclosed\n---\nStill words.\n";
     await fakeVault.seedFile("Inbox/Broken.md", broken);
     await fakeVault.seedFile("Inbox/Draft.md", "# Draft\n\nAgain.\n");
+    await fakeVault.seedFile("Inbox/Loud.MD", "Loud words.\n");
 
     const paths = await service.manuscript.importNotes(project, [
       "Inbox/Gone.md",
       "Inbox/Broken.md",
       "Inbox/Draft.md",
+      "Inbox/Loud.MD",
     ]);
 
-    expect(paths).toEqual([`${folder}/Broken.md`, `${folder}/Draft (2).md`]);
+    expect(paths).toEqual([`${folder}/Broken.md`, `${folder}/Draft (2).md`, `${folder}/Loud.md`]);
     expect(bodyOf(`${folder}/Broken.md`)).toBe(broken.trim());
-    expect(await titles()).toEqual(["Draft", "Broken", "Draft (2)"]);
+    expect(await titles()).toEqual(["Draft", "Broken", "Draft (2)", "Loud"]);
   });
 
   it("plans a note's path before it is made", () => {

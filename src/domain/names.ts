@@ -70,8 +70,8 @@ export function safeFileName(value: string): string {
 	return normalized;
 }
 
-/** The file name of a path, without the Markdown extension. */
+/** The file name of a path, without the Markdown extension, whatever its case on disk. */
 export function fileStem(path: string): string {
 	const name = path.slice(path.lastIndexOf('/') + 1);
-	return name.endsWith('.md') ? name.slice(0, -3) : name;
+	return name.replace(/\.md$/iu, '');
 }
