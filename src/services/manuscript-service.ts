@@ -893,11 +893,6 @@ function asStored(record: ManagedEntryRecord): StoredSegment {
 }
 
 /**
- * Both languages' manuscript folder names, because a project keeps its notes
- * under the layout of the language it was made in and may be opened under the
- * other -- the same reason the rest of the service looks in both.
- */
-/**
  * A note's words without its frontmatter. A fence the YAML parser refuses is
  * the author's text as far as the manuscript is concerned, and comes whole.
  */
@@ -910,6 +905,11 @@ function proseOf(content: string): string {
   }
 }
 
+/**
+ * Both languages' manuscript folder names, because a project keeps its notes
+ * under the layout of the language it was made in and may be opened under the
+ * other -- the same reason the rest of the service looks in both.
+ */
 function draftFolders(project: ProjectRef): string[] {
   const primary = getProjectPathLayout(project.locale).directories.draft;
   const names = new Set([
