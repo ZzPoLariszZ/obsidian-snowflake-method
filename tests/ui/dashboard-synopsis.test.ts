@@ -211,7 +211,7 @@ describe('the synopsis box', () => {
 
 	it('saves on Mod+Enter struck in the box, as a dialog submits, and on nothing less', async () => {
 		const { host, saveStepFields } = makeHost();
-		const { view, box, type } = mount(host);
+		const { view, box, button, type } = mount(host);
 		await view.refresh();
 		type(' Chorded.');
 		// Obsidian's keymap reads the key at the window and asks the active
@@ -237,6 +237,13 @@ describe('the synopsis box', () => {
 			expect(strike(view.contentEl, { ctrlKey: true })).toBe(true);
 			await flush();
 			expect(saveStepFields).not.toHaveBeenCalled();
+			expect(strike(box(), { ctrlKey: true })).toBe(false);
+			await flush();
+			expect(saveStepFields).toHaveBeenCalledTimes(1);
+			// With Save disabled, as while a save is under way, the chord is spent
+			// without pressing it: nothing is saved again.
+			type(' More.');
+			button('common.save').disabled = true;
 			expect(strike(box(), { ctrlKey: true })).toBe(false);
 			await flush();
 			expect(saveStepFields).toHaveBeenCalledTimes(1);
