@@ -1291,6 +1291,19 @@ describe("appending manuscript notes in a batch", () => {
     expect(await titles()).toEqual(["Draft", "Broken", "Draft (2)", "Loud"]);
   });
 
+  it("brings a plain-text file whole as a note named after it, dashes and all", async () => {
+    const dashed = "---\nnot: frontmatter\n---\nPlain words.\n";
+    await fakeVault.seedFile("Inbox/Notes.txt", dashed);
+    await fakeVault.seedFile("Inbox/Shout.TXT", "Shouted words.\n");
+
+    const paths = await service.manuscript.importNotes(project, ["Inbox/Notes.txt", "Inbox/Shout.TXT"]);
+
+    expect(paths).toEqual([`${folder}/Notes.md`, `${folder}/Shout.md`]);
+    expect(bodyOf(`${folder}/Notes.md`)).toBe(dashed.trim());
+    expect(await titles()).toEqual(["Draft", "Notes", "Shout"]);
+    expect(fakeVault.contents.get("Inbox/Notes.txt")).toBe(dashed);
+  });
+
   it("plans a note's path before it is made", () => {
     expect(service.manuscript.plannedSegmentPath(project, "  Four  ")).toBe(`${folder}/Four.md`);
     expect(service.manuscript.plannedSegmentPath(project, "A: B?")).toBe(`${folder}/A- B-.md`);

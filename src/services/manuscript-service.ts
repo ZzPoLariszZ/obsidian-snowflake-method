@@ -331,8 +331,9 @@ export class ManuscriptService {
   /**
    * Copies notes from anywhere in the Vault to the end of the manuscript, in
    * the order given: each becomes a new note named after its file, holding
-   * the file's words below frontmatter of the manuscript's own. The file's
-   * own frontmatter stays behind with it, and so does the file. The words
+   * the file's words below frontmatter of the manuscript's own. A note's
+   * own frontmatter stays behind with it, and so does the file; a plain-text
+   * file's words come whole, whatever they open with. The words
    * are the plugin's to have written, as an import's are, and count as no
    * writing. A source gone since it was chosen is passed over. Answers the
    * paths made, in order.
@@ -346,7 +347,7 @@ export class ManuscriptService {
     for (const source of sources) {
       const content = await this.repository.readPlainFile(source);
       if (content === null) continue;
-      drafts.push({ title: fileStem(source), body: proseOf(content) });
+      drafts.push({ title: importTitle(source), body: isMarkdownPath(source) ? proseOf(content) : content });
     }
     return this.appendSegments(project, drafts, { userInput: false, onCreated });
   }
@@ -901,6 +902,15 @@ function asStored(record: ManagedEntryRecord): StoredSegment {
     title: fileStem(record.path),
     storedSequence: record.frontmatter[FRONTMATTER_KEYS.manuscriptSequence],
   };
+}
+
+function isMarkdownPath(path: string): boolean {
+  return /\.md$/iu.test(path);
+}
+
+/** The imported note's title: the file's name without its Markdown or plain-text extension. */
+function importTitle(path: string): string {
+  return fileStem(path).replace(/\.txt$/iu, '');
 }
 
 /**

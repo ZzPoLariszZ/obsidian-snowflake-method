@@ -140,7 +140,12 @@ function pluginWith(options: {
 		inManuscriptFolderOf: () => (path: string) => path.startsWith('Novel/50_Manuscript/'),
 		importNotes: vi.fn(importing(landing)),
 	};
-	const addProjectMenuSection = vi.fn();
+	// The section draws what is handed to it for the place before File recovery.
+	const addProjectMenuSection = vi.fn(
+		(menu: Menu, _path: string, _source?: string, _lead?: (menu: Menu) => void, between?: (menu: Menu) => void) => {
+			between?.(menu);
+		},
+	);
 	const refreshManuscriptStreams = vi.fn(() => Promise.resolve());
 	const showError = vi.fn();
 	const plugin = Object.create(SnowflakeMethodPlugin.prototype) as SnowflakeMethodPlugin;

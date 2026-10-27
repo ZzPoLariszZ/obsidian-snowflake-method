@@ -10804,20 +10804,30 @@ export default class SnowflakeMethodPlugin
 				// items in the plugin's section, ahead of the standing entries.
 				const arrange = explorer ? (this.explorer?.arrangeMenu(file) ?? null) : null;
 				const head = this.menuHeading(menu);
+				// The explorer's own menu is where notes are brought into the stream.
+				const bring = explorer
+					? (within: Menu) => {
+							this.addStreamImportItem(within, [file], head.put);
+						}
+					: undefined;
 				if (file instanceof TFile && this.touchesProject(file.path)) {
 					head.done();
+					// The import stands between the doors into the project and
+					// File recovery, where the section puts it.
 					this.addProjectMenuSection(
 						menu,
 						file.path,
 						undefined,
 						arrange === null ? undefined : (lead) => arrange(lead, EXPLORER_MENU_SECTION),
+						bring,
 					);
-				} else if (arrange !== null) {
-					head.put(this.menuTranslator(file.path));
-					arrange(menu, EXPLORER_MENU_SECTION);
+				} else {
+					if (arrange !== null) {
+						head.put(this.menuTranslator(file.path));
+						arrange(menu, EXPLORER_MENU_SECTION);
+					}
+					bring?.(menu);
 				}
-				// The explorer's own menu is where notes are brought into the stream.
-				if (explorer) this.addStreamImportItem(menu, [file], head.put);
 			}),
 		);
 		// Several entries picked at once: their menu offers the import alone,
@@ -10858,8 +10868,8 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The explorer's way into the stream: the Markdown notes among the entries
-	 * under the pointer, folders opened all the way down, copied to the end of
+	 * The explorer's way into the stream: the Markdown and plain-text notes
+	 * among the entries under the pointer, folders opened all the way down, copied to the end of
 	 * the current project's manuscript. Offered while a project is current and
 	 * can be written, and the selection holds a note the stream does not.
 	 */
@@ -10999,13 +11009,15 @@ export default class SnowflakeMethodPlugin
 	 * The section itself, shared by the file menu and the manuscript's own.
 	 *
 	 * `source` is where the menu was raised, so the section can leave out the way
-	 * back to somewhere the author is already standing.
+	 * back to somewhere the author is already standing. `between` draws what
+	 * stands after the doors into the project and before File recovery.
 	 */
 	addProjectMenuSection(
 		menu: Menu,
 		path: string,
 		source?: string,
 		lead?: (menu: Menu) => void,
+		between?: (menu: Menu) => void,
 	): void {
 		const locale = this.projectLocaleOfPath(path);
 		const t = (key: string): string => this.translateForProject(locale, key);
@@ -11017,6 +11029,19 @@ export default class SnowflakeMethodPlugin
 		// standing entries: a mention under the pointer outranks the doors
 		// that are always there.
 		lead?.(menu);
+		// The doors into the project, the dashboard's first, then what the
+		// menu brings in, then Obsidian's own dialog.
+		menu.addItem((item) =>
+			item
+				.setSection(section)
+				.setTitle(t('commands.openDashboard'))
+				.setIcon('snowflake')
+				.onClick(() => {
+					void this.openDashboardFor(path).catch((error: unknown) => {
+						this.showError(error);
+					});
+				}),
+		);
 		if (source !== MANUSCRIPT_VIEW_TYPE) {
 			menu.addItem((item) =>
 				item
@@ -11030,17 +11055,7 @@ export default class SnowflakeMethodPlugin
 					}),
 			);
 		}
-		menu.addItem((item) =>
-			item
-				.setSection(section)
-				.setTitle(t('commands.openDashboard'))
-				.setIcon('snowflake')
-				.onClick(() => {
-					void this.openDashboardFor(path).catch((error: unknown) => {
-						this.showError(error);
-					});
-				}),
-		);
+		between?.(menu);
 		// Obsidian's own File recovery dialog on this note, where its versions
 		// are read and restored: the history counts them, the dialog keeps them.
 		addOpenFileRecoveryItem(menu, {

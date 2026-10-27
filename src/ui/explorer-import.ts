@@ -1,7 +1,7 @@
 /**
  * What a right-click in the file explorer offers to bring into the current
- * project's manuscript stream: the Markdown notes among the entries under
- * the pointer, in the order the explorer shows them, folders opened all the
+ * project's manuscript stream: the Markdown and plain-text notes among the
+ * entries under the pointer, in the order the explorer shows them, folders opened all the
  * way down. Nothing here writes. The manuscript service appends what this
  * gathers, and the confirmation says what the selection held besides.
  */
@@ -16,7 +16,7 @@ import { isExplorerView } from './file-explorer-shapes';
 export interface StreamImportPlan {
 	/** The notes to copy, in the explorer's order. */
 	files: TFile[];
-	/** Files that are not Markdown notes, that no note can be named after, or that are the project's own records. */
+	/** Files that are neither Markdown nor plain text, that no note can be named after, or that are the project's own records. */
 	skipped: number;
 	/** Notes already in the stream, which an import would only double. */
 	inStream: number;
@@ -33,9 +33,11 @@ export interface StreamImportDeps {
 	ownNote(file: TFile): boolean;
 }
 
-/** Obsidian reads one extension as a note, whatever its case on disk. */
-function isMarkdown(file: TFile): boolean {
-	return file.extension.toLowerCase() === 'md';
+/** The extensions that hold words to bring: Obsidian's notes and plain text, whatever their case on disk. */
+const NOTE_EXTENSIONS = new Set(['md', 'txt']);
+
+function isNote(file: TFile): boolean {
+	return NOTE_EXTENSIONS.has(file.extension.toLowerCase());
 }
 
 /** Whether a note can be named after the file: a name of dots alone cannot. */
@@ -100,7 +102,7 @@ export function planStreamImport(
 ): StreamImportPlan {
 	const plan: StreamImportPlan = { files: [], skipped: 0, inStream: 0 };
 	walkSelection(selection, deps, (file) => {
-		if (!isMarkdown(file) || !nameable(file)) plan.skipped += 1;
+		if (!isNote(file) || !nameable(file)) plan.skipped += 1;
 		else if (deps.inStream(file.path)) plan.inStream += 1;
 		else if (deps.ownNote(file)) plan.skipped += 1;
 		else plan.files.push(file);
@@ -120,7 +122,7 @@ export function holdsImportableNote(
 ): boolean {
 	let found = false;
 	walkSelection(selection, deps, (file) => {
-		found = isMarkdown(file) && nameable(file) && !deps.inStream(file.path) && !deps.ownNote(file);
+		found = isNote(file) && nameable(file) && !deps.inStream(file.path) && !deps.ownNote(file);
 		return !found;
 	});
 	return found;

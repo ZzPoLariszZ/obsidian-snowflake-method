@@ -494,13 +494,15 @@ export interface ManuscriptHost {
 	/**
 	 * This plugin's own labelled group of items, as the file menu shows them.
 	 * `lead` items land right after the group's label, ahead of the standing
-	 * entries, for whatever the click itself was about.
+	 * entries, for whatever the click itself was about; `between` items land
+	 * after the doors into the project and before File recovery.
 	 */
 	addProjectMenuSection(
 		menu: Menu,
 		path: string,
 		source?: string,
 		lead?: (menu: Menu) => void,
+		between?: (menu: Menu) => void,
 	): void;
 	/** Records where the author was working, for the dashboard to offer later. */
 	rememberManuscriptNote(projectId: string, path: string): void;

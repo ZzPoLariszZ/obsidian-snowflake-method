@@ -96,10 +96,10 @@ describe('planning an import from the explorer', () => {
 		expect(plan.skipped).toBe(1);
 	});
 
-	it('brings the whole vault when the root itself is picked', () => {
-		const files = vaultOf(['b.md', 'Inbox/a.md', 'readme.txt']);
+	it('brings the whole vault when the root itself is picked, plain text with the notes', () => {
+		const files = vaultOf(['b.md', 'Inbox/a.md', 'readme.txt', 'Inbox/loud.TXT', 'pic.png']);
 		const plan = planStreamImport([files.root], depsOf(files));
-		expect(paths(plan)).toEqual(['Inbox/a.md', 'b.md']);
+		expect(paths(plan)).toEqual(['Inbox/a.md', 'Inbox/loud.TXT', 'b.md', 'readme.txt']);
 		expect(plan.skipped).toBe(1);
 	});
 
