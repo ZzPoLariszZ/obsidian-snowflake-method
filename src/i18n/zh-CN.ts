@@ -602,6 +602,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'messages.streamImportedOne': '已将 {count} 篇笔记导入“{project}”的正文流。',
 	'messages.streamImportedSkipped': '已将 {count} 篇笔记导入“{project}”的正文流，跳过 {skipped} 个文件。',
 	'messages.streamImportedSkippedOne': '已将 {count} 篇笔记导入“{project}”的正文流，跳过 {skipped} 个文件。',
+	'messages.streamImportedNone': '没有笔记导入“{project}”的正文流：所选笔记已不存在。',
 	'messages.projectCreated': '已创建雪花写作项目“{name}”。',
 	'messages.projectRenamed': '已将项目重命名为“{name}”。',
 	'messages.projectTrashed': '已将项目“{name}”移至废纸篓。',

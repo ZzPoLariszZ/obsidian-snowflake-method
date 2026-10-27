@@ -238,6 +238,27 @@ describe('the explorer’s import into the stream', () => {
 		expect(notices).toEqual(['en:messages.streamImportedOne{"count":1,"project":"Novel","skipped":0}']);
 	});
 
+	it('counts a note gone before the import among the skipped', async () => {
+		const { over, manuscript } = pluginWith({ paths: PATHS });
+		// The first of the three notes planned has gone by the time the import runs.
+		manuscript.importNotes.mockImplementationOnce((_project: unknown, sources: string[]) =>
+			Promise.resolve(sources.slice(1).map((source) => `Novel/50_Manuscript/${source.slice(source.lastIndexOf('/') + 1)}`)),
+		);
+		over('Inbox').press(IMPORT);
+		await settle();
+		expect(asked).toEqual([{ project: 'Novel', count: 3, skipped: 1, inStream: 0 }]);
+		expect(notices).toEqual(['en:messages.streamImportedSkipped{"count":2,"project":"Novel","skipped":2}']);
+	});
+
+	it('says nothing landed when every note chosen had gone', async () => {
+		const { over, manuscript, refreshManuscriptStreams } = pluginWith({ paths: PATHS });
+		manuscript.importNotes.mockImplementationOnce(() => Promise.resolve([]));
+		over('Inbox').press(IMPORT);
+		await settle();
+		expect(refreshManuscriptStreams).toHaveBeenCalledTimes(1);
+		expect(notices).toEqual(['en:messages.streamImportedNone{"project":"Novel"}']);
+	});
+
 	it('writes nothing when the author declines', async () => {
 		answer.value = false;
 		const { over, manuscript, refreshManuscriptStreams } = pluginWith({ paths: PATHS });

@@ -10920,7 +10920,13 @@ export default class SnowflakeMethodPlugin
 			plan.files.map((file) => file.path),
 		);
 		await this.refreshManuscriptStreams();
-		const left = plan.skipped + plan.inStream;
+		if (paths.length === 0) {
+			// Every note chosen had gone by the time the author agreed.
+			new Notice(t('messages.streamImportedNone', { project: project.title }));
+			return;
+		}
+		// A note gone since the menu opened was passed over, and is left behind like the rest.
+		const left = plan.skipped + plan.inStream + (plan.files.length - paths.length);
 		new Notice(
 			counted(t, left > 0 ? 'messages.streamImportedSkipped' : 'messages.streamImported', paths.length, {
 				project: project.title,
