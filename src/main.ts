@@ -2953,6 +2953,7 @@ export default class SnowflakeMethodPlugin
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
+		new Notice(this.t('messages.characterSaved', { name: request.name }));
 	}
 
 	async deleteCharacter(id: string, expectedRevision: string, projectPath?: string): Promise<void> {
@@ -3132,6 +3133,7 @@ export default class SnowflakeMethodPlugin
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
+		new Notice(this.t('messages.entitySaved', { name: request.name }));
 	}
 
 	async deleteEntity(id: string, expectedRevision: string, projectPath?: string): Promise<void> {
@@ -3426,6 +3428,7 @@ export default class SnowflakeMethodPlugin
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
+		new Notice(this.t('messages.sceneSaved', { name: request.title }));
 	}
 
 	async patchScene(id: string, patch: ScenePatch, projectPath: string): Promise<string> {

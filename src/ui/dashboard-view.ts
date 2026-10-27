@@ -2,6 +2,7 @@ import {
 	ItemView,
 	Menu,
 	Notice,
+	Scope,
 	SearchComponent,
 	getIcon,
 	setIcon,
@@ -120,6 +121,7 @@ import {
 	type ProseFilterMemory,
 	type ProsePanelHandle,
 } from './prose-panel';
+import { saveOnModEnter } from './modal-keys';
 import { PROSE_BOX_CLASS, ProseBox, placeProseBoxCaret, proseBoxCaret } from './prose-box';
 import { keepEscapeInView } from './escape-key';
 import { FilterPanel } from './filter-panel';
@@ -661,6 +663,8 @@ export class SnowflakeDashboardView extends ItemView {
 	private celebrationTimer: number | null = null;
 	private celebrationWindow: Window | null = null;
 	private viewTitleIconEl: HTMLElement | null = null;
+	/** Binds a step box to the Save its Mod+Enter presses; see saveOnModEnter. */
+	private readonly bindSave: (box: HTMLElement, save: HTMLButtonElement) => void;
 	private readonly t = (
 		key: string,
 		vars?: Record<string, string | number>,
@@ -670,6 +674,11 @@ export class SnowflakeDashboardView extends ItemView {
 		super(leaf);
 		this.host = host;
 		this.filterPanel = new FilterPanel(this.app, this.t);
+		// The app's keymap reads Mod+Enter at the window, ahead of any box in
+		// the leaf; a scope of the view's own stands ahead of it while the leaf
+		// is active, so a step box can save on the chord. See saveOnModEnter.
+		this.scope = new Scope(this.app.scope);
+		this.bindSave = saveOnModEnter(this.scope);
 		this.selectedStep = host.getRecentStep();
 		this.selectedPane = { kind: 'step', step: this.selectedStep };
 	}
@@ -715,9 +724,13 @@ export class SnowflakeDashboardView extends ItemView {
 	 * A step panel just drawn, among those a save of its draft holds. Drawn
 	 * beside another dashboard's panel showing the same words, its prose
 	 * boxes take that panel's nodes as copies at once, leaving the other's
-	 * nodes, and the edits remembered in them, where they are.
+	 * nodes, and the edits remembered in them, where they are. Mod+Enter in
+	 * any of its boxes presses its Save, as the chord submits a dialog.
 	 */
 	private drewStepPanel(draftKey: string, panel: StepPanel): void {
+		for (const box of panel.boxes.values()) {
+			this.bindSave(box instanceof ProseBox ? box.el : box, panel.save);
+		}
 		const shown = this.stepPanels(draftKey).find((other) => other.view !== this);
 		STEP_PANELS.get(this.host)?.get(draftKey)?.add(panel);
 		if (shown === undefined) return;
@@ -7841,7 +7854,11 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		save.disabled = readOnly;
 		save.addEventListener('click', () => {
-			void this.runAndRefresh(onSave);
+			void this.runAndRefresh(async () => {
+				await onSave();
+				// Said once the words are written; a save that failed says why instead.
+				new Notice(this.t('messages.stepSaved', { step }));
+			});
 		});
 		return save;
 	}

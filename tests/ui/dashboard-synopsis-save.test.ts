@@ -76,6 +76,8 @@ async function setup() {
 				parent.createEl('details', { cls }),
 		},
 		refresh,
+		// The chord's binder the constructor makes; the chord itself is tried in dashboard-synopsis.test.ts.
+		bindSave: () => undefined,
 	});
 	const render = (model: ProjectDashboardModel, id: 4 | 6) => {
 		const panel = document.body.createDiv();
@@ -123,7 +125,7 @@ describe('the synopsis write path', () => {
 		await vi.waitFor(() => {
 			expect(refresh.mock.calls.length + notices.length).toBeGreaterThan(0);
 		});
-		expect(notices).toEqual([]);
+		expect(notices).toEqual(['messages.stepSaved']);
 		const after = await service.loadArtifact(project, id);
 		expect(readMarkedSection(after?.content ?? '', sectionId)).toBe(words);
 	});
@@ -143,7 +145,7 @@ describe('the synopsis write path', () => {
 		await vi.waitFor(() => {
 			expect(refresh.mock.calls.length + notices.length).toBeGreaterThan(0);
 		});
-		expect(notices).toEqual([]);
+		expect(notices).toEqual(['messages.stepSaved']);
 		const sixNote = await service.loadArtifact(project, 6);
 		expect(readMarkedSection(sixNote?.content ?? '', 'long-synopsis')).toBe('Words for six');
 		expect(render(model, 4).box.textContent).toBe('Draft for four');

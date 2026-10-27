@@ -4,6 +4,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkspaceLeaf } from 'obsidian';
 
+import type { KeymapEventHandler } from '../helpers/obsidian-runtime';
+
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
 	return {
@@ -205,5 +207,41 @@ describe('the synopsis box', () => {
 		second.button('actions.discardDraft').click();
 		await flush();
 		expect(confirmDraftDiscard).toHaveBeenCalledTimes(2);
+	});
+
+	it('saves on Mod+Enter struck in the box, as a dialog submits, and on nothing less', async () => {
+		const { host, saveStepFields } = makeHost();
+		const { view, box, type } = mount(host);
+		await view.refresh();
+		type(' Chorded.');
+		// Obsidian's keymap reads the key at the window and asks the active
+		// view's scope for the chord; the test stands in for the keymap.
+		const chord = (view as unknown as { scope: { keys: KeymapEventHandler[] } }).scope.keys.find(
+			(handler) => handler.key === 'Enter' && handler.modifiers?.includes('Mod'),
+		);
+		expect(chord).toBeDefined();
+		const keymap = (event: KeyboardEvent): void => {
+			if (event.key !== 'Enter' || !event.ctrlKey) return;
+			if (chord?.func(event, {}) === false) event.preventDefault();
+		};
+		window.addEventListener('keydown', keymap, true);
+		const strike = (target: HTMLElement, init: KeyboardEventInit): boolean =>
+			target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...init }));
+		try {
+			// Enter alone breaks a line, a chord struck mid-composition is the input
+			// method's, a key held down was struck once already, and a chord struck
+			// outside the boxes is left to the app.
+			expect(strike(box(), {})).toBe(true);
+			strike(box(), { ctrlKey: true, isComposing: true });
+			strike(box(), { ctrlKey: true, repeat: true });
+			expect(strike(view.contentEl, { ctrlKey: true })).toBe(true);
+			await flush();
+			expect(saveStepFields).not.toHaveBeenCalled();
+			expect(strike(box(), { ctrlKey: true })).toBe(false);
+			await flush();
+			expect(saveStepFields).toHaveBeenCalledTimes(1);
+		} finally {
+			window.removeEventListener('keydown', keymap, true);
+		}
 	});
 });
