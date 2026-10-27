@@ -2131,8 +2131,8 @@ export const en = {
 	'modal.streamImport.titleOne': 'Import {count} note into “{project}”?',
 	'modal.streamImport.note':
 		'They are added after the last note of the manuscript stream, as new notes named after their files. The originals stay where they are.',
-	'modal.streamImport.skipped': '{count} files are not Markdown notes and are skipped.',
-	'modal.streamImport.skippedOne': '{count} file is not a Markdown note and is skipped.',
+	'modal.streamImport.skipped': '{count} files cannot be imported into the stream and are skipped.',
+	'modal.streamImport.skippedOne': '{count} file cannot be imported into the stream and is skipped.',
 	'modal.streamImport.inStream': '{count} notes are already in the stream and are skipped.',
 	'modal.streamImport.inStreamOne': '{count} note is already in the stream and is skipped.',
 	'modal.streamImport.consequence': 'This can’t be undone.',
