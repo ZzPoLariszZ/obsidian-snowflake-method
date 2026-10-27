@@ -668,6 +668,10 @@ export const en = {
 		'Imported {count} note into the manuscript stream of “{project}”. Skipped {skipped}.',
 	'messages.streamImportedNone':
 		'No notes were imported into the manuscript stream of “{project}”: the notes chosen had gone.',
+	'messages.streamImportStopped':
+		'Imported {count} notes into the manuscript stream of “{project}” before the import stopped.',
+	'messages.streamImportStoppedOne':
+		'Imported {count} note into the manuscript stream of “{project}” before the import stopped.',
 	'messages.projectCreated': 'Created Snowflake project “{name}”.',
 	'messages.projectRenamed': 'Renamed project to “{name}”.',
 	'messages.projectTrashed': 'Moved project “{name}” to the trash.',

@@ -94,6 +94,25 @@ const PROJECT = 'Novel/00_System/001_Project_Metadata.md';
 const IMPORT = 'en:manuscript.menu.importToStream';
 const HEADING = 'en:plugin.name';
 
+type ImportNotes = (
+	project: unknown,
+	sources: readonly string[],
+	onCreated?: (path: string) => void,
+) => Promise<string[]>;
+
+/** Where the fake import lands each source: a note of the same name in the manuscript folder. */
+const landing = (sources: readonly string[]): string[] =>
+	sources.map((source) => `Novel/50_Manuscript/${source.slice(source.lastIndexOf('/') + 1)}`);
+
+/** An import that lands the sources given, telling `onCreated` of each as the service does. */
+const importing =
+	(lands: (sources: readonly string[]) => string[]): ImportNotes =>
+	(_project, sources, onCreated) => {
+		const paths = lands(sources);
+		for (const path of paths) onCreated?.(path);
+		return Promise.resolve(paths);
+	};
+
 function pluginWith(options: { current?: string | null; readOnly?: boolean; paths: string[] }) {
 	const files = new FakeFiles();
 	for (const path of options.paths) {
@@ -113,9 +132,7 @@ function pluginWith(options: { current?: string | null; readOnly?: boolean; path
 	};
 	const manuscript = {
 		isInManuscriptFolder: (_project: unknown, path: string) => path.startsWith('Novel/50_Manuscript/'),
-		importNotes: vi.fn((_project: unknown, sources: string[]) =>
-			Promise.resolve(sources.map((source) => `Novel/50_Manuscript/${source.slice(source.lastIndexOf('/') + 1)}`)),
-		),
+		importNotes: vi.fn(importing(landing)),
 	};
 	const addProjectMenuSection = vi.fn();
 	const refreshManuscriptStreams = vi.fn(() => Promise.resolve());
@@ -241,9 +258,7 @@ describe('the explorer’s import into the stream', () => {
 	it('counts a note gone before the import among the skipped', async () => {
 		const { over, manuscript } = pluginWith({ paths: PATHS });
 		// The first of the three notes planned has gone by the time the import runs.
-		manuscript.importNotes.mockImplementationOnce((_project: unknown, sources: string[]) =>
-			Promise.resolve(sources.slice(1).map((source) => `Novel/50_Manuscript/${source.slice(source.lastIndexOf('/') + 1)}`)),
-		);
+		manuscript.importNotes.mockImplementationOnce(importing((sources) => landing(sources.slice(1))));
 		over('Inbox').press(IMPORT);
 		await settle();
 		expect(asked).toEqual([{ project: 'Novel', count: 3, skipped: 1, inStream: 0 }]);
@@ -252,11 +267,36 @@ describe('the explorer’s import into the stream', () => {
 
 	it('says nothing landed when every note chosen had gone', async () => {
 		const { over, manuscript, refreshManuscriptStreams } = pluginWith({ paths: PATHS });
-		manuscript.importNotes.mockImplementationOnce(() => Promise.resolve([]));
+		manuscript.importNotes.mockImplementationOnce(importing(() => []));
 		over('Inbox').press(IMPORT);
 		await settle();
 		expect(refreshManuscriptStreams).toHaveBeenCalledTimes(1);
 		expect(notices).toEqual(['en:messages.streamImportedNone{"project":"Novel"}']);
+	});
+
+	it('tells the streams and says what landed when the import stops partway', async () => {
+		const { over, manuscript, refreshManuscriptStreams, showError } = pluginWith({ paths: PATHS });
+		// The first note lands, then the disk refuses the second.
+		manuscript.importNotes.mockImplementationOnce((_project, sources, onCreated) => {
+			for (const path of landing(sources.slice(0, 1))) onCreated?.(path);
+			return Promise.reject(new Error('disk full'));
+		});
+		over('Inbox').press(IMPORT);
+		await settle();
+		expect(refreshManuscriptStreams).toHaveBeenCalledTimes(1);
+		expect(notices).toEqual(['en:messages.streamImportStoppedOne{"count":1,"project":"Novel"}']);
+		expect(showError).toHaveBeenCalledTimes(1);
+		expect((showError.mock.calls[0]?.[0] as Error).message).toBe('disk full');
+	});
+
+	it('says nothing of what landed when the import stops before its first note', async () => {
+		const { over, manuscript, refreshManuscriptStreams, showError } = pluginWith({ paths: PATHS });
+		manuscript.importNotes.mockImplementationOnce(() => Promise.reject(new Error('locked')));
+		over('Inbox').press(IMPORT);
+		await settle();
+		expect(refreshManuscriptStreams).toHaveBeenCalledTimes(1);
+		expect(notices).toEqual([]);
+		expect(showError).toHaveBeenCalledTimes(1);
 	});
 
 	it('writes nothing when the author declines', async () => {

@@ -10901,7 +10901,9 @@ export default class SnowflakeMethodPlugin
 	/**
 	 * Copies the planned notes to the end of the project's manuscript once the
 	 * author has agreed to an import that cannot be taken back, tells the open
-	 * streams, and says what landed and what was left where it was.
+	 * streams, and says what landed and what was left where it was. An import
+	 * that stops partway says what landed before it did, and the streams are
+	 * told all the same.
 	 */
 	async importIntoStream(projectPath: string, plan: StreamImportPlan): Promise<void> {
 		const project = await this.projects.loadProject(projectPath);
@@ -10915,20 +10917,33 @@ export default class SnowflakeMethodPlugin
 			inStream: plan.inStream,
 		});
 		if (!confirmed) return;
-		const paths = await this.projects.manuscript.importNotes(
-			project,
-			plan.files.map((file) => file.path),
-		);
-		await this.refreshManuscriptStreams();
-		if (paths.length === 0) {
+		const landed: string[] = [];
+		try {
+			await this.projects.manuscript.importNotes(
+				project,
+				plan.files.map((file) => file.path),
+				(path) => {
+					landed.push(path);
+				},
+			);
+		} catch (error) {
+			// What landed before the stop is in the manuscript to stay, and is said so.
+			if (landed.length > 0) {
+				new Notice(counted(t, 'messages.streamImportStopped', landed.length, { project: project.title }));
+			}
+			throw error;
+		} finally {
+			await this.refreshManuscriptStreams();
+		}
+		if (landed.length === 0) {
 			// Every note chosen had gone by the time the author agreed.
 			new Notice(t('messages.streamImportedNone', { project: project.title }));
 			return;
 		}
 		// A note gone since the menu opened was passed over, and is left behind like the rest.
-		const left = plan.skipped + plan.inStream + (plan.files.length - paths.length);
+		const left = plan.skipped + plan.inStream + (plan.files.length - landed.length);
 		new Notice(
-			counted(t, left > 0 ? 'messages.streamImportedSkipped' : 'messages.streamImported', paths.length, {
+			counted(t, left > 0 ? 'messages.streamImportedSkipped' : 'messages.streamImported', landed.length, {
 				project: project.title,
 				skipped: left,
 			}),
