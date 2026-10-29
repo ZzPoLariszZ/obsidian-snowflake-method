@@ -1709,7 +1709,7 @@ export class SnowflakeDashboardView extends ItemView {
 			this.renderManagedSectionIssues(root, globalStructureIssues);
 		}
 
-		this.renderRailMenu(root);
+		this.renderRailMenu(root, model);
 		const layout = root.createDiv({ cls: 'snowflake-method-layout' });
 		this.renderStepNavigation(layout, model, projects);
 		this.paintRailMenu(model);
@@ -1890,7 +1890,19 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 		});
 
-		const projectActions = projectFooter.createDiv({
+		this.renderProjectActions(projectFooter, model);
+	}
+
+	/**
+	 * The two buttons beside the project switcher: a new project, and the
+	 * health check wearing the project's verdict. The rail's footer carries
+	 * them, and so does the rail's stand-in on a phone, beside its bar.
+	 */
+	private renderProjectActions(
+		container: HTMLElement,
+		model: ProjectDashboardModel,
+	): void {
+		const projectActions = container.createDiv({
 			cls: 'snowflake-method-project-actions',
 		});
 		this.addToolbarButton(projectActions, 'circle-plus', 'actions.newProject', () => {
@@ -1902,10 +1914,10 @@ export class SnowflakeDashboardView extends ItemView {
 			'shield-check',
 			'actions.repair',
 			() => {
-			void this.runAndRefresh(async () => {
-				const report = await this.host.checkCurrentProject();
-				this.showRepairReport(report);
-			});
+				void this.runAndRefresh(async () => {
+					const report = await this.host.checkCurrentProject();
+					this.showRepairReport(report);
+				});
 			},
 		);
 		healthButton.addClass(
@@ -1916,8 +1928,7 @@ export class SnowflakeDashboardView extends ItemView {
 				? 'projectHealth.needsAttention'
 				: 'messages.healthCheckPassed',
 		);
-		const healthLabel = `${this.t('actions.repair')}: ${healthStatus}`;
-		setTooltip(healthButton, healthLabel);
+		setTooltip(healthButton, `${this.t('actions.repair')}: ${healthStatus}`);
 	}
 
 	private openCreateProjectFromDashboard(): void {
@@ -2070,11 +2081,13 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	/**
 	 * The rail's stand-in on a phone: a bar over the panel naming the pane on
-	 * show, which opens a sheet of every rail row and the project switcher.
-	 * Drawn with every dashboard and shown by the stylesheet only where the
-	 * rail is away, so a tablet split to a phone's width needs no redraw.
+	 * show, which opens a sheet of every rail row and the project switcher,
+	 * with the footer's two buttons beside it as they stand beside the
+	 * switcher on the desktop. Drawn with every dashboard and shown by the
+	 * stylesheet only where the rail is away, so a tablet split to a phone's
+	 * width needs no redraw.
 	 */
-	private renderRailMenu(root: HTMLElement): void {
+	private renderRailMenu(root: HTMLElement, model: ProjectDashboardModel): void {
 		const row = root.createDiv({ cls: 'snowflake-method-rail-menu-row' });
 		const button = row.createEl('button', {
 			cls: 'snowflake-method-rail-menu',
@@ -2094,6 +2107,7 @@ export class SnowflakeDashboardView extends ItemView {
 			this.openRailMenu(button);
 		});
 		this.railMenuButton = button;
+		this.renderProjectActions(row, model);
 	}
 
 	/** Names the pane on show on the rail's stand-in, from the rows the rail drew. */

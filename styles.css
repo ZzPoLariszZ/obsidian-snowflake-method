@@ -20194,7 +20194,8 @@ body.is-phone .snowflake-method-tint-swatches .snowflake-method-tint-divider {
 /* -- Phone: the dashboard's rail as a menu --------------------------------- */
 
 /* The rail goes, the panel takes the width, and a bar above the panel names
-   the pane on show and opens the rail's rows as a sheet. */
+   the pane on show and opens the rail's rows as a sheet, with the footer's
+   new project and health check buttons beside it. */
 body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-step-nav {
 	display: none;
 }
@@ -20205,6 +20206,8 @@ body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-layou
 
 body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row {
 	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
 	flex: 0 0 auto;
 }
 

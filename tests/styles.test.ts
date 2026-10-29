@@ -1441,6 +1441,7 @@ describe('styles.css', () => {
 		expect(elsewhere).not.toMatch(/is-phone|is-tablet/u);
 		expect(declarations('.snowflake-method-rail-menu-row')).toContain('display: none');
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row')).toContain('display: flex');
+		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row')).toContain('gap: var(--size-4-1)');
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-step-nav')).toContain('display: none');
 		expect(declarations('body.is-mobile .snowflake-method-settings')).toMatch(
 			/--background-modifier-form-field: color-mix\(\s*in srgb,\s*var\(--text-normal\) 10%,\s*transparent\s*\)/u,

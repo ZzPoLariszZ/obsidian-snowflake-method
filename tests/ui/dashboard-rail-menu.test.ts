@@ -121,6 +121,9 @@ function mount(step = 3) {
 		showsTableProgressStatus: () => false,
 		openStoryStructure: vi.fn(() => Promise.resolve()),
 		openProjectBase: vi.fn(() => Promise.resolve()),
+		importSources: vi.fn(() => Promise.resolve([])),
+		getDefaultProjectLocale: () => 'en' as const,
+		checkCurrentProject: vi.fn(() => Promise.resolve({ entries: [], summary: 'messages.healthCheckPassed' })),
 	};
 	const root = document.body.createDiv();
 	const view = new SnowflakeDashboardView(
@@ -142,7 +145,7 @@ function mount(step = 3) {
 	});
 	const button = (): HTMLButtonElement =>
 		root.querySelector<HTMLButtonElement>('.snowflake-method-rail-menu') as HTMLButtonElement;
-	return { view, root, button, selectStep };
+	return { view, root, button, selectStep, host };
 }
 
 const titles = (rows: MenuRow[]): string[] => rows.map((row) => (row.separator === true ? '---' : row.title ?? ''));
@@ -210,6 +213,27 @@ describe('the dashboard rail on a phone', () => {
 		expect(selectStep).toHaveBeenCalledExactlyOnceWith(1);
 	});
 
+	it('stands the footer’s new project and health check buttons beside the bar', async () => {
+		document.body.classList.add('is-phone');
+		const { view, root, host } = mount();
+		await view.refresh();
+		const row = root.querySelector<HTMLElement>('.snowflake-method-rail-menu-row');
+		const buttons = [...(row?.querySelectorAll<HTMLButtonElement>(
+			'.snowflake-method-project-actions button.snowflake-method-toolbar-button',
+		) ?? [])];
+		expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+			'actions.newProject',
+			'actions.repair',
+		]);
+		expect(buttons[1]?.classList.contains('is-health-healthy')).toBe(true);
+		buttons[0]?.click();
+		await flush();
+		expect(host.importSources).toHaveBeenCalledExactlyOnceWith(null);
+		buttons[1]?.click();
+		await flush();
+		expect(host.checkCurrentProject).toHaveBeenCalledOnce();
+	});
+
 	it('keeps the rail and its fold off a phone', async () => {
 		const { view, root } = mount();
 		await view.refresh();
@@ -218,6 +242,8 @@ describe('the dashboard rail on a phone', () => {
 		expect(root.querySelector('.snowflake-method-step-nav')).not.toBeNull();
 		// Drawn all the same, for a tablet split to a phone's width: the stylesheet shows it.
 		expect(root.querySelector('.snowflake-method-rail-menu-row')).not.toBeNull();
+		// The footer's two buttons stand in the rail and in the hidden row alike.
+		expect(root.querySelectorAll('.snowflake-method-project-actions')).toHaveLength(2);
 	});
 });
 
