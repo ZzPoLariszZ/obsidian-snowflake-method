@@ -1528,6 +1528,10 @@ describe('styles.css', () => {
 		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box')).toContain(
 			'overflow-y: visible',
 		);
+		// The quote of the step before grows with its words on a phone as the
+		// box under it does, so a swipe over it moves the page, not the quote.
+		expect(declarations('body.is-phone .snowflake-method-source-summary-body')).toContain('max-height: none');
+		expect(declarations('body.is-phone .snowflake-method-source-summary-body')).toContain('overflow-y: visible');
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(

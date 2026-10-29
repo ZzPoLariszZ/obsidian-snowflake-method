@@ -20055,9 +20055,10 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-s
 
 /* A synopsis or a summary grows with its words and the page scrolls past
    them, as the app's own notes do; a box that scrolled inside a page that scrolls took
-   the finger's swipe for its own. The quote of the step before keeps a
-   height of its own above the box and scrolls inside it: a column that
-   takes the height of its content measures no third to hold it to. */
+   the finger's swipe for its own. The quote of the step before grows with
+   its words as well: a column that takes the height of its content
+   measures no third to hold it to, and a quote that scrolled inside the
+   page took the swipe as the box did. */
 body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box {
 	flex: 0 0 auto;
 	height: auto;
@@ -20073,7 +20074,9 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowf
 }
 
 body.is-phone .snowflake-method-source-summary-body {
-	max-height: 14rem;
+	max-height: none;
+	overflow-y: visible;
+	scrollbar-gutter: auto;
 }
 
 /* -- Mobile: a field inside a card ----------------------------------------- */
