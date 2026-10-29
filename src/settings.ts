@@ -490,7 +490,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	explorerFolderCounts: true,
 	explorerTidy: true,
 	explorerCounts: true,
-	explorerImmersive: true,
+	explorerImmersive: false,
 	explorerImmersiveFolds: [],
 	explorerOrders: {},
 };

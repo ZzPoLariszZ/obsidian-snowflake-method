@@ -645,8 +645,8 @@ export class ExplorerEnhancer {
 			});
 		}
 		// A cover standing when the view arrives, resumed from the last close
-		// or on by default, folds the view around the project as a press
-		// would. The open folders are remembered first when none were, so that
+		// or turned on in the settings, folds the view around the project as
+		// a press would. The open folders are remembered first when none were, so that
 		// coming down has something to open again. Folds kept from a cover
 		// taken down while no explorer was open are opened now.
 		const prefs = this.deps.settings();

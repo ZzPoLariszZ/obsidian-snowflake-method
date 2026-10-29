@@ -1007,9 +1007,9 @@ describe('export settings', () => {
 		expect(location).toEqual({ name: 'Location' });
 	});
 
-	it('starts the explorer immersive until the plugin setting turns it off', () => {
-		expect(DEFAULT_SETTINGS.explorerImmersive).toBe(true);
-		expect(sanitizeSettings(undefined).explorerImmersive).toBe(true);
-		expect(sanitizeSettings({ explorerImmersive: false }).explorerImmersive).toBe(false);
+	it('leaves the explorer uncovered until the plugin setting turns immersive mode on', () => {
+		expect(DEFAULT_SETTINGS.explorerImmersive).toBe(false);
+		expect(sanitizeSettings(undefined).explorerImmersive).toBe(false);
+		expect(sanitizeSettings({ explorerImmersive: true }).explorerImmersive).toBe(true);
 	});
 });
