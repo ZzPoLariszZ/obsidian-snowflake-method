@@ -46,6 +46,7 @@ import {
 	EditorSelection,
 	EditorState,
 	type Extension,
+	type Transaction,
 } from '@codemirror/state';
 import { EditorView, keymap, tooltips } from '@codemirror/view';
 
@@ -448,6 +449,27 @@ export interface SegmentEditorHandle {
  * what writing prose needs — text, Markdown highlighting, a caret, a selection,
  * undo, and wrapping.
  */
+/**
+ * Whether a transaction moved the caret by a pointer, or by the browser,
+ * rather than by the author's hand at the keys. A pointer selection is the
+ * click the view already answers with `putBack`, and a replacement is the
+ * find bar's, which shows its own next match. A selection the browser moved
+ * on its own and the editor read back is a finger's: a tap placing the
+ * caret, the handles of a touch selection dragged, the words lifted and
+ * dropped. It arrives as a bare `select` with no scroll asked for, where a
+ * key's move asks for one, and following it would scroll the page under the
+ * finger that is still moving it.
+ */
+export function pointerMoved(transaction: Transaction): boolean {
+	return (
+		transaction.isUserEvent('select.pointer') ||
+		transaction.isUserEvent('input.replace') ||
+		(transaction.isUserEvent('select') &&
+			!transaction.scrollIntoView &&
+			!transaction.docChanged)
+	);
+}
+
 export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 	readonly id = 'codemirror';
 
@@ -1180,14 +1202,9 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				if (update.focusChanged && !update.view.hasFocus) {
 					hooks.onBlur(target.path);
 				}
-				// A pointer selection is the click the view already answers with
-				// `putBack`, and a replacement is the find bar's, which shows its
-				// own next match; everything else that moved the caret is the author.
-				const pointed = update.transactions.some(
-					(transaction) =>
-						transaction.isUserEvent('select.pointer') ||
-						transaction.isUserEvent('input.replace'),
-				);
+				// Everything that moved the caret and was neither a pointer's
+				// nor the browser's own move is the author.
+				const pointed = update.transactions.some(pointerMoved);
 				if ((update.docChanged || update.selectionSet) && !handed && !pointed) {
 					hooks.onCaretMove?.(target.path);
 				}
