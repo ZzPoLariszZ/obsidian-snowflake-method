@@ -818,7 +818,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	 * than a phone's screen has, and the dashboard's tables carry the scenes
 	 * and the characters there. A tab that opens on one all the same, kept
 	 * from a wider screen, says so on the notice pane the Scene ↔ Manuscript
-	 * tab stands on, and leads to the dashboard from under the words.
+	 * tab stands on, and leads back to the dashboard from under the words.
 	 */
 	private renderPhoneNote(root: HTMLElement): void {
 		const { actions } = renderNoticePane(root, {
@@ -829,7 +829,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 		if (path === null) return;
 		const open = actions.createEl('button', {
 			cls: 'mod-cta snowflake-method-workspace-phone-open',
-			text: this.t('commands.openDashboard'),
+			text: this.t('storyStructure.phoneBack'),
 			attr: { type: 'button' },
 		});
 		open.addEventListener('click', () => {

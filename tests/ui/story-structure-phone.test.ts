@@ -96,7 +96,7 @@ describe('the workspace tab on a phone', () => {
 		expect(fixture.root.querySelector('[role="tabpanel"]')).toBeNull();
 		expect(fixture.corkboard).not.toHaveBeenCalled();
 		const button = note?.querySelector<HTMLButtonElement>('.snowflake-method-workspace-phone-open');
-		expect(button?.textContent).toBe('commands.openDashboard');
+		expect(button?.textContent).toBe('storyStructure.phoneBack');
 		expect(button?.classList.contains('mod-cta')).toBe(true);
 		expect(button?.parentElement?.classList.contains('snowflake-method-workspace-phone-actions')).toBe(true);
 		button?.click();
