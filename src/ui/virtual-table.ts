@@ -384,10 +384,10 @@ export class VirtualTable {
 /**
  * The element whose scroll moves the rows: the frame itself where it
  * scrolls, as it does on the desktop, else the nearest ancestor that does.
- * A phone's or a tablet's dashboard lets its frames run to their content
- * and scrolls the whole page, and the stylesheet alone says which it is, so the answer is
- * read from the layout rather than from the device. A frame not laid out,
- * as a test's is, scrolls itself.
+ * A phone's dashboard lets its frames run to their content and scrolls the
+ * whole page, a tablet's scrolls its column past them, and the stylesheet
+ * alone says which it is, so the answer is read from the layout rather than
+ * from the device. A frame not laid out, as a test's is, scrolls itself.
  */
 export function scrollerOf(frame: HTMLElement): HTMLElement {
 	for (let candidate: HTMLElement | null = frame; candidate !== null; candidate = candidate.parentElement) {

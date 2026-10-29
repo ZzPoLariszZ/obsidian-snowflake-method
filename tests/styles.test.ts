@@ -1519,11 +1519,14 @@ describe('styles.css', () => {
 			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),
 		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');
 		expect(declarations('.snowflake-method-diagnostics-report')).toContain('white-space: pre-wrap');
-		// The dashboard scrolls as one page on a phone and on a tablet, and its
-		// frames run to their content. The workspace is not offered on a phone:
-		// its ribbon action is away, a tab that opens all the same shows its
-		// note, and no phone rule lays out a board of it.
-		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-layout')).toContain('flex: 0 0 auto');
+		// The dashboard scrolls as one page on a phone; on a tablet its column
+		// scrolls, as on the desktop, beside a rail that keeps its own scroll,
+		// and on both the frames run to their content. The workspace is not
+		// offered on a phone: its ribbon action is away, a tab that opens all
+		// the same shows its note, and no phone rule lays out a board of it.
+		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-layout')).toContain('flex: 0 0 auto');
+		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-main')).toContain('overflow-y: visible');
+		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(/body\.is-(?:mobile|tablet)[^{]*\.snowflake-method-main[\s,{]/u);
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-table-body')).toContain('overflow: visible');
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box')).toContain(
 			'overflow-y: visible',

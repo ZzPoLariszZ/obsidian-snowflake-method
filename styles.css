@@ -19989,34 +19989,29 @@ body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] 
    a synopsis in its own under its count. A phone's column is a few hundred
    pixels, and a frame given what the progress row, the Steps row and the
    panel's own bar left of them showed two cards of a cast of thirty, every
-   swipe inside it fighting the page's for the finger. A tablet has the
-   room and not the pointer: a frame that scrolls inside a page that
-   scrolls takes the finger's swipe there as well. So on both the page is
-   the one thing that scrolls: the layout and the column take the height of
-   what they hold, every frame runs on to its content, and the rows stand
-   down the page under the bar that searches them. The virtual table reads
-   which element scrolls off this layout (scrollerOf) and windows its rows
-   by the page. */
-body.is-mobile .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard {
+   swipe inside it fighting the page's for the finger. So on a phone the
+   page is the one thing that scrolls: the layout and the column take the
+   height of what they hold, every frame runs on to its content, and the
+   rows stand down the page under the bar that searches them. A tablet has
+   the room and not the pointer: a frame that scrolls inside a column that
+   scrolls takes the finger's swipe there as well, so its frames run on to
+   their content too, and the column scrolls them as one page, as it does
+   on the desktop, beside a rail that keeps its own rows and its own scroll
+   and stands still while the column moves. The virtual table reads which
+   element scrolls off this layout (scrollerOf) and windows its rows by the
+   page or the column. */
+body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard {
 	overflow-y: auto;
 }
 
-body.is-mobile .snowflake-method-dashboard .snowflake-method-layout {
+body.is-phone .snowflake-method-dashboard .snowflake-method-layout {
 	flex: 0 0 auto;
 	min-height: 0;
 }
 
-body.is-mobile .snowflake-method-dashboard .snowflake-method-main {
+body.is-phone .snowflake-method-dashboard .snowflake-method-main {
 	overflow-y: visible;
 	scrollbar-gutter: auto;
-}
-
-/* The rail beside the column stands as tall as its own rows on a tablet,
-   its footer under them: stretched to the column's run, as the desktop's
-   frame stretches it, it parked the footer at the page's end. A phone has
-   no rail to stand. */
-body.is-tablet .snowflake-method-dashboard .snowflake-method-step-nav {
-	align-self: start;
 }
 
 /* A member step's panel and its table frame take their content's height,
