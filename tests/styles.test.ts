@@ -1469,6 +1469,14 @@ describe('styles.css', () => {
 		// own size there and the arrows stand a touch closer.
 		expect(declarations('body.is-phone .snowflake-method-history-range-nav')).toContain('gap: var(--size-4-1)');
 		expect(declarations('body.is-phone .snowflake-method-history-range-title')).toContain('font-size: 1em');
+		// The control band rides the strip's gap on the desktop. On a phone it
+		// stands in the flow a touch under the strip.
+		const band = declarations('body.is-phone .snowflake-method-prose-controls');
+		expect(band).toContain('position: static');
+		expect(band).toContain('margin-block-start: calc(var(--size-4-2) - var(--snowflake-method-tab-height, 2.75rem))');
+		expect(declarations('body.is-phone .snowflake-method-sticky-board .snowflake-method-prose-controls')).toContain(
+			'margin-block-end: 0',
+		);
 		expect(declarations('body.is-phone .snowflake-method-settings .setting-item-control textarea')).toContain('min-width: 0');
 		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control textarea')).toContain(
 			'min-width: var(--snowflake-method-settings-box)',
