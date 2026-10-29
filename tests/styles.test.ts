@@ -1604,6 +1604,10 @@ describe('styles.css', () => {
 		expect(declarations('body.is-tablet .snowflake-method-settings .snowflake-method-font-picker')).toContain(
 			'max-width: var(--snowflake-method-settings-box)',
 		);
+		// A card's standing keeps the card's ground on a phone.
+		expect(declarations('body.is-mobile .snowflake-method-scene-cards select.snowflake-method-corkboard-status-select')).toContain(
+			'background-color: transparent',
+		);
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(

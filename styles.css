@@ -20146,6 +20146,12 @@ body.is-mobile .modal.snowflake-method-dialog .dropdown {
 	background-color: var(--background-modifier-form-field);
 }
 
+/* The standing on a card is a word and not a box, here as on the desktop:
+   it keeps the card's own ground. */
+body.is-mobile .snowflake-method-scene-cards select.snowflake-method-corkboard-status-select {
+	background-color: transparent;
+}
+
 /* -- Phone: the settings page --------------------------------------------- */
 
 /* The app stacks a phone's settings rows, the control under its name at the
