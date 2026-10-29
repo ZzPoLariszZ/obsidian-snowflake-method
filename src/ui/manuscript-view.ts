@@ -4987,10 +4987,12 @@ export class SnowflakeManuscriptView extends ItemView {
 		segment: ManuscriptSegmentViewModel,
 	): void {
 		el.addEventListener('contextmenu', (event) => {
-			// A finger held on the words is the system's own selection, its
-			// edit menu and its drag of selected words: the menu keeps out of
-			// that, and the toolbar's button answers for the words selected.
-			if (pressYieldsToSelection(event, el.ownerDocument)) return;
+			// A finger held anywhere on a segment is the system's: on the
+			// words its selection, its edit menu and its drag of selected
+			// words, and beside them nothing at all. The menu keeps out of
+			// that on a mobile device, and the toolbar's button beside the
+			// writing session is its one door there.
+			if (pressYieldsToSelection(event)) return;
 			event.preventDefault();
 			this.buildSegmentMenu(segment, event).showAtMouseEvent(event);
 		});

@@ -9,46 +9,21 @@ import { isMobileDevice } from './device';
  * move it under a finger that never lifts. Obsidian answers the same held
  * touch with a synthetic `contextmenu` at 800 ms, so a menu the plugin
  * opens on a right-click opened over the system's gesture too: on top of
- * the edit menu, and in the middle of a drag of selected words. A press
- * that falls on the selection, or lands while the selection is still
- * moving, is left to the system. A right button keeps its menu, so does a
- * press on a place with no selection in play, and nothing changes on a
- * desktop.
+ * the edit menu, and in the middle of a drag of selected words. On a
+ * mobile device every press that is not a right button's is therefore left
+ * to the system, whether it falls on the words, beside them or on a
+ * header, and the toolbar's button is the menu's one door. A right button,
+ * a mouse's on a tablet, keeps its menu, and nothing changes on a desktop.
  */
-
-/** How long after the selection last moved a press is still the selection's own. */
-export const SELECTION_SETTLE_MS = 1200;
-
-/** How far outside the selection's boxes a press still falls on it. */
-const SELECTION_REACH_PX = 4;
-
-const movedAt = new WeakMap<Document, number>();
 
 /**
- * To be told on the document's `selectionchange`: records when a stretch
- * of words was last taken or moved. A caret moving on its own, as typing
- * moves it, is no selection and is not recorded.
+ * Whether a `contextmenu` on a mobile device is a finger's press rather
+ * than a right button's. Obsidian's long press is a synthesized event, so
+ * it is not trusted and carries button 0; the browser's own long press, on
+ * Android, is trusted but names a touch as its pointer.
  */
-export function noteSelectionMoved(doc: Document, now = Date.now()): void {
-	const selection = doc.getSelection();
-	if (selection === null || selection.rangeCount === 0 || selection.isCollapsed) return;
-	movedAt.set(doc, now);
-}
-
-/** Whether a `contextmenu` belongs to the system's selection gesture rather than to a menu of the plugin's. */
-export function pressYieldsToSelection(event: MouseEvent, doc: Document, now = Date.now()): boolean {
-	if (!isMobileDevice() || event.button === 2) return false;
-	const moved = movedAt.get(doc);
-	if (moved !== undefined && now - moved < SELECTION_SETTLE_MS) return true;
-	const selection = doc.getSelection();
-	if (selection === null || selection.rangeCount === 0 || selection.isCollapsed) return false;
-	const range = selection.getRangeAt(0);
-	if (typeof range.getClientRects !== 'function') return false;
-	return Array.from(range.getClientRects()).some(
-		(rect) =>
-			event.clientX >= rect.left - SELECTION_REACH_PX &&
-			event.clientX <= rect.right + SELECTION_REACH_PX &&
-			event.clientY >= rect.top - SELECTION_REACH_PX &&
-			event.clientY <= rect.bottom + SELECTION_REACH_PX,
-	);
+export function pressYieldsToSelection(event: MouseEvent): boolean {
+	if (!isMobileDevice()) return false;
+	if (!event.isTrusted || event.button !== 2) return true;
+	return 'pointerType' in event && event.pointerType === 'touch';
 }

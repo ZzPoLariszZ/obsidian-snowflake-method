@@ -442,9 +442,9 @@ export class NoteMentions {
 	/**
 	 * A click on a mention not yet linked, in reading, asks what to do about
 	 * it, as it does in the stream, and a right-click asks the same. A finger
-	 * held on the word on a phone is the system's own selection and asks
-	 * nothing. A linked one is a link: a click follows it, and the app's own
-	 * menu for it answers a right-click.
+	 * held on the word on a mobile device is the system's own selection and
+	 * asks nothing. A linked one is a link: a click follows it, and the app's
+	 * own menu for it answers a right-click.
 	 */
 	private readonly onReadingPress = (event: MouseEvent): void => {
 		if (this.destroyed || !isElement(event.target)) return;
@@ -452,7 +452,7 @@ export class NoteMentions {
 		if (span === null) return;
 		const found = this.read.get(span);
 		if (found === undefined) return;
-		if (event.type === 'contextmenu' && pressYieldsToSelection(event, span.ownerDocument)) return;
+		if (event.type === 'contextmenu' && pressYieldsToSelection(event)) return;
 		event.preventDefault();
 		this.openReadMenu(found, event);
 	};

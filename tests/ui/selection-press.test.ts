@@ -1,86 +1,52 @@
 // @vitest-environment happy-dom
 
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { Platform } from 'obsidian';
 
-import { SELECTION_SETTLE_MS, noteSelectionMoved, pressYieldsToSelection } from '../../src/ui/selection-press';
-import { installObsidianDom } from '../helpers/obsidian-dom';
+import { pressYieldsToSelection } from '../../src/ui/selection-press';
 
-const box = (left: number, top: number, width: number, height: number): DOMRect =>
-	({ left, top, right: left + width, bottom: top + height }) as DOMRect;
-
-function words(): HTMLElement {
-	return document.body.createEl('p', { text: 'The clockmaker met the baker by the tower.' });
-}
-
-/** Selects a node's words, with the boxes a browser would lay them in. */
-function select(node: Node, boxes: DOMRect[] = []): Range {
-	const range = document.createRange();
-	range.selectNodeContents(node);
-	Object.defineProperty(range, 'getClientRects', { value: () => boxes });
-	const selection = document.getSelection();
-	selection?.removeAllRanges();
-	selection?.addRange(range);
-	return range;
-}
-
+/** A right-click's event as a script makes it: untrusted, as Obsidian's long press is. */
 const press = (init: MouseEventInit = {}): MouseEvent =>
 	new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 50, clientY: 50, ...init });
 
+/** The same event as the browser would send it for a real button. */
+function trusted(event: MouseEvent, pointerType?: string): MouseEvent {
+	Object.defineProperty(event, 'isTrusted', { value: true });
+	if (pointerType !== undefined) {
+		Object.defineProperty(event, 'pointerType', { value: pointerType });
+	}
+	return event;
+}
+
 /**
- * A finger held on a phone's words is the system's own selection gesture,
- * and the plugin's menus keep out of it: a press while the selection still
- * moves, or on the selected words, yields; a right button, a desktop, and a
- * press beside a settled selection keep the menu.
+ * A finger held on a mobile device's words is the system's own selection
+ * gesture, and the plugin's menus keep out of it: every press there that is
+ * not a right button's yields, wherever it lands, and a desktop yields nothing.
  */
 describe('a long press against the selection', () => {
-	beforeAll(() => {
-		installObsidianDom(window);
-	});
-
-	// The moment the selection moved is kept per document, and the cases
-	// share this one, so each case's clock starts long after the last.
 	afterEach(() => {
 		Platform.isMobile = false;
-		document.getSelection()?.removeAllRanges();
-		document.body.replaceChildren();
 	});
 
-	it('yields nothing on a desktop, nor to a right button on a phone', () => {
-		select(words(), [box(0, 0, 100, 100)]);
-		noteSelectionMoved(document, 1000);
-		expect(pressYieldsToSelection(press(), document, 1100)).toBe(false);
-		Platform.isMobile = true;
-		expect(pressYieldsToSelection(press({ button: 2 }), document, 1100)).toBe(false);
+	it('yields nothing on a desktop', () => {
+		expect(pressYieldsToSelection(press())).toBe(false);
+		expect(pressYieldsToSelection(press({ button: 2 }))).toBe(false);
 	});
 
-	it('yields while the selection is still moving, then not', () => {
+	it("yields to Obsidian's long press on a mobile device, wherever it lands", () => {
 		Platform.isMobile = true;
-		select(words());
-		noteSelectionMoved(document, 10_000);
-		expect(pressYieldsToSelection(press(), document, 10_000 + SELECTION_SETTLE_MS - 1)).toBe(true);
-		expect(pressYieldsToSelection(press(), document, 10_000 + SELECTION_SETTLE_MS)).toBe(false);
+		expect(pressYieldsToSelection(press())).toBe(true);
+		expect(pressYieldsToSelection(press({ clientX: 400, clientY: 900 }))).toBe(true);
+		// A synthesized right button is still a script's, not a mouse's.
+		expect(pressYieldsToSelection(press({ button: 2 }))).toBe(true);
 	});
 
-	it('does not take a caret moving for the selection moving', () => {
+	it("keeps the menu for a mouse's right button on a tablet, not for a browser's long press", () => {
 		Platform.isMobile = true;
-		const caret = document.createRange();
-		caret.setStart(words().firstChild as Node, 3);
-		caret.collapse(true);
-		const selection = document.getSelection();
-		selection?.removeAllRanges();
-		selection?.addRange(caret);
-		noteSelectionMoved(document, 20_000);
-		expect(pressYieldsToSelection(press(), document, 20_100)).toBe(false);
-	});
-
-	it('yields to a press on the selected words, and not beside them', () => {
-		Platform.isMobile = true;
-		select(words(), [box(10, 10, 80, 20), box(10, 40, 30, 20)]);
-		expect(pressYieldsToSelection(press({ clientX: 20, clientY: 50 }), document, 30_000)).toBe(true);
-		// Within reach of a box's edge, as a finger is never exact.
-		expect(pressYieldsToSelection(press({ clientX: 93, clientY: 20 }), document, 30_000)).toBe(true);
-		expect(pressYieldsToSelection(press({ clientX: 60, clientY: 50 }), document, 30_000)).toBe(false);
+		expect(pressYieldsToSelection(trusted(press({ button: 2 })))).toBe(false);
+		expect(pressYieldsToSelection(trusted(press({ button: 2 }), 'mouse'))).toBe(false);
+		expect(pressYieldsToSelection(trusted(press({ button: 2 }), 'touch'))).toBe(true);
+		expect(pressYieldsToSelection(trusted(press({ button: 0 })))).toBe(true);
 	});
 });
