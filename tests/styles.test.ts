@@ -404,6 +404,35 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-length-hint + .snowflake-method-actions')).toContain('margin-top: var(--size-4-4)');
 	});
 
+	/**
+	 * The custom field pane's frame is drawn over its sections as the
+	 * definition panes draw theirs over the trees, so their headings start on
+	 * the same pixel; a pane too narrow for the definition panes' two columns
+	 * lays its templates down the page as they lay their trees.
+	 */
+	it('frames the custom field pane as the definition panes are framed', () => {
+		const frame = declarations('.snowflake-method-template-panel .snowflake-method-template-sections');
+		expect(frame).toContain('border: 0');
+		expect(frame).toContain('position: relative');
+		const stroke = declarations('.snowflake-method-template-panel .snowflake-method-template-sections::after');
+		expect(stroke).toContain('border: 1px solid var(--background-modifier-border)');
+		expect(stroke).toContain('pointer-events: none');
+		expect(stroke).toContain('z-index: 3');
+		// The narrow block for this pane stands after the pane's own rules,
+		// which an earlier block of the same weight would not outweigh.
+		const query = '@container snowflake-dashboard (max-width: 60rem) {';
+		const blocks: { start: number; body: string }[] = [];
+		for (let at = styles.indexOf(query); at !== -1; at = styles.indexOf(query, at + 1)) {
+			blocks.push({ start: at, body: styles.slice(at + query.length).split(/\n\}\n/u)[0] ?? '' });
+		}
+		const narrow = blocks.find((block) => block.body.includes('.snowflake-method-template-scroll {'));
+		expect(narrow).toBeDefined();
+		expect(styles.indexOf('.snowflake-method-template-scroll {')).toBeLessThan(narrow?.start ?? -1);
+		expect(narrow?.body).toMatch(/\.snowflake-method-template-panel \.snowflake-method-template-sections \{[^}]*flex: 0 0 auto;[^}]*border: 1px solid/u);
+		expect(narrow?.body).toMatch(/\.snowflake-method-template-panel \.snowflake-method-template-sections::after \{[^}]*content: none/u);
+		expect(narrow?.body).toMatch(/\.snowflake-method-template-scroll \{[^}]*overflow-y: visible;[^}]*padding-inline-end: 0/u);
+	});
+
 	it('gives the note toolbar its room without a look of its own', () => {
 		const toolbar = section('Note toolbar');
 		expect(toolbar.includes('!important')).toBe(false);

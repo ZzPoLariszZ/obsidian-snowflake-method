@@ -10978,16 +10978,34 @@ button.snowflake-method-kind-options {
 	min-height: 0;
 }
 
+/* The frame is drawn over the sections rather than around them, as the
+   definition panes draw theirs over the trees in
+   .snowflake-method-definition-frame: a border takes a pixel of the box on
+   every side, and the headings and rows stood that pixel further in than
+   the trees' beside the same search line. The stroke rides above the stuck
+   headings, so it stays whole wherever they stand. */
 .snowflake-method-template-panel .snowflake-method-template-sections {
 	--snowflake-method-table-gutter: max(
 		var(--snowflake-method-scrollbar-width, 0px),
 		var(--size-4-3)
 	);
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	flex: 1 1 0;
 	min-height: 8rem;
+	border: 0;
 	overflow: visible;
+}
+
+.snowflake-method-template-panel .snowflake-method-template-sections::after {
+	content: '';
+	position: absolute;
+	z-index: 3;
+	inset: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	pointer-events: none;
 }
 
 /* What scrolls is a borderless reach inside the standing frame, the member
@@ -11008,8 +11026,8 @@ button.snowflake-method-kind-options {
 		var(--snowflake-method-table-gutter) -
 			var(--snowflake-method-scrollbar-width, 0px)
 	);
-	border-start-start-radius: calc(var(--radius-m) - 1px);
-	border-end-start-radius: calc(var(--radius-m) - 1px);
+	border-start-start-radius: var(--radius-m);
+	border-end-start-radius: var(--radius-m);
 }
 
 /* The far corner the clip cannot reach: a stuck heading's own background
@@ -11036,6 +11054,33 @@ button.snowflake-method-kind-options {
 
 .snowflake-method-template-tail.is-hidden {
 	background-image: none;
+}
+
+/* Too narrow for the definition panes' two columns, the custom fields pane
+   stacks the way they do: its frame is a plain border again around sections
+   that take the height they need, and the reach inside it stops scrolling,
+   so the pane scrolls as one with the page, a phone's among them. The block
+   stands after the rules it overrides: a container block before them would
+   not outweigh them. */
+@container snowflake-dashboard (max-width: 60rem) {
+	.snowflake-method-template-panel .snowflake-method-template-sections {
+		flex: 0 0 auto;
+		min-height: 0;
+		border: 1px solid var(--background-modifier-border);
+		overflow: clip;
+	}
+
+	.snowflake-method-template-panel .snowflake-method-template-sections::after {
+		content: none;
+	}
+
+	.snowflake-method-template-scroll {
+		flex: 0 0 auto;
+		overflow-y: visible;
+		scrollbar-gutter: auto;
+		margin-inline-end: 0;
+		padding-inline-end: 0;
+	}
 }
 
 /* Inside the frame a table sheds its own box: the frame holds the sides,
