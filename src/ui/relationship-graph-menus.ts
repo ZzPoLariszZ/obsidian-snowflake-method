@@ -57,12 +57,19 @@ const MOVE_WORDS: Record<string, string> = {
 	right: 'relationshipGraph.node.moveRight',
 };
 
+export interface NodeMenuOptions {
+	/** A menu the items join, in place of one of their own. */
+	into?: Menu;
+	/** Whether the fit closes the menu, as it does on its own; a toolbar that lists its own fit leaves it out. */
+	fit?: boolean;
+}
+
 /** The menu on a node, or null for a node the graph no longer has. */
-export function buildNodeMenu(deps: GraphMenuDeps, id: string): Menu | null {
+export function buildNodeMenu(deps: GraphMenuDeps, id: string, options: NodeMenuOptions = {}): Menu | null {
 	const node = deps.node(id);
 	if (node === undefined) return null;
 	const { t } = deps;
-	const menu = new Menu();
+	const menu = options.into ?? new Menu();
 	if (node.group !== UNRESOLVED_GROUP) {
 		addItem(menu, t('common.open'), 'file-text', () => {
 			deps.open(node);
@@ -91,10 +98,12 @@ export function buildNodeMenu(deps: GraphMenuDeps, id: string): Menu | null {
 			deps.nudge(id, move.dx, move.dy);
 		});
 	}
-	menu.addSeparator();
-	addItem(menu, t('relationshipGraph.fit'), 'maximize', () => {
-		deps.fit();
-	});
+	if (options.fit !== false) {
+		menu.addSeparator();
+		addItem(menu, t('relationshipGraph.fit'), 'maximize', () => {
+			deps.fit();
+		});
+	}
 	return menu;
 }
 
@@ -114,6 +123,25 @@ export function buildEdgeMenu(deps: GraphMenuDeps, edge: GraphEdge): Menu {
 	return menu;
 }
 
+/** The way back to the whole graph, on a menu, while a local one is shown; nothing otherwise. */
+export function addWholeGraphItem(menu: Menu, deps: GraphMenuDeps): void {
+	if (deps.focus() === null) return;
+	addItem(menu, deps.t('relationshipGraph.local.whole'), 'git-fork', () => {
+		deps.showWhole();
+	});
+}
+
+/** The pan's twin on a menu: the view moved a step each way. */
+export function addPanItems(menu: Menu, deps: GraphMenuDeps): void {
+	for (const move of MOVES) {
+		// The view moves as the camera does: panning up shows what stands above.
+		// Subtracting from zero keeps a still axis at 0, where negation gives -0.
+		addItem(menu, deps.t(`relationshipGraph.pan.${move.key}`), move.icon, () => {
+			deps.pan(0 - move.dx, 0 - move.dy);
+		});
+	}
+}
+
 /** The menu on the ground: the view, the controls, and the pan's twin. */
 export function buildBackgroundMenu(deps: GraphMenuDeps): Menu {
 	const { t } = deps;
@@ -124,22 +152,12 @@ export function buildBackgroundMenu(deps: GraphMenuDeps): Menu {
 	addItem(menu, t('relationshipGraph.resetView'), 'locate-fixed', () => {
 		deps.resetView();
 	});
-	if (deps.focus() !== null) {
-		addItem(menu, t('relationshipGraph.local.whole'), 'git-fork', () => {
-			deps.showWhole();
-		});
-	}
+	addWholeGraphItem(menu, deps);
 	const open = deps.controlsOpen();
 	addItem(menu, t(open ? 'relationshipGraph.closeControls' : 'relationshipGraph.openControls'), 'sliders-horizontal', () => {
 		deps.foldControls(!open);
 	});
 	menu.addSeparator();
-	for (const move of MOVES) {
-		// The view moves as the camera does: panning up shows what stands above.
-		// Subtracting from zero keeps a still axis at 0, where negation gives -0.
-		addItem(menu, t(`relationshipGraph.pan.${move.key}`), move.icon, () => {
-			deps.pan(0 - move.dx, 0 - move.dy);
-		});
-	}
+	addPanItems(menu, deps);
 	return menu;
 }

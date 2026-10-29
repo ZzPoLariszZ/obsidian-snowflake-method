@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { Platform } from 'obsidian';
+
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
@@ -57,6 +59,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		readonly item = { title: '', icon: '', click: (): void => undefined };
 		setTitle(title: string): this { this.item.title = title; return this; }
 		setIcon(icon: string): this { this.item.icon = icon; return this; }
+		setDisabled(): this { return this; }
 		onClick(click: () => void): this { this.item.click = click; return this; }
 	}
 	class Menu implements MenuRecord {
@@ -1060,5 +1063,32 @@ describe('the keys and menus of the entities view', () => {
 		fixture.button('snowflake-method-relationship-graph-zoom-out').dispatch('click');
 		expect(lastCalls(fixture, 2)).toEqual(['zoomBy:1.25', 'zoomBy:0.8']);
 		expect(fixture.button('snowflake-method-relationship-graph-more').getAttribute('aria-haspopup')).toBe('menu');
+	});
+
+	it('gathers the toolbar under one More actions button on a tablet, the graph\'s own menu joining the list after a line', async () => {
+		Platform.isMobile = true;
+		try {
+			const fixture = mount({ members: family() });
+			await settle();
+			const end = fixture.root.querySelector('.snowflake-method-toolbar-end')!;
+			expect(end.children.map((child) => [...child.classes].pop())).toEqual([
+				'snowflake-method-toolbar-gathered', 'snowflake-method-relationship-graph-refresh', 'snowflake-method-toolbar-more',
+			]);
+			expect(end.children[0]!.children.map((child) => child.getAttribute('aria-label'))).toEqual([
+				'relationshipGraph.zoomIn', 'relationshipGraph.zoomOut', 'relationshipGraph.menu',
+				'relationshipGraph.fit', 'relationshipGraph.resetView', 'relationshipGraph.controls',
+			]);
+			const before = menus.length;
+			fixture.button('snowflake-method-toolbar-more').dispatch('click');
+			expect(menus).toHaveLength(before + 1);
+			expect(menuTitles()).toEqual([
+				'relationshipGraph.zoomIn', 'relationshipGraph.zoomOut', 'relationshipGraph.fit', 'relationshipGraph.resetView', 'relationshipGraph.controls',
+				'relationshipGraph.pan.up', 'relationshipGraph.pan.down', 'relationshipGraph.pan.left', 'relationshipGraph.pan.right',
+			]);
+			menus[menus.length - 1]!.items[0]!.click();
+			expect(lastCalls(fixture, 1)).toEqual(['zoomBy:1.25']);
+		} finally {
+			Platform.isMobile = false;
+		}
 	});
 });

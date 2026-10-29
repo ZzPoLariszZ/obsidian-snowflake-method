@@ -86,6 +86,8 @@ import {
 	createLaneDeck,
 	createModalKeeper,
 	createSearchField,
+	gatherToolbarActions,
+	nameToolbarSymbol,
 	paintSymbol,
 	toolbarEnd,
 	toolbarIconButton,
@@ -303,6 +305,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	addViewButton.addEventListener('click', () => {
 		openAddView();
 	});
+	// The two words wear no symbol on the toolbar; on the menu a tablet lists
+	// them on, a lane takes a plus and a view the grid the freeform gives one.
+	nameToolbarSymbol(addTimelineButton, 'plus');
+	nameToolbarSymbol(addViewButton, 'layout-grid');
+	gatherToolbarActions(end, { t, keep: [refreshButton] });
 	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 
 	// -- The folds, the empty states, the body and the pool --------------------

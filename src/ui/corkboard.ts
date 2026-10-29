@@ -64,7 +64,7 @@ import type { SceneFilters } from './scene-filters';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import { CORKBOARD_MODES, isCorkboardMode } from './story-structure-state';
 import type { ProjectDashboardModel } from './view-model';
-import { balanceToolbar, toolbarEnd } from './workspace-frame';
+import { balanceToolbar, gatherToolbarActions, nameToolbarSymbol, toolbarEnd } from './workspace-frame';
 
 const SEARCH_DEBOUNCE_MS = 150;
 const OVERSCAN_LINES = 2;
@@ -195,6 +195,7 @@ export function renderBoard<
 		},
 	});
 	setIcon(displayButton, 'sliders-horizontal');
+	nameToolbarSymbol(displayButton, 'sliders-horizontal');
 	setTooltip(displayButton, t('corkboard.display'));
 	displayButton.addEventListener('click', () => {
 		openDisplay();
@@ -204,10 +205,9 @@ export function renderBoard<
 		attr: { type: 'button' },
 	});
 	const paintDirection = (): void => {
-		setIcon(
-			directionButton,
-			memory.reversed ? 'arrow-up-narrow-wide' : 'arrow-down-narrow-wide',
-		);
+		const icon = memory.reversed ? 'arrow-up-narrow-wide' : 'arrow-down-narrow-wide';
+		setIcon(directionButton, icon);
+		nameToolbarSymbol(directionButton, icon);
 		const label = t(
 			memory.reversed ? 'corkboard.order.reversed' : 'corkboard.order.normal',
 		);
@@ -231,6 +231,7 @@ export function renderBoard<
 		},
 	});
 	setIcon(filterButton, 'funnel');
+	nameToolbarSymbol(filterButton, 'funnel');
 	setTooltip(filterButton, t('table.filter'));
 	const markFilterButton = (): void => {
 		filterButton.toggleClass('is-active', deal.filters.active(memory.filters));
@@ -258,6 +259,11 @@ export function renderBoard<
 			text: deal.words.add,
 			attr: { type: 'button' },
 		});
+	nameToolbarSymbol(addButton, 'plus');
+	// The workspace's board gathers its actions under one button on a tablet;
+	// the dashboard's band wraps its row instead, and its panels hang from
+	// their own buttons.
+	const gathered = standalone ? gatherToolbarActions(end, { t, keep: [refreshButton] }) : null;
 	const stopBalance = standalone ? balanceToolbar(band, { start: viewHost, end }) : (): void => undefined;
 	if (variant.addButton === 'icon') {
 		setIcon(addButton, 'plus');
@@ -1160,7 +1166,7 @@ export function renderBoard<
 		const extra = await deal.filters.extra(current);
 		if (disposed || request !== popoverRequest || !filterButton.isConnected || model?.path !== owningProject) return;
 		controls.popover.openFilter(
-			filterButton,
+			gathered?.button ?? filterButton,
 			deal.filters.rows(model, memory.filters, extra),
 			() => {
 				markFilterButton();
@@ -1210,7 +1216,7 @@ export function renderBoard<
 		popoverKind = 'display';
 		const before = { mode: memory.mode, group: memory.group };
 		controls.popover.openFilter(
-			displayButton,
+			gathered?.button ?? displayButton,
 			displayRows(),
 			() => {
 				controls.remember(memory.mode !== before.mode ? { mode: memory.mode } : undefined);

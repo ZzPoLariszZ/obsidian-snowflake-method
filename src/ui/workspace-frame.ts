@@ -20,9 +20,10 @@
  * plugin unloading says another thing than it did at the render.
  */
 
-import { SearchComponent, getIcon, setIcon, setTooltip, type App, type Menu, type Modal } from 'obsidian';
+import { Menu, SearchComponent, getIcon, setIcon, setTooltip, type App, type Modal } from 'obsidian';
 
 import type { CorkboardControls, CorkboardHandle, CorkboardHost, CorkboardVariant, RenderCorkboard } from './corkboard-bridge';
+import { isMobileDevice } from './device';
 import type { LentFilterPopover } from './filter-rows';
 import type { LaneCells } from './lane-cells';
 import type { Translate } from './modals';
@@ -75,6 +76,21 @@ export interface FrameControls {
 
 // -- The toolbar's symbols -----------------------------------------------------
 
+/** The symbol each toolbar button wears, by the button, for the menu that lists the buttons a tablet's toolbar has no room for. */
+const toolbarSymbols = new WeakMap<HTMLElement, string>();
+
+/** The symbol a gathered button's item wears when none was written down, since every item needs one on Windows. */
+const UNNAMED_SYMBOL = 'circle';
+
+/**
+ * Writes down the symbol a toolbar button stands for without drawing it: a
+ * button of words, or one whose symbol other hands draw, so the menu that
+ * lists it on a tablet has a symbol to show beside its name.
+ */
+export function nameToolbarSymbol(button: HTMLElement, icon: string): void {
+	toolbarSymbols.set(button, icon);
+}
+
 /** A button of the toolbar that is a symbol alone, named for a screen reader and under the pointer. */
 export function toolbarIconButton(toolbar: HTMLElement, cls: string, icon: string, label: string): HTMLButtonElement {
 	const button = toolbar.createEl('button', {
@@ -83,12 +99,74 @@ export function toolbarIconButton(toolbar: HTMLElement, cls: string, icon: strin
 	});
 	setIcon(button, icon);
 	setTooltip(button, label);
+	toolbarSymbols.set(button, icon);
 	return button;
 }
 
 /** The group at a toolbar's end: the symbols and the words, which stand together at the toolbar's far side. */
 export function toolbarEnd(toolbar: HTMLElement): HTMLElement {
 	return toolbar.createDiv({ cls: 'snowflake-method-toolbar-end' });
+}
+
+export interface GatherDeps {
+	t: Translate;
+	/** The buttons that keep their place on the toolbar, beside the menu's own: the refresh. */
+	keep: readonly HTMLElement[];
+	/** Buttons put away with the rest and listed by no item, whose work `extend` gives the menu in another shape. */
+	omit?: readonly HTMLElement[];
+	/** Items of the board's own, added after the gathered ones and a line. */
+	extend?: (menu: Menu) => void;
+}
+
+export interface GatheredToolbar {
+	/** The More actions button at the toolbar's end, which a panel a gathered button hung hangs from instead. */
+	button: HTMLButtonElement;
+}
+
+/**
+ * On a phone or a tablet, where a board's toolbar has no room for a row of
+ * symbols and words beside its search, every button of the end group but
+ * the ones kept moves into a group the stylesheet does not show there, and
+ * a More actions button at the group's end lists them as a menu, each with
+ * its symbol and its name as they stand when the menu opens; a press on an
+ * item presses the button. A button the board has put away itself, by its
+ * class or by its stylesheet, is left off the list. On the desktop nothing
+ * moves, and null says so.
+ */
+export function gatherToolbarActions(end: HTMLElement, deps: GatherDeps): GatheredToolbar | null {
+	if (!isMobileDevice()) return null;
+	const kept = new Set<Element>(deps.keep);
+	const omitted = new Set<Element>(deps.omit ?? []);
+	const moved = Array.from(end.children).filter((child) => child.nodeName === 'BUTTON' && !kept.has(child));
+	const group = end.createDiv({ cls: 'snowflake-method-toolbar-gathered' });
+	end.insertBefore(group, moved[0] ?? null);
+	for (const button of moved) group.insertBefore(button, null);
+	const more = toolbarIconButton(end, 'snowflake-method-toolbar-more', 'ellipsis', deps.t('storyStructure.moreActions'));
+	more.setAttribute('aria-haspopup', 'menu');
+	more.addEventListener('click', (event) => {
+		const menu = new Menu();
+		let listed = 0;
+		for (const child of Array.from(group.children)) {
+			if (child.nodeName !== 'BUTTON' || omitted.has(child)) continue;
+			const button = child as HTMLButtonElement;
+			if (button.classList.contains('is-hidden') || button.win.getComputedStyle(button).display === 'none') continue;
+			const label = button.getAttribute('aria-label') ?? button.textContent ?? '';
+			const icon = toolbarSymbols.get(button) ?? UNNAMED_SYMBOL;
+			menu.addItem((item) => {
+				item.setTitle(label).setIcon(icon).onClick(() => {
+					button.click();
+				});
+				if (button.disabled) item.setDisabled(true);
+			});
+			listed++;
+		}
+		if (deps.extend !== undefined) {
+			if (listed > 0) menu.addSeparator();
+			deps.extend(menu);
+		}
+		menu.showAtMouseEvent(event);
+	});
+	return { button: more };
 }
 
 /** One measure the window reports of an element it was asked to watch: the element, and how wide its content stands. */
@@ -296,6 +374,7 @@ export function paintSymbol(button: HTMLButtonElement, memo: SymbolMemo, face: S
 		memo.icon = face.icon;
 		setIcon(button, face.icon);
 	}
+	toolbarSymbols.set(button, face.icon);
 	if (button.getAttribute('aria-label') !== face.label) {
 		button.setAttribute('aria-label', face.label);
 		setTooltip(button, face.label);

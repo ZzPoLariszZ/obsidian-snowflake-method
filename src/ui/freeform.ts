@@ -142,6 +142,8 @@ import {
 	createMenuKeeper,
 	createModalKeeper,
 	createSearchField,
+	gatherToolbarActions,
+	nameToolbarSymbol,
 	toolbarEnd,
 	toolbarIconButton,
 } from './workspace-frame';
@@ -282,6 +284,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	const wordWithSymbol = (cls: string, icon: string, words: string): HTMLButtonElement => {
 		const button = end.createEl('button', { cls: `mod-cta ${cls}`, attr: { type: 'button', 'aria-label': words } });
 		setIcon(button.createSpan({ cls: 'snowflake-method-freeform-word-symbol' }), icon);
+		nameToolbarSymbol(button, icon);
 		button.createSpan({ cls: 'snowflake-method-freeform-word', text: words });
 		return button;
 	};
@@ -294,6 +297,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	addViewButton.addEventListener('click', () => {
 		openAddView();
 	});
+	gatherToolbarActions(end, { t, keep: [refreshButton] });
 	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 
 	// -- The stage: the canvas, the word said of an empty one, and its controls --

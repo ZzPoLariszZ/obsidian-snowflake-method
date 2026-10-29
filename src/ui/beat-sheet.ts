@@ -91,6 +91,8 @@ import {
 	createLaneDeck,
 	createModalKeeper,
 	createSearchField,
+	gatherToolbarActions,
+	nameToolbarSymbol,
 	paintSymbol,
 	toolbarEnd,
 	toolbarIconButton,
@@ -302,6 +304,9 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	addSheetButton.addEventListener('click', () => {
 		openAddSheet();
 	});
+	nameToolbarSymbol(addActButton, 'plus');
+	nameToolbarSymbol(addSheetButton, 'layout-grid');
+	gatherToolbarActions(end, { t, keep: [refreshButton] });
 	const stopBalance = balanceToolbar(toolbar, { start: sheetHost, end });
 
 	// -- The folds, the empty states, the body and the pool --------------------

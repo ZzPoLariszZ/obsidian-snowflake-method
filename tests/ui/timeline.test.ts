@@ -4,7 +4,7 @@ import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
 const { menus, viewFields, searches, notices } = vi.hoisted(() => ({
-	menus: [] as { title: string; disabled: boolean; click: () => void }[][],
+	menus: [] as { title: string; icon: string; disabled: boolean; click: () => void }[][],
 	viewFields: [] as OptionFieldConfig[],
 	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
 	notices: vi.fn(),
@@ -19,10 +19,11 @@ vi.mock('obsidian', async (importOriginal) => {
 	}
 	class MenuItem {
 		title = '';
+		icon = '';
 		disabled = false;
 		click: () => void = () => undefined;
 		setTitle(title: string): this { this.title = title; return this; }
-		setIcon(): this { return this; }
+		setIcon(icon: string): this { this.icon = icon; return this; }
 		setWarning(): this { return this; }
 		setSection(): this { return this; }
 		setDisabled(value: boolean): this { this.disabled = value; return this; }
@@ -39,7 +40,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		addSeparator(): this { return this; }
 		setParentElement(): this { return this; }
 		showAtMouseEvent(): this {
-			menus.push(this.items.map((item) => ({ title: item.title, disabled: item.disabled, click: item.click })));
+			menus.push(this.items.map((item) => ({ title: item.title, icon: item.icon, disabled: item.disabled, click: item.click })));
 			return this;
 		}
 		hide(): this { return this; }
@@ -126,7 +127,7 @@ import {
 	type TimelineRow,
 	type TimelineView,
 } from '../../src/domain';
-import { Menu } from 'obsidian';
+import { Menu, Platform } from 'obsidian';
 import { MoveAfterModal, promptForEntityReference, type EntityReferenceSource } from '../../src/ui/modals';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
 import { timelineMemory } from '../../src/ui/story-structure-state';
@@ -381,6 +382,41 @@ describe('the timeline workspace', () => {
 		const addView = fixture.button('snowflake-method-timeline-view-add');
 		expect(addView.classes.has('mod-cta')).toBe(true);
 		expect(addView.textContent).toBe('timeline.view.add');
+	});
+
+	it('gathers every action but refresh under one More actions button on a tablet, each with its symbol, and presses the button from its item', async () => {
+		Platform.isMobile = true;
+		try {
+			const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+			await settle();
+			const end = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!.children[2]!;
+			expect(end.children.map((child) => [...child.classes].pop())).toEqual([
+				'snowflake-method-prose-state', 'snowflake-method-toolbar-gathered', 'snowflake-method-timeline-refresh', 'snowflake-method-toolbar-more',
+			]);
+			const gathered = end.children[1]!;
+			expect(gathered.children.map((child) => [...child.classes].pop())).toEqual([
+				'snowflake-method-timeline-export-canvas', 'snowflake-method-timeline-view-edit', 'snowflake-method-timeline-words',
+				'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order', 'snowflake-method-timeline-add-timeline',
+				'snowflake-method-timeline-view-add',
+			]);
+			const more = fixture.button('snowflake-method-toolbar-more');
+			expect(more.getAttribute('aria-label')).toBe('storyStructure.moreActions');
+			expect(more.getAttribute('aria-haspopup')).toBe('menu');
+			more.dispatch('click');
+			const listed = menus[menus.length - 1]!;
+			expect(listed.map((item) => item.title)).toEqual(gathered.children.map((child) => child.getAttribute('aria-label') ?? child.textContent));
+			expect(listed.map((item) => item.icon)).toEqual([
+				'layout-dashboard', 'pencil', 'eye', 'gallery-horizontal', 'arrow-down-narrow-wide', 'plus', 'layout-grid',
+			]);
+			expect(listed.map((item) => item.disabled)).toEqual(listed.map(() => false));
+			const opened: AddTimelineModal[] = [];
+			vi.spyOn(AddTimelineModal.prototype, 'open').mockImplementation(function (this: AddTimelineModal) { opened.push(this); });
+			listed[5]!.click();
+			expect(opened).toHaveLength(1);
+		} finally {
+			Platform.isMobile = false;
+			vi.restoreAllMocks();
+		}
 	});
 
 	it('puts the pinned lane first and makes it active, until a click chooses another', async () => {

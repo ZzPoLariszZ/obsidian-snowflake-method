@@ -1174,6 +1174,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'storyStructure.loadFailed': '无法读取故事结构。',
 	'storyStructure.phone': '由于屏幕空间有限，为了更好的用户体验，请在平板和桌面端使用可视化工作区。',
 	'storyStructure.phoneBack': '返回工作台',
+	'storyStructure.moreActions': '更多操作',
 	'corkboard.display': '显示',
 	'corkboard.cards': '卡片',
 	'corkboard.cards.compact': '紧凑',

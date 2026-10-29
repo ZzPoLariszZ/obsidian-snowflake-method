@@ -18627,11 +18627,13 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 /* The search and the symbols that act on the drawn graph are put away while
-   the tab stands in for Obsidian's own graph, which has its own. */
+   the tab stands in for Obsidian's own graph, which has its own; so is the
+   button a tablet gathers them under, which would list nothing there. */
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-toolbar .snowflake-method-toolbar-search,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-fit,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-reset-view,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-controls,
+.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-toolbar-more,
 .snowflake-method-relationship-graph .snowflake-method-relationship-graph-zoom-in,
 .snowflake-method-relationship-graph .snowflake-method-relationship-graph-zoom-out,
 .snowflake-method-relationship-graph .snowflake-method-relationship-graph-more {
@@ -20396,6 +20398,18 @@ body.is-tablet .snowflake-method-timeline-fold,
 body.is-tablet .snowflake-method-freeform-toolbar,
 body.is-tablet .snowflake-method-relationship-graph-toolbar {
 	inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--size-4-3)));
+}
+
+/* -- Mobile: the workspace toolbars' actions under one button -------------- */
+
+/* A tablet's toolbar has the room for its search or for its row of symbols
+   and words, not for both, and the row took it: the search was left a
+   sliver, or the bar scrolled. Every action but the refresh moves into a
+   group the toolbar does not show, and one button at the group's end lists
+   them as a menu, each with its symbol and its name (gatherToolbarActions).
+   The desktop keeps its row, and makes no group to hide. */
+body.is-mobile .snowflake-method-toolbar-gathered {
+	display: none;
 }
 
 /* -- Phone: dialogs -------------------------------------------------------- */

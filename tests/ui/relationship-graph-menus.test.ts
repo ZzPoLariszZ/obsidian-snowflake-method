@@ -50,8 +50,12 @@ vi.mock('obsidian', async (importOriginal) => {
 	return { ...runtime, Menu };
 });
 
+import { Menu } from 'obsidian';
+
 import type { GraphEdge, GraphNode } from '../../src/domain';
 import {
+	addPanItems,
+	addWholeGraphItem,
 	buildBackgroundMenu,
 	buildEdgeMenu,
 	buildNodeMenu,
@@ -224,5 +228,31 @@ describe('the ground menu', () => {
 		expect(titles()).toContain('relationshipGraph.openControls');
 		click('relationshipGraph.openControls');
 		expect(given.foldControls).toHaveBeenCalledWith(true);
+	});
+
+	it('lends the ground\'s pans and the way back to the whole graph to another\'s menu, and a node\'s items without the fit', () => {
+		const given = deps({ focus: alice.id });
+		const into = new Menu();
+		addWholeGraphItem(into, given);
+		addPanItems(into, given);
+		expect(menus).toHaveLength(1);
+		expect(titles()).toEqual([
+			'relationshipGraph.local.whole',
+			'relationshipGraph.pan.up',
+			'relationshipGraph.pan.down',
+			'relationshipGraph.pan.left',
+			'relationshipGraph.pan.right',
+		]);
+		click('relationshipGraph.local.whole');
+		expect(given.showWhole).toHaveBeenCalledTimes(1);
+		const whole = deps();
+		addWholeGraphItem(new Menu(), whole);
+		expect(titles()).toEqual([]);
+		const node = deps();
+		const joined = new Menu();
+		expect(buildNodeMenu(node, alice.id, { into: joined, fit: false })).toBe(joined);
+		expect(menus).toHaveLength(1);
+		expect(titles().slice(-2)).toEqual(['relationshipGraph.node.moveLeft', 'relationshipGraph.node.moveRight']);
+		expect(titles()).not.toContain('relationshipGraph.fit');
 	});
 });

@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 
-const { icons, tooltips, knownIcons, deckDeps, deckBeginPaint } = vi.hoisted(() => ({
+const { icons, tooltips, knownIcons, deckDeps, deckBeginPaint, menus } = vi.hoisted(() => ({
 	icons: [] as { el: unknown; icon: string }[],
 	tooltips: [] as { el: unknown; text: string }[],
 	knownIcons: new Set<string>(),
 	deckDeps: [] as unknown[],
 	deckBeginPaint: { calls: 0 },
+	/** Every menu shown, item by item; a line between items is an item called 'separator'. */
+	menus: [] as { title: string; icon: string; disabled: boolean; click: () => void }[][],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -15,9 +17,23 @@ vi.mock('obsidian', async (importOriginal) => {
 	class Modal extends runtime.Modal {
 		onClose(): void {}
 	}
+	class MenuItem {
+		readonly item = { title: '', icon: '', disabled: false, click: (): void => undefined };
+		setTitle(title: string): this { this.item.title = title; return this; }
+		setIcon(icon: string): this { this.item.icon = icon; return this; }
+		setDisabled(disabled: boolean): this { this.item.disabled = disabled; return this; }
+		onClick(click: () => void): this { this.item.click = click; return this; }
+	}
+	class Menu {
+		private readonly items: MenuItem['item'][] = [];
+		addItem(build: (item: MenuItem) => void): this { const item = new MenuItem(); build(item); this.items.push(item.item); return this; }
+		addSeparator(): this { this.items.push({ title: 'separator', icon: '', disabled: false, click: () => undefined }); return this; }
+		showAtMouseEvent(): this { menus.push(this.items); return this; }
+	}
 	return {
 		...runtime,
 		Modal,
+		Menu,
 		getIcon: (name: string) => (knownIcons.has(name) ? {} : null),
 		setIcon: (el: unknown, icon: string): void => { icons.push({ el, icon }); },
 		setTooltip: (el: unknown, text: string): void => { tooltips.push({ el, text }); },
@@ -36,7 +52,7 @@ vi.mock('../../src/ui/scene-card', async (importOriginal) => {
 	};
 });
 
-import { Modal, type App } from 'obsidian';
+import { Modal, Platform, type App } from 'obsidian';
 
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
 import type { SceneCard, SceneCardDeps } from '../../src/ui/scene-card';
@@ -53,7 +69,10 @@ import {
 	createModalKeeper,
 	createScenePool,
 	createStandInScrollbars,
+	gatherToolbarActions,
+	nameToolbarSymbol,
 	paintSymbol,
+	toolbarEnd,
 	toolbarIconButton,
 	watchFrameSize,
 	type Fold,
@@ -109,6 +128,7 @@ function controlsOf() {
 beforeEach(() => {
 	icons.length = 0;
 	tooltips.length = 0;
+	menus.length = 0;
 	knownIcons.clear();
 	deckDeps.length = 0;
 	deckBeginPaint.calls = 0;
@@ -204,6 +224,92 @@ function foldsOf(start: Partial<Record<Fold, boolean>> = {}) {
 	};
 	return { dom, root, toolbar, pool, memory, folds, toggle, widen, remember, invalidateRects, remeasurePool, fitScrollbars };
 }
+
+describe('the actions gathered under one button', () => {
+	/** A toolbar's end group as a board fills it: a state, two symbols, a word, and the refresh that stays. */
+	function group() {
+		const dom = new CorkboardDom();
+		const end = toolbarEnd(el(dom.container.createDiv())) as unknown as CorkboardElement;
+		const state = end.createSpan({ cls: 'snowflake-method-prose-state' });
+		const edit = toolbarIconButton(el(end), 'x-edit', 'pencil', 'Edit') as unknown as CorkboardElement;
+		const words = toolbarIconButton(el(end), 'x-words', 'eye', 'Hide') as unknown as CorkboardElement;
+		const add = end.createEl('button', { cls: 'mod-cta x-add', text: 'Add', attr: { type: 'button' } });
+		nameToolbarSymbol(el(add), 'plus');
+		const refresh = toolbarIconButton(el(end), 'x-refresh', 'refresh-cw', 'Refresh') as unknown as CorkboardElement;
+		const pressed: string[] = [];
+		for (const made of [edit, words, add, refresh]) made.addEventListener('click', () => { pressed.push(made.textContent || made.getAttribute('aria-label')!); });
+		return { dom, end, state, edit, words, add, refresh, pressed };
+	}
+
+	it('leaves a desktop toolbar as it was, and says so', () => {
+		const made = group();
+		expect(gatherToolbarActions(el(made.end), { t, keep: [el(made.refresh)] })).toBeNull();
+		expect(made.end.children).toEqual([made.state, made.edit, made.words, made.add, made.refresh]);
+		expect(made.end.querySelector('.snowflake-method-toolbar-more')).toBeNull();
+	});
+
+	it('moves every button but the kept into a hidden group on a tablet, and lists them, symbol and name, from a More actions button', () => {
+		Platform.isMobile = true;
+		try {
+			const made = group();
+			const gathered = gatherToolbarActions(el(made.end), { t, keep: [el(made.refresh)] });
+			expect(gathered).not.toBeNull();
+			const [state, hidden, refresh, more] = made.end.children;
+			expect(state).toBe(made.state);
+			expect([...hidden!.classes]).toEqual(['snowflake-method-toolbar-gathered']);
+			expect(hidden!.children).toEqual([made.edit, made.words, made.add]);
+			expect(refresh).toBe(made.refresh);
+			expect(more).toBe(gathered!.button);
+			expect(made.end.children).toHaveLength(4);
+			expect([...more!.classes]).toEqual(['clickable-icon', 'snowflake-method-toolbar-more']);
+			expect(more!.getAttribute('aria-label')).toBe('storyStructure.moreActions');
+			expect(more!.getAttribute('aria-haspopup')).toBe('menu');
+			expect(icons[icons.length - 1]).toEqual({ el: more, icon: 'ellipsis' });
+			more!.dispatch('click');
+			expect(menus).toHaveLength(1);
+			expect(menus[0]!.map((item) => [item.title, item.icon, item.disabled])).toEqual([
+				['Edit', 'pencil', false], ['Hide', 'eye', false], ['Add', 'plus', false],
+			]);
+			menus[0]![2]!.click();
+			expect(made.pressed).toEqual(['Add']);
+		} finally {
+			Platform.isMobile = false;
+		}
+	});
+
+	it('reads each item as the button stands when the menu opens: its symbol repainted, its name, whether it is shut, and leaves out one put away', () => {
+		Platform.isMobile = true;
+		try {
+			const made = group();
+			gatherToolbarActions(el(made.end), { t, keep: [el(made.refresh)] });
+			paintSymbol(button(made.words), { icon: 'eye' }, { icon: 'eye-off', label: 'Show', disabled: true });
+			made.edit.addClass('is-hidden');
+			made.end.querySelector('.snowflake-method-toolbar-more')!.dispatch('click');
+			expect(menus[0]!.map((item) => [item.title, item.icon, item.disabled])).toEqual([['Show', 'eye-off', true], ['Add', 'plus', false]]);
+			menus[0]![0]!.click();
+			expect(made.pressed).toEqual([]);
+		} finally {
+			Platform.isMobile = false;
+		}
+	});
+
+	it('puts an omitted button away unlisted and lets the board add its own items after a line', () => {
+		Platform.isMobile = true;
+		try {
+			const made = group();
+			const extend = vi.fn((menu: { addItem(build: (item: { setTitle(title: string): unknown }) => void): unknown }) => {
+				menu.addItem((item) => { item.setTitle('Own'); });
+			});
+			gatherToolbarActions(el(made.end), { t, keep: [el(made.refresh)], omit: [el(made.words)], extend });
+			expect(made.end.children[1]!.children).toEqual([made.edit, made.words, made.add]);
+			made.end.querySelector('.snowflake-method-toolbar-more')!.dispatch('click');
+			expect(menus[0]!.map((item) => item.title)).toEqual(['Edit', 'Add', 'separator', 'Own']);
+			expect(extend).toHaveBeenCalledTimes(1);
+		} finally {
+			Platform.isMobile = false;
+		}
+	});
+});
 
 describe('the folds', () => {
 	it('stands its toggles in the frame\'s corners as the root\'s next children, the column\'s first', () => {

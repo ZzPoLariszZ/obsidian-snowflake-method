@@ -1551,9 +1551,9 @@ describe('styles.css', () => {
 		expect(declarations('body.is-tablet .snowflake-method-timeline-fold')).toContain(
 			'inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--size-4-3)))',
 		);
-		// The rail stands as tall as its own rows beside the page, its footer
-		// under them, not at the page's end.
-		expect(declarations('body.is-tablet .snowflake-method-dashboard .snowflake-method-step-nav')).toContain('align-self: start');
+		// The workspace toolbars' actions stand in a group a tablet does not
+		// show, listed by the More actions button at the group's end.
+		expect(declarations('body.is-mobile .snowflake-method-toolbar-gathered')).toContain('display: none');
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(

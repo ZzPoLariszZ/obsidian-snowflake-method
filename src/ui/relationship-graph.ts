@@ -54,7 +54,7 @@ import {
 	type GraphControlsKind,
 } from './relationship-graph-controls';
 import { inBox, type Point } from './relationship-graph-layout';
-import { buildBackgroundMenu, buildEdgeMenu, buildNodeMenu, type GraphMenuDeps } from './relationship-graph-menus';
+import { addPanItems, addWholeGraphItem, buildBackgroundMenu, buildEdgeMenu, buildNodeMenu, type GraphMenuDeps } from './relationship-graph-menus';
 import { pictureOf, tabOrder, type GraphPicture } from './relationship-graph-model';
 import type { GraphClickModifiers, GraphColors, GraphHandle, GraphPort } from './relationship-graph-port';
 import { renderEmptyLine } from './pane-parts';
@@ -67,6 +67,7 @@ import {
 import {
 	balanceToolbar,
 	createSearchField,
+	gatherToolbarActions,
 	toolbarEnd,
 	toolbarIconButton,
 } from './workspace-frame';
@@ -398,6 +399,26 @@ export function renderRelationshipGraph(
 	const refreshButton = iconButton('snowflake-method-relationship-graph-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().catch(notice);
+	});
+	// The graph's own menu is the ground's or the focused node's; on a tablet
+	// its button is put away unlisted and the gathered menu carries what the
+	// toolbar's buttons do not: the focused node's items without the fit the
+	// list has, else the way back from a local graph and the pan's twin. The
+	// stand-in tab, which draws no graph, adds nothing.
+	gatherToolbarActions(end, {
+		t,
+		keep: [refreshButton],
+		omit: [moreButton],
+		extend: (menu) => {
+			if (memory.view !== 'entities') return;
+			const focused = engine?.focusedNode() ?? null;
+			if (focused !== null) {
+				buildNodeMenu(menuDeps, focused, { into: menu, fit: false });
+				return;
+			}
+			addWholeGraphItem(menu, menuDeps);
+			addPanItems(menu, menuDeps);
+		},
 	});
 	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 

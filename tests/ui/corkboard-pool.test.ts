@@ -1,12 +1,39 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Menu } from 'obsidian';
+import { Menu, Platform } from 'obsidian';
 
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
+const { menus } = vi.hoisted(() => ({
+	/** Every menu shown, item by item, for the gathered toolbar's test to read. */
+	menus: [] as { title: string; icon: string; disabled: boolean; click: () => void }[][],
+}));
+
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
+	class MenuItem {
+		readonly item = { title: '', icon: '', disabled: false, click: (): void => undefined };
+		setTitle(title: string): this { this.item.title = title; return this; }
+		setIsLabel(): this { return this; }
+		setChecked(): this { return this; }
+		setIcon(icon: string): this { this.item.icon = icon; return this; }
+		setWarning(): this { return this; }
+		setDisabled(disabled: boolean): this { this.item.disabled = disabled; return this; }
+		setSection(): this { return this; }
+		onClick(click: () => void): this { this.item.click = click; return this; }
+	}
+	class Menu {
+		private readonly built: MenuItem['item'][] = [];
+		addItem(build: (item: MenuItem) => void): this { const item = new MenuItem(); build(item); this.built.push(item.item); return this; }
+		addSeparator(): this { return this; }
+		setParentElement(): this { return this; }
+		showAtMouseEvent(): this { menus.push(this.built); return this; }
+		showAtPosition(): this { menus.push(this.built); return this; }
+		onHide(): void {}
+		hide(): this { return this; }
+	}
 	return {
 		...runtime,
+		Menu,
 		FuzzySuggestModal: class extends runtime.Modal {},
 		SuggestModal: class extends runtime.Modal {},
 		SearchComponent: class {
@@ -88,7 +115,7 @@ function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene), re
 	const handle = renderCorkboard(dom.container as unknown as HTMLElement, controls, variant);
 	const cards = (): CorkboardElement[] => dom.container.querySelectorAll('.snowflake-method-corkboard-card');
 	return {
-		dom, host, handle,
+		dom, host, handle, controls,
 		cards,
 		root: dom.container.querySelector('.snowflake-method-corkboard')!,
 		display: dom.container.querySelector('.snowflake-method-corkboard-display')!,
@@ -159,6 +186,34 @@ describe('the corkboard as a pool', () => {
 		const spoken = pool({ include: () => true }).dom.container.querySelector('input')!;
 		expect(spoken.getAttribute('placeholder')).toBe('table.searchScenes');
 		expect(spoken.getAttribute('aria-label')).toBe(null);
+	});
+
+	it('gathers its actions under one More actions button on a tablet, where the display and the funnel hang from that button', async () => {
+		Platform.isMobile = true;
+		try {
+			const fixture = pool({ include: () => true });
+			await settle();
+			const end = fixture.root.querySelector('.snowflake-method-toolbar-end')!;
+			expect(end.children.map((child) => [...child.classes].pop())).toEqual([
+				'snowflake-method-toolbar-gathered', 'snowflake-method-prose-state', 'snowflake-method-prose-refresh', 'snowflake-method-toolbar-more',
+			]);
+			expect(end.children[0]!.children.map((child) => [...child.classes].pop())).toEqual([
+				'snowflake-method-corkboard-display', 'snowflake-method-corkboard-direction', 'snowflake-method-filter-button', 'snowflake-method-corkboard-add',
+			]);
+			const more = end.children[3]!;
+			more.dispatch('click');
+			const listed = menus[menus.length - 1]!;
+			expect(listed.map((item) => item.title)).toEqual([
+				'corkboard.display', 'corkboard.order.normal', 'table.filter', fixture.add.getAttribute('aria-label') ?? fixture.add.textContent,
+			]);
+			expect(listed.map((item) => item.icon)).toEqual(['sliders-horizontal', 'arrow-down-narrow-wide', 'funnel', 'plus']);
+			listed[0]!.click();
+			const { openFilter } = fixture.controls.popover as unknown as { openFilter: ReturnType<typeof vi.fn> };
+			expect(openFilter).toHaveBeenCalledWith(more, expect.anything(), expect.any(Function), 'corkboard.display');
+			expect(pool({ include: () => true, searchLabel: 'quiet' }).dom.container.querySelector('.snowflake-method-toolbar-more')).toBeNull();
+		} finally {
+			Platform.isMobile = false;
+		}
 	});
 
 	it('says its own line when nothing is included', () => {

@@ -299,6 +299,8 @@ export class CorkboardElement {
 			listener({ target: this, preventDefault: () => undefined, stopPropagation: () => undefined });
 		}
 	}
+	/** The app's own press of a button: its click listeners, unless it is disabled. */
+	click(): void { if (!this.disabled) this.dispatch('click'); }
 	focus(): void { this.doc.activeElement = this; }
 	/** Recorded as a scroll of the element, for a test to see what was brought into sight. */
 	scrollIntoView(): void { this.dom.operations.push({ kind: 'scroll', target: this, property: 'scrollIntoView' }); }
