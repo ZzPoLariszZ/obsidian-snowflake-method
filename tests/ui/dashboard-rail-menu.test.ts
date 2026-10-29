@@ -100,8 +100,8 @@ async function flush(): Promise<void> {
 	for (let round = 0; round < 10; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mount(step = 3) {
-	const model = makeModel();
+function mount(step = 3, patch: Partial<ProjectDashboardModel> = {}) {
+	const model = { ...makeModel(), ...patch };
 	const selectStep = vi.fn(() => Promise.resolve());
 	const host = {
 		getRecentStep: () => 3,
@@ -189,6 +189,8 @@ describe('the dashboard rail on a phone', () => {
 		expect(titles(rows)).toEqual([
 			...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((id) => `steps.number.${String(id)} · Step ${String(id)}`),
 			'---',
+			'worldbuilding.kind.add',
+			'---',
 			'dashboard.definition.category',
 			'dashboard.definition.world-status',
 			'dashboard.definition.relationship',
@@ -206,11 +208,32 @@ describe('the dashboard rail on a phone', () => {
 		expect(rows[0]?.checked).toBe(false);
 		expect(rows[0]?.icon).toBe('circle-check');
 		expect(rows[2]?.icon).toBe('circle-dot');
-		expect(rows[11]?.icon).toBe('tags');
+		expect(rows[11]?.icon).toBe('plus');
+		expect(rows[13]?.icon).toBe('tags');
 		expect(button().getAttribute('aria-expanded')).toBe('true');
 		rows[0]?.click?.();
 		await flush();
 		expect(selectStep).toHaveBeenCalledExactlyOnceWith(1);
+	});
+
+	it('offers a kind of the project’s own with the kinds, greyed on a read-only project', async () => {
+		document.body.classList.add('is-phone');
+		const { view, button } = mount();
+		await view.refresh();
+		const open = vi
+			.spyOn(view as unknown as { openCreateKind: () => void }, 'openCreateKind')
+			.mockImplementation(() => undefined);
+		button().click();
+		const row = (menus[menus.length - 1] ?? [])[11];
+		expect(row?.title).toBe('worldbuilding.kind.add');
+		expect(row?.icon).toBe('plus');
+		expect(row?.disabled).toBe(false);
+		row?.click?.();
+		expect(open).toHaveBeenCalledOnce();
+		const locked = mount(3, { readOnly: true });
+		await locked.view.refresh();
+		locked.button().click();
+		expect((menus[menus.length - 1] ?? [])[11]?.disabled).toBe(true);
 	});
 
 	it('stands the footer’s new project and health check buttons beside the bar', async () => {

@@ -274,6 +274,8 @@ export interface RailRowSpec {
 	kind?: 'link';
 	/** A row for a tool a phone has not got: the rail's menu there leaves it out. */
 	notOnPhone?: true;
+	/** An offer the project cannot take now, read-only or full: greyed in the menu as in the rail. */
+	disabled?: boolean;
 	/** Absent on a row with nothing to count and nothing to report; an icon says the row leads away. */
 	indicator?: { count: number } | { status: StepStatus } | { icon: string };
 	onClick: () => void;
@@ -2156,6 +2158,7 @@ export class SnowflakeDashboardView extends ItemView {
 					.setTitle(railMenuTitle(entry))
 					.setIcon(railMenuIcon(entry))
 					.setChecked(entry.active)
+					.setDisabled(entry.disabled === true)
 					.onClick(() => {
 						entry.onClick();
 					});
@@ -2516,6 +2519,19 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		hint.addEventListener('click', () => {
 			this.openCreateKind(model);
+		});
+		// The rail's menu twin carries the offer too: on a phone that menu is
+		// the whole rail, and it had no door to a kind of the project's own.
+		this.railRows.push({
+			leading: { icon: 'plus' },
+			label: this.t('worldbuilding.kind.add'),
+			active: false,
+			current: 'true',
+			damaged: false,
+			disabled: hint.disabled,
+			onClick: () => {
+				this.openCreateKind(model);
+			},
 		});
 		// The vocabularies live with the kinds they classify: three more
 		// entries in the same list, each the whole of one vocabulary across
