@@ -19741,6 +19741,18 @@ body.is-mobile .snowflake-method-dashboard {
 	--snowflake-row-more: var(--touch-size-m, 2.75rem);
 }
 
+/* The vocabulary trees' row menus grow to the same measure: their heading's
+   count is centred for a button of that measure, and stood six pixels off
+   the icon-wide button the rows kept. The button reaches into the row's
+   own padding above and below its words, which a 20-pixel icon in four
+   pixels of padding had filled, rather than pushing the rows apart. */
+body.is-mobile .snowflake-method-dashboard .snowflake-method-definition-more {
+	width: var(--snowflake-row-more);
+	height: var(--snowflake-row-more);
+	padding: 0;
+	margin-block: calc((1.75rem - var(--snowflake-row-more)) / 2);
+}
+
 body.is-mobile .snowflake-method-dashboard button.snowflake-method-toolbar-button {
 	width: var(--touch-size-m, 2.75rem);
 	min-width: var(--touch-size-m, 2.75rem);
@@ -19814,6 +19826,12 @@ body.is-mobile .snowflake-method-corkboard-card .clickable-icon,
 body.is-mobile .snowflake-method-timeline-lane-head .clickable-icon {
 	min-width: var(--touch-size-s, 2.5rem);
 	min-height: var(--touch-size-s, 2.5rem);
+}
+
+/* The pool's count stands centred on the add button over it, as on the
+   desktop, where the button is the icon's width: here it is the finger's. */
+body.is-mobile .snowflake-method-timeline-pool-count {
+	margin-inline-end: calc((var(--touch-size-s, 2.5rem) - 1.25rem) / 2);
 }
 
 body.is-mobile .snowflake-method-option-picker-selector.clickable-icon {

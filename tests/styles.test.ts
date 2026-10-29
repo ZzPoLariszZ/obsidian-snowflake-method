@@ -1573,6 +1573,17 @@ describe('styles.css', () => {
 		expect(declarations('body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll.is-self-scrolling')).toContain(
 			'padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px)',
 		);
+		// The counts stand centred on the buttons under them: the trees' row
+		// menus at the row-more size, the pool's count for the finger-wide add.
+		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-definition-more')).toContain(
+			'width: var(--snowflake-row-more)',
+		);
+		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-definition-more')).toContain(
+			'margin-block: calc((1.75rem - var(--snowflake-row-more)) / 2)',
+		);
+		expect(declarations('body.is-mobile .snowflake-method-timeline-pool-count')).toContain(
+			'margin-inline-end: calc((var(--touch-size-s, 2.5rem) - 1.25rem) / 2)',
+		);
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(
