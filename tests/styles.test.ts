@@ -641,6 +641,17 @@ describe('styles.css', () => {
 		expect(
 			declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td:not(:last-child)'),
 		).toContain('border-inline-end: 0');
+		// A category cell's lines all keep to the value column, one under
+		// another and as close as the wide row's: the grid used to place the
+		// second one under the label.
+		expect(
+			declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td.snowflake-method-member-categories'),
+		).toContain('row-gap: 0');
+		expect(
+			declarations(
+				':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td.snowflake-method-member-categories > .snowflake-method-member-category',
+			),
+		).toContain('grid-column: 2');
 		// At its floor the foreshadowing description keeps room for a long
 		// English word, 8.5rem, with the buttons' column and without it.
 		const rem = (selector: string): number => Number(/(?:width|floor): ([\d.]+)rem/u.exec(declarations(selector))?.[1]);

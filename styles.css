@@ -5717,13 +5717,24 @@ body.is-mobile .snowflake-method-gallery-item.is-current > .clickable-icon {
 }
 
 /* A card is as tall as it needs to be, so the categories show in full
-   here rather than ending in an ellipsis the way they do in a row. */
+   here rather than ending in an ellipsis the way they do in a row, one to a
+   line and as close as the wide row's lines, with no row gap between them. */
 :where(.snowflake-method-table-wrap.is-stacked)
 	.snowflake-method-table
 	td.snowflake-method-member-categories {
 	overflow: visible;
 	text-overflow: clip;
 	white-space: normal;
+	row-gap: 0;
+}
+
+/* Every line keeps to the value column: the cell's grid used to place the
+   second category under the label, where the first column still had room. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td.snowflake-method-member-categories
+	> .snowflake-method-member-category {
+	grid-column: 2;
 }
 
 :where(.snowflake-method-table-wrap.is-stacked)
