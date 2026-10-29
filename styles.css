@@ -20040,6 +20040,85 @@ body.is-mobile .modal.snowflake-method-dialog .dropdown {
 	background-color: var(--background-modifier-form-field);
 }
 
+/* -- Phone: the settings page --------------------------------------------- */
+
+/* The app stacks a phone's settings rows, the control under its name at the
+   row's full width. The page's word lists held a desktop minimum of
+   twenty-two ems and ran past their card; the number boxes and the folder
+   fields kept the column they share on the desktop, and the font list its
+   cap, each short of the row the dropdowns fill; and the two typography
+   dropdowns fitted to the column the sliders end on were cut to a hundred
+   pixels, short of their own answer. Every box fills the row here, as the
+   app's own do. The typography rule is repeated with the body class in
+   front, since it outweighs any plainer selector. */
+body.is-phone .snowflake-method-settings .setting-item-control textarea {
+	min-width: 0;
+	width: 100%;
+}
+
+/* A tablet keeps the desktop's rows, name beside control, in a settings
+   window a third as wide: the same twenty-two ems left the name a word's
+   width. The list holds to the column the number boxes share instead. */
+body.is-tablet .snowflake-method-settings .setting-item-control textarea {
+	min-width: var(--snowflake-method-settings-box);
+}
+
+body.is-phone .snowflake-method-settings .setting-item input[type='number'],
+body.is-phone
+	.snowflake-method-settings
+	.setting-item-control
+	> .snowflake-method-root-field {
+	width: 100%;
+}
+
+body.is-phone .snowflake-method-settings .snowflake-method-font-picker {
+	max-width: none;
+}
+
+body.is-phone
+	.snowflake-method-typography-settings
+	.setting-item:not(.snowflake-method-settings-dress + .setting-item):not(.snowflake-method-tint-scope-row)
+	select.dropdown {
+	width: 100%;
+}
+
+/* A row whose only control is a button stands it beside the name, as a
+   switch stands, rather than alone under the words at the row's left edge
+   where the stacking put it. */
+body.is-phone .modal .snowflake-method-settings .setting-item.snowflake-method-settings-beside {
+	flex-direction: row;
+	align-items: center;
+}
+
+body.is-phone
+	.modal
+	.snowflake-method-settings
+	.setting-item.snowflake-method-settings-beside
+	> .setting-item-control {
+	flex: 0 0 auto;
+	width: auto;
+}
+
+/* The app gives every button in a phone's settings row the row's full width
+   and ten pixels of padding: the colour swatches, buttons all, each asked
+   for the whole strip and shrank together, and the custom-colour chip at
+   their end shrank to a pixel of spectrum. A swatch keeps its disc here,
+   and the chip and the divider keep their width. */
+body.is-phone
+	.modal
+	.setting-item-control
+	.snowflake-method-tint-swatches
+	button.snowflake-method-tint-swatch {
+	flex: 0 0 auto;
+	width: var(--size-4-6);
+	padding: 0;
+}
+
+body.is-phone .snowflake-method-tint-swatches .snowflake-method-tint-custom,
+body.is-phone .snowflake-method-tint-swatches .snowflake-method-tint-divider {
+	flex: 0 0 auto;
+}
+
 /* -- Phone: the dashboard's rail as a menu --------------------------------- */
 
 /* The rail goes, the panel takes the width, and a bar above the panel names

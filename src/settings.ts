@@ -2933,6 +2933,8 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	 * one place. The manuscript toolbar's menu offers the same four live.
 	 */
 	private renderHighlightMatrix(setting: Setting): void {
+		// Its one control is this button: a phone stands it beside the name.
+		setting.settingEl.addClass('snowflake-method-settings-beside');
 		const button = setting.controlEl.createEl('button', {
 			cls: 'clickable-icon snowflake-method-highlight-menu',
 			attr: { type: 'button', 'aria-haspopup': 'dialog' },

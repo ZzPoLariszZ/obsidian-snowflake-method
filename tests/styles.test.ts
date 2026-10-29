@@ -1414,6 +1414,14 @@ describe('styles.css', () => {
 		expect(declarations('body.is-mobile .snowflake-method-settings .dropdown')).toContain(
 			'background-color: var(--background-modifier-form-field)',
 		);
+		expect(declarations('body.is-phone .snowflake-method-settings .setting-item-control textarea')).toContain('min-width: 0');
+		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control textarea')).toContain(
+			'min-width: var(--snowflake-method-settings-box)',
+		);
+		expect(declarations('body.is-phone .modal .snowflake-method-settings .setting-item.snowflake-method-settings-beside')).toContain(
+			'flex-direction: row',
+		);
+		expect(declarations('body.is-phone .snowflake-method-settings .snowflake-method-font-picker')).toContain('max-width: none');
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-layout')).toContain(
 			'grid-template-columns: minmax(0, 1fr)',
 		);
