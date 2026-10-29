@@ -1408,8 +1408,11 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-rail-menu-row')).toContain('display: none');
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row')).toContain('display: flex');
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-step-nav')).toContain('display: none');
-		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-guided-section')).toContain(
-			'--background-modifier-form-field: var(--background-primary)',
+		expect(declarations('body.is-mobile .snowflake-method-settings')).toMatch(
+			/--background-modifier-form-field: color-mix\(\s*in srgb,\s*var\(--text-normal\) 10%,\s*transparent\s*\)/u,
+		);
+		expect(declarations('body.is-mobile .snowflake-method-settings .dropdown')).toContain(
+			'background-color: var(--background-modifier-form-field)',
 		);
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-layout')).toContain(
 			'grid-template-columns: minmax(0, 1fr)',

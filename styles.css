@@ -20006,14 +20006,38 @@ body.is-phone .snowflake-method-source-summary-body {
 
 /* -- Mobile: a field inside a card ----------------------------------------- */
 
-/* The app's mobile form field has no border and, in the light theme, the
-   secondary ground, the colour of the plugin's cards: the genre and the
-   reasons of step 1 and the description of step 2 could not be told from
-   their card. Inside a card a field takes the primary ground, as the app
-   raises its own search field on a secondary surface, and stands lighter
-   than the card as the desktop's bordered field does. */
-body.is-mobile .snowflake-method-dashboard .snowflake-method-guided-section {
-	--background-modifier-form-field: var(--background-primary);
+/* A field reads as a field on every one of the plugin's grounds. The app's
+   phone field is the ground itself four parts in a hundred darker, with no
+   border: on a tinted ground, in a card that is the same tone darker, or on
+   a dialog it cannot be told from what it stands on. Inside the plugin's
+   views, its settings and its dialogs a field wears a tenth of the text
+   colour over whatever it stands on instead, darker in the light theme and
+   lighter in the dark, so no card or pane needs a rule of its own. */
+body.is-mobile .snowflake-method-dashboard,
+body.is-mobile .snowflake-method-statistics-view,
+body.is-mobile .snowflake-method-sticky-notes-view,
+body.is-mobile .snowflake-method-story-structure,
+body.is-mobile .snowflake-method-manuscript-view,
+body.is-mobile .snowflake-method-settings,
+body.is-mobile .modal.snowflake-method-dialog {
+	--background-modifier-form-field: color-mix(
+		in srgb,
+		var(--text-normal) 10%,
+		transparent
+	);
+}
+
+/* A dropdown is painted as a button is, on the app's interactive ground,
+   which on a phone is the same four parts in a hundred; beside a field it
+   is an input box too, so it wears the field's tone and not the button's. */
+body.is-mobile .snowflake-method-dashboard .dropdown,
+body.is-mobile .snowflake-method-statistics-view .dropdown,
+body.is-mobile .snowflake-method-sticky-notes-view .dropdown,
+body.is-mobile .snowflake-method-story-structure .dropdown,
+body.is-mobile .snowflake-method-manuscript-view .dropdown,
+body.is-mobile .snowflake-method-settings .dropdown,
+body.is-mobile .modal.snowflake-method-dialog .dropdown {
+	background-color: var(--background-modifier-form-field);
 }
 
 /* -- Phone: the dashboard's rail as a menu --------------------------------- */
