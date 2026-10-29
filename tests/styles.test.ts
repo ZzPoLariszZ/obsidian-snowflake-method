@@ -380,9 +380,27 @@ describe('styles.css', () => {
 		expect(declarations('body.snowflake-method-hide-scrollbars *:not(.snowflake-method-scrollbar-probe)')).toContain('scrollbar-width: none');
 		expect(styles).toContain('body.snowflake-method-hide-scrollbars :not(.snowflake-method-scrollbar-probe)::-webkit-scrollbar');
 		expect(declarations('.snowflake-method-source-summary-content')).toContain('font-size: var(--font-text-size)');
-		// The summary boxes keep a height of their own; the synopsis box takes the column.
-		expect(declarations('.snowflake-method-one-sentence-summary-input')).toContain('height: 8rem');
-		expect(declarations('.snowflake-method-field .snowflake-method-synopsis-input')).toContain('flex: 1 1 0');
+		// The summary boxes and the synopsis boxes take the column by one rule,
+		// from a floor of six lines, and the boxes inside the steps' sections
+		// share the type and the floor without taking a column. No rule gives
+		// any of the five a height of its own any more.
+		const floor = 'min-height: calc(6 * 1.65em + 2 * var(--size-4-2))';
+		const stepBox = declarations('.snowflake-method-field .snowflake-method-synopsis-input');
+		expect(stepBox).toContain('flex: 1 1 0');
+		expect(stepBox).toContain(floor);
+		expect(stepBox).toContain('resize: none');
+		expect(declarations('.snowflake-method-field .snowflake-method-one-sentence-summary-input')).toBe(stepBox);
+		expect(declarations('.snowflake-method-field .snowflake-method-one-paragraph-summary-input')).toBe(stepBox);
+		const sectionBox = declarations('.snowflake-method-field .snowflake-method-description-input');
+		expect(sectionBox).not.toContain('flex:');
+		for (const line of [floor, 'font-size: var(--font-text-size)', 'line-height: 1.65', 'resize: none']) {
+			expect(stepBox).toContain(line);
+			expect(sectionBox).toContain(line);
+		}
+		expect(declarations('.snowflake-method-field .snowflake-method-audience-reasons-input')).toBe(sectionBox);
+		expect(styles).not.toMatch(
+			/snowflake-method-(?:one-(?:sentence|paragraph)-summary|audience-reasons|description)-input[^{]*\{[^}]*(?<![-\w])height:/u,
+		);
 		expect(declarations('.snowflake-method-length-hint + .snowflake-method-actions')).toContain('margin-top: var(--size-4-4)');
 	});
 

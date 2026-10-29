@@ -1946,10 +1946,6 @@
 	margin-bottom: 0;
 }
 
-.snowflake-method-audience-reasons-field .snowflake-method-audience-reasons-input {
-	height: 8rem;
-}
-
 .snowflake-method-question-prompt {
 	grid-column: 1 / -1;
 	margin: 0 0 var(--size-4-2);
@@ -1976,26 +1972,6 @@
 
 .snowflake-method-numbered-fields .snowflake-method-field {
 	margin-bottom: 0;
-}
-
-.snowflake-method-one-sentence-summary-field {
-	margin-bottom: var(--size-4-2);
-}
-
-.snowflake-method-one-sentence-summary-input {
-	height: 8rem;
-	font-size: var(--font-text-size);
-	line-height: 1.55;
-}
-
-/* The summary boxes keep the height each was given, scrolling inside it,
-   where the synopsis boxes take the column: a sentence and a paragraph
-   are read whole in a box of their size, and the boxes under them stay
-   where they were. The handle still lets the author pull one taller. */
-.snowflake-method-field .snowflake-method-one-paragraph-summary-input {
-	height: calc(6 * 1.65em + 2 * var(--size-4-2));
-	font-size: var(--font-text-size);
-	line-height: 1.65;
 }
 
 /* The quoted text of the earlier step, framed to the box below it: the
@@ -2077,18 +2053,13 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
 	font-style: italic;
 }
 
-.snowflake-method-field .snowflake-method-description-input {
-	height: calc(12 * 1.65em + 2 * var(--size-4-2));
-	font-size: var(--font-text-size);
-	line-height: 1.65;
-}
-
-/* The synopsis panels take the rest of the column's height, and their box
-   the rest of theirs: a page or four of prose wants the room a sentence's
-   and a paragraph's boxes never asked for. The box is not resizable, since
-   the column already gives it all there is, and keeps a floor of a dozen
-   lines so a short column still shows a page's worth. The panel grows to
-   the column but never shrinks under what it holds: shrunk, its frame
+/* The panels of the summary and synopsis steps take the rest of the
+   column's height, and their box the rest of theirs: a sentence, a
+   paragraph and a page or four of prose are written in one kind of box,
+   so that the four steps read alike. The box is not resizable, since the
+   column already gives it all there is, and keeps a floor of six lines,
+   a paragraph's worth, so a short column still shows one. The panel grows
+   to the column but never shrinks under what it holds: shrunk, its frame
    closed above a box that ran on past it, where now the column scrolls. */
 .snowflake-method-panel.snowflake-method-filling-panel {
 	display: flex;
@@ -2096,6 +2067,8 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
 	flex-direction: column;
 }
 
+.snowflake-method-filling-panel .snowflake-method-one-sentence-summary-field,
+.snowflake-method-filling-panel .snowflake-method-one-paragraph-summary-field,
 .snowflake-method-filling-panel .snowflake-method-synopsis-field {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -2105,9 +2078,23 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
    scrolling what runs past it: at a basis of its content a page of prose
    would stand the box as tall as itself and carry the buttons under it
    off the screen. */
+.snowflake-method-field .snowflake-method-one-sentence-summary-input,
+.snowflake-method-field .snowflake-method-one-paragraph-summary-input,
 .snowflake-method-field .snowflake-method-synopsis-input {
 	flex: 1 1 0;
-	min-height: calc(12 * 1.65em + 2 * var(--size-4-2));
+	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
+	font-size: var(--font-text-size);
+	line-height: 1.65;
+	resize: none;
+}
+
+/* The boxes inside a step's sections, the reasons a reader would pick
+   the book up and the description of the novel, are the same box with
+   the same floor, but grow with their words: the column is the summary's,
+   and a section's box has no room to take but its own. */
+.snowflake-method-field .snowflake-method-audience-reasons-input,
+.snowflake-method-field .snowflake-method-description-input {
+	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
 	font-size: var(--font-text-size);
 	line-height: 1.65;
 	resize: none;
@@ -19949,8 +19936,8 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-s
 	padding-inline-end: 0;
 }
 
-/* A synopsis grows with its words and the page scrolls past them, as the
-   app's own notes do; a box that scrolled inside a page that scrolls took
+/* A synopsis or a summary grows with its words and the page scrolls past
+   them, as the app's own notes do; a box that scrolled inside a page that scrolls took
    the finger's swipe for its own. The quote of the step before keeps a
    height of its own above the box and scrolls inside it: a column that
    takes the height of its content measures no third to hold it to. */
@@ -19962,6 +19949,8 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-met
 	resize: none;
 }
 
+body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-sentence-summary-field,
+body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-paragraph-summary-field,
 body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-synopsis-field {
 	flex: 0 0 auto;
 }

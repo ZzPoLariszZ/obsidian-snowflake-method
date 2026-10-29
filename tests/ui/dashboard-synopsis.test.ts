@@ -141,6 +141,25 @@ describe('the synopsis box', () => {
 		confirmDraftDiscard.mockReset();
 	});
 
+	it('gives the summary boxes of steps 1 and 2 the column, as the synopsis boxes have it', async () => {
+		const boxes = {
+			1: '.snowflake-method-one-sentence-summary-input',
+			2: '.snowflake-method-one-paragraph-summary-input',
+			4: '.snowflake-method-synopsis-input',
+			6: '.snowflake-method-synopsis-input',
+		} as const;
+		for (const step of [1, 2, 4, 6] as const) {
+			const { host } = makeHost();
+			const { view, root } = mount(host);
+			Object.assign(view, { selectedStep: step, selectedPane: { kind: 'step', step } });
+			await view.refresh();
+			const panel = root.querySelector('.snowflake-method-panel');
+			expect(panel?.classList.contains('snowflake-method-filling-panel')).toBe(true);
+			expect(root.querySelector(boxes[step])).not.toBeNull();
+			root.remove();
+		}
+	});
+
 	it('takes no words while a save is written, and takes them again if it fails', async () => {
 		const { host, hold, saveStepFields } = makeHost();
 		const { view, box, button, type } = mount(host);

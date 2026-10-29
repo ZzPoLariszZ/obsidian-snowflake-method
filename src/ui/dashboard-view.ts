@@ -6121,6 +6121,8 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		readOnly: boolean,
 	): void {
+		// The summary box takes the column, as the synopsis boxes do.
+		panel.addClass('snowflake-method-filling-panel');
 		const draftKey = `${model.projectId}:1`;
 		const draft = this.stepDrafts.get(draftKey);
 		const fields = draft?.fields ?? model.stepFields[1] ?? {};
@@ -6313,6 +6315,8 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		readOnly: boolean,
 	): void {
+		// The summary box takes the column, as the synopsis boxes do.
+		panel.addClass('snowflake-method-filling-panel');
 		const draftKey = `${model.projectId}:2`;
 		const draft = this.stepDrafts.get(draftKey);
 		const current = draft?.fields ?? model.stepFields[2] ?? {};
