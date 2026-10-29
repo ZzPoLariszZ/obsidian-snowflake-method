@@ -2992,11 +2992,16 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	white-space: nowrap;
 }
 
+/* The seam is a border of the same width on every side and a colour on the
+   seam's side alone: the app shapes a button's corners as a superellipse on a
+   Mac, and a border on one side only bends that shape's edge into a wedge of
+   page colour between the seam and the fill, a finger wide on a phone. */
 .snowflake-method-character-action-menu-trigger {
 	width: 2rem;
 	min-width: 1.7rem;
 	padding-inline: var(--size-2-1);
-	border-inline-start: 1px solid var(--background-modifier-border-hover);
+	border: 1px solid transparent;
+	border-inline-start-color: var(--background-modifier-border-hover);
 	border-start-start-radius: 0;
 	border-end-start-radius: 0;
 }

@@ -594,6 +594,18 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The chevron's seam is a border of one width on every side, coloured on
+	 * the seam's side alone: the app's superellipse corners bend a one-sided
+	 * border into a wedge of page colour, a finger wide on a phone.
+	 */
+	it('draws the split button\u2019s seam as a uniform border coloured on one side', () => {
+		const trigger = declarations('.snowflake-method-character-action-menu-trigger');
+		expect(trigger).toContain('border: 1px solid transparent');
+		expect(trigger).toContain('border-inline-start-color: var(--background-modifier-border-hover)');
+		expect(trigger).not.toMatch(/border-inline-start: 1px/u);
+	});
+
+	/**
 	 * A table becomes cards when its own frame is too narrow for it, not when
 	 * the dashboard is: a table held at its floor in a narrower frame ran past
 	 * the frame's edge. The floors are a property the frame reads, and the
