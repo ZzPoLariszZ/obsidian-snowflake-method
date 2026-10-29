@@ -18621,7 +18621,8 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	background-color: var(--background-primary);
 }
 
-.snowflake-method-relationship-graph-sheet > .snowflake-method-tab-planned {
+/* The word said of an empty graph, in the shape every board says its own in. */
+.snowflake-method-relationship-graph-sheet > .snowflake-method-character-empty {
 	margin: var(--size-4-4);
 }
 

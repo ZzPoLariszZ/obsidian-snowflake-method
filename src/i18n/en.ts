@@ -1489,8 +1489,7 @@ export const en = {
 		"Obsidian's graph could not be set to the project, so a plain graph tab was opened instead.",
 	'relationshipGraph.sceneManuscript.readOnly': "This project is read-only, so the graph's settings are not saved.",
 	'relationshipGraph.sceneManuscript.resetDone': 'Project defaults restored.',
-	'relationshipGraph.empty':
-		"No relationships yet. Add one in a character, scene or worldbuilding note's form.",
+	'relationshipGraph.empty': 'No relationships',
 	'relationshipGraph.newerSchema':
 		'The relationship graph file was written by a newer version of the plugin and has been left as it is.',
 	'relationshipGraph.corruptPreserved':

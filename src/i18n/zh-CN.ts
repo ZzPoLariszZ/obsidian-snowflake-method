@@ -1375,7 +1375,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'relationshipGraph.sceneManuscript.unavailable': '无法将 Obsidian 的关系图谱设置为本项目，已改为打开普通的关系图谱标签页。',
 	'relationshipGraph.sceneManuscript.readOnly': '本项目为只读，不会保存关系图谱的设置。',
 	'relationshipGraph.sceneManuscript.resetDone': '已恢复项目默认设置。',
-	'relationshipGraph.empty': '还没有关系。在角色、场景或世界观笔记的表单里添加。',
+	'relationshipGraph.empty': '暂无关系',
 	'relationshipGraph.newerSchema': '关系图文件由更新版本的插件写入，已保持原样。',
 	'relationshipGraph.corruptPreserved': '关系图文件无法读取，已另存为 {path}。',
 	'beatSheet.toolbar': '节拍表工具栏',

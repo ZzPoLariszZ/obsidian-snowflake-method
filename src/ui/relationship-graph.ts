@@ -57,6 +57,7 @@ import { inBox, type Point } from './relationship-graph-layout';
 import { buildBackgroundMenu, buildEdgeMenu, buildNodeMenu, type GraphMenuDeps } from './relationship-graph-menus';
 import { pictureOf, tabOrder, type GraphPicture } from './relationship-graph-model';
 import type { GraphClickModifiers, GraphColors, GraphHandle, GraphPort } from './relationship-graph-port';
+import { renderEmptyLine } from './pane-parts';
 import { renderSceneManuscriptPane } from './scene-manuscript-pane';
 import {
 	RELATIONSHIP_GRAPH_VIEWS,
@@ -648,7 +649,7 @@ export function renderRelationshipGraph(
 		if (memory.view === 'entities') {
 			if (empty) {
 				searchField.count.setText('');
-				sheet.createEl('p', { cls: 'snowflake-method-tab-planned', text: t('relationshipGraph.empty') });
+				renderEmptyLine(sheet, t('relationshipGraph.empty'));
 			} else if (reading !== null) {
 				drawScene(reading);
 				panel.setQuery(memory.query);

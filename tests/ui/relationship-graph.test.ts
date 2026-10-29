@@ -359,7 +359,9 @@ describe('the relationship graph workspace', () => {
 		expect(fixture.viewField().value()).toBe('entities');
 		expect(fixture.bridge.read).toHaveBeenCalledOnce();
 		expect(fixture.root.classes.has('is-entities')).toBe(true);
-		expect(fixture.root.querySelector('.snowflake-method-tab-planned')?.textContent).toBe('relationshipGraph.empty');
+		// The line every board says it has nothing with: the sign, then the words.
+		const empty = fixture.root.querySelector('.snowflake-method-character-empty')!;
+		expect(empty.querySelectorAll('span').map((span) => span.textContent)).toContain('relationshipGraph.empty');
 	});
 
 	it('writes the chosen view on the memory, saves the layout and dresses the root for it', async () => {
@@ -370,7 +372,7 @@ describe('the relationship graph workspace', () => {
 		expect(fixture.remember).toHaveBeenCalledOnce();
 		expect(fixture.root.classes.has('is-scene-manuscript')).toBe(true);
 		expect(fixture.root.classes.has('is-entities')).toBe(false);
-		expect(fixture.root.querySelector('.snowflake-method-tab-planned')).toBeNull();
+		expect(fixture.root.querySelector('.snowflake-method-character-empty')).toBeNull();
 		// The same view again, or one the tab does not know, changes nothing.
 		fixture.viewField().choose('scene-manuscript');
 		fixture.viewField().choose('tags');
@@ -522,7 +524,8 @@ describe('the entities view', () => {
 		await settle();
 		expect(fixture.engines).toHaveLength(0);
 		expect(fixture.root.classes.has('is-empty')).toBe(true);
-		expect(fixture.root.querySelector('.snowflake-method-tab-planned')!.textContent).toBe('relationshipGraph.empty');
+		const empty = fixture.root.querySelector('.snowflake-method-character-empty')!;
+		expect(empty.querySelectorAll('span').map((span) => span.textContent)).toContain('relationshipGraph.empty');
 	});
 
 	it('hands the engine the view the file holds', async () => {
