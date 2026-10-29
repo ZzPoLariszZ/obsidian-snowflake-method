@@ -1414,6 +1414,14 @@ describe('styles.css', () => {
 		expect(declarations('body.is-mobile .snowflake-method-settings .dropdown')).toContain(
 			'background-color: var(--background-modifier-form-field)',
 		);
+		// The entity dialogs' custom field rows, status and relationship cards
+		// stand on the same tone, as the user asked to see checked.
+		expect(declarations('body.is-mobile .modal.snowflake-method-dialog')).toMatch(
+			/--background-modifier-form-field: color-mix\(\s*in srgb,\s*var\(--text-normal\) 10%,\s*transparent\s*\)/u,
+		);
+		expect(declarations('body.is-mobile .modal.snowflake-method-dialog .dropdown')).toContain(
+			'background-color: var(--background-modifier-form-field)',
+		);
 		expect(declarations('body.is-phone .snowflake-method-settings .setting-item-control textarea')).toContain('min-width: 0');
 		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control textarea')).toContain(
 			'min-width: var(--snowflake-method-settings-box)',
