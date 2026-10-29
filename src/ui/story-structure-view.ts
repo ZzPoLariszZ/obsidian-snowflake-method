@@ -592,10 +592,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 		});
 		const body = field.createDiv({ cls: 'snowflake-method-tab-scroll' });
 		if (this.model === null) {
-			body.createEl('p', {
-				cls: 'snowflake-method-tab-planned',
-				text: this.t('storyStructure.noProject'),
-			});
+			this.renderEmptyNote(body);
 			return;
 		}
 		if (this.state.visualization === 'corkboard-ordered') {
@@ -842,15 +839,44 @@ export class SnowflakeStoryStructureView extends ItemView {
 		});
 	}
 
+	/**
+	 * A tab with no project says so where its board would stand, on the
+	 * notice pane the Scene ↔ Manuscript tab stands on, and leads to the
+	 * project manager from under the words, as the dashboard's own empty
+	 * state does. The panel scrolls the pane as it scrolls a board.
+	 */
+	private renderEmptyNote(body: HTMLElement): void {
+		body.addClass('is-self-scrolling');
+		const { actions } = renderNoticePane(body, {
+			name: 'workspace-empty',
+			lead: this.t('storyStructure.noProject'),
+		});
+		const manage = actions.createEl('button', {
+			cls: 'mod-cta snowflake-method-workspace-empty-manage',
+			text: this.t('commands.openProjectManager'),
+			attr: { type: 'button' },
+		});
+		manage.addEventListener('click', () => {
+			void this.deps.host.openProjectManager(null).catch((error: unknown) => {
+				new Notice(error instanceof Error ? error.message : this.t('errors.unknown'));
+			});
+		});
+	}
+
+	/**
+	 * A tab whose project has no readable structure says so on the notice
+	 * pane, in a frame of its own: the tabs of a board it cannot draw would
+	 * only lead back here.
+	 */
 	private renderError(error: unknown): void {
 		this.disposeBoard();
 		this.filterPanel.close();
 		this.shownFrame = null;
 		const root = this.contentEl;
 		root.empty();
-		root.createEl('p', {
-			cls: 'snowflake-method-tab-planned',
-			text: this.t('storyStructure.loadFailed'),
+		renderNoticePane(root, {
+			name: 'workspace-failed',
+			lead: this.t('storyStructure.loadFailed'),
 		});
 		console.error('Snowflake: story structure could not be loaded', error);
 	}

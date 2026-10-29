@@ -18757,8 +18757,10 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 /* The pane that stands in for a board the tab cannot draw: a column of
    words at a reading measure in the middle of the frame, the lead first and
    the buttons under it, as an empty board says what it waits for. The
-   Scene ↔ Manuscript tab stands on one for Obsidian's own graph, and the
-   story structure view on a phone for the dashboard. The pane scrolls when
+   Scene ↔ Manuscript tab stands on one for Obsidian's own graph. The story
+   structure view stands on one for the dashboard on a phone, for the project
+   manager while it has no project, and for the word that a project's
+   structure could not be read. The pane scrolls when
    the frame is too short for the words, and the body takes its margin from
    every side, so it stands in the middle while there is room and starts at
    the top once there is not. */
