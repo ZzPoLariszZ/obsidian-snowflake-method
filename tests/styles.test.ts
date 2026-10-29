@@ -1562,6 +1562,17 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-dashboard button.snowflake-method-rail-group-header')).toContain(
 			'box-shadow: 0 -1px 0 var(--background-secondary)',
 		);
+		// The pool's band keeps its climb past the head, and the workspace keeps
+		// the desktop's inset at both sides for the folds at its corners.
+		expect(declarations('body.is-tablet .snowflake-method-timeline-pool .snowflake-method-prose-controls')).toContain(
+			'inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--snowflake-method-timeline-head-height) + var(--size-4-3)))',
+		);
+		expect(declarations('body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll')).toContain(
+			'padding-inline-start: var(--snowflake-method-tab-height)',
+		);
+		expect(declarations('body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll.is-self-scrolling')).toContain(
+			'padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px)',
+		);
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(

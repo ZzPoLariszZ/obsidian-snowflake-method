@@ -20416,6 +20416,29 @@ body.is-tablet .snowflake-method-relationship-graph-toolbar {
 	inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--size-4-3)));
 }
 
+/* The pool's band climbs the head's height further, as on the desktop, to
+   ride the strip's row beside the timeline's toolbar, and takes the same
+   lift there. The rule above outranked the pool's own climb and set its
+   band down on the head, the search over the pool's name and the add
+   button over its count. */
+body.is-tablet .snowflake-method-timeline-pool .snowflake-method-prose-controls {
+	inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--snowflake-method-timeline-head-height) + var(--size-4-3)));
+}
+
+/* The folds at the frame's corners are each a strip's height wide and stand
+   outside the frame, and the panel's mobile inset of one spacing left them
+   cut at the window's edges. The workspace keeps the desktop's inset of the
+   strip's height at both sides instead, with the desktop's reach into the
+   gutter at the end, and the folds stand whole in it. */
+body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll {
+	padding-inline-start: var(--snowflake-method-tab-height);
+	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px - var(--snowflake-method-scrollbar-width, 0px));
+}
+
+body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll.is-self-scrolling {
+	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px);
+}
+
 /* -- Mobile: the workspace toolbars' actions under one button -------------- */
 
 /* A tablet's toolbar has the room for its search or for its row of symbols
