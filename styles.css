@@ -19915,6 +19915,18 @@ body.is-phone .snowflake-method-manuscript-toolbar::-webkit-scrollbar {
 	display: none;
 }
 
+/* -- Mobile: the stream's find bar under its own toolbar ------------------- */
+
+/* The app pads a note's find bar at the top by the fixed header's height on
+   a phone, since that bar is the first thing in the leaf and would stand
+   under the header otherwise. The stream's bar stands under the stream's
+   toolbar, which clears the header already, so the same padding only put a
+   blank band as tall as the header over the bar. The bar keeps the app's
+   mobile padding at the bottom and takes the same at the top. */
+body.is-mobile .workspace-leaf-content[data-type='snowflake-method-manuscript'] .document-search-container.snowflake-method-stream-search {
+	padding-top: var(--size-4-4);
+}
+
 /* -- Phone: a note's bar under the app's fixed header ---------------------- */
 
 /* On a phone the app's header floats over the top of the leaf, fixed, and
