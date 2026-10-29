@@ -19959,6 +19959,18 @@ body.is-phone .snowflake-method-source-summary-body {
 	max-height: 14rem;
 }
 
+/* -- Mobile: a field inside a card ----------------------------------------- */
+
+/* The app's mobile form field has no border and, in the light theme, the
+   secondary ground, the colour of the plugin's cards: the genre and the
+   reasons of step 1 and the description of step 2 could not be told from
+   their card. Inside a card a field takes the primary ground, as the app
+   raises its own search field on a secondary surface, and stands lighter
+   than the card as the desktop's bordered field does. */
+body.is-mobile .snowflake-method-dashboard .snowflake-method-guided-section {
+	--background-modifier-form-field: var(--background-primary);
+}
+
 /* -- Phone: the dashboard's rail as a menu --------------------------------- */
 
 /* The rail goes, the panel takes the width, and a bar above the panel names
