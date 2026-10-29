@@ -1443,6 +1443,12 @@ describe('styles.css', () => {
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row')).toContain('display: flex');
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-rail-menu-row')).toContain('gap: var(--size-4-1)');
 		expect(declarations('body.is-phone .snowflake-method-dashboard.is-rail-hidden .snowflake-method-step-nav')).toContain('display: none');
+		// The check's report entry keeps its copy and its buttons in one column
+		// on a phone, the buttons under the copy at its start, and the inset
+		// that mirrored the callout's icon goes with them.
+		expect(declarations('body.is-phone .snowflake-method-repair-report-item')).toContain('grid-template-columns: minmax(0, 1fr)');
+		expect(declarations('body.is-phone .snowflake-method-repair-report-item')).toContain('padding-inline-end: var(--size-4-3)');
+		expect(declarations('body.is-phone .snowflake-method-repair-report-item-actions')).toContain('justify-content: flex-start');
 		expect(declarations('body.is-mobile .snowflake-method-settings')).toMatch(
 			/--background-modifier-form-field: color-mix\(\s*in srgb,\s*var\(--text-normal\) 10%,\s*transparent\s*\)/u,
 		);

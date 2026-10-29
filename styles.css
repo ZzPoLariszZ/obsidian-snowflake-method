@@ -20406,6 +20406,20 @@ body.is-phone .snowflake-method-tracking-modal-list {
 	max-height: none;
 }
 
+/* An entry of the check's report is two columns on the desktop, the copy and
+   its buttons, with an end inset that mirrors the callout's icon so the row
+   reads as centred. A phone has no column to spare, and a copy squeezed
+   beside a split button wrapped a word to a line there: the buttons stand
+   under the copy, at its start as the copy is, and the inset goes with them. */
+body.is-phone .snowflake-method-repair-report-item {
+	grid-template-columns: minmax(0, 1fr);
+	padding-inline-end: var(--size-4-3);
+}
+
+body.is-phone .snowflake-method-repair-report-item-actions {
+	justify-content: flex-start;
+}
+
 /* -- Phone: hung panels as sheets ------------------------------------------ */
 
 /* A panel hung under a button on the desktop -- the filter, the typography
