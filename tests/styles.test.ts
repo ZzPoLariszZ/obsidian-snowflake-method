@@ -1470,13 +1470,28 @@ describe('styles.css', () => {
 		expect(declarations('body.is-phone .snowflake-method-history-range-nav')).toContain('gap: var(--size-4-1)');
 		expect(declarations('body.is-phone .snowflake-method-history-range-title')).toContain('font-size: 1em');
 		// The control band rides the strip's gap on the desktop. On a phone it
-		// stands in the flow a touch under the strip.
+		// stands in the flow a touch under the strip, and a task tab's search
+		// shares its row with the funnel alone.
 		const band = declarations('body.is-phone .snowflake-method-prose-controls');
 		expect(band).toContain('position: static');
+		expect(band).toContain('flex-wrap: wrap');
 		expect(band).toContain('margin-block-start: calc(var(--size-4-2) - var(--snowflake-method-tab-height, 2.75rem))');
 		expect(declarations('body.is-phone .snowflake-method-sticky-board .snowflake-method-prose-controls')).toContain(
 			'margin-block-end: 0',
 		);
+		expect(declarations('body.is-phone .snowflake-method-task-board .snowflake-method-prose-controls')).toContain(
+			'--snowflake-method-band-beside: calc(var(--touch-size-s, 2.5rem) + var(--size-2-2))',
+		);
+		expect(declarations('body.is-phone .snowflake-method-sticky-board .snowflake-method-prose-controls')).toContain(
+			'--snowflake-method-band-beside: calc(2 * (var(--touch-size-s, 2.5rem) + var(--size-2-2)))',
+		);
+		expect(declarations('body.is-phone .snowflake-method-prose-controls .search-input-container')).toContain(
+			'flex: 1 1 calc(100% - var(--snowflake-method-band-beside, 0px))',
+		);
+		expect(declarations('body.is-phone .snowflake-method-tracking-panel .snowflake-method-prose-controls .search-input-container')).toContain(
+			'flex: 1 1 50%',
+		);
+		expect(declarations('body.is-phone .snowflake-method-task-archive-actions')).toContain('flex-wrap: wrap');
 		expect(declarations('body.is-phone .snowflake-method-settings .setting-item-control textarea')).toContain('min-width: 0');
 		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control textarea')).toContain(
 			'min-width: var(--snowflake-method-settings-box)',

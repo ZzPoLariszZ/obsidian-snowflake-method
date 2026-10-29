@@ -20292,19 +20292,53 @@ body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-s
    field grown to a finger's size fills to both edges: focused, its ring
    overlapped the strip above and the first card below. On a phone the band
    stands in the flow instead, a touch under the strip and as tall as its
-   rows. The margins give back the gap the panel keeps for the band, and
-   the column's own spacing after it. */
+   rows, and its controls wrap. The margins give back the gap the panel
+   keeps for the band, and the column's own spacing after it. */
 body.is-phone .snowflake-method-prose-controls {
 	position: static;
 	height: auto;
+	flex-wrap: wrap;
+	row-gap: var(--size-4-2);
 	margin-block-start: calc(var(--size-4-2) - var(--snowflake-method-tab-height, 2.75rem));
 	margin-block-end: calc(var(--size-4-3) - var(--snowflake-method-tab-height, 2.75rem));
 }
 
 /* The sticky note board spaces its children by the column's own spacing
-   already, so its band gives nothing back after itself. */
+   already, so its band gives nothing back after itself. Its sort stands
+   with its funnel on the first row, so two buttons stand beside the
+   search there. */
 body.is-phone .snowflake-method-sticky-board .snowflake-method-prose-controls {
+	--snowflake-method-band-beside: calc(2 * (var(--touch-size-s, 2.5rem) + var(--size-2-2)));
 	margin-block-end: 0;
+}
+
+/* The task archive's own row of controls wraps the same way. */
+body.is-phone .snowflake-method-task-archive-actions {
+	flex-wrap: wrap;
+	row-gap: var(--size-4-2);
+}
+
+/* A task tab's search was a sliver beside the funnel, the state, the
+   refresh and the add button. The search and the funnel share the first
+   row, the search as wide as the funnel leaves it, and the rest stand on
+   the row under them at the band's end. The tracking panel's band keeps
+   its one row, the search taking what the state and the refresh leave. */
+body.is-phone .snowflake-method-revision-panel .snowflake-method-prose-controls,
+body.is-phone .snowflake-method-foreshadowing-panel .snowflake-method-prose-controls,
+body.is-phone .snowflake-method-task-board .snowflake-method-prose-controls,
+body.is-phone .snowflake-method-task-archive-actions {
+	--snowflake-method-band-beside: calc(var(--touch-size-s, 2.5rem) + var(--size-2-2));
+}
+
+body.is-phone .snowflake-method-prose-controls .search-input-container,
+body.is-phone .snowflake-method-task-archive-actions .search-input-container {
+	flex: 1 1 calc(100% - var(--snowflake-method-band-beside, 0px));
+	min-width: 0;
+	margin-inline-end: auto;
+}
+
+body.is-phone .snowflake-method-tracking-panel .snowflake-method-prose-controls .search-input-container {
+	flex: 1 1 50%;
 }
 
 /* -- Phone: dialogs -------------------------------------------------------- */
