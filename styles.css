@@ -20457,6 +20457,19 @@ body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll.is
 	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px);
 }
 
+/* -- Tablet: the view field and the search on the boards' toolbars -------- */
+
+/* The desktop balances a board's toolbar by its time column's width, which
+   the view field is given, and on a tablet the field grew to that: twenty
+   ems of box for two words. The tablet's toolbar keeps its actions under
+   one button at the end and has nothing to balance by: the field takes a
+   dozen ems and the search sixteen, on every board alike, and the room
+   between them is the toolbar's. */
+body.is-tablet .snowflake-method-story-structure .snowflake-method-balanced-toolbar {
+	--snowflake-method-toolbar-start: 12rem;
+	--snowflake-method-toolbar-search-width: 16rem;
+}
+
 /* -- Mobile: the workspace toolbars' actions under one button -------------- */
 
 /* A tablet's toolbar has the room for its search or for its row of symbols

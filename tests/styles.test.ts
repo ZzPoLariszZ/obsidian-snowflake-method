@@ -1584,6 +1584,13 @@ describe('styles.css', () => {
 		expect(declarations('body.is-mobile .snowflake-method-timeline-pool-count')).toContain(
 			'margin-inline-end: calc((var(--touch-size-s, 2.5rem) - 1.25rem) / 2)',
 		);
+		// A tablet's board toolbars: one width for the view field and the search.
+		expect(declarations('body.is-tablet .snowflake-method-story-structure .snowflake-method-balanced-toolbar')).toContain(
+			'--snowflake-method-toolbar-start: 12rem',
+		);
+		expect(declarations('body.is-tablet .snowflake-method-story-structure .snowflake-method-balanced-toolbar')).toContain(
+			'--snowflake-method-toolbar-search-width: 16rem',
+		);
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(
