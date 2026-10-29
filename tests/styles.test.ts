@@ -1519,19 +1519,38 @@ describe('styles.css', () => {
 			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),
 		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');
 		expect(declarations('.snowflake-method-diagnostics-report')).toContain('white-space: pre-wrap');
-		// The dashboard scrolls as one page on a phone and its frames run to
-		// their content. The workspace is not offered there: its ribbon action
-		// is away, a tab that opens all the same shows its note, and no phone
-		// rule lays out a board of it.
-		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-layout')).toContain('flex: 0 0 auto');
-		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-table-body')).toContain('overflow: visible');
-		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box')).toContain(
+		// The dashboard scrolls as one page on a phone and on a tablet, and its
+		// frames run to their content. The workspace is not offered on a phone:
+		// its ribbon action is away, a tab that opens all the same shows its
+		// note, and no phone rule lays out a board of it.
+		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-layout')).toContain('flex: 0 0 auto');
+		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-table-body')).toContain('overflow: visible');
+		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box')).toContain(
 			'overflow-y: visible',
 		);
-		// The quote of the step before grows with its words on a phone as the
-		// box under it does, so a swipe over it moves the page, not the quote.
-		expect(declarations('body.is-phone .snowflake-method-source-summary-body')).toContain('max-height: none');
-		expect(declarations('body.is-phone .snowflake-method-source-summary-body')).toContain('overflow-y: visible');
+		// The quote of the step before grows with its words there as the box
+		// under it does, so a swipe over it moves the page, not the quote.
+		expect(declarations('body.is-mobile .snowflake-method-source-summary-body')).toContain('max-height: none');
+		expect(declarations('body.is-mobile .snowflake-method-source-summary-body')).toContain('overflow-y: visible');
+		// The panels' insets come in on both and a tab is as wide as its word,
+		// in the workspace's strip too. A tablet keeps its bands over the
+		// strip's gap in one row, in a field whose top inset gives them air
+		// above and below.
+		expect(declarations('body.is-mobile .snowflake-method-panel')).toContain('padding: var(--size-4-3)');
+		expect(declarations('body.is-mobile .snowflake-method-panel')).toContain('--snowflake-method-tab-width: 7rem');
+		expect(declarations('body.is-tablet .snowflake-method-story-structure')).toContain('--snowflake-method-tab-width: 7rem');
+		expect(declarations('body.is-tablet .snowflake-method-tab-scroll')).toContain(
+			'padding-block-start: calc(var(--snowflake-method-tab-height) + var(--size-4-2) + var(--size-4-3))',
+		);
+		expect(declarations('body.is-tablet .snowflake-method-timeline-toolbar')).toContain(
+			'inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--size-4-3)))',
+		);
+		expect(declarations('body.is-tablet .snowflake-method-timeline-fold')).toContain(
+			'inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--size-4-3)))',
+		);
+		// The rail stands as tall as its own rows beside the page, its footer
+		// under them, not at the page's end.
+		expect(declarations('body.is-tablet .snowflake-method-dashboard .snowflake-method-step-nav')).toContain('align-self: start');
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(

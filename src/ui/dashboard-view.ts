@@ -8003,8 +8003,8 @@ export class SnowflakeDashboardView extends ItemView {
 		// One block, newlines kept, set as the box below sets its own text,
 		// so the two read alike; in a body that scrolls, held to a third of
 		// the frame, so a long synopsis quoted above the box does not push
-		// the box off the page. On a phone, where the page itself scrolls,
-		// the stylesheet lets it grow with its words instead.
+		// the box off the page. On a phone or a tablet, where the page itself
+		// scrolls, the stylesheet lets it grow with its words instead.
 		const body = sourceSummary.createDiv({
 			cls: 'snowflake-method-source-summary-body',
 		});

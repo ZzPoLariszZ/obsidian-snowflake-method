@@ -19982,48 +19982,59 @@ body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] 
 	margin-bottom: max(0px, var(--view-bottom-spacing, 0px));
 }
 
-/* -- Phone: the dashboard as one page ------------------------------------- */
+/* -- Mobile: the dashboard as one page ------------------------------------ */
 
 /* The desktop frames every panel in its column and scrolls what stands
    inside the frame: a table's rows run in their own box under its header,
    a synopsis in its own under its count. A phone's column is a few hundred
    pixels, and a frame given what the progress row, the Steps row and the
    panel's own bar left of them showed two cards of a cast of thirty, every
-   swipe inside it fighting the page's for the finger. So the page is the
-   one thing that scrolls: the layout and the column take the height of
+   swipe inside it fighting the page's for the finger. A tablet has the
+   room and not the pointer: a frame that scrolls inside a page that
+   scrolls takes the finger's swipe there as well. So on both the page is
+   the one thing that scrolls: the layout and the column take the height of
    what they hold, every frame runs on to its content, and the rows stand
    down the page under the bar that searches them. The virtual table reads
    which element scrolls off this layout (scrollerOf) and windows its rows
    by the page. */
-body.is-phone .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard {
+body.is-mobile .mod-root .workspace-leaf-content .view-content.snowflake-method-dashboard {
 	overflow-y: auto;
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-layout {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-layout {
 	flex: 0 0 auto;
 	min-height: 0;
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-main {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-main {
 	overflow-y: visible;
 	scrollbar-gutter: auto;
 }
 
+/* The rail beside the column stands as tall as its own rows on a tablet,
+   its footer under them: stretched to the column's run, as the desktop's
+   frame stretches it, it parked the footer at the page's end. A phone has
+   no rail to stand. */
+body.is-tablet .snowflake-method-dashboard .snowflake-method-step-nav {
+	align-self: start;
+}
+
 /* A member step's panel and its table frame take their content's height,
-   and the frame stops scrolling: its header is away on a phone, where every
-   table is laid out as cards, and its body runs down the page. The reach
-   the body kept past the frame for a bar it no longer holds is given back,
-   so the cards end at the frame's edge. */
-body.is-phone .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-member-panel {
+   and the frame stops scrolling: its body runs down the page, under the
+   header a tablet keeps and without it on a phone, where every table is
+   laid out as cards. The reach the body kept past the frame for a bar it
+   no longer holds is given back, so the rows end at the frame's edge, in
+   line with the header where there is one. */
+body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-member-panel {
 	flex: 0 0 auto;
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-table-wrap {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-table-wrap {
 	flex: 0 0 auto;
 	min-height: 0;
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-table-body {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-table-body {
 	flex: 0 0 auto;
 	overflow: visible;
 	scrollbar-gutter: auto;
@@ -20033,21 +20044,21 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-table-body {
 
 /* A tabbed pane's field does the same, and a board that scrolled itself
    inside the field runs with the page as well. */
-body.is-phone .snowflake-method-dashboard .snowflake-method-tab-panel {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-panel {
 	flex: 0 0 auto;
 	min-height: 0;
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll,
-body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-scroll,
+body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling {
 	flex: 0 0 auto;
 	overflow-y: visible;
 	margin-inline-end: 0;
 	padding-inline-end: var(--size-4-3);
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
-body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
+body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
 	overflow: visible;
 	margin-inline-end: 0;
 	padding-inline-end: 0;
@@ -20059,7 +20070,7 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-s
    its words as well: a column that takes the height of its content
    measures no third to hold it to, and a quote that scrolled inside the
    page took the swipe as the box did. */
-body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box {
 	flex: 0 0 auto;
 	height: auto;
 	max-height: none;
@@ -20067,13 +20078,13 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-met
 	resize: none;
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-sentence-summary-field,
-body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-paragraph-summary-field,
-body.is-phone .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-synopsis-field {
+body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-sentence-summary-field,
+body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-paragraph-summary-field,
+body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-synopsis-field {
 	flex: 0 0 auto;
 }
 
-body.is-phone .snowflake-method-source-summary-body {
+body.is-mobile .snowflake-method-source-summary-body {
 	max-height: none;
 	overflow-y: visible;
 	scrollbar-gutter: auto;
@@ -20269,19 +20280,26 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-rail-menu-chevron {
 }
 
 /* The panels' insets and the tabs' paddings, set from the tab height, come
-   in on a phone, and a tab is as wide as a word needs. The field keeps its
-   top inset, where a board's controls band rides, and the scroller keeps
-   its reach past the frame for the bar, measured from the new inset. */
-body.is-phone .snowflake-method-panel {
+   in on a phone and a tablet alike, and a tab is as wide as a word needs:
+   at the desktop's width a tablet held upright showed three tabs of four
+   and clipped the fourth. The workspace's strip is told the same. The
+   field keeps its top inset, where a board's controls band rides, and the
+   scroller keeps its reach past the frame for the bar, measured from the
+   new inset. */
+body.is-mobile .snowflake-method-panel {
 	--snowflake-method-tab-width: 7rem;
 	padding: var(--size-4-3);
 }
 
-body.is-phone .snowflake-method-tabs {
+body.is-tablet .snowflake-method-story-structure {
+	--snowflake-method-tab-width: 7rem;
+}
+
+body.is-mobile .snowflake-method-tabs {
 	padding-inline: var(--size-4-3);
 }
 
-body.is-phone .snowflake-method-tab-scroll {
+body.is-mobile .snowflake-method-tab-scroll {
 	padding: var(--snowflake-method-tab-height) var(--size-4-3) var(--size-4-3);
 	padding-inline-end: calc(
 		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px -
@@ -20289,14 +20307,14 @@ body.is-phone .snowflake-method-tab-scroll {
 	);
 }
 
-body.is-phone .snowflake-method-tab-scroll.is-self-scrolling {
+body.is-mobile .snowflake-method-tab-scroll.is-self-scrolling {
 	padding-inline-end: calc(
 		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px
 	);
 }
 
-body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
-body.is-phone .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
+body.is-mobile .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
+body.is-mobile .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
 	margin-inline-end: calc(
 		-1 * (var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px)
 	);
@@ -20360,6 +20378,29 @@ body.is-phone .snowflake-method-task-archive-actions .search-input-container {
 
 body.is-phone .snowflake-method-tracking-panel .snowflake-method-prose-controls .search-input-container {
 	flex: 1 1 50%;
+}
+
+/* -- Tablet: the control bands under the tab strip ------------------------- */
+
+/* A tablet keeps the band where the desktop lays it, over the strip's gap
+   in one row, since its field has the width for the row. Its controls have
+   grown to a finger's size there, and a band as tall as the strip held them
+   with no air above or below: the field's top inset grows by the phone's
+   two spacings and the band rides higher in it, a touch under the strip
+   and the column's own spacing above the rows. Every band that rides a gap
+   is told the same: the panels' and the corkboard's, which share one
+   class, the timeline's, which the beat sheet wears too, the fold that
+   stands in its row at the pool's edge, the freeform's and the graph's. */
+body.is-tablet .snowflake-method-tab-scroll {
+	padding-block-start: calc(var(--snowflake-method-tab-height) + var(--size-4-2) + var(--size-4-3));
+}
+
+body.is-tablet .snowflake-method-prose-controls,
+body.is-tablet .snowflake-method-timeline-toolbar,
+body.is-tablet .snowflake-method-timeline-fold,
+body.is-tablet .snowflake-method-freeform-toolbar,
+body.is-tablet .snowflake-method-relationship-graph-toolbar {
+	inset-block-start: calc(-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--size-4-3)));
 }
 
 /* -- Phone: dialogs -------------------------------------------------------- */
