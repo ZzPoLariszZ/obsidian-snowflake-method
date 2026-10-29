@@ -2254,6 +2254,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'manuscript.toolbar.presentation': '排版',
 	'manuscript.toolbar.mentions': '实体提及',
 	'manuscript.toolbar.selection': '选中文字操作',
+	'manuscript.toolbar.search': '在正文中查找',
 	'manuscript.mention.convert': '转换为 wikilink',
 	'manuscript.mention.convertTo': '链接到 {name}',
 	'manuscript.mention.open': '打开实体',

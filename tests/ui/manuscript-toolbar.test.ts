@@ -1,0 +1,102 @@
+// @vitest-environment happy-dom
+
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+import { SnowflakeManuscriptView } from '../../src/ui/manuscript-view';
+import { installObsidianDom } from '../helpers/obsidian-dom';
+
+vi.mock('obsidian', async (importOriginal) => {
+	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
+	return {
+		...runtime,
+		ItemView: class {},
+		setTooltip: (el: HTMLElement, text: string) => {
+			el.setAttribute('data-tooltip', text);
+		},
+	};
+});
+
+interface Mounted {
+	bar: HTMLElement;
+	/** Every opening of the find bar, as asked: with the replace row or without. */
+	searches: boolean[];
+	view: { editingPath: string | null; refreshToolbar(): void };
+}
+
+/**
+ * The stream's bar on its own, over the view's prototype. The device says
+ * whether the writing faces ride the bar, and the find bar is recorded
+ * rather than built.
+ */
+const mount = (faces: boolean): Mounted => {
+	const searches: boolean[] = [];
+	const view = Object.create(SnowflakeManuscriptView.prototype) as SnowflakeManuscriptView;
+	const contentEl = document.body.createDiv();
+	Object.assign(view, {
+		contentEl,
+		toolbarButtons: [],
+		editingPath: null,
+		releaseWritingFaces: null,
+		modeToggles: {},
+		t: (key: string) => key,
+		host: {
+			mountWritingFaces: (bar: HTMLElement) => {
+				if (!faces) return null;
+				bar.createDiv({ cls: 'snowflake-method-toolbar-faces' });
+				return () => {};
+			},
+			manuscriptWindowSettings: () => ({ typewriter: false, focusLevel: 'off' }),
+		},
+		openSearch: (replace: boolean) => {
+			searches.push(replace);
+			return true;
+		},
+	});
+	(view as unknown as { renderToolbar(): void }).renderToolbar();
+	const bar = contentEl.querySelector<HTMLElement>('.snowflake-method-manuscript-toolbar');
+	if (bar === null) throw new Error('the bar was not built');
+	return { bar, searches, view: view as unknown as Mounted['view'] };
+};
+
+const has = (el: Element | null | undefined, name: string): boolean =>
+	el?.classList.contains(name) === true;
+
+describe('the stream toolbar', () => {
+	beforeAll(() => {
+		installObsidianDom(window);
+	});
+
+	it('stands the find button right after the selection button, among the marks on the desktop', () => {
+		const { bar } = mount(false);
+		const find = bar.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-find');
+		expect(find?.getAttribute('data-tooltip')).toBe('manuscript.toolbar.search');
+		expect(has(find?.previousElementSibling, 'snowflake-method-toolbar-selection')).toBe(true);
+		expect(has(find?.nextElementSibling, 'snowflake-method-toolbar-separator')).toBe(true);
+		expect(has(find?.previousElementSibling?.previousElementSibling, 'snowflake-method-toolbar-button')).toBe(true);
+		expect(bar.querySelector('.snowflake-method-toolbar-faces')).toBeNull();
+	});
+
+	it('keeps the pair at the head of the bar beside the writing faces on mobile', () => {
+		const { bar } = mount(true);
+		const [faces, selection, find, rule] = [...bar.children];
+		expect(has(faces, 'snowflake-method-toolbar-faces')).toBe(true);
+		expect(has(selection, 'snowflake-method-toolbar-selection')).toBe(true);
+		expect(has(find, 'snowflake-method-toolbar-find')).toBe(true);
+		expect(has(rule, 'snowflake-method-toolbar-separator')).toBe(true);
+		expect(bar.querySelectorAll('.snowflake-method-toolbar-find')).toHaveLength(1);
+	});
+
+	it('opens the find bar as Mod+F does, live while the stream is only read', () => {
+		const { bar, searches, view } = mount(false);
+		const find = bar.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-find');
+		const selection = bar.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-selection');
+		expect(selection?.disabled).toBe(true);
+		expect(find?.disabled).toBe(false);
+		find?.click();
+		expect(searches).toEqual([false]);
+		view.editingPath = 'Novel/50_Manuscript/Chapter 1.md';
+		view.refreshToolbar();
+		expect(selection?.disabled).toBe(false);
+		expect(find?.disabled).toBe(false);
+	});
+});

@@ -1119,7 +1119,8 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	/**
 	 * The formatting bar above the stream: undo and redo, the heading levels,
-	 * and the inline marks. Always present while a manuscript is, and inert
+	 * the inline marks, and the doors to the selection menu and the find bar.
+	 * Always present while a manuscript is, and inert
 	 * until a note is being written in — a bar that came and went with the
 	 * editor would bounce the whole page under the reader every toggle.
 	 */
@@ -1164,13 +1165,26 @@ export class SnowflakeManuscriptView extends ItemView {
 		// the system's own selection and opens no menu of the plugin's, so
 		// this button is the one way to it, kept within a thumb's reach of
 		// the session. On the desktop a right-click opens the menu, and the
-		// button stands among the formatting instead.
+		// button stands among the formatting instead. The find bar's button
+		// follows the menu's door on either.
 		this.releaseWritingFaces = this.host.mountWritingFaces(bar);
 		const facesFirst = this.releaseWritingFaces !== null;
 		const selection = (): void => {
 			button('text-select', this.t('manuscript.toolbar.selection'), (event) => {
 				this.openSelectionMenu(event);
 			}).addClass('snowflake-method-toolbar-selection');
+			// The find bar, opened as Mod+F opens it. Live while reading too:
+			// the search reads the whole manuscript and edits nothing, so it
+			// is not among the buttons an editor greys.
+			const find = bar.createEl('button', {
+				cls: 'clickable-icon snowflake-method-toolbar-button snowflake-method-toolbar-find',
+				attr: { type: 'button' },
+			});
+			setIcon(find, 'search');
+			setTooltip(find, this.t('manuscript.toolbar.search'));
+			wireCaretKeepingPress(find, () => {
+				this.openSearch(false);
+			});
 		};
 		if (facesFirst) {
 			selection();

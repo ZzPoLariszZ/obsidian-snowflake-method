@@ -2413,6 +2413,7 @@ export const en = {
 	'manuscript.toolbar.presentation': 'Typography',
 	'manuscript.toolbar.mentions': 'Entity mentions',
 	'manuscript.toolbar.selection': 'Selection actions',
+	'manuscript.toolbar.search': 'Search the manuscript',
 	'manuscript.mention.convert': 'Convert to wikilink',
 	'manuscript.mention.convertTo': 'Link to {name}',
 	'manuscript.mention.open': 'Open entity',
