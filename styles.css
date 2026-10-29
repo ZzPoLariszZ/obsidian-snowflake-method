@@ -20169,6 +20169,28 @@ body.is-tablet .snowflake-method-settings .setting-item-control textarea {
 	min-width: var(--snowflake-method-settings-box);
 }
 
+/* The dropdowns each took the width of their own answer, so the column of
+   controls ended on a dozen different lines. Each holds to the column the
+   number boxes share, and widens only for an answer that would not fit
+   it. The typography rows' dropdowns and sliders, cut to the sliders'
+   hundred pixels, and the font list, capped at fourteen ems, hold to the
+   same column. */
+body.is-tablet .snowflake-method-settings {
+	--snowflake-method-presentation-control: var(--snowflake-method-settings-box);
+}
+
+body.is-tablet .snowflake-method-settings .setting-item-control select.dropdown {
+	width: max(var(--snowflake-method-settings-box), var(--dropdown-fitted-width, 0px));
+}
+
+body.is-tablet .snowflake-method-settings .setting-item-control input[type='range'] {
+	width: var(--snowflake-method-settings-box);
+}
+
+body.is-tablet .snowflake-method-settings .snowflake-method-font-picker {
+	max-width: var(--snowflake-method-settings-box);
+}
+
 body.is-phone .snowflake-method-settings .setting-item input[type='number'],
 body.is-phone
 	.snowflake-method-settings

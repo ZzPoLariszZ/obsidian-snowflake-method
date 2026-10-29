@@ -1591,6 +1591,19 @@ describe('styles.css', () => {
 		expect(declarations('body.is-tablet .snowflake-method-story-structure .snowflake-method-balanced-toolbar')).toContain(
 			'--snowflake-method-toolbar-search-width: 16rem',
 		);
+		// A tablet's settings page: every control on the number boxes' column.
+		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control select.dropdown')).toContain(
+			'width: max(var(--snowflake-method-settings-box), var(--dropdown-fitted-width, 0px))',
+		);
+		expect(declarations('body.is-tablet .snowflake-method-settings')).toContain(
+			'--snowflake-method-presentation-control: var(--snowflake-method-settings-box)',
+		);
+		expect(declarations("body.is-tablet .snowflake-method-settings .setting-item-control input[type='range']")).toContain(
+			'width: var(--snowflake-method-settings-box)',
+		);
+		expect(declarations('body.is-tablet .snowflake-method-settings .snowflake-method-font-picker')).toContain(
+			'max-width: var(--snowflake-method-settings-box)',
+		);
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(
