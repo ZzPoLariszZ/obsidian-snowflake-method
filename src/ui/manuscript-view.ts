@@ -134,6 +134,7 @@ import {
 } from './view-model';
 import { wireCaretKeepingPress } from './caret-press';
 import { isMobileDevice } from './device';
+import { pressYieldsToSelection } from './selection-press';
 import { keepEscapeInView } from './escape-key';
 
 export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
@@ -4974,6 +4975,10 @@ export class SnowflakeManuscriptView extends ItemView {
 		segment: ManuscriptSegmentViewModel,
 	): void {
 		el.addEventListener('contextmenu', (event) => {
+			// A finger held on the words is the system's own selection, its
+			// edit menu and its drag of selected words: the menu keeps out of
+			// that, and the toolbar's button answers for the words selected.
+			if (pressYieldsToSelection(event, el.ownerDocument)) return;
 			event.preventDefault();
 			this.buildSegmentMenu(segment, event).showAtMouseEvent(event);
 		});

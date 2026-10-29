@@ -500,6 +500,7 @@ import type {
 import type { EntityGroupId, PickedEntity } from './ui/entity-form';
 import { ManuscriptSaveConflict, kindEntities, nextFocusLevel } from './ui/view-model';
 import { deviceClass, isMobileDevice, isPhoneBody, statusBarShown, watchDeviceClass } from './ui/device';
+import { noteSelectionMoved } from './ui/selection-press';
 import { TOOLBAR_FACES_CLASS, WritingFaces } from './ui/writing-faces';
 import { floatPolicy } from './ui/sticky-note-layout';
 import { MobileDiagnosticsModal } from './ui/mobile-diagnostics';
@@ -1006,6 +1007,7 @@ export default class SnowflakeMethodPlugin
 				// must hear the typing in them.
 				this.registerWritingSurfaceWatch(targetWindow.document);
 				this.registerFieldMenu(targetWindow.document);
+				this.registerSelectionWatch(targetWindow.document);
 			}),
 		);
 		this.registerEvent(
@@ -4528,6 +4530,7 @@ export default class SnowflakeMethodPlugin
 		);
 		this.registerWritingSurfaceWatch(this.app.workspace.containerEl.doc);
 		this.registerFieldMenu(this.app.workspace.containerEl.doc);
+		this.registerSelectionWatch(this.app.workspace.containerEl.doc);
 		// Popout windows already on screen never fire `window-open` again --
 		// a plugin update or a disable-enable with one open -- so their
 		// documents are gathered from the leaves they hold. Windows opened
@@ -4540,6 +4543,7 @@ export default class SnowflakeMethodPlugin
 			watched.add(doc);
 			this.registerWritingSurfaceWatch(doc);
 			this.registerFieldMenu(doc);
+			this.registerSelectionWatch(doc);
 		});
 	}
 
@@ -4622,6 +4626,18 @@ export default class SnowflakeMethodPlugin
 			if (owner !== null) return owner.dataset.snowflakeProject ?? null;
 		}
 		return this.settings.recentProjectPath;
+	}
+
+	/**
+	 * Keeps the moment a window's selection last moved, for the menus a
+	 * long press opens on a phone: a finger still on the system's selection
+	 * gets none of them. Nothing to keep on a desktop.
+	 */
+	private registerSelectionWatch(doc: Document): void {
+		if (!isMobileDevice()) return;
+		this.registerDomEvent(doc, 'selectionchange', () => {
+			noteSelectionMoved(doc);
+		});
 	}
 
 	/**

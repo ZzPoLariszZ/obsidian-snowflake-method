@@ -33,6 +33,7 @@ import {
 	projectMentionMarks,
 } from './mention-marks';
 import { addMentionMenuItems, openMentionMenu } from './mention-menu';
+import { pressYieldsToSelection } from './selection-press';
 
 /**
  * The stream's mention marks on the notes of a project opened in tabs of
@@ -440,15 +441,18 @@ export class NoteMentions {
 
 	/**
 	 * A click on a mention not yet linked, in reading, asks what to do about
-	 * it, as it does in the stream, and a right-click asks the same. A linked
-	 * one is a link: a click follows it, and the app's own menu for it
-	 * answers a right-click.
+	 * it, as it does in the stream, and a right-click asks the same. A finger
+	 * held on the word on a phone is the system's own selection and asks
+	 * nothing. A linked one is a link: a click follows it, and the app's own
+	 * menu for it answers a right-click.
 	 */
 	private readonly onReadingPress = (event: MouseEvent): void => {
 		if (this.destroyed || !isElement(event.target)) return;
 		const span = event.target.closest<HTMLElement>('span.snowflake-method-mention.is-unlinked');
-		const found = span === null ? undefined : this.read.get(span);
+		if (span === null) return;
+		const found = this.read.get(span);
 		if (found === undefined) return;
+		if (event.type === 'contextmenu' && pressYieldsToSelection(event, span.ownerDocument)) return;
 		event.preventDefault();
 		this.openReadMenu(found, event);
 	};

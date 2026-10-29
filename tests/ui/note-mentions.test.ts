@@ -3,7 +3,7 @@
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MarkdownPostProcessorContext } from 'obsidian';
+import { Platform, type MarkdownPostProcessorContext } from 'obsidian';
 
 import {
 	buildEntityMatcher,
@@ -20,6 +20,7 @@ import {
 	type MentionNote,
 	type NoteMentionFeed,
 } from '../../src/ui/note-mentions';
+import { noteSelectionMoved } from '../../src/ui/selection-press';
 import { installObsidianDom } from '../helpers/obsidian-dom';
 
 interface ShownItem {
@@ -397,6 +398,23 @@ describe('NoteMentions', () => {
 		// A right-click asks the same.
 		spans[1]?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
 		expect(shown.menus).toHaveLength(2);
+		// On a phone a finger held on the word while the system's selection
+		// still moves is the selection's own, and asks nothing.
+		Platform.isMobile = true;
+		try {
+			const range = document.createRange();
+			range.selectNodeContents(spans[1] as Node);
+			document.getSelection()?.removeAllRanges();
+			document.getSelection()?.addRange(range);
+			noteSelectionMoved(document);
+			const held = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+			spans[1]?.dispatchEvent(held);
+			expect(held.defaultPrevented).toBe(false);
+			expect(shown.menus).toHaveLength(2);
+		} finally {
+			Platform.isMobile = false;
+			document.getSelection()?.removeAllRanges();
+		}
 	});
 
 	it('says so when the text moved before a conversion reached the file', async () => {
