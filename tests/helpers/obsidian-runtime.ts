@@ -32,7 +32,11 @@ export class PluginSettingTab {
  */
 export class AbstractInputSuggest {
 	limit = 0;
-	constructor(..._arguments: unknown[]) {}
+	/** The suggest built last, for a test that reads a field's list the way the framework does. */
+	static latest: AbstractInputSuggest | null = null;
+	constructor(..._arguments: unknown[]) {
+		AbstractInputSuggest.latest = this;
+	}
 	open(): void {}
 	close(): void {}
 	setValue(_value: string): void {}

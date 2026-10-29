@@ -1,6 +1,7 @@
 import { App, setIcon, setTooltip } from 'obsidian';
 
 import { wireCaretKeepingPress } from './caret-press';
+import { isMobileDevice } from './device';
 
 import { isNameTaken } from '../domain';
 import { FieldSuggest } from './field-suggest';
@@ -162,6 +163,8 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 	 * pickers whose rows are simply words.
 	 */
 	dress: ((el: HTMLElement, option: PickerOption | null) => void) | null = null;
+	// True from an ask for the whole list until the writer types or the list
+	// closes, however often the field is read in between: see `getSuggestions`.
 	private showAll = false;
 	// The framework exposes no way to ask whether the list is showing, and a
 	// refresh must not pop open a list the author had dismissed.
@@ -200,6 +203,13 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		private readonly cap: { rows: number; more: (count: number) => string } | null = null,
 	) {
 		super(app, inputEl, fieldEl);
+		// Typing narrows the list to what is typed; a composed word starts
+		// before anything is inserted, so its start counts as typing too.
+		const narrow = (): void => {
+			this.showAll = false;
+		};
+		inputEl.addEventListener('beforeinput', narrow);
+		inputEl.addEventListener('compositionstart', narrow);
 	}
 
 	/** Opens the full list from the chevron, the way a dropdown would. */
@@ -224,9 +234,13 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 	}
 
 	protected getSuggestions(query: string): Suggestion[] {
-		const showAll = this.showAll;
-		this.showAll = false;
-		const typed = showAll ? '' : query;
+		// The whole list stays on offer until the writer types or the list
+		// closes. It used to be spent on the first reading, which was one
+		// reading short on a touch screen: there the framework reads the field
+		// again half a second after focusing it, once it has given up waiting
+		// for a keyboard to rise, and that second reading narrowed the list to
+		// the one value the field held.
+		const typed = this.showAll ? '' : query;
 		// A list offered in parts puts the name of each group above the first of
 		// its options -- of whatever survives the search, which is why the
 		// headings are worked out here rather than fixed to particular options.
@@ -398,6 +412,7 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		this.popoverEl()?.removeClass(PICKER_SUGGESTIONS_CLASS);
 		this.listOpen = false;
 		this.openRequested = false;
+		this.showAll = false;
 	}
 
 	selectSuggestion(suggestion: Suggestion): void {
@@ -840,11 +855,36 @@ export function buildOptionField(
 	);
 	suggest.dress = config.dress ?? null;
 	wireFrame(frame, suggest);
+	// A touch screen puts a keyboard up for every box it focuses and an edit
+	// menu over every selection it is handed. A field that only chooses among
+	// what it lists is a list there: its box takes no typing, so no keyboard
+	// rises and no menu stands over the words, and a tap opens the list. A
+	// field that searches a long list or creates what it lacks keeps its
+	// keyboard, and the first thing typed replaces the value on show rather
+	// than editing it, which is what selecting the value on the way in does on
+	// the desktop, where the selection is what puts the edit menu up.
+	const listOnly =
+		isMobileDevice() && config.create === undefined && config.cap === undefined;
+	if (listOnly) {
+		input.readOnly = true;
+		input.setAttribute('inputmode', 'none');
+	}
+	let freshQuery = false;
+	const replaceOnType = (): void => {
+		if (!freshQuery) return;
+		freshQuery = false;
+		input.value = '';
+	};
+	input.addEventListener('beforeinput', replaceOnType);
+	input.addEventListener('compositionstart', replaceOnType);
 	// The text is the value, so typing starts a fresh search rather than editing
-	// the name of what is already there — and the list opens on the way in, the
+	// the name of what is already there -- and the list opens on the way in, the
 	// way a dropdown shows its options the moment it is clicked.
 	input.addEventListener('focus', () => {
-		input.select();
+		if (!listOnly) {
+			if (isMobileDevice()) freshQuery = true;
+			else input.select();
+		}
 		// Focus also lands here when the character form closes, at which point the
 		// value is a moment away from changing and the options are a name short.
 		if (creating.inFlight()) return;
@@ -860,6 +900,7 @@ export function buildOptionField(
 	// Whatever was typed was only ever a query. Leaving without picking restores
 	// the value, so the field never shows a name it is not holding.
 	input.addEventListener('blur', () => {
+		freshQuery = false;
 		showValue();
 	});
 	showValue();

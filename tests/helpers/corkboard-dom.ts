@@ -306,6 +306,8 @@ export class CorkboardElement {
 	scrollIntoView(): void { this.dom.operations.push({ kind: 'scroll', target: this, property: 'scrollIntoView' }); }
 	blur(): void { if (this.doc.activeElement === this) this.doc.activeElement = this.doc.body; }
 	select(): void {}
+	/** An event the code under test makes itself, taken by its type: the fake keeps no event objects. */
+	dispatchEvent(event: { type: string }): boolean { this.dispatch(event.type); return true; }
 	setSelectionRange(): void {}
 	remove(): void {
 		if (this.parent === null) return;
