@@ -1422,6 +1422,14 @@ describe('styles.css', () => {
 		expect(declarations('body.is-mobile .modal.snowflake-method-dialog .dropdown')).toContain(
 			'background-color: var(--background-modifier-form-field)',
 		);
+		// The chevron grown to a finger's size gets a column of that size, or it
+		// spills past its wrapper under the button beside it.
+		expect(declarations('body.is-mobile .snowflake-method-character-split-button')).toContain(
+			'grid-template-columns: minmax(0, 1fr) var(--touch-size-m, 2.75rem)',
+		);
+		expect(declarations('body.is-mobile .snowflake-method-character-split-button:not(.snowflake-method-base-split-button)')).toContain(
+			'min-width: calc(2.75rem + var(--touch-size-m, 2.75rem))',
+		);
 		expect(declarations('body.is-phone .snowflake-method-settings .setting-item-control textarea')).toContain('min-width: 0');
 		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control textarea')).toContain(
 			'min-width: var(--snowflake-method-settings-box)',

@@ -19717,6 +19717,20 @@ body.is-mobile .snowflake-method-character-action-menu-trigger {
 	min-width: var(--touch-size-m, 2.75rem);
 }
 
+/* The column a split button keeps for its chevron grows with the chevron:
+   left at the desktop's two ems, the finger-sized chevron ran twelve pixels
+   past its wrapper and under the Delete pill beside it. The least width keeps
+   the primary the word room it has on the desktop beside the wider chevron;
+   the base opener keeps its own, which is as wide as its word. */
+body.is-mobile .snowflake-method-character-split-button {
+	grid-template-columns: minmax(0, 1fr) var(--touch-size-m, 2.75rem);
+}
+
+body.is-mobile
+	.snowflake-method-character-split-button:not(.snowflake-method-base-split-button) {
+	min-width: calc(2.75rem + var(--touch-size-m, 2.75rem));
+}
+
 body.is-mobile .snowflake-method-definition-inspector {
 	--snowflake-inspector-more: var(--touch-size-s, 2.5rem);
 }
