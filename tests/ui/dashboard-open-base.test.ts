@@ -55,7 +55,8 @@ import { installObsidianDom } from '../helpers/obsidian-dom';
 
 const PROJECT = 'Novel/00_System/001_Project_Metadata.md';
 
-function makeModel(): ProjectDashboardModel {
+/** The project, with one worldbuilding kind when a pane of a kind is wanted. */
+function makeModel(kind?: string): ProjectDashboardModel {
 	return {
 		path: PROJECT,
 		projectId: 'novel',
@@ -78,8 +79,8 @@ function makeModel(): ProjectDashboardModel {
 		characters: [],
 		scenes: [],
 		manuscriptPaths: [],
-		worldbuildingKinds: [],
-		worldbuilding: {},
+		worldbuildingKinds: kind === undefined ? [] : [{ id: kind, custom: false }],
+		worldbuilding: kind === undefined ? {} : { [kind]: [] },
 		definitions: {},
 		customFieldTemplates: {},
 		outdatedNotes: 0,
@@ -92,8 +93,8 @@ async function flush(): Promise<void> {
 	for (let round = 0; round < 10; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mount(step: number) {
-	const model = makeModel();
+function mount(step: number, kind?: string) {
+	const model = makeModel(kind);
 	const openStoryStructure = vi.fn(() => Promise.resolve());
 	const openProjectBase = vi.fn(() => Promise.resolve());
 	const host = {
@@ -122,7 +123,7 @@ function mount(step: number) {
 		stateDelivered: true,
 		stepChosen: true,
 		selectedStep: step,
-		selectedPane: { kind: 'step', step },
+		selectedPane: kind === undefined ? { kind: 'step', step } : { kind: 'worldbuilding', wbKind: kind },
 		updateViewTitle: vi.fn(),
 		renderStepNavigation: vi.fn(),
 		renderMigrationCallout: vi.fn(),
@@ -141,9 +142,10 @@ function mount(step: number) {
 }
 
 /**
- * The panel button of the collection steps: the character steps open the
- * corkboard on its character view, the scene steps bring the workspace
- * forward as it stands, and both keep their base one menu row away.
+ * The panel button of the collections: the character steps open the
+ * corkboard on its character view, a worldbuilding kind's pane on the view
+ * named after the kind, the scene steps bring the workspace forward as it
+ * stands, and all keep their base one menu row away.
  */
 describe('the Open workspace button', () => {
 	beforeAll(() => {
@@ -193,6 +195,56 @@ describe('the Open workspace button', () => {
 		rows[6]?.click?.();
 		await flush();
 		expect(openProjectBase).toHaveBeenCalledExactlyOnceWith('characters');
+	});
+
+	it('opens the corkboard on the kind’s own view from a worldbuilding kind’s pane', async () => {
+		const { view, primary, openMenu, openStoryStructure, openProjectBase } = mount(3, 'location');
+		await view.refresh();
+		expect(primary().textContent).toBe('actions.openWorkspace');
+		primary().click();
+		await flush();
+		expect(openStoryStructure).toHaveBeenCalledExactlyOnceWith('corkboard-ordered', {
+			projectPath: PROJECT,
+			corkboardView: 'location',
+		});
+		const rows = openMenu();
+		expect(rows.map((row) => row.separator === true ? '---' : row.title)).toEqual([
+			'actions.openVisualization',
+			'actions.openVisualization',
+			'actions.openVisualization',
+			'actions.openVisualization',
+			'actions.openVisualization',
+			'---',
+			'actions.openBase',
+			'actions.restoreBase',
+		]);
+		// The corkboard row lands on the kind's view, the timeline opens as it stands.
+		rows[0]?.click?.();
+		rows[2]?.click?.();
+		await flush();
+		expect(openStoryStructure).toHaveBeenNthCalledWith(2, 'corkboard-ordered', {
+			projectPath: PROJECT,
+			corkboardView: 'location',
+		});
+		expect(openStoryStructure).toHaveBeenNthCalledWith(3, 'timeline', { projectPath: PROJECT });
+		rows[6]?.click?.();
+		await flush();
+		expect(openProjectBase).toHaveBeenCalledExactlyOnceWith('location');
+	});
+
+	it('opens the kind’s base on a phone, where the workspace is not offered', async () => {
+		document.body.classList.add('is-phone');
+		try {
+			const { view, primary, openMenu, openProjectBase } = mount(3, 'location');
+			await view.refresh();
+			expect(primary().textContent).toBe('actions.openBase');
+			primary().click();
+			await flush();
+			expect(openProjectBase).toHaveBeenCalledExactlyOnceWith('location');
+			expect(openMenu().map((row) => row.title)).toEqual(['actions.restoreBase', 'actions.openBase']);
+		} finally {
+			document.body.classList.remove('is-phone');
+		}
 	});
 
 	it.each([8, 9] as const)('brings the workspace forward as it stands from step %i', async (step) => {

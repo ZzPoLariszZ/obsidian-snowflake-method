@@ -160,6 +160,7 @@ import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import {
 	CORKBOARD_CHARACTER_VIEW,
+	type CorkboardView,
 	STORY_STRUCTURE_FAMILIES,
 	familyVisualization,
 	type StoryStructureFamily,
@@ -6468,13 +6469,13 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
-	 * Scenes and characters open the visualization workspace, with every
-	 * visualization and their base in the menu: the scene steps bring the tab
-	 * forward as it last stood, the character steps open the corkboard on its
-	 * character view. Worldbuilding kinds open their base directly, and so do
-	 * the scenes and characters on a phone, where the workspace is not
-	 * offered. Existing views remain available on read-only projects; only
-	 * writing a base is refused.
+	 * Every collection opens the visualization workspace, with every
+	 * visualization and its base in the menu: the scene steps bring the tab
+	 * forward as it last stood, the character steps and the worldbuilding
+	 * kinds open the corkboard on the view that is theirs. On a phone, where
+	 * the workspace is not offered, each opens its base directly. Existing
+	 * views remain available on read-only projects; only writing a base is
+	 * refused.
 	 */
 	private renderOpenBase(
 		actions: HTMLElement,
@@ -6482,8 +6483,11 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 	): void {
 		const scenes = id === 'scenes';
-		const characters = id === 'characters';
-		const workspace = (scenes || characters) && !isPhoneBody(this.contentEl.doc);
+		const workspace = !isPhoneBody(this.contentEl.doc);
+		// The corkboard view a collection lands on: the characters' own, and a
+		// kind's the view named after it. The scenes bring the board as it stands.
+		const landing: CorkboardView | undefined =
+			scenes ? undefined : id === 'characters' ? CORKBOARD_CHARACTER_VIEW : id;
 		const openBase = (): void => {
 			void this.runAndRefresh(() => this.host.openProjectBase(id));
 		};
@@ -6495,14 +6499,13 @@ export class SnowflakeDashboardView extends ItemView {
 					.onClick(openBase),
 			);
 		};
-		// The character steps land the corkboard on its character view; the
-		// scene steps bring the workspace forward as it stands.
 		const openWorkspace = (visualization?: StoryStructureVisualization): void => {
-			const character = characters && visualization === familyVisualization('corkboard');
 			void this.runAndRefresh(() =>
 				this.host.openStoryStructure(visualization, {
 					projectPath: this.projectPath,
-					...(character ? { corkboardView: CORKBOARD_CHARACTER_VIEW } : {}),
+					...(landing !== undefined && visualization === familyVisualization('corkboard')
+						? { corkboardView: landing }
+						: {}),
 				}),
 			);
 		};
@@ -6512,7 +6515,7 @@ export class SnowflakeDashboardView extends ItemView {
 				cls: 'snowflake-method-open-base',
 				label: this.t(workspace ? 'actions.openWorkspace' : 'actions.openBase'),
 				run: workspace
-					? () => openWorkspace(characters ? familyVisualization('corkboard') : undefined)
+					? () => openWorkspace(landing === undefined ? undefined : familyVisualization('corkboard'))
 					: openBase,
 			},
 			menuLabel: this.t('table.actions'),
