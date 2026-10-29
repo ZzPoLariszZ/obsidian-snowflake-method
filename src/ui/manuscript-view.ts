@@ -1157,6 +1157,25 @@ export class SnowflakeManuscriptView extends ItemView {
 		const separator = (): void => {
 			bar.createDiv({ cls: 'snowflake-method-toolbar-separator' });
 		};
+		// On mobile the app hides the status bar, so the writing count and
+		// the session ride the stream's bar instead, at its head, where a
+		// row that scrolls never loses them. The segment menu's door stands
+		// beside them there: on a touch screen a long press in the text is
+		// the system's own selection and opens no menu of the plugin's, so
+		// this button is the one way to it, kept within a thumb's reach of
+		// the session. On the desktop a right-click opens the menu, and the
+		// button stands among the formatting instead.
+		this.releaseWritingFaces = this.host.mountWritingFaces(bar);
+		const facesFirst = this.releaseWritingFaces !== null;
+		const selection = (): void => {
+			button('text-select', this.t('manuscript.toolbar.selection'), (event) => {
+				this.openSelectionMenu(event);
+			}).addClass('snowflake-method-toolbar-selection');
+		};
+		if (facesFirst) {
+			selection();
+			separator();
+		}
 		command('undo', 'undo-2', 'manuscript.toolbar.undo');
 		command('redo', 'redo-2', 'manuscript.toolbar.redo');
 		separator();
@@ -1171,11 +1190,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		command('strikethrough', 'strikethrough', 'manuscript.toolbar.strikethrough');
 		command('underline', 'underline', 'manuscript.toolbar.underline');
 		command('highlight', 'highlighter', 'manuscript.toolbar.highlight');
-		// The segment menu's door for a hand without a right button: on a
-		// touch screen a long press in the text is the system's own selection.
-		button('text-select', this.t('manuscript.toolbar.selection'), (event) => {
-			this.openSelectionMenu(event);
-		}).addClass('snowflake-method-toolbar-selection');
+		if (!facesFirst) selection();
 		separator();
 		// The page's dress, offered where the page is: the same controls as
 		// the settings tab, over the manuscript, so a change is seen as it is
@@ -1220,9 +1235,6 @@ export class SnowflakeManuscriptView extends ItemView {
 		separator();
 		this.renderModeToggle(bar, 'typewriter');
 		this.renderModeToggle(bar, 'focus');
-		// On mobile the app hides the status bar, so the writing count and
-		// the session ride the stream's bar instead.
-		this.releaseWritingFaces = this.host.mountWritingFaces(bar);
 		this.refreshToolbar();
 	}
 

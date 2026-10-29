@@ -19894,8 +19894,9 @@ body.is-mobile .snowflake-method-writing-face.is-break {
 
 /* Sixteen buttons wrap to three rows on a phone, which with the keyboard
    up leaves little of the page. One row scrolls sideways instead, its bar
-   hidden, with the count and the session first so they are never scrolled
-   out of sight. */
+   hidden. The bar mounts the count and the session at its head on mobile,
+   with the selection button beside them, so they are never scrolled out of
+   sight. */
 body.is-phone .snowflake-method-manuscript-toolbar {
 	flex-wrap: nowrap;
 	justify-content: flex-start;
@@ -19906,10 +19907,6 @@ body.is-phone .snowflake-method-manuscript-toolbar {
 
 body.is-phone .snowflake-method-manuscript-toolbar::-webkit-scrollbar {
 	display: none;
-}
-
-body.is-phone .snowflake-method-manuscript-toolbar .snowflake-method-toolbar-faces {
-	order: -1;
 }
 
 /* -- Phone: a note's bar under the app's fixed header ---------------------- */
