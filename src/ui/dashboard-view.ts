@@ -3687,8 +3687,12 @@ export class SnowflakeDashboardView extends ItemView {
 			row.createEl('td', {
 				cls: 'snowflake-method-table-primary',
 				text: template.name,
+				attr: { 'data-label': this.t('table.name') },
 			});
-			const textCell = row.createEl('td', { text: template.description });
+			const textCell = row.createEl('td', {
+				text: template.description,
+				attr: { 'data-label': this.t('table.description') },
+			});
 			this.renderRowActions(row, textCell, {
 				name: template.name,
 				primaryLabel: this.t('actions.edit'),
