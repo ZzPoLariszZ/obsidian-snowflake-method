@@ -1554,6 +1554,14 @@ describe('styles.css', () => {
 		// The workspace toolbars' actions stand in a group a tablet does not
 		// show, listed by the More actions button at the group's end.
 		expect(declarations('body.is-mobile .snowflake-method-toolbar-gathered')).toContain('display: none');
+		// The rail's fold stands centred on the counts' column, and a stuck
+		// heading paints a pixel above itself.
+		expect(declarations('body.is-mobile .snowflake-method-step-nav-head')).toContain(
+			'padding-inline-end: calc(1px + var(--size-4-2) + 0.875rem - var(--touch-size-m, 2.75rem) / 2)',
+		);
+		expect(declarations('.snowflake-method-dashboard button.snowflake-method-rail-group-header')).toContain(
+			'box-shadow: 0 -1px 0 var(--background-secondary)',
+		);
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
 		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(

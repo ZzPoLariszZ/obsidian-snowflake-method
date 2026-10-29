@@ -9640,7 +9640,12 @@ body.snowflake-method-reduce-motion.snowflake-method-focus-app.snowflake-method-
 	border: 0;
 	border-radius: 0;
 	background: var(--background-secondary);
-	box-shadow: none;
+	/* Stuck at the scroller's top, the heading's box and the scroller's edge
+	   can round to different device pixels, and a row sliding under the
+	   heading showed as a dotted line in the pixel between. The heading
+	   paints one pixel above itself in its own colour, which the scroller
+	   clips wherever there is nothing to cover. */
+	box-shadow: 0 -1px 0 var(--background-secondary);
 	cursor: pointer;
 	text-align: start;
 }
@@ -9648,7 +9653,7 @@ body.snowflake-method-reduce-motion.snowflake-method-focus-app.snowflake-method-
 .snowflake-method-dashboard
 	button.snowflake-method-rail-group-header:hover {
 	background: var(--background-secondary);
-	box-shadow: none;
+	box-shadow: 0 -1px 0 var(--background-secondary);
 	color: var(--text-normal);
 }
 
@@ -20375,6 +20380,17 @@ body.is-phone .snowflake-method-task-archive-actions .search-input-container {
 
 body.is-phone .snowflake-method-tracking-panel .snowflake-method-prose-controls .search-input-container {
 	flex: 1 1 50%;
+}
+
+/* -- Mobile: the rail's fold over the counts' column ----------------------- */
+
+/* The rail's fold is a finger wide on a tablet, 44px where the pointer's
+   button was 30, and the desktop's end padding put its centre seven pixels
+   in from the column the rows keep their counts in. The padding now takes
+   the button's half width off a count's own distance from the row's end:
+   the row's hairline, its padding and half the 28px circle. */
+body.is-mobile .snowflake-method-step-nav-head {
+	padding-inline-end: calc(1px + var(--size-4-2) + 0.875rem - var(--touch-size-m, 2.75rem) / 2);
 }
 
 /* -- Tablet: the control bands under the tab strip ------------------------- */
