@@ -48,6 +48,17 @@ describe('styles.css', () => {
 				':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table.snowflake-method-history-table tr.snowflake-method-history-day > td::before',
 			),
 		).toContain('content: none');
+		// The arrows and the title are one piece of the range row that never
+		// breaks: a narrow pane wraps the picks under them, and a narrower one
+		// wraps the title between arrows that stay put.
+		const nav = declarations('.snowflake-method-history-range-nav');
+		expect(nav).toContain('display: flex');
+		expect(nav).toContain('flex: 0 1 auto');
+		expect(nav).toContain('min-width: 0');
+		expect(nav).not.toContain('flex-wrap');
+		expect(declarations('.snowflake-method-history-range')).toContain('flex-wrap: wrap');
+		expect(declarations('.snowflake-method-history-range-heading')).toContain('min-width: 9em');
+		expect(declarations('.snowflake-method-history-range-title')).not.toContain('white-space');
 	});
 
 	/**
@@ -1453,6 +1464,11 @@ describe('styles.css', () => {
 		expect(declarations('body.is-mobile .snowflake-method-character-split-button:not(.snowflake-method-base-split-button)')).toContain(
 			'min-width: calc(2.75rem + var(--touch-size-m, 2.75rem))',
 		);
+		// A week's two dates with the finger-wide arrows at the desktop's size
+		// are a few pixels wider than a phone's row: the title takes the pane's
+		// own size there and the arrows stand a touch closer.
+		expect(declarations('body.is-phone .snowflake-method-history-range-nav')).toContain('gap: var(--size-4-1)');
+		expect(declarations('body.is-phone .snowflake-method-history-range-title')).toContain('font-size: 1em');
 		expect(declarations('body.is-phone .snowflake-method-settings .setting-item-control textarea')).toContain('min-width: 0');
 		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control textarea')).toContain(
 			'min-width: var(--snowflake-method-settings-box)',

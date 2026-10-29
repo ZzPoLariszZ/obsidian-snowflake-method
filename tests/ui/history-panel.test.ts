@@ -400,6 +400,19 @@ describe('the modification history panel', () => {
 		expect(panel.reads.length).toBe(1);
 	});
 
+	it('keeps the arrows and the title in one piece of the range row, with the picks outside it', async () => {
+		const panel = setup();
+		await flush();
+		const row = panel.root.querySelector('.snowflake-method-history-range');
+		const nav = panel.root.querySelector('.snowflake-method-history-range-nav');
+		if (row === null || nav === null) throw new Error('No range row');
+		expect(nav.parentElement).toBe(row);
+		expect(nav.querySelectorAll('.snowflake-method-calendar-step')).toHaveLength(2);
+		expect(nav.querySelector('.snowflake-method-history-range-title')).not.toBeNull();
+		expect(nav.querySelector('.snowflake-method-widget-picks')).toBeNull();
+		expect(panel.root.querySelector('.snowflake-method-widget-picks')?.parentElement).toBe(row);
+	});
+
 	it('walks the range by its unit and comes back to today', async () => {
 		const panel = setup();
 		await flush();

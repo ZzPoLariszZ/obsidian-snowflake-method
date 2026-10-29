@@ -12884,9 +12884,23 @@ button.snowflake-method-kind-options {
 	gap: var(--size-4-2);
 }
 
+/* The arrows and the title are one piece of the row, never broken: a pane
+   too narrow for the whole row wraps the picks under them, and one too
+   narrow for the piece itself wraps the title at its separator between
+   arrows that stay put. The step forward used to wrap alone, landing on
+   the picks' row at the width of a phone. */
+.snowflake-method-history-range-nav {
+	display: flex;
+	flex: 0 1 auto;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-width: 0;
+}
+
 /* The title between the arrows, with a floor on its width so the arrows
    stand still while the title changes length. */
 .snowflake-method-history-range-heading {
+	flex: 0 1 auto;
 	min-width: 9em;
 	text-align: center;
 }
@@ -19820,6 +19834,19 @@ body.is-mobile .snowflake-method-balanced-toolbar .clickable-icon,
 body.is-mobile .snowflake-method-history-range .clickable-icon {
 	min-width: var(--touch-size-s, 2.5rem);
 	min-height: var(--touch-size-s, 2.5rem);
+}
+
+/* The history range's arrows and title on one line of a phone: the title
+   in the pane's own size and the arrows a touch closer, since a week's two
+   dates at the desktop's size with the finger-wide arrows are a few pixels
+   wider than the row a phone offers, and a title wrapped for those pixels
+   reads worse than a smaller one. */
+body.is-phone .snowflake-method-history-range-nav {
+	gap: var(--size-4-1);
+}
+
+body.is-phone .snowflake-method-history-range-title {
+	font-size: 1em;
 }
 
 body.is-mobile .snowflake-method-root-field-selector {

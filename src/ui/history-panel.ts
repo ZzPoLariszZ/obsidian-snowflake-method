@@ -211,15 +211,18 @@ export function renderHistoryPanel(
 	// --- the range row ------------------------------------------------------
 
 	const rangeRow = root.createDiv({ cls: 'snowflake-method-history-range' });
-	const earlier = rangeRow.createEl('button', {
+	// The arrows and the title are one piece: a pane too narrow for the row
+	// wraps the picks under them, never the step forward alone.
+	const nav = rangeRow.createDiv({ cls: 'snowflake-method-history-range-nav' });
+	const earlier = nav.createEl('button', {
 		cls: 'clickable-icon snowflake-method-calendar-step',
 		attr: { type: 'button', 'aria-label': t('history.range.previous') },
 	});
 	setIcon(earlier, 'chevron-left');
 	setTooltip(earlier, t('history.range.previous'));
-	const heading = rangeRow.createDiv({ cls: 'snowflake-method-history-range-heading' });
+	const heading = nav.createDiv({ cls: 'snowflake-method-history-range-heading' });
 	const rangeTitle = heading.createSpan({ cls: 'snowflake-method-history-range-title' });
-	const later = rangeRow.createEl('button', {
+	const later = nav.createEl('button', {
 		cls: 'clickable-icon snowflake-method-calendar-step',
 		attr: { type: 'button', 'aria-label': t('history.range.next') },
 	});
