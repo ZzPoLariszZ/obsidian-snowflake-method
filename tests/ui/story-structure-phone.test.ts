@@ -90,12 +90,15 @@ describe('the workspace tab on a phone', () => {
 	it('shows its note and the way to the dashboard, and draws no board', async () => {
 		const fixture = mount(() => true);
 		await open(fixture);
-		const note = fixture.root.querySelector('.snowflake-method-workspace-phone');
-		expect(note?.querySelector('.snowflake-method-tab-planned')?.textContent).toBe('storyStructure.phone');
+		const note = fixture.root.querySelector('.snowflake-method-workspace-phone-pane');
+		expect(note?.classList.contains('snowflake-method-notice-pane')).toBe(true);
+		expect(note?.querySelector('.snowflake-method-workspace-phone-lead')?.textContent).toBe('storyStructure.phone');
 		expect(fixture.root.querySelector('[role="tabpanel"]')).toBeNull();
 		expect(fixture.corkboard).not.toHaveBeenCalled();
 		const button = note?.querySelector<HTMLButtonElement>('.snowflake-method-workspace-phone-open');
 		expect(button?.textContent).toBe('commands.openDashboard');
+		expect(button?.classList.contains('mod-cta')).toBe(true);
+		expect(button?.parentElement?.classList.contains('snowflake-method-workspace-phone-actions')).toBe(true);
 		button?.click();
 		expect(fixture.selectProject).toHaveBeenCalledExactlyOnceWith(PROJECT);
 	});
@@ -104,7 +107,7 @@ describe('the workspace tab on a phone', () => {
 		const fixture = mount(() => false);
 		await open(fixture);
 		expect(fixture.corkboard).toHaveBeenCalledOnce();
-		expect(fixture.root.querySelector('.snowflake-method-workspace-phone')).toBeNull();
+		expect(fixture.root.querySelector('.snowflake-method-workspace-phone-pane')).toBeNull();
 		expect(fixture.root.querySelector('[role="tabpanel"]')).not.toBeNull();
 	});
 
@@ -117,11 +120,11 @@ describe('the workspace tab on a phone', () => {
 		fixture.view.deviceClassChanged();
 		await flush();
 		expect(fixture.handle.dispose).toHaveBeenCalledOnce();
-		expect(fixture.root.querySelector('.snowflake-method-workspace-phone')).not.toBeNull();
+		expect(fixture.root.querySelector('.snowflake-method-workspace-phone-pane')).not.toBeNull();
 		phone = false;
 		fixture.view.deviceClassChanged();
 		await flush();
 		expect(fixture.corkboard).toHaveBeenCalledTimes(2);
-		expect(fixture.root.querySelector('.snowflake-method-workspace-phone')).toBeNull();
+		expect(fixture.root.querySelector('.snowflake-method-workspace-phone-pane')).toBeNull();
 	});
 });

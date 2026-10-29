@@ -1,9 +1,10 @@
 /**
  * The parts a task pane shares with its siblings and is not the owner of:
- * the line said when there is nothing to show, and the split button a row's
- * primary action wears with the rest of its actions behind a chevron. Built
- * here once so the revision table, the foreshadowing table, the sticky
- * board and the member tables cannot drift apart in what they draw.
+ * the line said when there is nothing to show, the pane said in a board's
+ * stead, and the split button a row's primary action wears with the rest of
+ * its actions behind a chevron. Built here once so the revision table, the
+ * foreshadowing table, the sticky board and the member tables cannot drift
+ * apart in what they draw.
  */
 
 import { Menu, setIcon, setTooltip } from 'obsidian';
@@ -20,6 +21,28 @@ export function renderEmptyLine(
 	});
 	setIcon(icon, 'triangle-alert');
 	return { line, text: line.createSpan({ text }) };
+}
+
+/**
+ * A pane that stands in for a board the tab cannot draw: a column of words
+ * at a reading measure in the middle of the frame, the lead first and the
+ * buttons under it, as an empty board says what it waits for. The
+ * Scene ↔ Manuscript tab opens Obsidian's own graph from one, and the
+ * story structure view on a phone leads to the dashboard from one. The
+ * pane's name dresses every part beside the shared class, so a pane's own
+ * rules and tests can tell its parts from another's.
+ */
+export function renderNoticePane(
+	host: HTMLElement,
+	spec: { name: string; lead: string },
+): { pane: HTMLElement; body: HTMLElement; actions: HTMLElement } {
+	const part = (role: string): string =>
+		`snowflake-method-notice-${role} snowflake-method-${spec.name}-${role}`;
+	const pane = host.createDiv({ cls: part('pane') });
+	const body = pane.createDiv({ cls: part('body') });
+	body.createEl('p', { cls: part('lead'), text: spec.lead });
+	const actions = body.createDiv({ cls: part('actions') });
+	return { pane, body, actions };
 }
 
 /**

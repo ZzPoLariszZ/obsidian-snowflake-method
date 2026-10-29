@@ -1522,7 +1522,7 @@ describe('styles.css', () => {
 			'overflow-y: visible',
 		);
 		expect(declarations('body.is-phone .snowflake-method-workspace-ribbon')).toContain('display: none');
-		expect(declarations('body.is-phone .snowflake-method-workspace-phone')).toContain('display: flex');
+		expect(declarations('.snowflake-method-notice-pane')).toContain('display: flex');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(
 			/body\.is-phone[^{]*snowflake-method-(?:timeline|beat-sheet|freeform|relationship-graph|graph-controls|corkboard)/u,
 		);

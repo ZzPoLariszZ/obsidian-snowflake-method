@@ -18753,12 +18753,15 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	width: 100%;
 }
 
-/* The pane that stands in for Obsidian's own graph: a column of words at a
-   reading measure in the middle of the frame, as an empty board says what
-   it waits for. The pane scrolls when the frame is too short for them, and
-   the body takes its margin from every side, so it stands in the middle
-   while there is room and starts at the top once there is not. */
-.snowflake-method-scene-manuscript-pane {
+/* The pane that stands in for a board the tab cannot draw: a column of
+   words at a reading measure in the middle of the frame, the lead first and
+   the buttons under it, as an empty board says what it waits for. The
+   Scene ↔ Manuscript tab stands on one for Obsidian's own graph, and the
+   story structure view on a phone for the dashboard. The pane scrolls when
+   the frame is too short for the words, and the body takes its margin from
+   every side, so it stands in the middle while there is room and starts at
+   the top once there is not. */
+.snowflake-method-notice-pane {
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
@@ -18767,7 +18770,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	overflow: auto;
 }
 
-.snowflake-method-scene-manuscript-body {
+.snowflake-method-notice-body {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -18777,11 +18780,11 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	text-align: center;
 }
 
-.snowflake-method-scene-manuscript-lead {
+.snowflake-method-notice-lead {
 	margin: 0;
 }
 
-.snowflake-method-scene-manuscript-actions {
+.snowflake-method-notice-actions {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: center;
@@ -20441,17 +20444,10 @@ body.is-phone .snowflake-method-gallery {
    in the plugin): its boards want more room than a phone's screen has, and
    the dashboard's tables carry the scenes and the characters there. The
    ribbon action that opens it is away, and a tab kept from a wider screen
-   shows a note and the way to the dashboard. */
+   says so on the notice pane the Scene ↔ Manuscript tab stands on, with
+   the way to the dashboard under the words. */
 body.is-phone .snowflake-method-workspace-ribbon {
 	display: none;
-}
-
-body.is-phone .snowflake-method-workspace-phone {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: var(--size-4-3);
-	padding: var(--size-4-4);
 }
 
 /* -- Tablet: floating notes ------------------------------------------------ */

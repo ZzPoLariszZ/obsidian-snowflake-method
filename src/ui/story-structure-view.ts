@@ -37,7 +37,7 @@ import type {
 } from './freeform-bridge';
 import type { MountFreeformCanvas } from './freeform-canvas-port';
 import type { Translate } from './modals';
-import { renderTabStrip } from './pane-parts';
+import { renderNoticePane, renderTabStrip } from './pane-parts';
 import type {
 	RelationshipGraphBridge,
 	RelationshipGraphControls,
@@ -820,15 +820,18 @@ export class SnowflakeStoryStructureView extends ItemView {
 	 * The workspace is not offered on a phone: its boards want more room
 	 * than a phone's screen has, and the dashboard's tables carry the scenes
 	 * and the characters there. A tab that opens on one all the same, kept
-	 * from a wider screen, says so and leads to the dashboard.
+	 * from a wider screen, says so on the notice pane the Scene ↔ Manuscript
+	 * tab stands on, and leads to the dashboard from under the words.
 	 */
 	private renderPhoneNote(root: HTMLElement): void {
-		const note = root.createDiv({ cls: 'snowflake-method-workspace-phone' });
-		note.createEl('p', { cls: 'snowflake-method-tab-planned', text: this.t('storyStructure.phone') });
+		const { actions } = renderNoticePane(root, {
+			name: 'workspace-phone',
+			lead: this.t('storyStructure.phone'),
+		});
 		const path = this.state.projectPath;
 		if (path === null) return;
-		const open = note.createEl('button', {
-			cls: 'snowflake-method-workspace-phone-open',
+		const open = actions.createEl('button', {
+			cls: 'mod-cta snowflake-method-workspace-phone-open',
 			text: this.t('commands.openDashboard'),
 			attr: { type: 'button' },
 		});

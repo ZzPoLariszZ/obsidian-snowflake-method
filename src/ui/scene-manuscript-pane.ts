@@ -2,11 +2,12 @@
  * The pane that stands in for Obsidian's own graph inside the relationship
  * graph tab. The graph cannot live in a tab of ours, so this one says where
  * it opens, opens it, and lets the remembered settings go. It says no more
- * than that, in the middle of the frame, as an empty board says what it
- * waits for.
+ * than that, on the notice pane the plugin's panes share, in the middle of
+ * the frame, as an empty board says what it waits for.
  */
 
 import type { Translate } from './modals';
+import { renderNoticePane } from './pane-parts';
 
 export interface SceneManuscriptStanding {
 	/** Whether the graph core plugin is there to open. */
@@ -29,11 +30,10 @@ const words = (t: Translate, key: string): string => t(`relationshipGraph.sceneM
 
 export function renderSceneManuscriptPane(stage: HTMLElement, deps: SceneManuscriptPaneDeps): HTMLElement {
 	const { t, standing } = deps;
-	const pane = stage.createDiv({ cls: 'snowflake-method-scene-manuscript-pane' });
-	const body = pane.createDiv({ cls: 'snowflake-method-scene-manuscript-body' });
-	body.createEl('p', { cls: 'snowflake-method-scene-manuscript-lead', text: words(t, 'lead') });
-
-	const actions = body.createDiv({ cls: 'snowflake-method-scene-manuscript-actions' });
+	const { pane, body, actions } = renderNoticePane(stage, {
+		name: 'scene-manuscript',
+		lead: words(t, 'lead'),
+	});
 	const openButton = actions.createEl('button', {
 		cls: 'mod-cta snowflake-method-scene-manuscript-open',
 		text: words(t, 'open'),
