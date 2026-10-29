@@ -617,11 +617,11 @@ describe('settings', () => {
 		expect(sanitizeSettings({ hideScrollbars: 'no' }).hideScrollbars).toBe(true);
 	});
 
-	it('hides the tooltips until the plugin setting shows them', () => {
-		expect(DEFAULT_SETTINGS.hideTooltips).toBe(true);
-		expect(sanitizeSettings(undefined).hideTooltips).toBe(true);
-		expect(sanitizeSettings({ hideTooltips: false }).hideTooltips).toBe(false);
-		expect(sanitizeSettings({ hideTooltips: 'no' }).hideTooltips).toBe(true);
+	it('shows the tooltips until the plugin setting hides them', () => {
+		expect(DEFAULT_SETTINGS.hideTooltips).toBe(false);
+		expect(sanitizeSettings(undefined).hideTooltips).toBe(false);
+		expect(sanitizeSettings({ hideTooltips: true }).hideTooltips).toBe(true);
+		expect(sanitizeSettings({ hideTooltips: 'no' }).hideTooltips).toBe(false);
 	});
 
 	it('opens a note’s own form when a field asks for one', () => {

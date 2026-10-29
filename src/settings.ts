@@ -398,7 +398,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	protectManagedBoundaries: true,
 	reduceMotion: false,
 	hideScrollbars: true,
-	hideTooltips: true,
+	hideTooltips: false,
 	showTableProgressStatus: false,
 	showDerivedTasks: true,
 	showTableActionsColumn: true,
