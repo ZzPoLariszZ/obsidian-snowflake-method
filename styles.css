@@ -20825,6 +20825,13 @@ body.is-mobile .snowflake-method-toolbar-gathered {
 	display: none;
 }
 
+/* An active funnel put away in the group shows on the button that lists
+   it, as it shows on the funnel itself where the toolbar has the room. */
+body.is-mobile .snowflake-method-toolbar-more.is-active,
+body.is-mobile .snowflake-method-toolbar-more.is-active:hover {
+	color: var(--text-accent);
+}
+
 /* -- Phone: dialogs -------------------------------------------------------- */
 
 /* A dialog takes the app's phone width, no more of the screen than stands

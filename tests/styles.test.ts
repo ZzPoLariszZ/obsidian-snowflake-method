@@ -1801,6 +1801,7 @@ describe('styles.css', () => {
 		// The workspace toolbars' actions stand in a group a tablet does not
 		// show, listed by the More actions button at the group's end.
 		expect(declarations('body.is-mobile .snowflake-method-toolbar-gathered')).toContain('display: none');
+		expect(declarations('body.is-mobile .snowflake-method-toolbar-more.is-active')).toContain('color: var(--text-accent)');
 		// The rail's fold stands centred on the counts' column, and a stuck
 		// heading paints a pixel above itself.
 		expect(declarations('body.is-mobile .snowflake-method-step-nav-head')).toContain(

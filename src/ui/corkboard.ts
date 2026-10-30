@@ -237,8 +237,12 @@ export function renderBoard<
 	setIcon(filterButton, 'funnel');
 	nameToolbarSymbol(filterButton, 'funnel');
 	setTooltip(filterButton, t('table.filter'));
+	/** The button a tablet lists the funnel under, once the toolbar is gathered: an active funnel shows on it. */
+	let moreButton: HTMLButtonElement | null = null;
 	const markFilterButton = (): void => {
-		filterButton.toggleClass('is-active', deal.filters.active(memory.filters));
+		const active = deal.filters.active(memory.filters);
+		filterButton.toggleClass('is-active', active);
+		moreButton?.toggleClass('is-active', active);
 	};
 	filterButton.addEventListener('click', () => {
 		void openFunnel();
@@ -271,6 +275,8 @@ export function renderBoard<
 	// refresh and that button and no more. The dashboard's bands wrap their
 	// rows instead, and their panels hang from their own buttons.
 	const gathered = gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) });
+	moreButton = gathered?.button ?? null;
+	markFilterButton();
 	const stopBalance = standalone ? balanceToolbar(band, { start: viewHost, end }) : (): void => undefined;
 	if (variant.addButton === 'icon') {
 		setIcon(addButton, 'plus');

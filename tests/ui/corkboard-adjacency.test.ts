@@ -43,6 +43,8 @@ vi.mock('obsidian', async (importOriginal) => {
 	};
 });
 
+import { Platform } from 'obsidian';
+
 import { renderCorkboard } from '../../src/ui/corkboard';
 import type { CorkboardControls, CorkboardHost } from '../../src/ui/corkboard-bridge';
 import { SCENE_DRAG_TYPE } from '../../src/ui/corkboard-layout';
@@ -196,6 +198,18 @@ describe('corkboard adjacency with a scene range', () => {
 			expect(actions.get('actions.moveDown')!.disabled).toBe(filtered);
 		}
 		fixture.handle.dispose();
+	});
+
+	it('shows the active funnel on the More button where a tablet puts the funnel away', () => {
+		Platform.isMobile = true;
+		try {
+			const fixture = board();
+			expect(fixture.root.querySelector('.snowflake-method-filter-button')!.classes.has('is-active')).toBe(true);
+			expect(fixture.root.querySelector('.snowflake-method-toolbar-more')!.classes.has('is-active')).toBe(true);
+			expect(board({ filters: sceneFilters() }).root.querySelector('.snowflake-method-toolbar-more')!.classes.has('is-active')).toBe(false);
+		} finally {
+			Platform.isMobile = false;
+		}
 	});
 
 	it.each([{ project: true }, { scene: true }])('keeps range-only actions locked for read-only data: %j', (locks) => {
