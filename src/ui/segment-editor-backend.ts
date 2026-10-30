@@ -29,6 +29,7 @@ import {
 	deleteAutoPair,
 	mentionHighlights,
 	mentionMarkAt,
+	mentionMarkAtPos,
 	paragraphBreak,
 	paragraphLines,
 	refreshMentionHighlights,
@@ -402,6 +403,11 @@ export interface SegmentEditorHandle {
 	 * stands now, for the context menu. Null off any mention.
 	 */
 	mentionAt(x: number, y: number): MentionMark | null;
+	/**
+	 * The mention whose words hold the caret, for the menu the toolbar's
+	 * button opens with no pointer to answer. Null off any mention.
+	 */
+	mentionAtCaret(): MentionMark | null;
 	/**
 	 * One guarded replacement as the author's own edit: declined when the
 	 * text at the range is no longer `expected`, because the analysis a menu
@@ -787,6 +793,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				refreshMentionHighlights(view);
 			},
 			mentionAt: (x: number, y: number) => mentionMarkAt(view, x, y),
+			mentionAtCaret: () => mentionMarkAtPos(view, view.state.selection.main.head),
 			splice: (from: number, to: number, expected: string, insert: string) => {
 				if (view.state.sliceDoc(from, to) !== expected) return false;
 				view.dispatch({

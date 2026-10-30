@@ -5241,7 +5241,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	/**
 	 * A segment's menu. `at` is the right-click it answers, whose place says
 	 * which mention it fell on; the toolbar's button has no place in the
-	 * text, passes null, and gets the standing entries alone.
+	 * text, passes null, and the mention is the one the caret stands in.
 	 */
 	private buildSegmentMenu(
 		segment: ManuscriptSegmentViewModel,
@@ -5266,12 +5266,13 @@ export class SnowflakeManuscriptView extends ItemView {
 		// A right-click on a mention offers what can be done about it at
 		// the head of the plugin's group, whichever half it landed in: the
 		// editor answers by coordinates, the rendered half by the element
-		// under the pointer. The click's own subject outranks the standing
-		// entries below it.
+		// under the pointer, and the toolbar's button, which has no point,
+		// by the caret's place. The click's own subject outranks the
+		// standing entries below it.
 		const entry = this.mounted.get(segment.path);
 		const mention =
 			at === null
-				? null
+				? (entry?.editor?.mentionAtCaret() ?? null)
 				: (entry?.editor?.mentionAt(at.clientX, at.clientY) ??
 					this.renderedMentionAt(entry, at));
 		const mentionLead = (into: Menu): void => {

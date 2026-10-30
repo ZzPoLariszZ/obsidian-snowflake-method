@@ -221,10 +221,17 @@ export function mentionMarkAt(
 	x: number,
 	y: number,
 ): MentionMark | null {
+	const at = view.posAtCoords({ x, y });
+	return at === null ? null : mentionMarkAtPos(view, at);
+}
+
+/**
+ * The mention whose marked stretch holds a position, re-anchored the same
+ * way: the caret's own place, for a menu opened with no pointer to answer.
+ */
+export function mentionMarkAtPos(view: EditorView, at: number): MentionMark | null {
 	const plugin = view.plugin(mentionPlugin);
 	if (plugin === null) return null;
-	const at = view.posAtCoords({ x, y });
-	if (at === null) return null;
 	// Marks may nest -- a mention inside a quoted stretch -- and the pointer
 	// means the innermost thing under it, so the shortest span answers. The
 	// dress-only layers were built without a `mentionMark` and are not here
