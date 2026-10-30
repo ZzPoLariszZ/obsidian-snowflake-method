@@ -6963,6 +6963,19 @@ body {
 	white-space: pre-wrap;
 }
 
+/* Where the editor draws its own caret and selection (drawnCaret, on
+   WebKit), they take the theme's colours, as the app's own editor's do.
+   The editor's rule for the focused selection weighs five classes and is
+   mounted after every stylesheet, so the focused one here weighs six. */
+.snowflake-method-two-faces .cm-editor > .cm-scroller > .cm-cursorLayer > .cm-cursor {
+	border-left-color: var(--caret-color);
+}
+
+.snowflake-method-two-faces .cm-editor > .cm-scroller > .cm-selectionLayer > .cm-selectionBackground,
+.snowflake-method-two-faces .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer > .cm-selectionBackground {
+	background-color: var(--text-selection);
+}
+
 .snowflake-method-two-faces .cm-line {
 	padding-inline: 0;
 }

@@ -15,6 +15,18 @@ export function isMobileDevice(): boolean {
 	return Platform.isMobile;
 }
 
+/**
+ * Whether the app's page is WebKit's, which is the iPhone and iPad app.
+ * WebKit draws the browser's caret on a wrapped line from the previous
+ * line's bottom down to this line's bottom, so under a tall line height it
+ * stands high in the gap above the words and only a paragraph's first line
+ * shows it in place; Chromium, on the desktop and Android, draws it on the
+ * glyph box. Read here so a test flips a single switch.
+ */
+export function isWebKitApp(): boolean {
+	return Platform.isIosApp;
+}
+
 type MediaWindow = Pick<Window, 'matchMedia'>;
 
 /** The device class a window is drawn for: a desktop unless the app is the mobile one. */

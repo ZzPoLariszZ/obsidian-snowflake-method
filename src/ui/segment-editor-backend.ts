@@ -48,8 +48,9 @@ import {
 	type Extension,
 	type Transaction,
 } from '@codemirror/state';
-import { EditorView, keymap, tooltips } from '@codemirror/view';
+import { drawSelection, EditorView, keymap, tooltips } from '@codemirror/view';
 
+import { isWebKitApp } from './device';
 import { DIALOG_CLASS } from './dialog-class';
 import { findPassage } from './prose-projection';
 import { wikilinkOptions, wikilinkReplaceRange } from './wikilink-complete';
@@ -468,6 +469,19 @@ export function pointerMoved(transaction: Transaction): boolean {
 			!transaction.scrollIntoView &&
 			!transaction.docChanged)
 	);
+}
+
+/**
+ * The caret the editor draws itself, where the browser's own stands wrong.
+ * WebKit draws its caret on a wrapped line from the previous line's bottom
+ * down to this line's, so under the stream's line height it stands high in
+ * the gap above the words; the editor's drawn caret is measured on the
+ * glyph box, and stands on the line, as the app's own editor's does on
+ * every platform. Elsewhere the browser's caret is the glyph box already
+ * and is left alone. Exported for the test that flips the platform.
+ */
+export function drawnCaret(): Extension[] {
+	return isWebKitApp() ? [drawSelection()] : [];
 }
 
 export class PublicCodeMirrorBackend implements SegmentEditorBackend {
@@ -1179,6 +1193,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			MARKDOWN_LANGUAGE,
 			syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 			EditorView.lineWrapping,
+			...drawnCaret(),
 			caretParagraph,
 			paragraphLines,
 			searchMatches,

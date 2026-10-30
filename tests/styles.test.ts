@@ -252,6 +252,17 @@ describe('styles.css', () => {
 	 */
 	it('breaks a paragraph into the same rows in the stream and in a dressed note', () => {
 		expect(declarations('.snowflake-method-two-faces .cm-content.cm-lineWrapping')).toContain('white-space: pre-wrap');
+		// The caret and selection the editor draws itself on WebKit wear the
+		// theme's colours: the focused selection rule outweighs CodeMirror's
+		// own, which weighs five classes and is mounted after every stylesheet.
+		expect(declarations('.snowflake-method-two-faces .cm-editor > .cm-scroller > .cm-cursorLayer > .cm-cursor')).toContain(
+			'border-left-color: var(--caret-color)',
+		);
+		expect(
+			declarations(
+				'.snowflake-method-two-faces .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer > .cm-selectionBackground',
+			),
+		).toContain('background-color: var(--text-selection)');
 		expect(
 			declarations('.snowflake-method-note-dressed .markdown-source-view.mod-cm6 .cm-content.cm-lineWrapping:not(.cm-table-widget *)'),
 		).toContain('white-space: pre-wrap');
