@@ -1238,15 +1238,17 @@ describe('styles.css', () => {
 	 * dots and no corner squares the desktop does not draw, only the dots
 	 * and the corners reaching further for the finger, unseen.
 	 */
-	it('shows a freeform dot only as the pointer comes to its side, and draws a chosen node the same under a finger', () => {
+	it('shows a freeform dot only as the pointer comes to its side, and all four of a chosen node under a finger', () => {
 		expect(styles).not.toContain('.react-flow__node:hover .snowflake-method-freeform-handle');
-		expect(styles).not.toContain('.react-flow__node.selected .snowflake-method-freeform-handle');
+		const fine = styles.slice(0, styles.indexOf('A finger needs more to take hold of than a pointer does'));
+		expect(fine).not.toContain('.react-flow__node.selected .snowflake-method-freeform-handle');
 		const shown = declarations('.snowflake-method-freeform-canvas .react-flow__resize-control.line.right:hover ~ .react-flow__handle-right.snowflake-method-freeform-handle.connectable::before');
 		expect(shown).toContain('opacity: 1');
 		expect(declarations('.snowflake-method-freeform-canvas .snowflake-method-freeform-handle.connectingto::before')).toContain('opacity: 1');
 		const coarse = styles.slice(styles.indexOf('A finger needs more to take hold of than a pointer does'));
 		const block = coarse.slice(0, coarse.indexOf('\n}'));
 		expect(block).toContain('.snowflake-method-freeform-handle::before {\n\t\tinset: calc(-9px');
+		expect(block).toContain('.react-flow__node.selected .snowflake-method-freeform-handle.connectable::before {\n\t\topacity: 1;');
 		const corner = block.slice(block.indexOf('.react-flow__resize-control.handle.snowflake-method-freeform-resize-handle {'));
 		expect(corner.slice(0, corner.indexOf('}'))).toContain('--snowflake-method-freeform-reach-in: calc(10px');
 		expect(corner.slice(0, corner.indexOf('}'))).not.toMatch(/border|background/u);

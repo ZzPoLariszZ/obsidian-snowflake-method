@@ -18475,12 +18475,17 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 
 /* A finger needs more to take hold of than a pointer does: the dots a line
    starts from and the corners a node is sized by reach further, unseen as
-   they are on the desktop, so a chosen node is drawn the same on a tablet
-   as under a mouse. Nothing here is brought into sight that a pointer would
-   have had to find. */
+   they are on the desktop. A finger has no hover to bring a dot into sight
+   with, either, so a chosen node shows all four of its dots, where the
+   desktop shows one as the pointer comes to its side. The corners stay
+   unseen: the frame the chosen node wears says where they are. */
 @media (pointer: coarse) {
 	.snowflake-method-freeform-canvas .snowflake-method-freeform-handle::before {
 		inset: calc(-9px * var(--snowflake-method-freeform-unzoom, 1));
+	}
+
+	.snowflake-method-freeform-canvas .react-flow__node.selected .snowflake-method-freeform-handle.connectable::before {
+		opacity: 1;
 	}
 
 	/* A finger feels no band along an edge, and would take it for the node;
