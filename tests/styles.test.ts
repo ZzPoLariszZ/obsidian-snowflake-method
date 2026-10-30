@@ -1030,8 +1030,9 @@ describe('styles.css', () => {
 	 * The line under an empty act starts under the act's words, and where those
 	 * start is said once, from the header's own measures: written out again at
 	 * the foot, it stayed put when a project that cannot be written hid the
-	 * handle and the words moved. A folded column hides the handle too, as it
-	 * hides the beats', so the words stand over the beats' names either way. The words' colour and size are set over the
+	 * handle and the words moved. A folded column keeps the handles, the
+	 * beats' with the acts', so the words stand over the beats' names either
+	 * way, and the column is a handle wider than a timeline's folded one. The words' colour and size are set over the
 	 * lane name's the button also wears, so their rule outweighs that one
 	 * rather than merely following it in the file.
 	 */
@@ -1050,11 +1051,19 @@ describe('styles.css', () => {
 		const readOnly = declarations('.snowflake-method-beat-sheet.is-read-only');
 		expect(readOnly).toContain('--snowflake-method-beat-sheet-act-words-start:');
 		expect(readOnly).not.toContain('action-size');
-		// Folded, the column has no handles, the act's among them, so the words start as the beats' names do.
-		expect(declarations('.snowflake-method-beat-sheet.is-time-collapsed')).toBe(readOnly);
+		// Folded, the sheet keeps every handle it can be written with, and the handles' room with them.
+		const foldedTimeline = declarations('.snowflake-method-timeline.is-time-collapsed');
+		expect(foldedTimeline).toContain('--snowflake-method-timeline-time-folded-width: 10rem');
+		expect(foldedTimeline).toContain('--snowflake-method-timeline-time-width: var(--snowflake-method-timeline-time-folded-width)');
+		const foldedSheet = declarations('.snowflake-method-beat-sheet.is-time-collapsed');
+		expect(foldedSheet).not.toContain('words-start');
+		expect(foldedSheet.replace(/\s+/gu, ' ')).toContain(
+			'--snowflake-method-timeline-time-width: calc( var(--snowflake-method-timeline-time-folded-width) + var(--snowflake-method-corkboard-action-size) + var(--size-2-1) )',
+		);
 		expect(
-			declarations('.snowflake-method-beat-sheet.is-time-collapsed .snowflake-method-beat-sheet-act-handle'),
-		).toContain('display: none');
+			declarations('.snowflake-method-beat-sheet.is-time-collapsed .snowflake-method-timeline-time-handle:enabled'),
+		).toContain('display: flex');
+		expect(styles).not.toContain('.snowflake-method-beat-sheet.is-time-collapsed .snowflake-method-beat-sheet-act-handle');
 		const weight = (selector: string): number => (selector.match(/\./g) ?? []).length;
 		const title = '.snowflake-method-beat-sheet .snowflake-method-beat-sheet-act button.snowflake-method-beat-sheet-act-title';
 		const laneName = '.snowflake-method-timeline button.snowflake-method-timeline-lane-name';

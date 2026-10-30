@@ -16378,9 +16378,11 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 /* Folded, the time column keeps its names alone, each on one line and
    trimmed to the column: the descriptions, the handles and the menus go
    (the menu still answers a right click), and the view field above narrows
-   with the column. The seam's plus and the corner's stay. */
+   with the column. The seam's plus and the corner's stay. The folded width
+   has a name of its own, since the beat sheet's folded column builds on it. */
 .snowflake-method-timeline.is-time-collapsed {
-	--snowflake-method-timeline-time-width: 10rem;
+	--snowflake-method-timeline-time-folded-width: 10rem;
+	--snowflake-method-timeline-time-width: var(--snowflake-method-timeline-time-folded-width);
 }
 
 .snowflake-method-timeline.is-time-collapsed .snowflake-method-timeline-time-handle,
@@ -16575,16 +16577,30 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 /* A project that cannot be written shows no handle, so the words start
-   where the handle would have stood, and the line under them follows. So
-   do they when the time column is folded: the beats' handles go with the
-   fold, and an act's goes with them, so its words stand over the beats'
-   names as they do unfolded. Its plus and its menu stand at the row's end,
-   outside the column, and stay, and the menu moves the act. */
-.snowflake-method-beat-sheet.is-read-only,
-.snowflake-method-beat-sheet.is-time-collapsed {
+   where the handle would have stood, and the line under them follows. */
+.snowflake-method-beat-sheet.is-read-only {
 	--snowflake-method-beat-sheet-act-words-start: calc(
 		var(--snowflake-method-beat-sheet-act-padding-start) + var(--size-2-2)
 	);
+}
+
+/* Folded, a timeline's time column drops its handles, but a sheet keeps
+   them, the beats' with the acts': an act's handle is always in sight, and
+   beats' names that moved forward as their handles went stood a handle's
+   width before the act's words over them. So the folded column keeps the
+   handles' room, a handle and its gap wider than a timeline's folded
+   column, and the names stand where they stand unfolded, under the words.
+   The beats' menus go as a timeline's do, and answer a right click or a
+   long press; a handle a project cannot be written with stays hidden. */
+.snowflake-method-beat-sheet.is-time-collapsed {
+	--snowflake-method-timeline-time-width: calc(
+		var(--snowflake-method-timeline-time-folded-width) + var(--snowflake-method-corkboard-action-size) +
+			var(--size-2-1)
+	);
+}
+
+.snowflake-method-beat-sheet.is-time-collapsed .snowflake-method-timeline-time-handle:enabled {
+	display: flex;
 }
 
 .snowflake-method-beat-sheet-act {
@@ -16666,8 +16682,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	cursor: grab;
 }
 
-.snowflake-method-beat-sheet-act .snowflake-method-beat-sheet-act-handle:disabled,
-.snowflake-method-beat-sheet.is-time-collapsed .snowflake-method-beat-sheet-act-handle {
+.snowflake-method-beat-sheet-act .snowflake-method-beat-sheet-act-handle:disabled {
 	display: none;
 }
 
