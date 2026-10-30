@@ -337,6 +337,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private caretCard: string | null = null;
 	/** The frame owed to the sidebar after a scroll, while one is pending. */
 	private marginViewportFrame: number | null = null;
+	/** Set as the view closes: the chapters coming down publish no feed, so the hub forgets the view for good. */
+	private closing = false;
 	/** Takes down the writing faces the bar carries on mobile, where it carries any. */
 	private releaseWritingFaces: (() => void) | null = null;
 	/** The toolbar's two writing-mode buttons, repainted as settings move. */
@@ -679,6 +681,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.closing = true;
 		this.dropCaretCard();
 		this.host.marginCards.retire(this);
 		if (this.marginViewportFrame !== null) {
@@ -3445,7 +3448,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	 */
 	private publishMarginCards(): void {
 		const stream = this.streamEl;
-		if (stream === null) return;
+		if (stream === null || this.closing) return;
 		const segments: MarginCardsSegment[] = [];
 		const inView = new Set<string>();
 		const edge = stream.getBoundingClientRect().top;
