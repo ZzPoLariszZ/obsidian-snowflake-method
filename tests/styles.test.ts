@@ -1722,6 +1722,11 @@ describe('styles.css', () => {
 		);
 		expect(declarations('body.is-mobile .snowflake-method-manuscript-toolbar > :last-child')).toContain('margin-inline-end: auto');
 		expect(section('Mobile')).not.toContain('body.is-phone .snowflake-method-manuscript-toolbar');
+		// The quote of the step before sets its words at the box's edges on
+		// mobile too, where the app pads a field by a size-4-4 with no frame.
+		expect(declarations('body.is-mobile .snowflake-method-source-summary-body')).toContain(
+			'padding-inline: calc(var(--size-4-4) - 3px + var(--input-border-width, 0px)) var(--size-4-4)',
+		);
 		expect(
 			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),
 		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');

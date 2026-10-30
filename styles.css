@@ -20407,6 +20407,12 @@ body.is-mobile .snowflake-method-source-summary-body {
 	max-height: none;
 	overflow-y: visible;
 	scrollbar-gutter: auto;
+	/* The app pads a field on a phone or a tablet by a size-4-4 at each side
+	   and draws it no frame, so the box below sets its words a size-4-4 in
+	   from its edges. The quote's stripe is three pixels wider than that
+	   frame, so its inset is three less, and the two set their words at the
+	   same edges here as they do on the desktop. */
+	padding-inline: calc(var(--size-4-4) - 3px + var(--input-border-width, 0px)) var(--size-4-4);
 }
 
 /* -- Mobile: a field inside a card ----------------------------------------- */
