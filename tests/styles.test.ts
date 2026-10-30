@@ -1727,6 +1727,12 @@ describe('styles.css', () => {
 		expect(declarations('body.is-mobile .snowflake-method-source-summary-body')).toContain(
 			'padding-inline: calc(var(--size-4-4) - 3px + var(--input-border-width, 0px)) var(--size-4-4)',
 		);
+		// A corkboard card in flight hides its side buttons and the gap's hit
+		// area, so the picture a drag paints is the card alone on every platform.
+		expect(declarations('.snowflake-method-corkboard-card.is-dragging > .snowflake-method-corkboard-insert')).toContain('display: none');
+		expect(declarations('.snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card.is-dragging::before')).toContain(
+			'display: none',
+		);
 		expect(
 			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),
 		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');

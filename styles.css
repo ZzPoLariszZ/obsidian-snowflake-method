@@ -15280,6 +15280,16 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	display: none;
 }
 
+/* A card in flight carries its own picture and nothing beside it. The two
+   insertion buttons stand outside the card's frame, as does the hit area
+   the card lays over the gap, and the picture the browser paints for a
+   drag takes in every box of the card's, so a lifted card showed its two
+   plus signs floating at its sides. Both go while the drag lasts. */
+.snowflake-method-corkboard-card.is-dragging > .snowflake-method-corkboard-insert,
+.snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card.is-dragging::before {
+	display: none;
+}
+
 .snowflake-method-reduce-motion .snowflake-method-corkboard-card,
 .snowflake-method-reduce-motion .snowflake-method-corkboard .snowflake-method-corkboard-insert {
 	transition: none;
