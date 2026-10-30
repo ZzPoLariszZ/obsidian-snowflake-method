@@ -76,7 +76,8 @@ export function diagnosticsReport(win: Window, version: string): [string, string
 	const doc = win.document;
 	const flags = Platform as unknown as Record<string, unknown>;
 	const lines: [string, string][] = [];
-	lines.push(['plugin', `${version}${readBuildStamp(win) === null ? '' : ` (${readBuildStamp(win) ?? ''})`}`]);
+	const stamp = readBuildStamp(win);
+	lines.push(['plugin', stamp === null ? version : `${version} (${stamp})`]);
 	lines.push(['platform', PLATFORM_FLAGS.filter((flag) => flags[flag] === true).join(' ') || 'none'] );
 	lines.push(['userAgent', win.navigator.userAgent]);
 	lines.push(['maxTouchPoints', String(win.navigator.maxTouchPoints)]);
