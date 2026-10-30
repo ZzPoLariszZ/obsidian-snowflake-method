@@ -305,14 +305,17 @@ describe('corkboard correctness regressions', () => {
 			scene('B', { locations: ['[[Places/Tavern]]'] }),
 		], { group: 'location' });
 		expect(fixture.cards().map((card) => card.getAttribute('data-key'))).toEqual(['location:Tavern|A', 'location:Tavern|B']);
-		expect(fixture.cards().map((card) => card.styles.transform)).toEqual(['translate(0px, 36px)', 'translate(346.67px, 36px)']);
+		expect(fixture.cards().map((card) => [card.styles.insetInlineStart, card.styles.insetBlockStart])).toEqual([
+			['0px', '36px'],
+			['346.67px', '36px'],
+		]);
 		fixture.handle.dispose();
 	});
 
 	it('#7 same-note manuscript aliases occupy a single group cell', () => {
 		const fixture = board([scene('A', { linkedManuscript: [link('Book/Ch 1'), link('Book/Ch 1', 'Opening', true)] })], { group: 'linked' });
 		expect(fixture.cards()).toHaveLength(1);
-		expect(fixture.cards()[0]!.styles.transform).toBe('translate(0px, 36px)');
+		expect([fixture.cards()[0]!.styles.insetInlineStart, fixture.cards()[0]!.styles.insetBlockStart]).toEqual(['0px', '36px']);
 		fixture.handle.dispose();
 	});
 
@@ -329,7 +332,7 @@ describe('corkboard correctness regressions', () => {
 		expect(cast).toEqual([character.path, character.path]);
 		const fixture = board([scene('A', { characterPaths: cast })], { group: 'character' });
 		expect(fixture.cards()).toHaveLength(1);
-		expect(fixture.cards()[0]!.styles.transform).toBe('translate(0px, 36px)');
+		expect([fixture.cards()[0]!.styles.insetInlineStart, fixture.cards()[0]!.styles.insetBlockStart]).toEqual(['0px', '36px']);
 		fixture.handle.dispose();
 	});
 
@@ -377,6 +380,7 @@ describe('corkboard correctness regressions', () => {
 		const heads = fixture.container.querySelectorAll('.snowflake-method-corkboard-group');
 		const first = heads.find((head) => head.dataset.key === 'head:linked:Book/Ch 1')!;
 		expect(first.querySelector('.snowflake-method-corkboard-group-label')!.textContent).toBe('Prologue');
+		// A group head is still moved by a transform: nothing lifts a head.
 		expect(first.styles.transform).toBe('translate(0px, 316px)');
 		fixture.handle.dispose();
 	});

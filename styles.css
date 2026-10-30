@@ -14554,7 +14554,9 @@ body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
 	background-color: var(--snowflake-method-sticky-ground);
 	box-shadow: var(--snowflake-method-corkboard-shadow);
 	color: var(--text-normal);
-	/* The layout owns transform; translate adds only the hover lift. */
+	/* The layout places a card by its insets, since WebKit paints a dragged
+	   card's picture from its box without a transform; translate adds only
+	   the hover lift. */
 	translate: 0 var(--snowflake-method-corkboard-lift);
 	transition: translate 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }

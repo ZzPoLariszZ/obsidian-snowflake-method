@@ -191,11 +191,14 @@ function dropAtEnd(fixture: Awaited<ReturnType<typeof board>>, card: CorkboardEl
 	};
 	event(card, 'dragstart', { target: null, dataTransfer });
 	vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ height: 600, ...{ left: 0, top: 0 } });
-	const position = before?.styles.transform?.match(/translate\(([\d.]+)px, ([\d.]+)px\)/u);
-	if (before !== undefined) expect(position).not.toBeNull();
+	const position =
+		before === undefined
+			? null
+			: [before.styles.insetInlineStart, before.styles.insetBlockStart].map((value) => Number.parseFloat(value ?? ''));
+	if (position !== null) expect(position.every(Number.isFinite)).toBe(true);
 	event(canvas, 'dragover', {
-		clientX: position ? Number(position[1]) + 1 : 0,
-		clientY: position ? Number(position[2]) + 1 : 10_000,
+		clientX: position ? position[0]! + 1 : 0,
+		clientY: position ? position[1]! + 1 : 10_000,
 		dataTransfer,
 	});
 	event(canvas, 'drop', { dataTransfer });

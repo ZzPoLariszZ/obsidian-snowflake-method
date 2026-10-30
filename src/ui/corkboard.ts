@@ -8,7 +8,7 @@
  * `corkboard-layout.ts`; this is the drawing, and the rules of the drawing:
  *
  * - The canvas is windowed. Only the cards the scroller shows stand in the
- *   DOM, each placed by a transform, keyed by note so a paint dresses a
+ *   DOM, each placed by its insets, keyed by note so a paint dresses a
  *   standing card rather than remaking it. A card that is being dragged,
  *   edited or focused is pinned: it stays mounted wherever the window is.
  * - Every write goes through one queue, one after another, each followed by
@@ -799,7 +799,12 @@ export function renderBoard<
 		if (x === entry.x && y === entry.y) return;
 		entry.x = x;
 		entry.y = y;
-		entry.el.setCssStyles({ transform: `translate(${px(x)}, ${px(y)})` });
+		// By its insets, not a transform: WebKit paints the picture a finger
+		// lifts with a card from the card's box without its transform (bug
+		// 318055, fixed on the trunk in June 2026 and not on an iPad), and
+		// with every card at the canvas's corner moved out by a transform,
+		// every picture was the first card's.
+		entry.el.setCssStyles({ insetInlineStart: px(x), insetBlockStart: px(y) });
 	};
 
 	const mountCard = (

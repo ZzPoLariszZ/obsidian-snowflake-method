@@ -155,7 +155,7 @@ describe('corkboard viewport changes', () => {
 		// Three columns, 280px rows: scene 30 is 47px above the viewport.
 		fixture.scroll(2_847);
 		const anchored = fixture.cards().find((card) => card.dataset.id === 'scene-30')!;
-		expect(anchored.styles.transform).toBe('translate(0px, 2800px)');
+		expect([anchored.styles.insetInlineStart, anchored.styles.insetBlockStart]).toEqual(['0px', '2800px']);
 
 		fixture.dom.operations.length = 0;
 		fixture.dom.resize(700);
@@ -169,7 +169,7 @@ describe('corkboard viewport changes', () => {
 		expect(fixture.scroller.scrollTop).toBe(4_247);
 		expect(fixture.memory.scrollTop).toBe(4_247);
 		expect(fixture.cards()).toContain(anchored);
-		expect(anchored.styles.transform).toBe('translate(0px, 4200px)');
+		expect([anchored.styles.insetInlineStart, anchored.styles.insetBlockStart]).toEqual(['0px', '4200px']);
 		expect(vi.mocked(filterScenes)).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(displayOrderOf)).toHaveBeenCalledTimes(1);
 		fixture.handle.dispose();

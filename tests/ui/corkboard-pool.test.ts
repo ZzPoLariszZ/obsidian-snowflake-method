@@ -144,7 +144,7 @@ describe('the corkboard as a pool', () => {
 		const fixture = pool({ include: (candidate) => candidate.id === 'scene-b' || candidate.id === 'scene-d', columns: 1 });
 		const numbers = fixture.cards().map((card) => card.querySelector('.snowflake-method-corkboard-number')!.textContent);
 		expect(numbers).toEqual(['2', '4']);
-		expect(fixture.cards().map((card) => card.styles.transform?.startsWith('translate(0px'))).toEqual([true, true]);
+		expect(fixture.cards().map((card) => card.styles.insetInlineStart)).toEqual(['0px', '0px']);
 		for (const card of fixture.cards()) {
 			for (const insert of card.querySelectorAll('.snowflake-method-corkboard-insert')) {
 				expect(insert.classes.has('is-hidden')).toBe(true);
@@ -154,8 +154,23 @@ describe('the corkboard as a pool', () => {
 
 	it('stands its cards as close as it is told, having no insertion buttons to make room for', () => {
 		const fixture = pool({ include: () => true, columns: 1, gap: 0.75 });
-		expect(fixture.cards().slice(0, 2).map((card) => card.styles.transform)).toEqual(['translate(0px, 0px)', 'translate(0px, 252px)']);
+		expect(fixture.cards().slice(0, 2).map((card) => [card.styles.insetInlineStart, card.styles.insetBlockStart])).toEqual([
+			['0px', '0px'],
+			['0px', '252px'],
+		]);
 		expect(fixture.dom.container.querySelector('.snowflake-method-corkboard')!.styles['--snowflake-method-corkboard-gap']).toBe('12px');
+	});
+
+	it('places a card by its insets and never by a transform, which WebKit leaves out of a drag image', () => {
+		// A card moved out from the canvas's corner by a transform was lifted on
+		// an iPad with the first card's picture: WebKit painted the dragged box
+		// without its transform, and every card's untransformed box was the first.
+		const fixture = pool({ include: () => true, columns: 1 });
+		expect(fixture.cards().length).toBeGreaterThan(1);
+		for (const card of fixture.cards()) {
+			expect(card.styles.transform).toBeUndefined();
+			expect(card.styles.insetBlockStart).toMatch(/^\d+px$/u);
+		}
 	});
 
 	it('offers the add button as a plus alone, still making a scene at the end', async () => {
