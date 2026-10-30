@@ -10568,6 +10568,15 @@ button.snowflake-method-kind-options {
 		min-height: 0;
 	}
 
+	/* And the pane grows with its columns. Held to the window's height, as
+	   it is where the trees scroll inside it, it kept that height here, where
+	   nothing scrolls inside it: on a tablet or in a narrow window its frame
+	   closed above the trees' end and the page scrolled them out of it. It
+	   still fills a window taller than it is. */
+	.snowflake-method-definition-panel {
+		flex: 1 0 auto;
+	}
+
 	/* Stacked, the column is a plain framed box in a page that scrolls as
 	   one: it draws its own frame and clips the corners itself, since there
 	   is no scrolling of its own here for a frame to hold still against —
@@ -11104,6 +11113,12 @@ button.snowflake-method-kind-options {
    stands after the rules it overrides: a container block before them would
    not outweigh them. */
 @container snowflake-dashboard (max-width: 60rem) {
+	/* The pane grows with its sections, as the definition panes grow with
+	   their trees: nothing scrolls inside it here either. */
+	.snowflake-method-template-panel {
+		flex: 1 0 auto;
+	}
+
 	.snowflake-method-template-panel .snowflake-method-template-sections {
 		flex: 0 0 auto;
 		min-height: 0;

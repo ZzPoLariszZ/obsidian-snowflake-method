@@ -442,6 +442,19 @@ describe('styles.css', () => {
 		expect(narrow?.body).toMatch(/\.snowflake-method-template-panel \.snowflake-method-template-sections \{[^}]*flex: 0 0 auto;[^}]*border: 1px solid/u);
 		expect(narrow?.body).toMatch(/\.snowflake-method-template-panel \.snowflake-method-template-sections::after \{[^}]*content: none/u);
 		expect(narrow?.body).toMatch(/\.snowflake-method-template-scroll \{[^}]*overflow-y: visible;[^}]*padding-inline-end: 0/u);
+		// Stacked, nothing scrolls inside either pane, so each grows with its
+		// content instead of keeping the window's height: a pane that kept it
+		// closed its frame above its trees' end on a tablet and in a narrow
+		// window. Each still fills a taller window, so it grows and never shrinks.
+		expect(narrow?.body).toMatch(/\.snowflake-method-template-panel \{[^}]*flex: 1 0 auto/u);
+		expect(styles.indexOf('.snowflake-method-template-panel {')).toBeLessThan(narrow?.start ?? -1);
+		const stacked = blocks.find((block) => block.body.includes('.snowflake-method-definition-browser {'));
+		expect(stacked).toBeDefined();
+		expect(stacked?.body).toMatch(/\.snowflake-method-definition-panel \{[^}]*flex: 1 0 auto/u);
+		expect(styles.indexOf('.snowflake-method-definition-panel {')).toBeLessThan(stacked?.start ?? -1);
+		// The panes' own rules, read past the heading rule the first shares.
+		expect(styles).toMatch(/\n\.snowflake-method-definition-panel \{[^}]*flex: 1 1 auto;/u);
+		expect(styles).toMatch(/\n\.snowflake-method-template-panel \{[^}]*flex: 1 1 auto;/u);
 	});
 
 	it('gives the note toolbar its room without a look of its own', () => {
