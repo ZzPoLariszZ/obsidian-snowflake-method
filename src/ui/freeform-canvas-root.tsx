@@ -676,6 +676,32 @@ function Flow(): ReactElement {
 		return wireLongPress(host);
 	}, []);
 
+	// A finger's tap on the ground lets the choice go, as a click does. The
+	// engine leaves a finger on the ground to the panning while a button is
+	// named for moving the plane, and so never hears the tap it ends in; a
+	// tap that was a press held long is swallowed before it comes here.
+	useEffect(() => {
+		const host = wrapper.current;
+		if (host === null) return undefined;
+		let touched = false;
+		const onDown = (event: PointerEvent): void => {
+			touched = event.pointerType !== 'mouse';
+		};
+		const onTap = (event: MouseEvent): void => {
+			if (!touched) return;
+			const target = event.target as Element | null;
+			if (target === null || typeof target.classList === 'undefined' || !target.classList.contains('react-flow__pane')) return;
+			store.getState().resetSelectedElements();
+			store.setState({ nodesSelectionActive: false });
+		};
+		host.addEventListener('pointerdown', onDown, true);
+		host.addEventListener('click', onTap);
+		return () => {
+			host.removeEventListener('pointerdown', onDown, true);
+			host.removeEventListener('click', onTap);
+		};
+	}, [store]);
+
 	// Asked at every drawing, which costs nothing and is never stale: a view
 	// moved to another screen is drawn again there.
 	const view = wrapper.current?.ownerDocument.defaultView;

@@ -472,6 +472,44 @@ describe('the canvas engine on a document', () => {
 		expect(port.selectionChanged).toHaveBeenLastCalledWith(NO_CANVAS_SELECTION);
 	});
 
+	/**
+	 * The engine leaves a finger on the ground to the panning while a button
+	 * is named for moving the plane, and so never hears the tap it ends in,
+	 * where a click lets the choice go; the canvas hears the tap itself. A
+	 * tap on a node is the node's.
+	 */
+	it('lets a finger’s tap on the ground let the choice go, as a click does, and leaves a tap on a node to the node', async () => {
+		const { host, handle, port, raised, tell, nodes } = canvas();
+		await raised();
+		tell(() => {
+			handle.setScene({ nodes: [node('a'), node('b', { x: 300 })], edges: [] });
+		});
+		tell(() => {
+			handle.select({ nodes: ['b'], edges: [] });
+		});
+		const pane = host.querySelector<HTMLElement>('.react-flow__pane')!;
+		const tap = async (on: HTMLElement, pointerType: string): Promise<void> => {
+			await act(async () => {
+				const at = { bubbles: true, cancelable: true, button: 0, pointerType, isPrimary: true, clientX: 50, clientY: 50 };
+				on.dispatchEvent(new PointerEvent('pointerdown', { ...at, buttons: 1 }));
+				on.dispatchEvent(new PointerEvent('pointerup', at));
+				on.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, clientX: 50, clientY: 50 }));
+				await Promise.resolve();
+			});
+		};
+		await tap(pane, 'touch');
+		expect(handle.selection()).toEqual(NO_CANVAS_SELECTION);
+		expect(port.selectionChanged).toHaveBeenLastCalledWith(NO_CANVAS_SELECTION);
+		tell(() => {
+			handle.select({ nodes: ['b'], edges: [] });
+		});
+		const a = nodes().find((element) => element.getAttribute('data-id') === 'a')!;
+		await tap(a, 'touch');
+		expect(handle.selection().nodes).not.toEqual([]);
+		await tap(pane, 'mouse');
+		expect(handle.selection()).toEqual(NO_CANVAS_SELECTION);
+	});
+
 	it('holds a node still that is locked, and every node in a canvas that cannot be written', async () => {
 		const { handle, raised, tell, nodes, faceOf } = canvas();
 		await raised();

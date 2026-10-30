@@ -18460,29 +18460,23 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 /* A finger needs more to take hold of than a pointer does: the dots a line
-   starts from, the corners a node is sized by, and the controls. Nothing
-   here is brought into sight that a pointer would have had to find. */
+   starts from and the corners a node is sized by reach further, unseen as
+   they are on the desktop, so a chosen node is drawn the same on a tablet
+   as under a mouse. Nothing here is brought into sight that a pointer would
+   have had to find. */
 @media (pointer: coarse) {
 	.snowflake-method-freeform-canvas .snowflake-method-freeform-handle::before {
 		inset: calc(-9px * var(--snowflake-method-freeform-unzoom, 1));
 	}
 
-	/* A finger comes to no side; the chosen node shows its four dots, as the app's own does on a phone. */
-	.snowflake-method-freeform-canvas .react-flow__node.selected .snowflake-method-freeform-handle.connectable::before {
-		opacity: 1;
-	}
-
 	/* A finger feels no band along an edge, and would take it for the node;
-	   the corners show instead, as the app's own canvas shows them. */
+	   the corners alone size it, each reaching further into the node. */
 	.snowflake-method-freeform-canvas .react-flow__resize-control.snowflake-method-freeform-resize-line {
 		display: none;
 	}
 
 	.snowflake-method-freeform-canvas .react-flow__resize-control.handle.snowflake-method-freeform-resize-handle {
 		--snowflake-method-freeform-reach-in: calc(10px * var(--snowflake-method-freeform-unzoom, 1));
-		border: calc(2px * var(--snowflake-method-freeform-unzoom, 1)) solid var(--interactive-accent);
-		border-radius: 3px;
-		background-color: var(--background-primary);
 	}
 }
 
