@@ -1500,7 +1500,11 @@ export default class SnowflakeMethodPlugin
 			(leaf) =>
 				new SnowflakeMarginCardsView(leaf, {
 					hub: this.marginCards,
-					t: this.globalT,
+					// The column speaks the current project's language, as the
+					// statistics and sticky notes sidebars do, and is redrawn
+					// with them when the language or the project moves.
+					t: this.t,
+					fingerprint: () => this.statisticsFingerprint(),
 					stepAside: () => {
 						// On mobile the sidebar is a drawer over the page: put
 						// away before the words are flashed, so the flash is seen.
