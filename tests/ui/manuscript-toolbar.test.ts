@@ -22,6 +22,8 @@ interface Mounted {
 	searches: boolean[];
 	/** Every opening of the margin card sidebar. */
 	opened: number[];
+	/** Every card the sidebar was asked to light. */
+	lit: string[];
 	view: { editingPath: string | null; refreshToolbar(): void };
 }
 
@@ -33,12 +35,14 @@ interface Mounted {
 const mount = (faces: boolean): Mounted => {
 	const searches: boolean[] = [];
 	const opened: number[] = [];
+	const lit: string[] = [];
 	const view = Object.create(SnowflakeManuscriptView.prototype) as SnowflakeManuscriptView;
 	const contentEl = document.body.createDiv();
 	Object.assign(view, {
 		contentEl,
 		toolbarButtons: [],
 		editingPath: null,
+		caretCard: null,
 		releaseWritingFaces: null,
 		modeToggles: {},
 		t: (key: string) => key,
@@ -53,6 +57,11 @@ const mount = (faces: boolean): Mounted => {
 				opened.push(1);
 				return Promise.resolve();
 			},
+			marginCards: {
+				spotlight: (key: string) => {
+					lit.push(key);
+				},
+			},
 		},
 		openSearch: (replace: boolean) => {
 			searches.push(replace);
@@ -62,7 +71,7 @@ const mount = (faces: boolean): Mounted => {
 	(view as unknown as { renderToolbar(): void }).renderToolbar();
 	const bar = contentEl.querySelector<HTMLElement>('.snowflake-method-manuscript-toolbar');
 	if (bar === null) throw new Error('the bar was not built');
-	return { bar, searches, opened, view: view as unknown as Mounted['view'] };
+	return { bar, searches, opened, lit, view: view as unknown as Mounted['view'] };
 };
 
 const has = (el: Element | null | undefined, name: string): boolean =>
@@ -107,15 +116,24 @@ describe('the stream toolbar', () => {
 		expect(find?.disabled).toBe(false);
 	});
 
-	it('opens the margin card sidebar from the button after the mentions door, live while reading', () => {
-		const { bar, opened } = mount(false);
+	it('opens the margin card sidebar from the button after the mentions door, live while reading', async () => {
+		const { bar, opened, lit, view } = mount(false);
 		const cards = bar.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-cards');
 		expect(cards?.getAttribute('data-tooltip')).toBe('manuscript.toolbar.marginCards');
 		expect(has(cards?.previousElementSibling, 'snowflake-method-toolbar-mentions')).toBe(true);
 		expect(cards?.disabled).toBe(false);
-		// The count waits, hidden, for the stream to say what the page holds.
-		expect(cards?.querySelector('.snowflake-method-toolbar-count')?.classList.contains('is-empty')).toBe(true);
+		// The count waits, hidden, for the stream to say what the page holds,
+		// and stands beside the icon, not over it.
+		const count = cards?.querySelector('.snowflake-method-toolbar-count');
+		expect(count?.classList.contains('is-empty')).toBe(true);
+		expect(count?.parentElement).toBe(cards);
 		cards?.click();
-		expect(opened).toEqual([1]);
+		await vi.waitFor(() => expect(opened).toEqual([1]));
+		expect(lit).toEqual([]);
+		// With the caret in a card's words, the sidebar opens on that card.
+		(view as unknown as { caretCard: string | null }).caretCard = 'rev-1';
+		cards?.click();
+		await vi.waitFor(() => expect(lit).toEqual(['rev-1']));
+		expect(opened).toEqual([1, 1]);
 	});
 });

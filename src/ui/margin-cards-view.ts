@@ -2,6 +2,7 @@ import { ItemView, type WorkspaceLeaf } from 'obsidian';
 
 import { keepEscapeInView } from './escape-key';
 import {
+	marginCardsLens,
 	renderMarginCardsList,
 	type MarginCardsList,
 	type MarginCardsListDeps,
@@ -19,6 +20,8 @@ export const MARGIN_CARDS_VIEW_TYPE = 'snowflake-method-margin-cards';
  */
 export class SnowflakeMarginCardsView extends ItemView {
 	private list: MarginCardsList | null = null;
+	/** The search and the funnel, kept through a rebuild for a change of language. */
+	private readonly lens = marginCardsLens();
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -61,7 +64,7 @@ export class SnowflakeMarginCardsView extends ItemView {
 	}
 
 	private mount(): void {
-		this.list = renderMarginCardsList(this.contentEl, this.deps);
+		this.list = renderMarginCardsList(this.contentEl, this.deps, this.lens);
 	}
 
 	onClose(): Promise<void> {

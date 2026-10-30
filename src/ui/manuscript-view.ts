@@ -333,6 +333,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private toolbarButtons: HTMLButtonElement[] = [];
 	/** The count of cards on the stream's door to the sidebar. */
 	private toolbarCardCount: HTMLElement | null = null;
+	/** The card whose words hold the caret, as last told to the sidebar. */
+	private caretCard: string | null = null;
 	/** The frame owed to the sidebar after a scroll, while one is pending. */
 	private marginViewportFrame: number | null = null;
 	/** Takes down the writing faces the bar carries on mobile, where it carries any. */
@@ -677,6 +679,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.dropCaretCard();
 		this.host.marginCards.retire(this);
 		if (this.marginViewportFrame !== null) {
 			this.contentEl.win.cancelAnimationFrame(this.marginViewportFrame);
@@ -1265,7 +1268,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			cls: 'snowflake-method-toolbar-count is-empty',
 		});
 		wireCaretKeepingPress(cards, () => {
-			void this.host.openMarginCards().catch((error: unknown) => {
+			void this.openMarginCardsFromBar().catch((error: unknown) => {
 				this.showError(error);
 			});
 		});
@@ -3484,6 +3487,54 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 	}
 
+	/**
+	 * The bar's door to the sidebar. With the caret inside a card's words
+	 * the sidebar opens on that card: tap the words, press the button, the
+	 * way back from the prose that Show in text goes from the card.
+	 */
+	private async openMarginCardsFromBar(): Promise<void> {
+		await this.host.openMarginCards();
+		const key = this.caretCard;
+		if (key !== null) this.host.marginCards.spotlight(key);
+	}
+
+	/**
+	 * Tells the sidebar which card's words the caret is in, as it moves:
+	 * the column marks that card and keeps it in view. Only a change is
+	 * told, so typing inside a mark moves nothing.
+	 */
+	private followCaret(path: string): void {
+		const key = this.cardAtCaret(path);
+		if (key === this.caretCard) return;
+		this.caretCard = key;
+		this.host.marginCards.caret(key);
+	}
+
+	private dropCaretCard(): void {
+		if (this.caretCard === null) return;
+		this.caretCard = null;
+		this.host.marginCards.caret(null);
+	}
+
+	/**
+	 * The card whose words hold the caret: a revision's, by its id, or an
+	 * occurrence's, by the key its card wears. A revision's words win where
+	 * a thread runs through them.
+	 */
+	private cardAtCaret(path: string): string | null {
+		const entry = this.mounted.get(path);
+		const head = entry?.editor?.cursor();
+		const dress = entry?.mentions;
+		if (head === undefined || dress === undefined || dress === null) return null;
+		for (const [id, span] of dress.revisions.anchors) {
+			if (span.from <= head && head <= span.to) return id;
+		}
+		for (const [id, span] of dress.foreshadowing.anchors) {
+			if (span.from <= head && head <= span.to) return `fs:${id}`;
+		}
+		return null;
+	}
+
 	/** The sidebar told where the page stands, once per frame of scrolling. */
 	private scheduleMarginViewport(): void {
 		if (this.marginViewportFrame !== null) return;
@@ -4635,6 +4686,7 @@ export class SnowflakeManuscriptView extends ItemView {
 					this.search.noteEdited(changed, map);
 				},
 				onSelectionChange: (inPath, selectedText) => {
+					this.followCaret(inPath);
 					if (inPath !== this.editingPath) return;
 					if (this.editingSelection === selectedText) return;
 					this.editingSelection = selectedText;
@@ -5026,6 +5078,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		await this.flushPendingSave();
 		this.editingPath = null;
 		this.editingSelection = null;
+		this.dropCaretCard();
 		this.host.manuscriptWritingChanged();
 		this.puttingBack = false;
 		this.walkingIn = false;
@@ -5518,6 +5571,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			await this.flushPendingSave();
 			this.editingPath = null;
 			this.editingSelection = null;
+			this.dropCaretCard();
 			this.host.manuscriptWritingChanged();
 			this.streamEl?.removeClass('is-writing');
 			// The note being written in can go without anyone leaving it: renamed,

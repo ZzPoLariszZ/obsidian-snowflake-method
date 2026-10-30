@@ -337,9 +337,21 @@ describe('styles.css', () => {
 		const list = declarations('.snowflake-method-revision-rail.is-list');
 		expect(list).toContain('position: static');
 		expect(list).toContain('flex-direction: column');
+		expect(list).toContain('align-items: flex-start');
 		const listed = declarations('.snowflake-method-revision-rail.is-list .snowflake-method-rail-card');
 		expect(listed).toContain('position: static');
 		expect(listed).not.toContain('top ');
+		// Between the margin's floor and a reading measure, however wide the sidebar.
+		expect(listed).toContain(`width: clamp(${String(RAIL_FLOOR)}px, 100%, 20rem)`);
+		expect(listed).toContain('box-sizing: border-box');
+		expect(
+			declarations('.snowflake-method-revision-rail.is-list .snowflake-method-rail-card.is-caret'),
+		).toContain('border-left-color: var(--interactive-accent)');
+		// The count stands beside the icon, never over it.
+		const count = declarations('.snowflake-method-toolbar-count');
+		expect(count).not.toContain('position');
+		expect(count).toContain('font-size: var(--font-ui-smaller)');
+		expect(declarations('.snowflake-method-toolbar-cards')).toContain('gap: var(--size-2-1)');
 		expect(
 			declarations('.snowflake-method-revision-rail.is-list .snowflake-method-revision-card.is-in-view'),
 		).toContain('border-left-color: var(--color-yellow)');
@@ -347,6 +359,16 @@ describe('styles.css', () => {
 			declarations('.snowflake-method-revision-rail.is-list .snowflake-method-foreshadowing-card.is-in-view'),
 		).toContain('border-left-color: var(--color-purple)');
 		expect(declarations('.snowflake-method-toolbar-count.is-empty')).toContain('display: none');
+		// The band stays put over a column that scrolls on its own, as the sticky board's does.
+		const view = declarations(
+			'.workspace-leaf-content .view-content.snowflake-method-margin-cards-view',
+		);
+		expect(view).toContain('flex-direction: column');
+		expect(view).toContain('overflow: hidden');
+		expect(declarations('.snowflake-method-margin-cards')).toContain('min-height: 0');
+		expect(
+			declarations('.snowflake-method-margin-cards-view .snowflake-method-sticky-scroll'),
+		).toContain('overflow-y: scroll');
 		expect(declarations('body.is-mobile .snowflake-method-margin-cards-view')).toContain(
 			'--background-modifier-form-field',
 		);

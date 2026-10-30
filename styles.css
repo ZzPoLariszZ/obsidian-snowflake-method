@@ -7605,12 +7605,24 @@ body {
 /* --- The margin cards in a sidebar ---------------------------------------- */
 
 /* The same cards in a column of their own, for a pane whose margin cannot
-   hold them: the view scrolls, each chapter on the page heads its cards,
-   and the cards stand in the flow in reading order rather than beside
-   their words. The frame, the stripe and the answers are the rail's. */
+   hold them: the band of search and funnel stands over the column, the
+   column scrolls under it as the sticky board's does, each chapter on
+   the page heads its cards, and the cards stand in the flow in reading
+   order rather than beside their words. The frame, the stripe and the
+   answers are the rail's. The app styles the view's content through two
+   classes, so the overflow is asked for with the same weight. */
 .workspace-leaf-content .view-content.snowflake-method-margin-cards-view {
+	display: flex;
+	flex-direction: column;
 	padding: var(--size-4-3);
-	overflow-y: auto;
+	overflow: hidden;
+}
+
+.snowflake-method-margin-cards {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
 }
 
 .snowflake-method-margin-cards-chapter + .snowflake-method-margin-cards-chapter {
@@ -7628,15 +7640,20 @@ body {
 	position: static;
 	display: flex;
 	flex-direction: column;
+	align-items: flex-start;
 	gap: var(--size-4-2);
 	width: auto;
 }
 
 /* A listed card stands in the flow: no top to glide to, and no place to
    hold while a tight pane hides it, since the list is where a tight pane's
-   cards are read. */
+   cards are read. It takes the column's width between the margin's own
+   floor and a reading measure, so a wide sidebar does not stretch its
+   fields across. */
 .snowflake-method-revision-rail.is-list .snowflake-method-rail-card {
 	position: static;
+	width: clamp(192px, 100%, 20rem);
+	box-sizing: border-box;
 	transition:
 		border-color 150ms ease-out,
 		box-shadow 150ms ease-out;
@@ -7652,26 +7669,25 @@ body {
 	border-left-color: var(--color-purple);
 }
 
-/* The count of cards on the stream's door to the sidebar: a small pill on
-   the button's corner, gone while the chapters on the page carry none. */
+/* The listed card whose words hold the caret wears the accent on its
+   stripe for as long as the caret stays, so the column says which card
+   the author is in. */
+.snowflake-method-revision-rail.is-list .snowflake-method-rail-card.is-caret {
+	border-left-color: var(--interactive-accent);
+}
+
+/* The count of cards on the stream's door to the sidebar: a small figure
+   beside the icon, as the writing count stands beside its snowflake, gone
+   while the chapters on the page carry none. */
 .snowflake-method-toolbar-cards {
-	position: relative;
+	gap: var(--size-2-1);
 }
 
 .snowflake-method-toolbar-count {
-	position: absolute;
-	top: 1px;
-	right: 1px;
-	min-width: 1.25em;
-	padding: 0 0.3em;
-	border-radius: var(--radius-s);
-	background-color: var(--interactive-accent);
-	color: var(--text-on-accent);
-	font-size: 0.625rem;
-	font-weight: var(--font-semibold);
-	line-height: 1.5;
-	text-align: center;
-	pointer-events: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
 }
 
 .snowflake-method-toolbar-count.is-empty {
@@ -13870,7 +13886,8 @@ body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
 	overflow: hidden;
 }
 
-.snowflake-method-sticky-notes-view .snowflake-method-sticky-scroll {
+.snowflake-method-sticky-notes-view .snowflake-method-sticky-scroll,
+.snowflake-method-margin-cards-view .snowflake-method-sticky-scroll {
 	overflow-y: scroll;
 	margin-inline-end: calc(-1 * var(--size-4-3));
 	padding-inline-end: max(
@@ -13881,7 +13898,8 @@ body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
 
 /* A bar wider than the padding costs the cards the difference; the
    controls' row ends where the cards end rather than a few pixels past. */
-.snowflake-method-sticky-notes-view .snowflake-method-sticky-controls {
+.snowflake-method-sticky-notes-view .snowflake-method-sticky-controls,
+.snowflake-method-margin-cards-view .snowflake-method-sticky-controls {
 	margin-inline-end: max(
 		0px,
 		calc(var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-3))
@@ -20110,6 +20128,12 @@ body.is-mobile .snowflake-method-manuscript-toolbar .clickable-icon.snowflake-me
    its own, in Chinese as in English. The buttons keep the app's height, and
    a balanced row still divides the card between them. */
 body.is-mobile .snowflake-method-rail-action {
+	padding-inline: var(--size-4-2);
+}
+
+/* The door to the margin card sidebar carries its count beside the icon,
+   and keeps the writing faces' inset so the figure is not flush. */
+body.is-mobile .snowflake-method-manuscript-toolbar .clickable-icon.snowflake-method-toolbar-cards {
 	padding-inline: var(--size-4-2);
 }
 

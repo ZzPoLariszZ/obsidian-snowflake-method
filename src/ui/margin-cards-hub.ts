@@ -25,7 +25,12 @@ export interface MarginCardsFeed {
 	locate(path: string, key: string): void;
 }
 
-/** How long a spotlight waits for a sidebar that is still opening. */
+/** What the hub tells a listener: the feed changed, a card was named, or the caret moved. */
+export type MarginCardsEvent =
+	| { kind: 'feed' }
+	| { kind: 'spotlight'; key: string }
+	| { kind: 'caret'; key: string | null };
+
 /** How long a card's name waits for a sidebar that cannot show it yet. */
 export const SPOTLIGHT_PATIENCE_MS = 3000;
 
@@ -36,14 +41,17 @@ export const SPOTLIGHT_PATIENCE_MS = 3000;
  * front, or failing that the one that last published. A stream closing
  * takes its feed with it. A jump that landed on a card names it here as
  * well, so the sidebar can scroll to it, and the name waits a moment for a
- * sidebar being opened for it.
+ * sidebar being opened for it. The card whose words hold the caret is
+ * named here too, as the caret moves, so the sidebar can mark it: the way
+ * back from the words to their card.
  */
 export class MarginCardsHub {
 	private readonly feeds = new Map<object, MarginCardsFeed>();
 	private readonly order: object[] = [];
 	private preferred: object | null = null;
-	private readonly listeners = new Set<(spotlight: string | null) => void>();
+	private readonly listeners = new Set<(event: MarginCardsEvent) => void>();
 	private pending: { key: string; at: number } | null = null;
+	private caretKey: string | null = null;
 
 	constructor(private readonly now: () => number = () => Date.now()) {}
 
@@ -52,14 +60,14 @@ export class MarginCardsHub {
 		const at = this.order.indexOf(source);
 		if (at >= 0) this.order.splice(at, 1);
 		this.order.push(source);
-		this.notify(null);
+		this.notify({ kind: 'feed' });
 	}
 
 	/** Names the stream whose leaf is in front; its feed is the one listed. */
 	prefer(source: object): void {
 		if (this.preferred === source) return;
 		this.preferred = source;
-		if (this.feeds.has(source)) this.notify(null);
+		if (this.feeds.has(source)) this.notify({ kind: 'feed' });
 	}
 
 	retire(source: object): void {
@@ -67,7 +75,7 @@ export class MarginCardsHub {
 		const at = this.order.indexOf(source);
 		if (at >= 0) this.order.splice(at, 1);
 		if (this.preferred === source) this.preferred = null;
-		this.notify(null);
+		this.notify({ kind: 'feed' });
 	}
 
 	/** The feed on show: the preferred stream's while it has one, else the latest. */
@@ -86,7 +94,7 @@ export class MarginCardsHub {
 	 */
 	spotlight(key: string): void {
 		this.pending = { key, at: this.now() };
-		this.notify(key);
+		this.notify({ kind: 'spotlight', key });
 	}
 
 	/** The card a recent jump named, once: the next asker finds nothing. */
@@ -98,17 +106,32 @@ export class MarginCardsHub {
 	}
 
 	/**
-	 * Hears every change of what is on show, with null, and every spotlight,
-	 * with the card's key. The return takes the listener off again.
+	 * Says whose words the caret is in, or that it is in no card's. Only a
+	 * change is passed on, so typing inside a card's words moves nothing.
 	 */
-	subscribe(listener: (spotlight: string | null) => void): () => void {
+	caret(key: string | null): void {
+		if (this.caretKey === key) return;
+		this.caretKey = key;
+		this.notify({ kind: 'caret', key });
+	}
+
+	/** The card whose words hold the caret, for a sidebar opening now. */
+	caretCard(): string | null {
+		return this.caretKey;
+	}
+
+	/**
+	 * Hears every change of what is on show, every spotlight and every move
+	 * of the caret between cards. The return takes the listener off again.
+	 */
+	subscribe(listener: (event: MarginCardsEvent) => void): () => void {
 		this.listeners.add(listener);
 		return () => {
 			this.listeners.delete(listener);
 		};
 	}
 
-	private notify(spotlight: string | null): void {
-		for (const listener of [...this.listeners]) listener(spotlight);
+	private notify(event: MarginCardsEvent): void {
+		for (const listener of [...this.listeners]) listener(event);
 	}
 }
