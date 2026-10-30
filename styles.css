@@ -20198,14 +20198,17 @@ body.is-mobile .snowflake-method-writing-face.is-break {
 	opacity: 0.6;
 }
 
-/* -- Phone: the formatting bar in one scrolling row ------------------------ */
+/* -- Mobile: the formatting bar in one scrolling row ----------------------- */
 
 /* Sixteen buttons wrap to three rows on a phone, which with the keyboard
-   up leaves little of the page. One row scrolls sideways instead, its bar
-   hidden. The bar mounts the count and the session at its head on mobile,
-   with the selection button beside them, so they are never scrolled out of
-   sight. */
-body.is-phone .snowflake-method-manuscript-toolbar {
+   up leaves little of the page, and to two on a tablet whose pane is too
+   narrow for them, in a split or a portrait. One row scrolls sideways
+   instead, its bar hidden. The row starts at its start, so a scroll
+   reaches its head, and the auto margins at its two ends centre it where
+   it fits, as the desktop's row stands: a row that overflows ignores them.
+   The bar mounts the count and the session at its head on mobile, with the
+   selection button beside them, so they are never scrolled out of sight. */
+body.is-mobile .snowflake-method-manuscript-toolbar {
 	flex-wrap: nowrap;
 	justify-content: flex-start;
 	overflow-x: auto;
@@ -20213,8 +20216,16 @@ body.is-phone .snowflake-method-manuscript-toolbar {
 	scrollbar-width: none;
 }
 
-body.is-phone .snowflake-method-manuscript-toolbar::-webkit-scrollbar {
+body.is-mobile .snowflake-method-manuscript-toolbar::-webkit-scrollbar {
 	display: none;
+}
+
+body.is-mobile .snowflake-method-manuscript-toolbar > :first-child {
+	margin-inline-start: auto;
+}
+
+body.is-mobile .snowflake-method-manuscript-toolbar > :last-child {
+	margin-inline-end: auto;
 }
 
 /* -- Mobile: the stream's find bar under its own toolbar ------------------- */

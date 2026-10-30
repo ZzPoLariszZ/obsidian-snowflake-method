@@ -1711,6 +1711,17 @@ describe('styles.css', () => {
 			'z-index: var(--layer-menu)',
 		);
 		expect(declarations('body.is-phone .snowflake-method-sticky-layer')).toContain('display: none');
+		// The stream's formatting bar scrolls sideways in one row on a phone
+		// and on a tablet alike, its row centred by its end margins where it
+		// fits, and no phone-only rule shadows the mobile one.
+		expect(declarations('body.is-mobile .snowflake-method-manuscript-toolbar')).toContain('flex-wrap: nowrap');
+		expect(declarations('body.is-mobile .snowflake-method-manuscript-toolbar')).toContain('justify-content: flex-start');
+		expect(declarations('body.is-mobile .snowflake-method-manuscript-toolbar')).toContain('overflow-x: auto');
+		expect(declarations('body.is-mobile .snowflake-method-manuscript-toolbar > :first-child')).toContain(
+			'margin-inline-start: auto',
+		);
+		expect(declarations('body.is-mobile .snowflake-method-manuscript-toolbar > :last-child')).toContain('margin-inline-end: auto');
+		expect(section('Mobile')).not.toContain('body.is-phone .snowflake-method-manuscript-toolbar');
 		expect(
 			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),
 		).toContain('margin-bottom: max(0px, var(--view-bottom-spacing, 0px))');
