@@ -434,6 +434,21 @@ describe("SnapshotHarvester", () => {
 		expect(HARVEST_BACKOFF_MAX_MS).toBe(6 * HARVEST_INTERVAL_MS);
 	});
 
+	it("keeps the backoff when a tick finds the app hidden", async () => {
+		let out = false;
+		hidden = () => out;
+		harvester = buildHarvester();
+		store.failNextRead(3);
+		await harvester.harvestNow();
+		await timers.flush();
+		expect(timers.delays).toEqual([HARVEST_INTERVAL_MS, 2 * HARVEST_INTERVAL_MS]);
+		// Hidden at the tick, the harvester rests the backoff again, not the interval.
+		out = true;
+		await timers.flush();
+		expect(timers.delays[2]).toBe(2 * HARVEST_INTERVAL_MS);
+		expect(store.readCalls).toHaveLength(2);
+	});
+
 	it("arms the first pass half a minute after the start, then every five minutes", async () => {
 		harvester.start();
 		expect(timers.delays).toEqual([HARVEST_FIRST_PASS_MS]);

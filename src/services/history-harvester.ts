@@ -310,7 +310,7 @@ export class SnapshotHarvester {
 		this.tick = this.deps.timers.set(() => {
 			this.tick = null;
 			if (this.hidden()) {
-				this.arm(this.interval());
+				this.arm(this.restMs());
 				return;
 			}
 			void this.pass();
@@ -321,6 +321,11 @@ export class SnapshotHarvester {
 		if (this.tick === null) return;
 		this.deps.timers.clear(this.tick);
 		this.tick = null;
+	}
+
+	/** How long the harvester rests before its next pass: the interval, or the backoff while the store keeps failing. */
+	private restMs(): number {
+		return this.backoffMs === 0 ? this.interval() : this.backoffMs;
 	}
 
 	private pass(): Promise<void> {
@@ -349,7 +354,7 @@ export class SnapshotHarvester {
 				// Armed whether or not there was a store to read: a store that
 				// comes back, or File recovery turned on again, is met by the
 				// next pass without anything having to wake the harvester.
-				this.arm(this.backoffMs === 0 ? this.interval() : this.backoffMs);
+				this.arm(this.restMs());
 			});
 		this.running = run;
 		return run;
