@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import beatSheetSource from '../../src/ui/beat-sheet.ts?raw';
+import corkboardSource from '../../src/ui/corkboard.ts?raw';
+import freeformSource from '../../src/ui/freeform.ts?raw';
+import relationshipGraphSource from '../../src/ui/relationship-graph.ts?raw';
+import timelineSource from '../../src/ui/timeline.ts?raw';
+
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 
 const { icons, tooltips } = vi.hoisted(() => ({
@@ -45,7 +51,7 @@ function control(): FullScreenControl & { listeners: (() => void)[]; on: boolean
 }
 
 describe('the full screen button', () => {
-	it('stands before the refresh button, wears the maximize symbol and its name, and says it is off', () => {
+	it('stands before the refresh button, wears the expand symbol and its name, and says it is off', () => {
 		const made = end();
 		const asked = control();
 		const button = mountFullScreenButton(made.end, made.refresh, t, asked)!;
@@ -55,11 +61,11 @@ describe('the full screen button', () => {
 		]);
 		expect(button.getAttribute('aria-label')).toBe('storyStructure.fullScreen');
 		expect(button.getAttribute('aria-pressed')).toBe('false');
-		expect(icons.filter((entry) => entry.el === button).map((entry) => entry.icon)).toEqual(['maximize']);
+		expect(icons.filter((entry) => entry.el === button).map((entry) => entry.icon)).toEqual(['expand']);
 		expect(tooltips.filter((entry) => entry.el === button).map((entry) => entry.text)).toEqual(['storyStructure.fullScreen']);
 	});
 
-	it('asks the control to fill the window from a press, and then wears the minimize symbol and the way back', () => {
+	it('asks the control to fill the window from a press, and then wears the shrink symbol and the way back', () => {
 		const made = end();
 		const asked = control();
 		const button = mountFullScreenButton(made.end, made.refresh, t, asked)!;
@@ -67,11 +73,24 @@ describe('the full screen button', () => {
 		expect(asked.on).toBe(true);
 		expect(button.getAttribute('aria-label')).toBe('storyStructure.fullScreen.exit');
 		expect(button.getAttribute('aria-pressed')).toBe('true');
-		expect(icons.filter((entry) => entry.el === button).map((entry) => entry.icon)).toEqual(['maximize', 'minimize']);
+		expect(icons.filter((entry) => entry.el === button).map((entry) => entry.icon)).toEqual(['expand', 'shrink']);
 		(button as unknown as CorkboardElement).click();
 		expect(asked.on).toBe(false);
 		expect(button.getAttribute('aria-label')).toBe('storyStructure.fullScreen');
-		expect(icons.filter((entry) => entry.el === button).map((entry) => entry.icon)).toEqual(['maximize', 'minimize', 'maximize']);
+		expect(icons.filter((entry) => entry.el === button).map((entry) => entry.icon)).toEqual(['expand', 'shrink', 'expand']);
+	});
+
+	/**
+	 * The boards' fit buttons wear the maximize brackets, and the full screen
+	 * button beside them wore the same, which read as one control twice on
+	 * the relationship graph. Its arrows are its own: no board's toolbar
+	 * button wears them.
+	 */
+	it('wears symbols no board’s toolbar button wears', () => {
+		for (const source of [beatSheetSource, corkboardSource, freeformSource, relationshipGraphSource, timelineSource]) {
+			expect(source).not.toMatch(/(?:toolbarIconButton|iconButton)\([^)]*'(?:expand|shrink)'/u);
+		}
+		expect(relationshipGraphSource).toMatch(/relationship-graph-fit', 'maximize'/u);
 	});
 
 	it('repaints when the answer moved elsewhere, as it does when Escape or a hidden tab hands the window back', () => {

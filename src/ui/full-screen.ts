@@ -28,7 +28,9 @@ export interface FullScreenControl {
  * The full screen button of a board's toolbar, standing before the button
  * handed in, the refresh, which is where a tablet's toolbar keeps the two
  * while the rest go into a menu. A board with no control, one that stands in
- * another's frame, gets no button and null.
+ * another's frame, gets no button and null. Its symbols are the arrows that
+ * reach out to the corners and back, not the corner brackets the boards'
+ * fit buttons wear, which read as the same control beside them.
  */
 export function mountFullScreenButton(
 	end: HTMLElement,
@@ -37,13 +39,13 @@ export function mountFullScreenButton(
 	control: FullScreenControl | undefined,
 ): HTMLButtonElement | null {
 	if (control === undefined) return null;
-	const button = toolbarIconButton(end, 'snowflake-method-toolbar-full-screen', 'maximize', t('storyStructure.fullScreen'));
+	const button = toolbarIconButton(end, 'snowflake-method-toolbar-full-screen', 'expand', t('storyStructure.fullScreen'));
 	end.insertBefore(button, before);
-	const memo: SymbolMemo = { icon: 'maximize' };
+	const memo: SymbolMemo = { icon: 'expand' };
 	const paint = (): void => {
 		const active = control.active();
 		paintSymbol(button, memo, {
-			icon: active ? 'minimize' : 'maximize',
+			icon: active ? 'shrink' : 'expand',
 			label: t(active ? 'storyStructure.fullScreen.exit' : 'storyStructure.fullScreen'),
 			pressed: active,
 			disabled: false,
