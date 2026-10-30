@@ -419,6 +419,7 @@ export function renderMarginCardsList(
 
 	const unsubscribe = deps.hub.subscribe((event) => {
 		if (event.kind === 'feed') paint();
+		else if (event.kind === 'viewport') markCards(event.inView);
 		else if (event.kind === 'spotlight') spotlight(event.key);
 		else follow(event.key);
 	});

@@ -25,9 +25,10 @@ export interface MarginCardsFeed {
 	locate(path: string, key: string): void;
 }
 
-/** What the hub tells a listener: the feed changed, a card was named, or the caret moved. */
+/** What the hub tells a listener: the feed changed, the cards on the screen changed, a card was named, or the caret moved. */
 export type MarginCardsEvent =
 	| { kind: 'feed' }
+	| { kind: 'viewport'; inView: ReadonlySet<string> }
 	| { kind: 'spotlight'; key: string }
 	| { kind: 'caret'; key: string | null };
 
@@ -78,14 +79,29 @@ export class MarginCardsHub {
 		this.notify({ kind: 'feed' });
 	}
 
+	/**
+	 * Says which of a stream's cards have their words on the screen now, as
+	 * its page scrolls. The feed is kept level, and a listening sidebar
+	 * re-marks its cards without drawing the column again, when the stream
+	 * is the one on show.
+	 */
+	viewport(source: object, inView: ReadonlySet<string>): void {
+		const feed = this.feeds.get(source);
+		if (feed === undefined) return;
+		this.feeds.set(source, { ...feed, inView });
+		if (this.shown() === source) this.notify({ kind: 'viewport', inView });
+	}
+
 	/** The feed on show: the preferred stream's while it has one, else the latest. */
 	current(): MarginCardsFeed | null {
-		if (this.preferred !== null) {
-			const feed = this.feeds.get(this.preferred);
-			if (feed !== undefined) return feed;
-		}
-		const latest = this.order[this.order.length - 1];
-		return latest === undefined ? null : (this.feeds.get(latest) ?? null);
+		const source = this.shown();
+		return source === null ? null : (this.feeds.get(source) ?? null);
+	}
+
+	/** The stream on show: the preferred one while it has a feed, else the latest publisher. */
+	private shown(): object | null {
+		if (this.preferred !== null && this.feeds.has(this.preferred)) return this.preferred;
+		return this.order[this.order.length - 1] ?? null;
 	}
 
 	/**

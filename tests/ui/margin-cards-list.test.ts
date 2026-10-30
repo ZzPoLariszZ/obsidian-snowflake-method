@@ -272,6 +272,12 @@ describe('the margin card sidebar', () => {
 		expect(keysIn(host)).toEqual(['rev-1', 'fs:occ-1']);
 		const card = host.querySelector<HTMLElement>('.snowflake-method-rail-card');
 		expect(card?.classList.contains('is-in-view')).toBe(true);
+		// A scroll re-marks the cards and draws nothing else again.
+		hub.viewport(source, new Set());
+		expect(card?.classList.contains('is-in-view')).toBe(false);
+		hub.viewport(source, new Set(['rev-1']));
+		expect(card?.classList.contains('is-in-view')).toBe(true);
+		expect(host.querySelector('.snowflake-method-rail-card')).toBe(card);
 		// The way to the words steps aside first, then asks the stream.
 		card?.querySelector<HTMLButtonElement>('.snowflake-method-rail-locate')?.click();
 		expect(asides).toEqual([1]);

@@ -15,7 +15,7 @@ const feed = (tight = false): MarginCardsFeed => ({
 
 /** An event as a short line, for a transcript to compare. */
 const line = (event: MarginCardsEvent): string =>
-	event.kind === 'feed' ? 'feed' : `${event.kind}:${event.key ?? '-'}`;
+	'key' in event ? `${event.kind}:${event.key ?? '-'}` : event.kind;
 
 describe('the margin cards hub', () => {
 	it('lists the latest publisher until a leaf is preferred', () => {
@@ -46,6 +46,26 @@ describe('the margin cards hub', () => {
 		hub.publish(source, feed());
 		expect(heard).toEqual(['feed']);
 		expect(hub.current()).not.toBeNull();
+	});
+
+	it('passes the cards on the screen along without a new feed, for the stream on show alone', () => {
+		const hub = new MarginCardsHub();
+		const heard: string[] = [];
+		hub.subscribe((event) => heard.push(line(event)));
+		const front = {};
+		const behind = {};
+		hub.publish(behind, feed());
+		hub.publish(front, feed());
+		hub.viewport(front, new Set(['rev-1']));
+		expect([...(hub.current()?.inView ?? [])]).toEqual(['rev-1']);
+		// The stream behind keeps its own answer, and rings no bell for it.
+		hub.viewport(behind, new Set(['rev-2']));
+		expect(heard).toEqual(['feed', 'feed', 'viewport']);
+		hub.prefer(behind);
+		expect([...(hub.current()?.inView ?? [])]).toEqual(['rev-2']);
+		// A stream that never published has nothing to keep level.
+		hub.viewport({}, new Set(['rev-3']));
+		expect(heard).toEqual(['feed', 'feed', 'viewport', 'feed']);
 	});
 
 	it('rings on every change and keeps a spotlight for a moment', () => {

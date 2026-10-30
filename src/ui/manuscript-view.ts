@@ -294,6 +294,11 @@ const sameMentionMarks = (
  * does not require that, and a backend that can hold several says so by holding
  * several.
  */
+/** Whether two sets hold the same keys. */
+function sameKeys(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+	return a.size === b.size && [...a].every((key) => b.has(key));
+}
+
 export class SnowflakeManuscriptView extends ItemView {
 	/** The page-preview popover over this view's links, held as HoverParent. */
 	hoverPopover: HoverPopover | null = null;
@@ -337,6 +342,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private caretCard: string | null = null;
 	/** The frame owed to the sidebar after a scroll, while one is pending. */
 	private marginViewportFrame: number | null = null;
+	/** The cards on the screen as the sidebar was last told, so a frame of scrolling that moved none says nothing. */
+	private marginInView: ReadonlySet<string> = new Set();
 	/** Set as the view closes: the chapters coming down publish no feed, so the hub forgets the view for good. */
 	private closing = false;
 	/** Takes down the writing faces the bar carries on mobile, where it carries any. */
@@ -3450,9 +3457,6 @@ export class SnowflakeManuscriptView extends ItemView {
 		const stream = this.streamEl;
 		if (stream === null || this.closing) return;
 		const segments: MarginCardsSegment[] = [];
-		const inView = new Set<string>();
-		const edge = stream.getBoundingClientRect().top;
-		const floor = edge + stream.clientHeight;
 		let count = 0;
 		for (const segment of this.model?.segments ?? []) {
 			const entry = this.mounted.get(segment.path);
@@ -3470,12 +3474,12 @@ export class SnowflakeManuscriptView extends ItemView {
 				model: entry.railModel,
 				callbacks: entry.railCallbacks,
 			});
-			entry.rail.each((key, card) => {
+			entry.rail.each(() => {
 				count += 1;
-				const box = card.getBoundingClientRect();
-				if (box.bottom > edge && box.top < floor) inView.add(key);
 			});
 		}
+		const inView = this.cardsInView(stream);
+		this.marginInView = inView;
 		this.toolbarCardCount?.setText(String(count));
 		this.toolbarCardCount?.toggleClass('is-empty', count === 0);
 		this.host.marginCards.publish(this, {
@@ -3538,13 +3542,41 @@ export class SnowflakeManuscriptView extends ItemView {
 		return null;
 	}
 
-	/** The sidebar told where the page stands, once per frame of scrolling. */
+	/**
+	 * The sidebar told where the page stands, once per frame of scrolling:
+	 * which cards are on the screen now, and nothing of the feed itself,
+	 * which a scroll leaves as it was. A frame that moved no card past an
+	 * edge says nothing at all.
+	 */
 	private scheduleMarginViewport(): void {
 		if (this.marginViewportFrame !== null) return;
 		this.marginViewportFrame = this.contentEl.win.requestAnimationFrame(() => {
 			this.marginViewportFrame = null;
-			this.publishMarginCards();
+			const stream = this.streamEl;
+			if (stream === null || this.closing) return;
+			const inView = this.cardsInView(stream);
+			if (sameKeys(inView, this.marginInView)) return;
+			this.marginInView = inView;
+			this.host.marginCards.viewport(this, inView);
 		});
+	}
+
+	/** The keys of the cards whose words stand on the screen, among the rails on the page. */
+	private cardsInView(stream: HTMLElement): Set<string> {
+		const inView = new Set<string>();
+		const edge = stream.getBoundingClientRect().top;
+		const floor = edge + stream.clientHeight;
+		for (const segment of this.model?.segments ?? []) {
+			const entry = this.mounted.get(segment.path);
+			if (entry === undefined || entry.rail === null || entry.railModel === null || entry.railCallbacks === null) {
+				continue;
+			}
+			entry.rail.each((key, card) => {
+				const box = card.getBoundingClientRect();
+				if (box.bottom > edge && box.top < floor) inView.add(key);
+			});
+		}
+		return inView;
 	}
 
 	/**
