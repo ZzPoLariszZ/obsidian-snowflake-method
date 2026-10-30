@@ -1,7 +1,7 @@
 import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import type { Revision } from '../domain';
-import { hangPanel, type HungPanel } from './anchored-panel';
+import type { FilterRow, LentFilterPopover } from './filter-rows';
 import type { ForeshadowingCardEntry } from './foreshadowing-cards';
 import { SPOTLIGHT_PATIENCE_MS, type MarginCardsHub } from './margin-cards-hub';
 import type { Translate } from './modals';
@@ -12,6 +12,7 @@ import {
 	type RevisionRailCallbacks,
 	type RevisionRailModel,
 } from './revision-cards';
+import { foreshadowingFilterRows, revisionFilterRows } from './tracking-filter-rows';
 
 export interface MarginCardsListDeps {
 	hub: MarginCardsHub;
@@ -22,44 +23,59 @@ export interface MarginCardsListDeps {
 	 * flash is seen; on the desktop there is nothing to do.
 	 */
 	stepAside(): void;
+	/** The funnel popover, lent by the view that holds the column. */
+	popover: LentFilterPopover;
 }
 
 export const MARGIN_CARD_KINDS = ['all', 'revisions', 'foreshadowing'] as const;
 export type MarginCardsKind = (typeof MARGIN_CARD_KINDS)[number];
 
-/** What the band narrows the column to: words to match and a kind of card. */
+/**
+ * What the band narrows the column to: words to match, a kind of card and,
+ * under a kind, the answers to that kind's own questions, the ones its
+ * dashboard table asks. The answers under the other kind are at rest.
+ */
 export interface MarginCardsLens {
 	query: string;
 	kind: MarginCardsKind;
+	/** The revision table's: a kind of revision, and 'conflict' for only those. */
+	revision: { kind: string; standing: string };
+	/** The foreshadowing table's: the thread's status, the occurrence's role, and 'unresolved' for only those. */
+	foreshadowing: { status: string; role: string; standing: string };
 }
 
-export const marginCardsLens = (): MarginCardsLens => ({ query: '', kind: 'all' });
+export const marginCardsLens = (): MarginCardsLens => ({
+	query: '',
+	kind: 'all',
+	revision: { kind: '', standing: '' },
+	foreshadowing: { status: '', role: '', standing: '' },
+});
 
 const isKind = (value: string): value is MarginCardsKind =>
 	(MARGIN_CARD_KINDS as readonly string[]).includes(value);
-
-const kindLabel = (t: Translate, kind: MarginCardsKind): string =>
-	kind === 'all'
-		? t('marginCards.kindAll')
-		: kind === 'revisions'
-			? t('marginCards.kindRevisions')
-			: t('marginCards.kindForeshadowing');
 
 const matches = (fields: readonly string[], query: string): boolean =>
 	query === '' || fields.some((field) => field.toLowerCase().includes(query));
 
 /**
- * One chapter's cards through the lens: the kinds asked for, holding the
- * words searched for anywhere a card prints them. The draft never lists.
+ * One chapter's cards through the lens: the kinds asked for, answering the
+ * kind's own questions, holding the words searched for anywhere a card
+ * prints them. The draft never lists.
  */
 export function throughLens(model: RevisionRailModel, lens: MarginCardsLens): RevisionRailModel {
 	const query = lens.query.trim().toLowerCase();
 	const revisions = lens.kind !== 'foreshadowing';
 	const threads = lens.kind !== 'revisions';
-	const revisionFits = (revision: Revision): boolean =>
-		revisions && matches([revision.originalText, revision.proposed, revision.comment], query);
-	const threadFits = (entry: ForeshadowingCardEntry): boolean =>
+	const revisionFits = (revision: Revision, conflict: boolean): boolean =>
+		revisions &&
+		(lens.revision.kind === '' || revision.kind === lens.revision.kind) &&
+		(lens.revision.standing === '' || conflict) &&
+		matches([revision.originalText, revision.proposed, revision.comment], query);
+	const threadFits = (entry: ForeshadowingCardEntry, unresolved: boolean): boolean =>
 		threads &&
+		(lens.foreshadowing.status === '' || entry.item.status === lens.foreshadowing.status) &&
+		(lens.foreshadowing.role === '' || entry.occurrence.role === lens.foreshadowing.role) &&
+		(lens.foreshadowing.standing === '' || unresolved) &&
 		matches(
 			[
 				entry.item.name,
@@ -71,11 +87,11 @@ export function throughLens(model: RevisionRailModel, lens: MarginCardsLens): Re
 		);
 	return {
 		...model,
-		entries: model.entries.filter((entry) => revisionFits(entry.revision)),
-		conflicts: model.conflicts.filter(revisionFits),
+		entries: model.entries.filter((entry) => revisionFits(entry.revision, false)),
+		conflicts: model.conflicts.filter((revision) => revisionFits(revision, true)),
 		foreshadowing: {
-			entries: model.foreshadowing.entries.filter(threadFits),
-			unresolved: model.foreshadowing.unresolved.filter(threadFits),
+			entries: model.foreshadowing.entries.filter((entry) => threadFits(entry, false)),
+			unresolved: model.foreshadowing.unresolved.filter((entry) => threadFits(entry, true)),
 		},
 	};
 }
@@ -116,7 +132,7 @@ export interface MarginCardsList {
  * with cards, headed by its title, the cards in reading order and drawn by
  * the rail itself, so they accept, reject, edit and jump as the margin's
  * do. A band over the column searches the cards and narrows them to a
- * kind. The column follows the stream through the hub: a chapter that
+ * kind and, under it, by the kind's own questions. The column follows the stream through the hub: a chapter that
  * leaves the page takes its cards with it, the cards whose words are on the
  * screen are marked, the card whose words hold the caret is marked and
  * kept in view, and a jump that landed on a card brings it into view here.
@@ -164,76 +180,38 @@ export function renderMarginCardsList(
 		filterButton.toggleClass('is-active', lens.kind !== 'all');
 	};
 	markFilterButton();
-	let filterPanel: HungPanel | null = null;
-	const closeFilterPanel = (): void => {
-		const open = filterPanel;
-		if (open === null) return;
-		filterPanel = null;
-		open.release();
-		open.el.remove();
-		filterButton.setAttribute('aria-expanded', 'false');
-	};
-	const openFilterPanel = (): void => {
-		closeFilterPanel();
-		// Held on an object: the button is made inside the build and focused after.
-		const focus: { button: HTMLButtonElement | null } = { button: null };
-		filterPanel = hangPanel(filterButton, {
-			cls: 'snowflake-method-filter-panel snowflake-method-margin-cards-filter-panel',
-			label: deps.t('table.filter'),
-			build: (panel) => {
-				panel.createDiv({
-					cls: 'snowflake-method-filter-panel-title',
-					text: deps.t('table.filter'),
-				});
-				const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
-				const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
-				field.createDiv({
-					cls: 'snowflake-method-filter-label',
-					text: deps.t('marginCards.kind'),
-				});
-				// A draft until confirmed, as the sticky board's colour is.
-				const pick = field.createEl('select', {
-					cls: 'dropdown',
-					attr: { 'aria-label': deps.t('marginCards.kind') },
-				});
-				for (const kind of MARGIN_CARD_KINDS) {
-					const option = pick.createEl('option', { text: kindLabel(deps.t, kind) });
-					option.value = kind;
-				}
-				pick.value = lens.kind;
-				const actions = panel.createDiv({
-					cls: 'snowflake-method-filter-panel-actions',
-				});
-				const reset = actions.createEl('button', {
-					cls: 'snowflake-method-filter-reset',
-					text: deps.t('table.filterReset'),
-					attr: { type: 'button' },
-				});
-				reset.addEventListener('click', () => {
-					pick.value = 'all';
-				});
-				const confirm = actions.createEl('button', {
-					cls: 'mod-cta',
-					text: deps.t('table.filterConfirm'),
-					attr: { type: 'button' },
-				});
-				focus.button = confirm;
-				confirm.addEventListener('click', () => {
-					lens.kind = isKind(pick.value) ? pick.value : 'all';
-					closeFilterPanel();
-					markFilterButton();
-					stamp += 1;
-					paint();
-				});
+	// The funnel's questions in the dashboard's own popover: the kind, and
+	// under a kind the questions that kind's table asks, drawn once the kind
+	// is picked. The answers under a kind not picked are applied as at rest.
+	const filterRows = (): FilterRow[] => [
+		{
+			label: deps.t('marginCards.kind'),
+			placeholder: deps.t('marginCards.kindAll'),
+			empty: 'all',
+			options: () => [
+				{ value: 'revisions', label: deps.t('marginCards.kindRevisions') },
+				{ value: 'foreshadowing', label: deps.t('marginCards.kindForeshadowing') },
+			],
+			value: lens.kind,
+			apply: (value) => {
+				lens.kind = isKind(value) ? value : 'all';
 			},
-			onClose: closeFilterPanel,
-		});
-		filterButton.setAttribute('aria-expanded', 'true');
-		focus.button?.focus();
-	};
+			under: {
+				revisions: revisionFilterRows(deps.t, lens.revision),
+				foreshadowing: foreshadowingFilterRows(deps.t, lens.foreshadowing),
+			},
+		},
+	];
 	filterButton.addEventListener('click', () => {
-		if (filterPanel !== null) closeFilterPanel();
-		else openFilterPanel();
+		if (deps.popover.filterOpen()) {
+			deps.popover.closeFilter();
+			return;
+		}
+		deps.popover.openFilter(filterButton, filterRows(), () => {
+			markFilterButton();
+			stamp += 1;
+			paint();
+		});
 	});
 	const stateText = band.createSpan({ cls: 'snowflake-method-prose-state' });
 
@@ -264,6 +242,7 @@ export function renderMarginCardsList(
 		});
 		const rail = renderRevisionRail(el, callbacks, {
 			layout: 'list',
+			caretMark: deps.t('marginCards.atCaret'),
 			locate: {
 				label: deps.t('marginCards.show'),
 				act: (key) => {
@@ -452,7 +431,7 @@ export function renderMarginCardsList(
 	return {
 		reveal,
 		dispose: () => {
-			closeFilterPanel();
+			deps.popover.closeFilter();
 			unsubscribe();
 			for (const block of blocks.values()) block.rail.dispose();
 			blocks.clear();

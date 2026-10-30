@@ -1634,6 +1634,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'marginCards.kindRevisions': '修订',
 	'marginCards.kindForeshadowing': '伏笔',
 	'marginCards.noMatch': '没有匹配的页边卡片。',
+	'marginCards.atCaret': '光标在这段文字里',
 	'stickyNotes.add': '添加便签',
 	'stickyNotes.empty': '暂无便签',
 	'stickyNotes.noMatch': '没有匹配的便签',

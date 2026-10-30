@@ -22,6 +22,13 @@ export interface FilterOptionRow {
 	/** What the table is filtered by now, which the panel opens on. */
 	value: string;
 	apply: (value: string) => void;
+	/**
+	 * Questions asked only under some of this one's answers, keyed by the
+	 * answer: the panel draws them under this row while that answer is
+	 * drafted and redraws them when the draft changes. A question not on
+	 * show when the panel is confirmed is applied as not asked.
+	 */
+	under?: Readonly<Record<string, readonly FilterRow[]>>;
 }
 
 /** A range is edited as text until the caller parses its confirmed bounds. */

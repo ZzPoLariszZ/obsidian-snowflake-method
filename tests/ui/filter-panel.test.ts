@@ -2,7 +2,8 @@ import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 
 import { FilterPanel } from '../../src/ui/filter-panel';
-import type { FilterRangeRow } from '../../src/ui/filter-rows';
+import { MACARON_COLORS } from '../../src/domain/macaron';
+import type { FilterOptionRow, FilterRangeRow } from '../../src/ui/filter-rows';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
 // Positioning is independent of the range fields' draft and confirm behavior.
@@ -88,5 +89,89 @@ describe('scene range fields in the filter panel', () => {
 		expect(view.inputs().map((input) => input.value)).toEqual(['2', '8']);
 		expect(view.apply).not.toHaveBeenCalled();
 		view.panel.close();
+	});
+});
+
+describe('questions under an answer', () => {
+	const [rose, mint] = MACARON_COLORS;
+	if (rose === undefined || mint === undefined) throw new Error('two colours wanted');
+
+	/** A colour question, answered by its strip, with questions under some answers. */
+	const question = (
+		applied: string[],
+		label: string,
+		value = '',
+		under?: FilterOptionRow['under'],
+	): FilterOptionRow => ({
+		label,
+		presentation: 'color-swatches',
+		placeholder: `any ${label}`,
+		empty: '',
+		options: () => [],
+		value,
+		apply: (next) => {
+			applied.push(`${label}=${next}`);
+		},
+		...(under === undefined ? {} : { under }),
+	});
+
+	function branching(groundValue = '', edgeValue = '') {
+		const dom = new CorkboardDom();
+		Object.assign(dom.win, { activeDocument: dom.doc });
+		const anchor = dom.container.createEl('button');
+		const applied: string[] = [];
+		const changed = vi.fn();
+		const rows = [
+			question(applied, 'ground', groundValue, {
+				[rose]: [question(applied, 'rose edge', edgeValue)],
+				[mint]: [question(applied, 'mint edge')],
+			}),
+		];
+		const panel = new FilterPanel({} as App, (key) => key);
+		panel.open(anchor as unknown as HTMLElement, rows, changed);
+		const labels = (): (string | null)[] =>
+			dom.container
+				.querySelectorAll('.snowflake-method-filter-label')
+				.map((label) => label.textContent);
+		const pick = (field: number, color: string): void => {
+			const strip = dom.container.querySelectorAll('.snowflake-method-sticky-swatches')[field];
+			if (strip === undefined) throw new Error(`no strip ${String(field)}`);
+			const swatch = strip
+				.querySelectorAll('.snowflake-method-sticky-swatch')
+				.find((candidate) => candidate.getAttribute('data-color') === color);
+			if (swatch === undefined) throw new Error(`no swatch ${color}`);
+			swatch.dispatch('click');
+		};
+		const press = (selector: string): void => {
+			const button = dom.container.querySelector(selector);
+			if (button === null) throw new Error(`Missing ${selector}`);
+			button.dispatch('click');
+		};
+		return { panel, applied, changed, labels, pick, press };
+	}
+
+	it('draws them while that answer is drafted, and applies the ones not drawn as not asked', () => {
+		const view = branching();
+		expect(view.labels()).toEqual(['ground']);
+		view.pick(0, rose);
+		expect(view.labels()).toEqual(['ground', 'rose edge']);
+		view.pick(1, mint);
+		// Another answer on the ground: the rose edge goes, the mint edge comes, unanswered.
+		view.pick(0, mint);
+		expect(view.labels()).toEqual(['ground', 'mint edge']);
+		view.press('.mod-cta');
+		expect(view.applied).toEqual(['ground=' + mint, 'rose edge=', 'mint edge=']);
+		expect(view.changed).toHaveBeenCalledOnce();
+		expect(view.panel.isOpen()).toBe(false);
+	});
+
+	it('opens on the answers held, under too, and a reset reaches under', () => {
+		const view = branching(rose, mint);
+		expect(view.labels()).toEqual(['ground', 'rose edge']);
+		view.press('.snowflake-method-filter-reset');
+		expect(view.labels()).toEqual(['ground']);
+		expect(view.applied).toEqual([]);
+		view.press('.mod-cta');
+		expect(view.applied).toEqual(['ground=', 'rose edge=', 'mint edge=']);
 	});
 });

@@ -30,6 +30,7 @@ import type { FilterRow, LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
 import { renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
+import { revisionFilterRows } from './tracking-filter-rows';
 import { VirtualTable, buildTableFrame } from './virtual-table';
 
 /**
@@ -248,31 +249,7 @@ export function renderRevisionPanel(
 		kind: REVISION_KINDS.find((kind) => kind === filters.kind) ?? '',
 		standing: filters.standing === 'conflict' ? 'conflict' : '',
 	});
-	const filterRows = (): FilterRow[] => [
-		{
-			label: t('revisionTable.type'),
-			placeholder: t('revisionTable.filterAllTypes'),
-			empty: '',
-			options: () =>
-				REVISION_KINDS.map((kind) => ({ value: kind, label: kindOf(kind) })),
-			value: filters.kind,
-			apply: (value) => {
-				filters.kind = value;
-			},
-		},
-		{
-			label: t('revisionTable.standing'),
-			placeholder: t('revisionTable.filterAllStandings'),
-			empty: '',
-			options: () => [
-				{ value: 'conflict', label: t('revisionTable.conflictOnly') },
-			],
-			value: filters.standing,
-			apply: (value) => {
-				filters.standing = value;
-			},
-		},
-	];
+	const filterRows = (): FilterRow[] => revisionFilterRows(t, filters);
 	const markFilterButton = (): void => {
 		const { kind, standing } = asked();
 		filterButton.toggleClass('is-active', kind !== '' || standing !== '');

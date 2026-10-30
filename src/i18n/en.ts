@@ -1754,6 +1754,7 @@ export const en = {
 	'marginCards.kindRevisions': 'Revisions',
 	'marginCards.kindForeshadowing': 'Foreshadowing',
 	'marginCards.noMatch': 'No margin cards match.',
+	'marginCards.atCaret': 'The cursor is in these words',
 	'stickyNotes.add': 'Add sticky note',
 	'stickyNotes.empty': 'No sticky notes',
 	'stickyNotes.noMatch': 'No sticky notes match',

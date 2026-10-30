@@ -337,16 +337,24 @@ describe('styles.css', () => {
 		const list = declarations('.snowflake-method-revision-rail.is-list');
 		expect(list).toContain('position: static');
 		expect(list).toContain('flex-direction: column');
-		expect(list).toContain('align-items: flex-start');
+		expect(list).toContain('align-items: stretch');
 		const listed = declarations('.snowflake-method-revision-rail.is-list .snowflake-method-rail-card');
 		expect(listed).toContain('position: static');
 		expect(listed).not.toContain('top ');
-		// Between the margin's floor and a reading measure, however wide the sidebar.
-		expect(listed).toContain(`width: clamp(${String(RAIL_FLOOR)}px, 100%, 20rem)`);
+		expect(listed).toContain('width: 100%');
 		expect(listed).toContain('box-sizing: border-box');
+		// Each chapter's block stands centred, between the margin's floor and a
+		// reading measure, however wide the sidebar.
+		const chapter = declarations('.snowflake-method-margin-cards-chapter');
+		expect(chapter).toContain(`width: clamp(${String(RAIL_FLOOR)}px, 100%, 20rem)`);
+		expect(chapter).toContain('margin-inline: auto');
+		// The caret's card wears a cursor at the head of its compass and no colour of its own.
+		expect(declarations('.snowflake-method-rail-caret')).toContain('display: none');
 		expect(
-			declarations('.snowflake-method-revision-rail.is-list .snowflake-method-rail-card.is-caret'),
-		).toContain('border-left-color: var(--interactive-accent)');
+			declarations('.snowflake-method-rail-card.is-caret .snowflake-method-rail-caret'),
+		).toContain('display: inline-flex');
+		// The questions under a funnel answer take the rows' own spacing.
+		expect(declarations('.snowflake-method-filter-branch')).toContain('display: contents');
 		// The count stands beside the icon, never over it.
 		const count = declarations('.snowflake-method-toolbar-count');
 		expect(count).not.toContain('position');
@@ -1684,6 +1692,13 @@ describe('styles.css', () => {
 			'max-height: calc(100% - var(--safe-area-inset-top, 0px) - var(--keyboard-height, 0px))',
 		);
 		expect(declarations('body.is-phone .snowflake-method-filter-panel')).toContain('inset: auto 0 var(--keyboard-height, 0px) 0');
+		// A field's list opens upward from the foot of a sheet, in the sheet's
+		// own layer: the app's notice layer, where it draws its lists, is under
+		// the menus' layer the sheet stands in.
+		expect(declarations('body.is-phone .snowflake-method-filter-panel')).toContain('z-index: var(--layer-menu)');
+		expect(declarations('body.is-phone .suggestion-container.snowflake-method-option-picker-suggestions')).toContain(
+			'z-index: var(--layer-menu)',
+		);
 		expect(declarations('body.is-phone .snowflake-method-sticky-layer')).toContain('display: none');
 		expect(
 			declarations("body.is-phone .mod-root .workspace-leaf-content[data-type^='snowflake-method-'] > .view-content"),

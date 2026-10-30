@@ -2512,6 +2512,12 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	overflow-y: auto;
 }
 
+/* The questions under an answer stand in the panel's own column: the box
+   that holds them is drawn as nothing, so they take the rows' spacing. */
+.snowflake-method-filter-branch {
+	display: contents;
+}
+
 .snowflake-method-filter-row {
 	display: flex;
 	flex-direction: column;
@@ -7625,6 +7631,14 @@ body {
 	min-height: 0;
 }
 
+/* Each chapter's block, its title over its cards, stands centred in the
+   column at a width between the margin's own floor and a reading measure,
+   so a wide sidebar does not stretch the cards' fields across. */
+.snowflake-method-margin-cards-chapter {
+	width: clamp(192px, 100%, 20rem);
+	margin-inline: auto;
+}
+
 .snowflake-method-margin-cards-chapter + .snowflake-method-margin-cards-chapter {
 	margin-top: var(--size-4-4);
 }
@@ -7640,19 +7654,17 @@ body {
 	position: static;
 	display: flex;
 	flex-direction: column;
-	align-items: flex-start;
+	align-items: stretch;
 	gap: var(--size-4-2);
 	width: auto;
 }
 
 /* A listed card stands in the flow: no top to glide to, and no place to
    hold while a tight pane hides it, since the list is where a tight pane's
-   cards are read. It takes the column's width between the margin's own
-   floor and a reading measure, so a wide sidebar does not stretch its
-   fields across. */
+   cards are read. It takes its chapter's block whole. */
 .snowflake-method-revision-rail.is-list .snowflake-method-rail-card {
 	position: static;
-	width: clamp(192px, 100%, 20rem);
+	width: 100%;
 	box-sizing: border-box;
 	transition:
 		border-color 150ms ease-out,
@@ -7669,11 +7681,20 @@ body {
 	border-left-color: var(--color-purple);
 }
 
-/* The listed card whose words hold the caret wears the accent on its
-   stripe for as long as the caret stays, so the column says which card
-   the author is in. */
-.snowflake-method-revision-rail.is-list .snowflake-method-rail-card.is-caret {
-	border-left-color: var(--interactive-accent);
+/* The listed card whose words hold the caret says so with a text cursor
+   at the head of its compass, and with nothing else: its stripe and its
+   ground stay the kind's own. */
+.snowflake-method-rail-caret {
+	--icon-size: var(--icon-xs);
+
+	display: none;
+	align-items: center;
+	padding: var(--size-2-2);
+	color: var(--text-accent);
+}
+
+.snowflake-method-rail-card.is-caret .snowflake-method-rail-caret {
+	display: inline-flex;
 }
 
 /* The count of cards on the stream's door to the sidebar: a small figure
@@ -20841,6 +20862,15 @@ body.is-phone .snowflake-method-presentation-panel {
 	border-width: 0;
 	border-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
 	box-shadow: var(--shadow-l);
+}
+
+/* A field's list opens upward from a field near the foot of the sheet, and
+   the app draws its lists in the notices' layer, under the menus' where the
+   sheet stands: the list would be covered by the sheet it belongs to. It is
+   lifted to the sheet's layer, where it paints over the sheet as the later
+   of the two. */
+body.is-phone .suggestion-container.snowflake-method-option-picker-suggestions {
+	z-index: var(--layer-menu);
 }
 
 /* -- Phone: boards --------------------------------------------------------- */

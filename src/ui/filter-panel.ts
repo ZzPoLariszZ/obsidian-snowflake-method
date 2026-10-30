@@ -18,6 +18,53 @@ import type { Translate } from './modals';
 import { buildOptionField, type OptionPicker } from './option-picker';
 import { renderStickySwatches } from './sticky-note-card';
 
+/** The rows copied, branches and all, so nothing changes until confirmed. */
+const draftOf = (rows: readonly FilterRow[]): FilterRow[] =>
+	rows.map((entry) => {
+		if (entry.presentation === 'number-range') {
+			return { ...entry, min: { ...entry.min }, max: { ...entry.max } };
+		}
+		if (entry.under === undefined) return { ...entry };
+		return {
+			...entry,
+			under: Object.fromEntries(
+				Object.entries(entry.under).map(([answer, under]) => [answer, draftOf(under)]),
+			),
+		};
+	});
+
+/**
+ * The drafted answers handed back, and those under an answer not drafted
+ * handed back as not asked: a question that was not on show cannot have
+ * been answered.
+ */
+const applyRows = (rows: readonly FilterRow[], shown: boolean): void => {
+	for (const entry of rows) {
+		if (entry.presentation === 'number-range') {
+			if (shown) entry.apply(entry.min.value, entry.max.value);
+			else entry.apply('', '');
+			continue;
+		}
+		entry.apply(shown ? entry.value : entry.empty);
+		for (const [answer, under] of Object.entries(entry.under ?? {})) {
+			applyRows(under, shown && answer === entry.value);
+		}
+	}
+};
+
+/** Every answer back at rest, under every branch too. */
+const clearRows = (rows: readonly FilterRow[]): void => {
+	for (const entry of rows) {
+		if (entry.presentation === 'number-range') {
+			entry.min.value = '';
+			entry.max.value = '';
+			continue;
+		}
+		entry.value = entry.empty;
+		for (const under of Object.values(entry.under ?? {})) clearRows(under);
+	}
+};
+
 export class FilterPanel {
 	/** The pickers the open panel is using, for release. */
 	private pickers: OptionPicker[] = [];
@@ -71,30 +118,21 @@ export class FilterPanel {
 		// What the panel is being set to, until it is confirmed. The table keeps
 		// showing what it was showing while the fields are being worked out, and
 		// a panel dismissed without confirming changes nothing.
-		const draft = rows.map((entry) =>
-			entry.presentation === 'number-range'
-				? { ...entry, min: { ...entry.min }, max: { ...entry.max } }
-				: { ...entry },
-		);
+		const draft = draftOf(rows);
 		const apply = (): void => {
-			for (const entry of draft) {
-				if (entry.presentation === 'number-range') {
-					entry.apply(entry.min.value, entry.max.value);
-				} else {
-					entry.apply(entry.value);
-				}
-			}
+			applyRows(draft, true);
 			this.close();
 			changed();
 		};
-		// Rebuilt rather than reassigned: a picker shows the value it was built
-		// with, so the reset below has to build the fields again to show them
-		// back at rest.
-		const fill = (): void => {
-			body.empty();
-			this.releasePickers();
-			draft.forEach((entry) => {
-				const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
+		/**
+		 * The rows drawn into a box, each a field of its own. A row with
+		 * questions under some of its answers gets a box for them after its
+		 * field, drawn again whenever its draft changes, so the questions
+		 * that follow are always the drafted answer's.
+		 */
+		const draw = (into: HTMLElement, entries: readonly FilterRow[]): void => {
+			for (const entry of entries) {
+				const field = into.createDiv({ cls: 'snowflake-method-filter-row' });
 				field.createDiv({
 					cls: 'snowflake-method-filter-label',
 					text: entry.label,
@@ -120,8 +158,22 @@ export class FilterPanel {
 							apply();
 						});
 					}
-					return;
+					continue;
 				}
+				const branch =
+					entry.under === undefined
+						? null
+						: into.createDiv({ cls: 'snowflake-method-filter-branch' });
+				let own: OptionPicker[] = [];
+				const drawBranch = (): void => {
+					if (branch === null) return;
+					for (const picker of own) picker.destroy();
+					this.pickers = this.pickers.filter((picker) => !own.includes(picker));
+					branch.empty();
+					const before = this.pickers.length;
+					draw(branch, entry.under?.[entry.value] ?? []);
+					own = this.pickers.slice(before);
+				};
 				if (entry.presentation === 'color-swatches') {
 					const value = entry.value;
 					const strip = renderStickySwatches(field, {
@@ -133,26 +185,37 @@ export class FilterPanel {
 							const chosen = entry.value === next ? '' : next;
 							entry.value = chosen;
 							strip.sync(chosen);
+							drawBranch();
 						},
 					});
-					return;
+				} else {
+					this.pickers.push(
+						buildOptionField(this.app, field, {
+							options: () => [
+								{ value: entry.empty, label: entry.placeholder },
+								...entry.options(),
+							],
+							value: () => entry.value,
+							choose: (value) => {
+								entry.value = value;
+								drawBranch();
+							},
+							label: entry.label,
+							placeholder: entry.placeholder,
+							emptyPlaceholder: entry.placeholder,
+						}),
+					);
 				}
-				this.pickers.push(
-					buildOptionField(this.app, field, {
-						options: () => [
-							{ value: entry.empty, label: entry.placeholder },
-							...entry.options(),
-						],
-						value: () => entry.value,
-						choose: (value) => {
-							entry.value = value;
-						},
-						label: entry.label,
-						placeholder: entry.placeholder,
-						emptyPlaceholder: entry.placeholder,
-					}),
-				);
-			});
+				drawBranch();
+			}
+		};
+		// Rebuilt rather than reassigned: a picker shows the value it was built
+		// with, so the reset below has to build the fields again to show them
+		// back at rest.
+		const fill = (): void => {
+			body.empty();
+			this.releasePickers();
+			draw(body, draft);
 		};
 		fill();
 		const actions = panel.createDiv({
@@ -166,14 +229,7 @@ export class FilterPanel {
 		// Clears the fields rather than the table: the panel has one way out,
 		// and this is not it.
 		reset.addEventListener('click', () => {
-			draft.forEach((entry) => {
-				if (entry.presentation === 'number-range') {
-					entry.min.value = '';
-					entry.max.value = '';
-				} else {
-					entry.value = entry.empty;
-				}
-			});
+			clearRows(draft);
 			fill();
 		});
 		const confirm = actions.createEl('button', {

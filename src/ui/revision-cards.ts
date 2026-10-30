@@ -1,4 +1,4 @@
-import { setIcon } from 'obsidian';
+import { setIcon, setTooltip } from 'obsidian';
 
 import { revisionKindFor, type OccurrenceRole, type Revision } from '../domain';
 import {
@@ -125,6 +125,8 @@ export interface RailOptions {
 	layout?: 'margin' | 'list';
 	/** On a listed card, the button that brings its words onto the screen. */
 	locate?: { label: string; act(key: string): void };
+	/** On a listed card, the words of the mark it wears while the caret is in its words. */
+	caretMark?: string;
 }
 
 const CARD_GAP = 8;
@@ -575,6 +577,25 @@ export function renderRevisionRail(
 		host.prepend(button);
 	};
 
+	/**
+	 * On a listed card, the mark it wears while the caret is in its words:
+	 * a text cursor at the head of the compass, shown by the card's class
+	 * and by nothing else, so the card keeps its own colours.
+	 */
+	const addCaretMark = (card: HTMLElement): void => {
+		const label = options.caretMark;
+		if (label === undefined) return;
+		const nav = card.querySelector('.snowflake-method-rail-nav');
+		const host = nav instanceof HTMLElement ? nav : card;
+		const mark = host.createSpan({
+			cls: 'snowflake-method-rail-caret',
+			attr: { role: 'img', 'aria-label': label },
+		});
+		setIcon(mark, 'text-cursor');
+		setTooltip(mark, label);
+		host.prepend(mark);
+	};
+
 	const sync = (given: RevisionRailModel): void => {
 		// A list has no margin for the proposal being written to stand in:
 		// the draft stays with the stream, over the prose's right edge.
@@ -616,6 +637,7 @@ export function renderRevisionRail(
 			const state: CardState = { el: card, editing: false, print: spec.print };
 			spec.draw(card, state);
 			addLocate(card, spec.key);
+			addCaretMark(card);
 			cards.set(spec.key, state);
 		};
 

@@ -1,6 +1,7 @@
 import { ItemView, type WorkspaceLeaf } from 'obsidian';
 
 import { keepEscapeInView } from './escape-key';
+import { FilterPanel } from './filter-panel';
 import {
 	marginCardsLens,
 	renderMarginCardsList,
@@ -20,12 +21,14 @@ export const MARGIN_CARDS_VIEW_TYPE = 'snowflake-method-margin-cards';
  */
 export class SnowflakeMarginCardsView extends ItemView {
 	private list: MarginCardsList | null = null;
+	/** The funnel popover the column asks its questions in, one for the view. */
+	private popover: FilterPanel | null = null;
 	/** The search and the funnel, kept through a rebuild for a change of language. */
 	private readonly lens = marginCardsLens();
 
 	constructor(
 		leaf: WorkspaceLeaf,
-		private readonly deps: MarginCardsListDeps,
+		private readonly deps: Omit<MarginCardsListDeps, 'popover'>,
 	) {
 		super(leaf);
 	}
@@ -45,6 +48,7 @@ export class SnowflakeMarginCardsView extends ItemView {
 	onOpen(): Promise<void> {
 		this.contentEl.addClass('snowflake-method-margin-cards-view');
 		keepEscapeInView(this);
+		this.popover = new FilterPanel(this.app, this.deps.t);
 		this.mount();
 		return Promise.resolve();
 	}
@@ -52,6 +56,7 @@ export class SnowflakeMarginCardsView extends ItemView {
 	/** Builds the column again, for a change of language. */
 	rerender(): void {
 		if (this.list === null) return;
+		this.popover?.close();
 		this.list.dispose();
 		this.list = null;
 		this.contentEl.empty();
@@ -64,10 +69,18 @@ export class SnowflakeMarginCardsView extends ItemView {
 	}
 
 	private mount(): void {
-		this.list = renderMarginCardsList(this.contentEl, this.deps, this.lens);
+		const popover = this.popover ?? new FilterPanel(this.app, this.deps.t);
+		this.popover = popover;
+		this.list = renderMarginCardsList(
+			this.contentEl,
+			{ ...this.deps, popover: popover.lend() },
+			this.lens,
+		);
 	}
 
 	onClose(): Promise<void> {
+		this.popover?.close();
+		this.popover = null;
 		this.list?.dispose();
 		this.list = null;
 		return Promise.resolve();

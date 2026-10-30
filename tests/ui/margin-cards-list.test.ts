@@ -8,7 +8,13 @@ import {
 	type MarginCardsFeed,
 	type MarginCardsSegment,
 } from '../../src/ui/margin-cards-hub';
-import { marginCardsLens, renderMarginCardsList, throughLens } from '../../src/ui/margin-cards-list';
+import type { FilterOptionRow, FilterRow, LentFilterPopover } from '../../src/ui/filter-rows';
+import {
+	marginCardsLens,
+	renderMarginCardsList,
+	throughLens,
+	type MarginCardsLens,
+} from '../../src/ui/margin-cards-list';
 import type { RevisionRailCallbacks, RevisionRailModel } from '../../src/ui/revision-cards';
 import { installObsidianDom } from '../helpers/obsidian-dom';
 
@@ -123,16 +129,77 @@ const type = (host: HTMLElement, text: string): void => {
 	input.dispatchEvent(new Event('input'));
 };
 
+const lensOf = (over: Partial<MarginCardsLens>): MarginCardsLens => ({
+	...marginCardsLens(),
+	...over,
+});
+
+/** The dashboard's funnel popover as a test lends it: it keeps the rows it was opened with. */
+const lentPopover = (): {
+	lent: LentFilterPopover;
+	rows: () => readonly FilterRow[];
+	confirm: () => void;
+} => {
+	let opened: { rows: readonly FilterRow[]; changed: () => void } | null = null;
+	return {
+		lent: {
+			filterOpen: () => opened !== null,
+			openFilter: (_anchor, rows, changed) => {
+				opened = { rows, changed };
+			},
+			closeFilter: () => {
+				opened = null;
+			},
+		},
+		rows: () => {
+			if (opened === null) throw new Error('the funnel is closed');
+			return opened.rows;
+		},
+		confirm: () => {
+			if (opened === null) throw new Error('the funnel is closed');
+			const told = opened.changed;
+			opened = null;
+			told();
+		},
+	};
+};
+
+const option = (row: FilterRow | undefined): FilterOptionRow => {
+	if (row === undefined || row.presentation === 'number-range') throw new Error('not a picker row');
+	return row;
+};
+
 describe('the lens', () => {
 	it('keeps the kinds asked for that print the words searched for', () => {
 		const all = throughLens(model(), marginCardsLens());
 		expect(keysOf(all)).toEqual(['rev-1', 'occ-1']);
-		expect(keysOf(throughLens(model(), { query: 'WHY', kind: 'all' }))).toEqual(['rev-1']);
-		expect(keysOf(throughLens(model(), { query: 'pocket', kind: 'all' }))).toEqual(['occ-1']);
-		expect(keysOf(throughLens(model(), { query: 'first seen', kind: 'all' }))).toEqual(['occ-1']);
-		expect(keysOf(throughLens(model(), { query: '', kind: 'revisions' }))).toEqual(['rev-1']);
-		expect(keysOf(throughLens(model(), { query: 'watch', kind: 'revisions' }))).toEqual([]);
-		expect(keysOf(throughLens(model(), { query: '', kind: 'foreshadowing' }))).toEqual(['occ-1']);
+		expect(keysOf(throughLens(model(), lensOf({ query: 'WHY' })))).toEqual(['rev-1']);
+		expect(keysOf(throughLens(model(), lensOf({ query: 'pocket' })))).toEqual(['occ-1']);
+		expect(keysOf(throughLens(model(), lensOf({ query: 'first seen' })))).toEqual(['occ-1']);
+		expect(keysOf(throughLens(model(), lensOf({ kind: 'revisions' })))).toEqual(['rev-1']);
+		expect(keysOf(throughLens(model(), lensOf({ query: 'watch', kind: 'revisions' })))).toEqual([]);
+		expect(keysOf(throughLens(model(), lensOf({ kind: 'foreshadowing' })))).toEqual(['occ-1']);
+	});
+
+	it('answers the kind’s own questions under it, as the dashboard tables do', () => {
+		const revisions = (kind: string, standing: string): MarginCardsLens =>
+			lensOf({ kind: 'revisions', revision: { kind, standing } });
+		expect(keysOf(throughLens(model(), revisions('insert', '')))).toEqual([]);
+		expect(keysOf(throughLens(model(), revisions('replace', '')))).toEqual(['rev-1']);
+		expect(keysOf(throughLens(model(), revisions('', 'conflict')))).toEqual([]);
+		const conflicted = { ...model(), entries: [], conflicts: [revision] };
+		expect(keysOf(throughLens(conflicted, revisions('', 'conflict')))).toEqual(['rev-1']);
+		expect(keysOf(throughLens(conflicted, revisions('insert', 'conflict')))).toEqual([]);
+		const threads = (status: string, role: string, standing: string): MarginCardsLens =>
+			lensOf({ kind: 'foreshadowing', foreshadowing: { status, role, standing } });
+		expect(keysOf(throughLens(model(), threads('active', '', '')))).toEqual(['occ-1']);
+		expect(keysOf(throughLens(model(), threads('', 'payoff', '')))).toEqual([]);
+		expect(keysOf(throughLens(model(), threads('', 'plant', '')))).toEqual(['occ-1']);
+		expect(keysOf(throughLens(model(), threads('', '', 'unresolved')))).toEqual([]);
+		const lost = model();
+		lost.foreshadowing = { entries: [], unresolved: lost.foreshadowing.entries };
+		expect(keysOf(throughLens(lost, threads('', '', 'unresolved')))).toEqual(['occ-1']);
+		expect(keysOf(throughLens(lost, threads('', 'payoff', 'unresolved')))).toEqual([]);
 	});
 });
 
@@ -179,6 +246,7 @@ describe('the margin card sidebar', () => {
 			hub,
 			t: (key: string) => key,
 			stepAside: () => asides.push(1),
+			popover: lentPopover().lent,
 		});
 		const empty = host.querySelector<HTMLElement>('.snowflake-method-character-empty');
 		const band = host.querySelector<HTMLElement>('.snowflake-method-margin-cards-controls');
@@ -229,9 +297,10 @@ describe('the margin card sidebar', () => {
 		const hub = new MarginCardsHub();
 		const host = document.body.createDiv();
 		const lens = marginCardsLens();
+		const funnel = lentPopover();
 		const { dispose } = renderMarginCardsList(
 			host,
-			{ hub, t: (key: string) => key, stepAside: () => undefined },
+			{ hub, t: (key: string) => key, stepAside: () => undefined, popover: funnel.lent },
 			lens,
 		);
 		const source = {};
@@ -259,32 +328,85 @@ describe('the margin card sidebar', () => {
 		type(host, '');
 		expect(keysIn(host)).toEqual(['rev-1', 'fs:occ-1']);
 		expect(empty?.hidden).toBe(true);
-		// The funnel: a kind, a draft until confirmed, and reset lets go.
+		// The funnel, in the dashboard's own popover: the kind first, and under
+		// a kind the questions its table asks, with the answers under the other
+		// kind applied as at rest, as the popover applies what it did not show.
 		const filter = host.querySelector<HTMLButtonElement>('.snowflake-method-margin-cards-filter');
 		expect(filter?.getAttribute('data-tooltip')).toBe('table.filter');
 		filter?.click();
-		const panel = document.body.querySelector<HTMLElement>('.snowflake-method-margin-cards-filter-panel');
-		expect(filter?.getAttribute('aria-expanded')).toBe('true');
-		const pick = panel?.querySelector<HTMLSelectElement>('select.dropdown');
-		expect([...(pick?.options ?? [])].map((option) => option.value)).toEqual([
-			'all',
-			'revisions',
-			'foreshadowing',
+		const kind = option(funnel.rows()[0]);
+		expect(funnel.rows()).toHaveLength(1);
+		expect(kind.label).toBe('marginCards.kind');
+		expect(kind.empty).toBe('all');
+		expect(kind.options().map((entry) => entry.value)).toEqual(['revisions', 'foreshadowing']);
+		expect(Object.keys(kind.under ?? {})).toEqual(['revisions', 'foreshadowing']);
+		const revisionRows = kind.under?.revisions ?? [];
+		const threadRows = kind.under?.foreshadowing ?? [];
+		expect(revisionRows.map((row) => row.label)).toEqual([
+			'revisionTable.type',
+			'revisionTable.standing',
 		]);
-		if (pick) pick.value = 'foreshadowing';
-		panel?.querySelector<HTMLButtonElement>('.mod-cta')?.click();
+		expect(option(revisionRows[0]).options().map((entry) => entry.value)).toEqual([
+			'replace',
+			'insert',
+			'delete',
+		]);
+		expect(option(revisionRows[0]).options()[1]?.label).toBe('manuscript.revision.kind.insert');
+		expect(threadRows.map((row) => row.label)).toEqual([
+			'status.label',
+			'foreshadowingTable.role',
+			'foreshadowingTable.standing',
+		]);
+		expect(option(threadRows[1]).options().map((entry) => entry.value)).toEqual([
+			'plant',
+			'reinforce',
+			'payoff',
+		]);
+		kind.apply('foreshadowing');
+		option(threadRows[1]).apply('payoff');
+		funnel.confirm();
 		expect(lens.kind).toBe('foreshadowing');
+		expect(lens.foreshadowing.role).toBe('payoff');
 		expect(filter?.classList.contains('is-active')).toBe(true);
-		expect(filter?.getAttribute('aria-expanded')).toBe('false');
-		expect(document.body.querySelector('.snowflake-method-margin-cards-filter-panel')).toBeNull();
-		expect(keysIn(host)).toEqual(['fs:occ-1']);
+		expect(funnel.lent.filterOpen()).toBe(false);
+		expect(keysIn(host)).toEqual([]);
+		expect(empty?.hidden).toBe(false);
+		expect(empty?.textContent).toContain('marginCards.noMatch');
+		// The funnel opens on what it narrowed by.
 		filter?.click();
-		const again = document.body.querySelector<HTMLElement>('.snowflake-method-margin-cards-filter-panel');
-		again?.querySelector<HTMLButtonElement>('.snowflake-method-filter-reset')?.click();
-		again?.querySelector<HTMLButtonElement>('.mod-cta')?.click();
+		expect(option(funnel.rows()[0]).value).toBe('foreshadowing');
+		expect(option(option(funnel.rows()[0]).under?.foreshadowing?.[1]).value).toBe('payoff');
+		option(option(funnel.rows()[0]).under?.foreshadowing?.[1]).apply('plant');
+		funnel.confirm();
+		expect(keysIn(host)).toEqual(['fs:occ-1']);
+		// The other kind: its questions answered, the thread's put at rest.
+		filter?.click();
+		const again = option(funnel.rows()[0]);
+		again.apply('revisions');
+		option(again.under?.revisions?.[0]).apply('insert');
+		for (const row of again.under?.foreshadowing ?? []) option(row).apply('');
+		funnel.confirm();
+		expect(lens.foreshadowing.role).toBe('');
+		expect(lens.revision.kind).toBe('insert');
+		expect(keysIn(host)).toEqual([]);
+		filter?.click();
+		option(option(funnel.rows()[0]).under?.revisions?.[0]).apply('replace');
+		funnel.confirm();
+		expect(keysIn(host)).toEqual(['rev-1']);
+		// Everything at rest again.
+		filter?.click();
+		const last = option(funnel.rows()[0]);
+		last.apply('all');
+		for (const row of last.under?.revisions ?? []) option(row).apply('');
+		funnel.confirm();
 		expect(lens.kind).toBe('all');
 		expect(filter?.classList.contains('is-active')).toBe(false);
 		expect(keysIn(host)).toEqual(['rev-1', 'fs:occ-1']);
+		// The funnel button closes an open popover rather than opening another.
+		filter?.click();
+		expect(funnel.lent.filterOpen()).toBe(true);
+		filter?.click();
+		expect(funnel.lent.filterOpen()).toBe(false);
 		dispose();
 	});
 
@@ -303,6 +425,7 @@ describe('the margin card sidebar', () => {
 			hub,
 			t: (key: string) => key,
 			stepAside: () => undefined,
+			popover: lentPopover().lent,
 		});
 		const card = host.querySelector<HTMLElement>('.snowflake-method-rail-card');
 		expect(scrolled).toEqual([{ el: card, block: 'center' }]);
@@ -346,8 +469,16 @@ describe('the margin card sidebar', () => {
 			hub,
 			t: (key: string) => key,
 			stepAside: () => undefined,
+			popover: lentPopover().lent,
 		});
 		const cards = [...host.querySelectorAll<HTMLElement>('.snowflake-method-rail-card')];
+		// Every listed card carries the cursor mark at the head of its compass,
+		// shown by the card's class alone.
+		const mark = cards[1]?.querySelector<HTMLElement>('.snowflake-method-rail-caret');
+		expect(mark?.getAttribute('aria-label')).toBe('marginCards.atCaret');
+		expect(mark?.getAttribute('data-tooltip')).toBe('marginCards.atCaret');
+		expect(mark?.parentElement?.classList.contains('snowflake-method-rail-nav')).toBe(true);
+		expect(mark?.parentElement?.firstElementChild).toBe(mark);
 		// Opened with the caret already in a card's words, the column marks it.
 		expect(cards.map((card) => card.classList.contains('is-caret'))).toEqual([false, true]);
 		hub.caret('rev-1');

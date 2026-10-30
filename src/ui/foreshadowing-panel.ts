@@ -1,8 +1,6 @@
 import { Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import {
-	FORESHADOWING_STATUSES,
-	OCCURRENCE_ROLES,
 	isForeshadowingStatus,
 	isOccurrenceRole,
 	type ForeshadowingStatus,
@@ -18,6 +16,7 @@ import {
 import type { Translate } from './modals';
 import { renderEmptyLine, renderSplitButton } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
+import { foreshadowingFilterRows } from './tracking-filter-rows';
 import { VirtualTable, buildTableFrame } from './virtual-table';
 
 /**
@@ -141,45 +140,7 @@ export function renderForeshadowingPanel(
 		role: (role: OccurrenceRole): string => t(`foreshadowing.role.${role}`),
 		unresolved: t('manuscript.foreshadowing.unresolved'),
 	};
-	const filterRows = (): FilterRow[] => [
-		{
-			label: t('status.label'),
-			placeholder: t('foreshadowingTable.filterAllStatuses'),
-			empty: '',
-			options: () =>
-				FORESHADOWING_STATUSES.map((status) => ({
-					value: status,
-					label: labels.status(status),
-				})),
-			value: filters.status,
-			apply: (value) => {
-				filters.status = value;
-			},
-		},
-		{
-			label: t('foreshadowingTable.role'),
-			placeholder: t('foreshadowingTable.filterAllRoles'),
-			empty: '',
-			options: () =>
-				OCCURRENCE_ROLES.map((role) => ({ value: role, label: labels.role(role) })),
-			value: filters.role,
-			apply: (value) => {
-				filters.role = value;
-			},
-		},
-		{
-			label: t('foreshadowingTable.standing'),
-			placeholder: t('foreshadowingTable.filterAllStandings'),
-			empty: '',
-			options: () => [
-				{ value: 'unresolved', label: t('foreshadowingTable.unresolvedOnly') },
-			],
-			value: filters.standing,
-			apply: (value) => {
-				filters.standing = value;
-			},
-		},
-	];
+	const filterRows = (): FilterRow[] => foreshadowingFilterRows(t, filters);
 	const markFilterButton = (): void => {
 		filterButton.toggleClass(
 			'is-active',
