@@ -1419,16 +1419,27 @@ describe('styles.css', () => {
 	});
 
 	/**
-	 * Full screen puts the family strip and the leaf's header away and
-	 * narrows the inset, by the class the view gives its leaf; on a tablet
-	 * the group's tab bar goes too, by the class the view gives the group,
-	 * while on the desktop the bar stays for the window's own controls.
+	 * Full screen puts the family strip, the leaf's header and the panel's
+	 * frame away, the inset and the field's reach past the frame with it, by
+	 * the class the view gives its leaf; on a tablet the group's tab bar goes
+	 * too, by the class the view gives the group, while on the desktop the
+	 * bar stays for the window's own controls.
 	 */
 	it('puts the chrome around a workspace away in full screen, and a tablet’s tab bar with it', () => {
 		expect(declarations('.workspace-leaf-content.snowflake-method-full-screen > .view-header')).toContain('display: none');
 		expect(declarations('.snowflake-method-full-screen .view-content.snowflake-method-story-structure > .snowflake-method-tabs')).toContain('display: none');
-		expect(declarations('.workspace-leaf-content.snowflake-method-full-screen .view-content.snowflake-method-story-structure')).toContain('padding: var(--size-4-2)');
-		expect(declarations('.snowflake-method-full-screen .snowflake-method-story-structure .snowflake-method-tab-panel')).toContain('margin-top: 0');
+		expect(declarations('.workspace-leaf-content.snowflake-method-full-screen .view-content.snowflake-method-story-structure')).toContain('padding: 0');
+		const panel = declarations('.snowflake-method-full-screen .snowflake-method-story-structure .snowflake-method-tab-panel');
+		expect(panel).toContain('margin-top: 0');
+		expect(panel).toContain('border: 0');
+		expect(panel).toContain('border-radius: 0');
+		expect(panel).toContain('--snowflake-method-tab-reach: 0px');
+		// The field's reach past the frame is one measure, the gutter and the
+		// border it crosses, read everywhere the field or a board's scroller
+		// leans out, so full screen takes it away in one place.
+		expect(declarations('.snowflake-method-tab-panel')).toContain('--snowflake-method-tab-reach: calc(var(--snowflake-method-tab-gutter) + 1px)');
+		expect(styles.match(/var\(--snowflake-method-tab-gutter\)/gu)).toHaveLength(1);
+		expect(styles.match(/var\(--snowflake-method-tab-reach\)/gu)).toHaveLength(11);
 		expect(declarations('body.is-tablet .workspace-tabs.snowflake-method-full-screen-group > .workspace-tab-header-container')).toContain('display: none');
 		expect(styles.replace(section('Mobile'), ' ')).not.toContain('snowflake-method-full-screen-group');
 	});
@@ -1604,7 +1615,7 @@ describe('styles.css', () => {
 			'padding-inline-start: var(--snowflake-method-tab-height)',
 		);
 		expect(declarations('body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll.is-self-scrolling')).toContain(
-			'padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px)',
+			'padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-reach))',
 		);
 		// The counts stand centred on the buttons under them: the trees' row
 		// menus at the row-more size, the pool's count for the finger-wide add.

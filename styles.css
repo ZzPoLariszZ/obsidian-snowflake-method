@@ -1584,6 +1584,9 @@
 		var(--snowflake-method-scrollbar-width, 0px),
 		var(--size-4-3)
 	);
+	/* How far the field reaches out of the frame to put its bar in that
+	   room: across the border and the gutter beyond it. */
+	--snowflake-method-tab-reach: calc(var(--snowflake-method-tab-gutter) + 1px);
 	display: flex;
 	flex-direction: column;
 	flex: 1 1 auto;
@@ -1612,12 +1615,9 @@
 	min-height: 0;
 	overflow-y: scroll;
 	padding: var(--snowflake-method-tab-height);
-	margin-inline-end: calc(
-		-1 * (var(--snowflake-method-tab-gutter) + 1px)
-	);
+	margin-inline-end: calc(-1 * var(--snowflake-method-tab-reach));
 	padding-inline-end: calc(
-		var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) +
-			1px - var(--snowflake-method-scrollbar-width, 0px)
+		var(--snowflake-method-tab-height) + var(--snowflake-method-tab-reach) - var(--snowflake-method-scrollbar-width, 0px)
 	);
 }
 
@@ -1630,25 +1630,16 @@
    inset says they do. */
 .snowflake-method-tab-scroll.is-self-scrolling {
 	overflow-y: hidden;
-	padding-inline-end: calc(
-		var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px
-	);
+	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-reach));
 }
 
 .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
 .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list,
 .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-corkboard-scroll {
 	overflow-y: scroll;
-	margin-inline-end: calc(
-		-1 *
-			(
-				var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) +
-					1px
-			)
-	);
+	margin-inline-end: calc(-1 * (var(--snowflake-method-tab-height) + var(--snowflake-method-tab-reach)));
 	padding-inline-end: calc(
-		var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) +
-			1px - var(--snowflake-method-scrollbar-width, 0px)
+		var(--snowflake-method-tab-height) + var(--snowflake-method-tab-reach) - var(--snowflake-method-scrollbar-width, 0px)
 	);
 }
 
@@ -1686,21 +1677,25 @@
 
 /* Full screen, from the button on a board's toolbar: the board takes the
    leaf whole. The strip of the five families and the leaf's own header are
-   put away, the inset narrows to the gutter, and the frame's top edge, which
-   ran in the strip's last row, stands on its own. The view folds the
-   window's sidebars itself and brings them back as full screen is left, by
-   the button again or by Escape. */
+   put away, and so is the frame the strip's chosen tab opened onto: its
+   border, its corners and the inset around it, and the field's reach past
+   it for the bar, which stands at the leaf's own edge instead. The view
+   folds the window's sidebars itself and brings them back as full screen
+   is left, by the button again or by Escape. */
 .workspace-leaf-content.snowflake-method-full-screen > .view-header,
 .snowflake-method-full-screen .view-content.snowflake-method-story-structure > .snowflake-method-tabs {
 	display: none;
 }
 
 .workspace-leaf-content.snowflake-method-full-screen .view-content.snowflake-method-story-structure {
-	padding: var(--size-4-2);
+	padding: 0;
 }
 
 .snowflake-method-full-screen .snowflake-method-story-structure .snowflake-method-tab-panel {
+	--snowflake-method-tab-reach: 0px;
 	margin-top: 0;
+	border: 0;
+	border-radius: 0;
 }
 
 .snowflake-method-step-ten-description-row {
@@ -20381,27 +20376,17 @@ body.is-mobile .snowflake-method-tabs {
 
 body.is-mobile .snowflake-method-tab-scroll {
 	padding: var(--snowflake-method-tab-height) var(--size-4-3) var(--size-4-3);
-	padding-inline-end: calc(
-		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px -
-			var(--snowflake-method-scrollbar-width, 0px)
-	);
+	padding-inline-end: calc(var(--size-4-3) + var(--snowflake-method-tab-reach) - var(--snowflake-method-scrollbar-width, 0px));
 }
 
 body.is-mobile .snowflake-method-tab-scroll.is-self-scrolling {
-	padding-inline-end: calc(
-		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px
-	);
+	padding-inline-end: calc(var(--size-4-3) + var(--snowflake-method-tab-reach));
 }
 
 body.is-mobile .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
 body.is-mobile .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
-	margin-inline-end: calc(
-		-1 * (var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px)
-	);
-	padding-inline-end: calc(
-		var(--size-4-3) + var(--snowflake-method-tab-gutter) + 1px -
-			var(--snowflake-method-scrollbar-width, 0px)
-	);
+	margin-inline-end: calc(-1 * (var(--size-4-3) + var(--snowflake-method-tab-reach)));
+	padding-inline-end: calc(var(--size-4-3) + var(--snowflake-method-tab-reach) - var(--snowflake-method-scrollbar-width, 0px));
 }
 
 /* -- Phone: the control bands under the tab strip -------------------------- */
@@ -20510,11 +20495,11 @@ body.is-tablet .snowflake-method-timeline-pool .snowflake-method-prose-controls 
    gutter at the end, and the folds stand whole in it. */
 body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll {
 	padding-inline-start: var(--snowflake-method-tab-height);
-	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px - var(--snowflake-method-scrollbar-width, 0px));
+	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-reach) - var(--snowflake-method-scrollbar-width, 0px));
 }
 
 body.is-tablet .snowflake-method-story-structure .snowflake-method-tab-scroll.is-self-scrolling {
-	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) + 1px);
+	padding-inline-end: calc(var(--snowflake-method-tab-height) + var(--snowflake-method-tab-reach));
 }
 
 /* -- Tablet: the view field and the search on the boards' toolbars -------- */
