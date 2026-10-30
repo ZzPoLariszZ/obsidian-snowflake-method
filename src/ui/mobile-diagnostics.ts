@@ -211,9 +211,16 @@ export class MobileDiagnosticsModal extends SnowflakeModal {
 		});
 		const copy = actions.createEl('button', { cls: 'mod-cta', text: t('diagnostics.copy') });
 		copy.addEventListener('click', () => {
-			void win.navigator.clipboard.writeText(text).then(() => {
-				new Notice(t('diagnostics.copied'));
-			});
+			void win.navigator.clipboard.writeText(text).then(
+				() => {
+					new Notice(t('diagnostics.copied'));
+				},
+				(error: unknown) => {
+					// A clipboard refused -- no permission, the document out of
+					// focus -- is said here, where the report is.
+					new Notice(error instanceof Error ? error.message : t('errors.unknown'));
+				},
+			);
 		});
 	}
 
