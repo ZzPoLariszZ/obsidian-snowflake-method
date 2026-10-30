@@ -1609,6 +1609,9 @@ describe('styles.css', () => {
 		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-main')).toContain('overflow-y: visible');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(/body\.is-(?:mobile|tablet)[^{]*\.snowflake-method-main[\s,{]/u);
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-table-body')).toContain('overflow: visible');
+		// The tabbed panes end where their content ends, as the member panels do, so the field never runs out of its pane.
+		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-statistics-pane')).toContain('flex: 0 0 auto');
+		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-member-panel')).toContain('flex: 0 0 auto');
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box')).toContain(
 			'overflow-y: visible',
 		);

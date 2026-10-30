@@ -20142,6 +20142,15 @@ body.is-mobile .snowflake-method-dashboard .snowflake-method-table-body {
 	padding-inline-end: 0;
 }
 
+/* The tabbed panes, the statistics and the tasks, take their content's
+   height as well. On the desktop each ends where the column ends and its
+   field scrolls inside it, but a field that runs with the page ran on out
+   of a pane held to the column's height: the pane's bottom edge crossed
+   the field, and the field's own frame closed below the pane. */
+body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-statistics-pane {
+	flex: 0 0 auto;
+}
+
 /* A tabbed pane's field does the same, and a board that scrolled itself
    inside the field runs with the page as well. */
 body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-panel {
