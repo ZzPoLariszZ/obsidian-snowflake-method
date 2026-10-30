@@ -16563,8 +16563,8 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
    too narrow for them and the table scrolls. */
 .snowflake-method-beat-sheet {
 	/* Where an act's words start, which the line under an empty act starts
-	   under: past the header's padding, the room its handle takes, the gap
-	   after it and the padding of the words. Said once, by the header's own
+	   under: past the head's padding, the room its handle takes, the gap
+	   after it and the padding of the words. Said once, by the head's own
 	   measures, so the two cannot part. */
 	--snowflake-method-beat-sheet-act-padding-start: var(--size-4-3);
 	--snowflake-method-beat-sheet-act-gap: var(--size-2-1);
@@ -16592,7 +16592,36 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 			var(--snowflake-method-timeline-lane-width)
 	);
 	min-height: var(--snowflake-method-timeline-head-height);
-	padding-inline: var(--snowflake-method-beat-sheet-act-padding-start) var(--size-4-2);
+}
+
+/* The head of the row, its handle and its words, and the end, its plus and
+   its menu, stand pinned at the field's edges while the table scrolls
+   across, as the time column stands at the start of every row: the words
+   and the buttons stay in view wherever the beats' lanes are scrolled to,
+   and the rule between them runs under the two. Each carries the row's
+   padding on its outer side and a solid ground, so nothing shows through.
+   Where the row fits the field, neither moves. */
+.snowflake-method-beat-sheet-act-head,
+.snowflake-method-beat-sheet-act-end {
+	position: sticky;
+	z-index: 1;
+	display: flex;
+	flex: 0 1 auto;
+	align-items: center;
+	gap: var(--snowflake-method-beat-sheet-act-gap);
+	min-width: 0;
+	background-color: var(--background-primary);
+}
+
+.snowflake-method-beat-sheet-act-head {
+	inset-inline-start: 0;
+	padding-inline-start: var(--snowflake-method-beat-sheet-act-padding-start);
+}
+
+.snowflake-method-beat-sheet-act-end {
+	flex-shrink: 0;
+	inset-inline-end: 0;
+	padding-inline-end: var(--size-4-2);
 }
 
 /* Each act after the first stands a little apart from the one above it. The

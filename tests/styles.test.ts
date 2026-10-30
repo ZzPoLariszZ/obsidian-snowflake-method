@@ -932,17 +932,27 @@ describe('styles.css', () => {
 	 * The beat sheet wears the timeline's classes, so the timeline's rules dress
 	 * it and its own section says only what an act adds. Three things hold that
 	 * up. Nothing in it hides a control until hover, so it needs no block for a
-	 * coarse pointer and none can be forgotten. Nothing in it is sticky, since
-	 * the parts that stuck inside a lane were taken out of the timeline for
-	 * good. And an act's landing line is the timeline's own line, drawn again
-	 * for the two elements the timeline has no name for.
+	 * coarse pointer and none can be forgotten. Nothing in it is sticky but an
+	 * act's head and its end, pinned at the field's edges as the time column
+	 * is at the start of a row, since the parts that stuck inside a lane were
+	 * taken out of the timeline for good. And an act's landing line is the
+	 * timeline's own line, drawn again for the two elements the timeline has
+	 * no name for.
 	 */
 	it('adds the acts to the timeline look and hides nothing a touch would need', () => {
 		const sheet = section('Beat sheet').replace(/\/\*[\s\S]*?\*\//g, ' ');
 		expect(sheet).not.toContain('@media');
 		expect(sheet).not.toMatch(/opacity:\s*0\s*;/);
 		expect(sheet).not.toMatch(/visibility:\s*hidden/);
-		expect(sheet).not.toContain('position: sticky');
+		expect(sheet.match(/position: sticky/gu)).toHaveLength(1);
+		const pinned = declarations('.snowflake-method-beat-sheet-act-head');
+		expect(pinned).toContain('position: sticky');
+		expect(pinned).toContain('background-color: var(--background-primary)');
+		expect(pinned).toBe(declarations('.snowflake-method-beat-sheet-act-end'));
+		expect(sheet).toMatch(/\.snowflake-method-beat-sheet-act-head \{[^}]*inset-inline-start: 0;[^}]*padding-inline-start: var\(--snowflake-method-beat-sheet-act-padding-start\)/u);
+		expect(sheet).toMatch(/\.snowflake-method-beat-sheet-act-end \{[^}]*inset-inline-end: 0;[^}]*padding-inline-end: var\(--size-4-2\)/u);
+		// The row itself carries no padding: it is the head's and the end's, so the pinned boxes cover it.
+		expect(declarations('.snowflake-method-beat-sheet-act')).not.toContain('padding');
 		const line = (selector: string): string[] =>
 			declarations(selector)
 				.split(';')
@@ -1030,9 +1040,10 @@ describe('styles.css', () => {
 		const stated = declarations('.snowflake-method-beat-sheet');
 		expect(stated).toContain('--snowflake-method-beat-sheet-act-words-start:');
 		expect(stated).toContain('var(--snowflake-method-corkboard-action-size)');
-		const header = declarations('.snowflake-method-beat-sheet-act');
-		expect(header).toContain('padding-inline: var(--snowflake-method-beat-sheet-act-padding-start)');
-		expect(header).toContain('gap: var(--snowflake-method-beat-sheet-act-gap)');
+		// The padding before the handle is the pinned head's, and the gap after it the head's own.
+		const head = declarations('.snowflake-method-beat-sheet-act-head');
+		expect(head).toContain('gap: var(--snowflake-method-beat-sheet-act-gap)');
+		expect(styles).toContain('.snowflake-method-beat-sheet-act-head {\n\tinset-inline-start: 0;\n\tpadding-inline-start: var(--snowflake-method-beat-sheet-act-padding-start);');
 		// No handle, no room for one.
 		expect(declarations('.snowflake-method-beat-sheet-act .snowflake-method-beat-sheet-act-handle:disabled')).toContain('display: none');
 		const readOnly = declarations('.snowflake-method-beat-sheet.is-read-only');

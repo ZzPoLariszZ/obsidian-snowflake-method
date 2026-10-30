@@ -722,7 +722,11 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			attr: { 'data-entry-key': key, 'data-act-id': actId },
 		});
 		table.insertBefore(el, actsEmpty);
-		const handle = el.createEl('button', {
+		// The head and the end of the row are pinned at the field's edges while
+		// the table scrolls across, as the time column is, so the act's words
+		// and its buttons stay in view; the rule between them scrolls under.
+		const head = el.createDiv({ cls: 'snowflake-method-beat-sheet-act-head' });
+		const handle = head.createEl('button', {
 			cls: 'clickable-icon snowflake-method-beat-sheet-act-handle',
 			attr: { type: 'button', 'aria-label': t('beatSheet.act.drag'), draggable: 'true' },
 		});
@@ -731,7 +735,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		// An act is headed as a group of scenes is on the corkboard: what it is
 		// called, then a rule to the table's end. The words are a button, since
 		// they are the way to the act's form.
-		const label = el.createSpan({
+		const label = head.createSpan({
 			cls: 'snowflake-method-corkboard-group-label',
 			attr: { role: 'heading', 'aria-level': '3' },
 		});
@@ -740,12 +744,13 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			attr: { type: 'button' },
 		});
 		el.createSpan({ cls: 'snowflake-method-corkboard-group-rule' });
-		const add = el.createEl('button', {
+		const end = el.createDiv({ cls: 'snowflake-method-beat-sheet-act-end' });
+		const add = end.createEl('button', {
 			cls: 'clickable-icon snowflake-method-beat-sheet-act-add',
 			attr: { type: 'button' },
 		});
 		setIcon(add, 'plus');
-		const more = el.createEl('button', {
+		const more = end.createEl('button', {
 			cls: 'clickable-icon snowflake-method-beat-sheet-act-more',
 			attr: { type: 'button', 'aria-label': t('table.actions'), 'aria-haspopup': 'menu' },
 		});

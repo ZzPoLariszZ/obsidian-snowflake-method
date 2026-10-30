@@ -757,13 +757,16 @@ describe('the acts of a sheet', () => {
 		const fixture = laid();
 		await settle();
 		const header = fixture.act('a1');
-		expect(header.children.map((child) => [...child.classes].find((cls) => cls.startsWith('snowflake-method-')))).toEqual([
-			'snowflake-method-beat-sheet-act-handle',
-			'snowflake-method-corkboard-group-label',
+		// The handle and the words stand in a head and the two buttons in an end, the boxes
+		// the stylesheet pins at the field's edges while the table scrolls across.
+		const own = (el: CorkboardElement): string => [...el.classes].find((cls) => cls.startsWith('snowflake-method-')) ?? '';
+		expect(header.children.map(own)).toEqual([
+			'snowflake-method-beat-sheet-act-head',
 			'snowflake-method-corkboard-group-rule',
-			'snowflake-method-beat-sheet-act-add',
-			'snowflake-method-beat-sheet-act-more',
+			'snowflake-method-beat-sheet-act-end',
 		]);
+		expect(header.children[0]!.children.map(own)).toEqual(['snowflake-method-beat-sheet-act-handle', 'snowflake-method-corkboard-group-label']);
+		expect(header.children[2]!.children.map(own)).toEqual(['snowflake-method-beat-sheet-act-add', 'snowflake-method-beat-sheet-act-more']);
 		const label = header.querySelector('.snowflake-method-corkboard-group-label')!;
 		expect(label.getAttribute('role')).toBe('heading');
 		// The words are the way to the act's form, so they are a button, in the lane name's dress.
