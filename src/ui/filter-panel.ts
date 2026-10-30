@@ -128,9 +128,16 @@ export class FilterPanel {
 		 * The rows drawn into a box, each a field of its own. A row with
 		 * questions under some of its answers gets a box for them after its
 		 * field, drawn again whenever its draft changes, so the questions
-		 * that follow are always the drafted answer's.
+		 * that follow are always the drafted answer's. `within` names every
+		 * branch the box stands in, outermost first: a picker drawn here is
+		 * one of each, so a branch drawn again takes down the pickers of the
+		 * branches under it too, and never one twice.
 		 */
-		const draw = (into: HTMLElement, entries: readonly FilterRow[]): void => {
+		const draw = (
+			into: HTMLElement,
+			entries: readonly FilterRow[],
+			within: readonly Set<OptionPicker>[],
+		): void => {
 			for (const entry of entries) {
 				const field = into.createDiv({ cls: 'snowflake-method-filter-row' });
 				field.createDiv({
@@ -164,15 +171,18 @@ export class FilterPanel {
 					entry.under === undefined
 						? null
 						: into.createDiv({ cls: 'snowflake-method-filter-branch' });
-				let own: OptionPicker[] = [];
+				/** The pickers under this row's answer, the branches under them included. */
+				const own = new Set<OptionPicker>();
 				const drawBranch = (): void => {
 					if (branch === null) return;
-					for (const picker of own) picker.destroy();
-					this.pickers = this.pickers.filter((picker) => !own.includes(picker));
+					for (const picker of own) {
+						picker.destroy();
+						for (const scope of within) scope.delete(picker);
+					}
+					this.pickers = this.pickers.filter((picker) => !own.has(picker));
+					own.clear();
 					branch.empty();
-					const before = this.pickers.length;
-					draw(branch, entry.under?.[entry.value] ?? []);
-					own = this.pickers.slice(before);
+					draw(branch, entry.under?.[entry.value] ?? [], [...within, own]);
 				};
 				if (entry.presentation === 'color-swatches') {
 					const value = entry.value;
@@ -189,22 +199,22 @@ export class FilterPanel {
 						},
 					});
 				} else {
-					this.pickers.push(
-						buildOptionField(this.app, field, {
-							options: () => [
-								{ value: entry.empty, label: entry.placeholder },
-								...entry.options(),
-							],
-							value: () => entry.value,
-							choose: (value) => {
-								entry.value = value;
-								drawBranch();
-							},
-							label: entry.label,
-							placeholder: entry.placeholder,
-							emptyPlaceholder: entry.placeholder,
-						}),
-					);
+					const picker = buildOptionField(this.app, field, {
+						options: () => [
+							{ value: entry.empty, label: entry.placeholder },
+							...entry.options(),
+						],
+						value: () => entry.value,
+						choose: (value) => {
+							entry.value = value;
+							drawBranch();
+						},
+						label: entry.label,
+						placeholder: entry.placeholder,
+						emptyPlaceholder: entry.placeholder,
+					});
+					this.pickers.push(picker);
+					for (const scope of within) scope.add(picker);
 				}
 				drawBranch();
 			}
@@ -215,7 +225,7 @@ export class FilterPanel {
 		const fill = (): void => {
 			body.empty();
 			this.releasePickers();
-			draw(body, draft);
+			draw(body, draft, []);
 		};
 		fill();
 		const actions = panel.createDiv({
