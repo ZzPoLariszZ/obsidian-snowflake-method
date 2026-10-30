@@ -19866,6 +19866,20 @@ body.is-mobile
 	min-width: calc(2.75rem + var(--touch-size-m, 2.75rem));
 }
 
+/* Two of those abreast in the foreshadowing table's actions column: the
+   column grows by the two chevrons' growth, three quarters of a rem each, and
+   the table's floor by the same, so at the floor the description keeps the
+   room it keeps on the desktop. In English the pair ran nine pixels past the
+   table's frame. */
+body.is-mobile col.snowflake-method-foreshadowing-column-actions {
+	width: 14rem;
+}
+
+body.is-mobile
+	.snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column {
+	--snowflake-method-table-floor: 53.5rem;
+}
+
 body.is-mobile .snowflake-method-definition-inspector {
 	--snowflake-inspector-more: var(--touch-size-s, 2.5rem);
 }

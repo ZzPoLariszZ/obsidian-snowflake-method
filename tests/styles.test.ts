@@ -1609,6 +1609,19 @@ describe('styles.css', () => {
 		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-main')).toContain('overflow-y: visible');
 		expect(plain.replace(/\/\*[\s\S]*?\*\//gu, ' ')).not.toMatch(/body\.is-(?:mobile|tablet)[^{]*\.snowflake-method-main[\s,{]/u);
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-table-body')).toContain('overflow: visible');
+		// Two finger-sized chevrons abreast widen the foreshadowing table's
+		// actions column by their growth, and its floor by the same, so the
+		// description keeps its 8.5rem at the floor as on the desktop.
+		const rem = (selector: string): number => Number(/(?:width|floor): ([\d.]+)rem/u.exec(declarations(selector))?.[1]);
+		const grown = 2 * (2.75 - 2);
+		expect(
+			rem('body.is-mobile col.snowflake-method-foreshadowing-column-actions') -
+				rem('col.snowflake-method-foreshadowing-column-actions'),
+		).toBeCloseTo(grown);
+		expect(
+			rem('body.is-mobile .snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column') -
+				rem('.snowflake-method-table.snowflake-method-foreshadowing-table'),
+		).toBeCloseTo(grown);
 		// The tabbed panes end where their content ends, as the member panels do, so the field never runs out of its pane.
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-statistics-pane')).toContain('flex: 0 0 auto');
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-member-panel')).toContain('flex: 0 0 auto');
