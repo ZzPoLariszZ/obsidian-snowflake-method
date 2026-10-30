@@ -32,6 +32,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		Menu: class {
 			addItem(build: (item: MenuItem) => void): this { build(new MenuItem()); return this; }
 			addSeparator(): this { return this; }
+			onHide(): void {}
 			showAtMouseEvent(): void {}
 		},
 		Setting: class extends runtime.Setting {

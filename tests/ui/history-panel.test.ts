@@ -55,6 +55,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		setParentElement(): this {
 			return this;
 		}
+		onHide(): void {}
 		showAtMouseEvent(): this {
 			shownMenus.push(this.items);
 			return this;

@@ -54,6 +54,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		addSeparator(): this {
 			return this;
 		}
+		onHide(): void {}
 		showAtMouseEvent(): this {
 			shown.menus.push(this.items);
 			return this;

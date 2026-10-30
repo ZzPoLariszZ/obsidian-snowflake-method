@@ -20,6 +20,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		private readonly rows: MenuRow[] = [];
 		constructor() { menus.push(this.rows); }
 		setParentElement(): this { return this; }
+		onHide(): void {}
 		showAtMouseEvent(): this { return this; }
 		addSeparator(): this { this.rows.push({ separator: true }); return this; }
 		addItem(build: (item: unknown) => void): this {

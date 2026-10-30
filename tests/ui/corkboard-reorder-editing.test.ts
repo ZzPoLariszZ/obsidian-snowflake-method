@@ -39,6 +39,7 @@ vi.mock('obsidian', async (importOriginal) => {
 				const item = new Item(); build(item); menuEntries.push(item); return this;
 			}
 			addSeparator(): this { return this; }
+			onHide(): void {}
 			showAtMouseEvent(): void {}
 		},
 	};

@@ -37,6 +37,7 @@ import {
 	type TimelineView,
 } from '../domain';
 import { entityGroupLabel } from './entity-form';
+import { watchDragPress } from './drag-press';
 import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { promptForEntityReference, type EntityReferenceSource } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
@@ -171,6 +172,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const root = container.createDiv({
 		cls: 'snowflake-method-prose-panel snowflake-method-timeline snowflake-method-scene-cards',
 	});
+	// A finger's hold lifts a card into a drag and opens its menu at once; the watch keeps the two apart.
+	const dragPress = watchDragPress(root);
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
@@ -1502,6 +1505,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					void deleteLane(lane);
 				});
 		});
+		dragPress.opened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
@@ -1647,6 +1651,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					if (lane !== null) void removeTimeFrom(lane, entry);
 				});
 		});
+		dragPress.opened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
@@ -1731,6 +1736,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		projectPath: () => controls.projectPath(),
 		root,
 		ground: table,
+		menuOpened: dragPress.opened,
 		deck,
 		lanes: () => lanes,
 		documentLanes: () => reading?.held.timelines ?? null,
@@ -1928,6 +1934,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			// and only then the words still being written and the deck.
 			loop.release();
 			stopBalance();
+			dragPress.release();
 			searchField.dispose();
 			releaseWindow();
 			pool.dispose();

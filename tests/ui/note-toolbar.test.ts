@@ -50,6 +50,7 @@ vi.mock('obsidian', async (importOriginal) => {
 			this.items.push({ title: '---', checked: false, label: false, click: null });
 			return this;
 		}
+		onHide(): void {}
 		showAtMouseEvent(): this {
 			shownMenus.push(this.items);
 			return this;

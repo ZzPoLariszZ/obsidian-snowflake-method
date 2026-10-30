@@ -39,6 +39,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		}
 		addSeparator(): this { return this; }
 		setParentElement(): this { return this; }
+		onHide(): void {}
 		showAtMouseEvent(): this {
 			menus.push(this.items.map((item) => ({ title: item.title, icon: item.icon, disabled: item.disabled, click: item.click })));
 			return this;

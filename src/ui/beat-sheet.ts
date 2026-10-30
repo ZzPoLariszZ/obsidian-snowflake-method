@@ -75,6 +75,7 @@ import {
 	type TableEntry,
 } from './beat-sheet-layout';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
+import { watchDragPress } from './drag-press';
 import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { createLaneCells, type Lane, type LaneCell, type LaneCells, type SceneScope } from './lane-cells';
 import { promptForCustomFieldTemplate } from './modals';
@@ -173,6 +174,8 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		cls: 'snowflake-method-prose-panel snowflake-method-timeline snowflake-method-beat-sheet snowflake-method-scene-cards',
 	});
 	root.dataset.layout = 'single';
+	// A finger's hold lifts a card into a drag and opens its menu at once; the watch keeps the two apart.
+	const dragPress = watchDragPress(root);
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
@@ -1354,6 +1357,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 					void deleteAct(actId);
 				});
 		});
+		dragPress.opened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
@@ -1537,6 +1541,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 					void deleteBeat(beatId);
 				});
 		});
+		dragPress.opened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
@@ -1556,6 +1561,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		projectPath: () => controls.projectPath(),
 		root,
 		ground: table,
+		menuOpened: dragPress.opened,
 		deck,
 		// As last painted, and not as last read: a read that came back with
 		// nothing leaves the table standing, and a row open in it is still the
@@ -1771,6 +1777,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			// and the deck.
 			loop.release();
 			stopBalance();
+			dragPress.release();
 			searchField.dispose();
 			releaseWindow();
 			pool.dispose();

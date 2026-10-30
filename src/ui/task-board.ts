@@ -9,6 +9,7 @@ import {
 	type Task,
 	type TaskStatus,
 } from '../domain';
+import { watchDragPress } from './drag-press';
 import type { FilterRow } from './filter-rows';
 import { grouped, paintCount, renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
@@ -141,6 +142,8 @@ export function renderTaskBoard(
 	const root = container.createDiv({
 		cls: 'snowflake-method-prose-panel snowflake-method-task-board',
 	});
+	// A finger's hold lifts a card into a drag and opens its menu at once; the watch keeps the two apart.
+	const dragPress = watchDragPress(root);
 	const band = root.createDiv({ cls: 'snowflake-method-prose-controls' });
 	const search = new SearchComponent(band);
 	search.setPlaceholder(t('taskBoard.searchPlaceholder'));
@@ -487,6 +490,7 @@ export function renderTaskBoard(
 					act(bridge.deleteTask(task.id));
 				});
 		});
+		dragPress.opened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
@@ -1045,6 +1049,7 @@ export function renderTaskBoard(
 			root.win.clearInterval(dayWatch);
 			loop.dispose();
 			unsubscribe();
+			dragPress.release();
 			root.remove();
 			// A reveal still waiting on a read is answered: the board it waited for has gone.
 			wake();

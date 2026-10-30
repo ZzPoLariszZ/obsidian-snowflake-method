@@ -28,6 +28,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		private readonly items: MenuItem['item'][] = [];
 		addItem(build: (item: MenuItem) => void): this { const item = new MenuItem(); build(item); this.items.push(item.item); return this; }
 		addSeparator(): this { this.items.push({ title: 'separator', icon: '', disabled: false, click: () => undefined }); return this; }
+		onHide(): void {}
 		showAtMouseEvent(): this { menus.push(this.items); return this; }
 	}
 	return {

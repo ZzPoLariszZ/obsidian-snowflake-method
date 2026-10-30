@@ -40,6 +40,7 @@ vi.mock('obsidian', async (importOriginal) => {
 			}
 			addSeparator(): this { return this; }
 			setParentElement(): this { return this; }
+			onHide(): void {}
 			showAtMouseEvent(): this { ui.menus.push(this.items); return this; }
 		},
 	};

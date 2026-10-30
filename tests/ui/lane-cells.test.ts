@@ -33,6 +33,7 @@ vi.mock('obsidian', async (importOriginal) => {
 			return this;
 		}
 		addSeparator(): this { return this; }
+		onHide(): void {}
 		showAtMouseEvent(): this {
 			menus.push(this.items.map((item) => ({ title: item.title, disabled: item.disabled, click: item.click })));
 			return this;
@@ -270,6 +271,7 @@ function standing(lanes: Timeline[], overrides: Partial<LaneCellsDeps<Reading>> 
 		dragTypes: { row: ROW_TYPE, scene: SCENE_TYPE },
 		dragPhase,
 		endDrag,
+		menuOpened: () => undefined,
 		...overrides,
 	});
 	paint();

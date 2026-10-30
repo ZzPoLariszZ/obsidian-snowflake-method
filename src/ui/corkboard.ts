@@ -47,6 +47,7 @@ import {
 import { entityDeal } from './entity-deal';
 import type { EntityFilters } from './entity-filters';
 import type { FilterRow } from './filter-rows';
+import { watchDragPress } from './drag-press';
 import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { kindWord } from './kind-word';
 import {
@@ -143,6 +144,8 @@ export function renderBoard<
 		cls: 'snowflake-method-prose-panel snowflake-method-corkboard snowflake-method-scene-cards',
 	});
 	root.dataset.mode = memory.mode;
+	// A finger's hold lifts a card into a drag and opens its menu at once; the watch keeps the two apart.
+	const dragPress = watchDragPress(root);
 
 	// -- The band ------------------------------------------------------------
 
@@ -919,6 +922,7 @@ export function renderBoard<
 					void enqueue(() => deal.delete(entry.member, current.path), { persist: true });
 				});
 		});
+		dragPress.opened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
@@ -1377,6 +1381,7 @@ export function renderBoard<
 			if (searchTimer !== null) searchWindow.clearTimeout(searchTimer);
 			if (frame !== null) animationWindow.cancelAnimationFrame(frame);
 			stopBalance();
+			dragPress.release();
 			viewField?.destroy();
 			observer?.disconnect();
 			stopMigration?.();

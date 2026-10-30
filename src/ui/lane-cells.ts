@@ -174,6 +174,8 @@ export interface LaneCellsDeps<Reading> {
 	dragPhase: (stateOf: (laneId: string) => 'lane' | 'locked' | 'idle') => void;
 	/** The whole of a drag's end, the workspace's half with the cells'. */
 	endDrag: () => void;
+	/** A menu a cell opened, told to the workspace, whose watch closes it as a drag sets off. */
+	menuOpened: (menu: Menu) => void;
 }
 
 export interface LaneCells {
@@ -911,6 +913,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 					void removeRow(lane, time, entry.rowId);
 				});
 		});
+		deps.menuOpened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
@@ -1633,6 +1636,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 					void deck.enqueue(() => host.deleteScene(card.id, card.member.revision, path), { persist: true });
 				});
 		});
+		deps.menuOpened(menu);
 		menu.showAtMouseEvent(event);
 	};
 
