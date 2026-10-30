@@ -992,14 +992,23 @@ describe('styles.css', () => {
 	 */
 	it('sizes an act from the timeline\u2019s own measures and starts each axis by the painter\u2019s word', () => {
 		const act = declarations('.snowflake-method-beat-sheet-act');
+		// The rows' floor: the time column, the gap and one lane, said once on the timeline.
+		const floor = styles.match(/--snowflake-method-timeline-row-floor: calc\(([\s\S]*?)\n\t\);/u)?.[1] ?? '';
 		for (const measure of [
 			'var(--snowflake-method-timeline-time-width)',
 			'var(--snowflake-method-timeline-lane-gap)',
 			'var(--snowflake-method-timeline-lane-width)',
 		]) {
-			expect(act, measure).toContain(measure);
+			expect(floor, measure).toContain(measure);
 		}
+		expect(styles.match(/--snowflake-method-timeline-row-floor: calc\(/gu)).toHaveLength(1);
+		expect(act).toContain('min-width: var(--snowflake-method-timeline-row-floor)');
 		expect(act).toContain('min-height: var(--snowflake-method-timeline-head-height)');
+		// A row alone with its lane is never narrower than its columns, so a pinned
+		// time cell can travel the whole scroll within it, as the act's head can.
+		const single = declarations(".snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-row");
+		expect(single).toContain('min-width: var(--snowflake-method-timeline-row-floor)');
+		expect(single).toContain('minmax(var(--snowflake-method-timeline-lane-width), 1fr)');
 		const offset = 'var(--snowflake-method-timeline-node-offset)';
 		expect(
 			declarations('.snowflake-method-beat-sheet-beat.is-act-first .snowflake-method-timeline-axis::before'),

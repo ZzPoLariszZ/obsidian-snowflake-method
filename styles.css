@@ -15201,6 +15201,11 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 			var(--snowflake-method-timeline-scene-width) + var(--snowflake-method-timeline-stack-depth) +
 			2 * var(--size-2-2)
 	);
+	/* The narrowest a row can be: the time column, the gap and one lane. */
+	--snowflake-method-timeline-row-floor: calc(
+		var(--snowflake-method-timeline-time-width) + var(--snowflake-method-timeline-lane-gap) +
+			var(--snowflake-method-timeline-lane-width)
+	);
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
@@ -15523,7 +15528,10 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
    one card: the same floor for every row and for the head whatever each
    holds, so the rows stay level and a long name trims as it would beside
    other lanes. A field too narrow even for that scrolls as the lanes side
-   by side do. */
+   by side do, and a row is then as wide as its columns, not as the field:
+   a time cell pinned at the start travels only within its own row, and a
+   row cut to the field let the cell go along with the lane once the table
+   had scrolled a field's width. */
 .snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-table {
 	width: 100%;
 }
@@ -15533,6 +15541,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	grid-template-columns:
 		var(--snowflake-method-timeline-time-width)
 		minmax(var(--snowflake-method-timeline-lane-width), 1fr);
+	min-width: var(--snowflake-method-timeline-row-floor);
 }
 
 .snowflake-method-timeline-head {
@@ -16561,8 +16570,8 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
    end. It is as tall as the head a timeline's lanes stand under, so the
    first act's rule runs level with the pool's, and padded as a beat's own
    cell is, so its handle stands over the beats'. It is never narrower than a
-   beat's row, which keeps its rule as long as the rows when the field is
-   too narrow for them and the table scrolls. */
+   beat's row, the rows' own floor, which keeps its rule as long as the rows
+   when the field is too narrow for them and the table scrolls. */
 .snowflake-method-beat-sheet {
 	/* Where an act's words start, which the line under an empty act starts
 	   under: past the head's padding, the room its handle takes, the gap
@@ -16608,10 +16617,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	display: flex;
 	align-items: center;
 	gap: var(--snowflake-method-beat-sheet-act-gap);
-	min-width: calc(
-		var(--snowflake-method-timeline-time-width) + var(--snowflake-method-timeline-lane-gap) +
-			var(--snowflake-method-timeline-lane-width)
-	);
+	min-width: var(--snowflake-method-timeline-row-floor);
 	min-height: var(--snowflake-method-timeline-head-height);
 }
 
