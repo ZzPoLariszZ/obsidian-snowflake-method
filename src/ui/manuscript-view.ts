@@ -94,6 +94,7 @@ import {
 	promptForForeshadowingPick,
 	promptForOccurrenceRelink,
 } from './foreshadowing-form';
+import { marginIsTight } from './margin-room';
 import { addMentionMenuItems, openMentionMenu } from './mention-menu';
 import { openMentionModeMenu } from './mention-mode-menu';
 import {
@@ -3349,6 +3350,12 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * them, so a widened pane finds them where they belong. The one card a
 	 * tight pane still shows is the proposal being written, which the
 	 * author opened and must be able to finish.
+	 *
+	 * Before it is tight the rail narrows with the margin: the margin as
+	 * measured is published on the pane, and the stylesheet draws the card's
+	 * width from it, down to a floor. So a tablet in portrait, or a narrow
+	 * split, that could never hold the full card keeps its cards at a width
+	 * the margin holds, and a pane is tight only under the floor.
 	 */
 	private syncMarginRoom(): void {
 		const stream = this.streamEl;
@@ -3360,8 +3367,11 @@ export class SnowflakeManuscriptView extends ItemView {
 		const margin =
 			sample === undefined
 				? 0
-				: (stream.clientWidth - sample.el.offsetWidth) / 2;
-		this.contentEl.toggleClass('is-revision-tight', margin < 300);
+				: Math.floor((stream.clientWidth - sample.el.offsetWidth) / 2);
+		this.contentEl.setCssProps({
+			'--snowflake-method-margin-room': `${String(margin)}px`,
+		});
+		this.contentEl.toggleClass('is-revision-tight', marginIsTight(margin));
 		this.contentEl.toggleClass('is-milestone-tight', !this.milestonesFit(stream));
 	}
 

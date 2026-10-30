@@ -4,6 +4,7 @@ import engine from '@xyflow/react/dist/base.css?raw';
 
 import styles from '../styles.css?raw';
 import { TINT_REACH_CLASSES } from '../src/domain';
+import { RAIL_FLOOR, RAIL_ROOM, RAIL_TIGHT_MARGIN, RAIL_WIDTH } from '../src/ui/margin-room';
 import { scopeCss } from './helpers/scope-css';
 
 /**
@@ -300,6 +301,30 @@ describe('styles.css', () => {
 		expect(rail).toContain('left: auto');
 		expect(declarations('.is-milestone-tight .snowflake-method-milestone::before')).toContain(
 			'visibility: hidden',
+		);
+	});
+
+	/**
+	 * Before a pane is tight the rail narrows with the margin: the view
+	 * publishes the margin it measured, the stylesheet takes it less the
+	 * rail's room down to a floor, and the floor plus the room is the view's
+	 * own threshold, so the two cannot drift apart. A narrow card breaks its
+	 * row of answers rather than cutting one short.
+	 */
+	it('narrows the rail to the margin before holding it back', () => {
+		expect(declarations('.snowflake-method-revision-rail')).toContain(
+			`width: clamp(${String(RAIL_FLOOR)}px, calc(var(--snowflake-method-margin-room, 300px) - ${String(RAIL_ROOM)}px), ${String(RAIL_WIDTH)}px)`,
+		);
+		expect(RAIL_TIGHT_MARGIN).toBe(RAIL_FLOOR + RAIL_ROOM);
+		expect(declarations('.snowflake-method-rail-actions')).toContain('flex-wrap: wrap');
+		expect(declarations('.snowflake-method-rail-actions.is-balanced .snowflake-method-rail-action')).toContain(
+			'min-width: max-content',
+		);
+		expect(declarations('.snowflake-method-rail-action')).not.toContain('text-overflow');
+		// On mobile the answers keep the rail's own side padding, so three
+		// still stand abreast in a card narrowed to the margin.
+		expect(declarations('body.is-mobile .snowflake-method-rail-action')).toContain(
+			'padding-inline: var(--size-4-2)',
 		);
 	});
 

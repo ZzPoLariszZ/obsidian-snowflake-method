@@ -7252,7 +7252,14 @@ body {
 	top: 0;
 	left: calc(100% + var(--size-4-2));
 	z-index: 0;
-	width: 260px;
+	/* The card's full width where the margin has room for it, and a narrower
+	   card where it has not: the view publishes the margin it measured, and
+	   the rail takes it less its gap from the column and a little room to
+	   the pane's edge, down to a floor. A tablet in portrait, or a narrow
+	   split, that could never hold the full card keeps its cards at a width
+	   the margin holds. The figures are the view's, in margin-room.ts, and
+	   the fallback is a margin wide enough for the full card. */
+	width: clamp(192px, calc(var(--snowflake-method-margin-room, 300px) - 20px), 260px);
 }
 
 /* A pane too narrow for a margin holds the cards back, as it holds the
@@ -7557,16 +7564,20 @@ body {
 
 .snowflake-method-rail-actions {
 	display: flex;
+	flex-wrap: wrap;
 	gap: var(--size-4-1);
 	margin-top: var(--size-4-3);
 }
 
 /* The three answers to a proposal are equally likely, so they divide the
-   card between them and the row ends where the card does. */
+   card between them and the row ends where the card does. In a card too
+   narrow for the three abreast each answer keeps its word whole and the
+   row breaks, the last answer on a line of its own, rather than any answer
+   being cut to a fragment. */
 .snowflake-method-rail-actions.is-balanced
 	.snowflake-method-rail-action {
 	flex: 1 1 0;
-	min-width: 0;
+	min-width: max-content;
 }
 
 /* What closes a form sits where a dialog keeps it. */
@@ -7576,10 +7587,8 @@ body {
 
 .snowflake-method-rail-action {
 	padding: var(--size-2-2) var(--size-4-2);
-	overflow: hidden;
 	font-size: var(--font-ui-smaller);
 	white-space: nowrap;
-	text-overflow: ellipsis;
 }
 
 /* The answer that takes something away, in the ink the tables give their
@@ -20017,6 +20026,15 @@ body.is-mobile .snowflake-method-manuscript-toolbar .clickable-icon.snowflake-me
 	flex: 0 0 auto;
 	min-width: 2.5rem;
 	min-height: var(--touch-size-m, 2.75rem);
+}
+
+/* A margin card's answers keep the rail's own eight pixels a side here. The
+   app's finger-sized buttons take twenty, which in a card narrowed to the
+   margin left room for two answers abreast and sent the third to a line of
+   its own, in Chinese as in English. The buttons keep the app's height, and
+   a balanced row still divides the card between them. */
+body.is-mobile .snowflake-method-rail-action {
+	padding-inline: var(--size-4-2);
 }
 
 /* The writing count and the session on the bar, which on the desktop stand
