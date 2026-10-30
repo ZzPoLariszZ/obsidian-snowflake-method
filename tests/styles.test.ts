@@ -883,6 +883,16 @@ describe('styles.css', () => {
 		}
 	});
 
+	/**
+	 * The stand-in bars are the scroller's only ones: its own are hidden both
+	 * ways, since an Android tablet's web view older than Chromium 121 knows
+	 * no scrollbar-width and drew them beside the stand-ins.
+	 */
+	it('hides the timeline scroller’s own bars both ways, so the stand-in bars are its only ones', () => {
+		expect(declarations('.snowflake-method-timeline-scroll')).toContain('scrollbar-width: none');
+		expect(declarations('.snowflake-method-timeline-scroll::-webkit-scrollbar')).toContain('display: none');
+	});
+
 	/** The selectors must also beat the hiding rules; a media query adds no specificity. */
 	it('shows the timeline menus and add controls without hover on a coarse pointer', () => {
 		const timeline = section('Timeline');

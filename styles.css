@@ -15424,6 +15424,14 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	scrollbar-width: none;
 }
 
+/* Said the WebKit way as well: the stand-in bars below are the scroller's
+   only ones, and an Android tablet's web view older than Chromium 121 knows
+   no scrollbar-width and drew the scroller's own bars beside them, two along
+   an edge. */
+.snowflake-method-timeline-scroll::-webkit-scrollbar {
+	display: none;
+}
+
 .snowflake-method-timeline-scrollbar {
 	position: absolute;
 	z-index: 6;
