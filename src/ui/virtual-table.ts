@@ -228,6 +228,19 @@ export class VirtualTable {
 	}
 
 	/**
+	 * Puts the scroller at the head of the list, for rows filtered afresh:
+	 * a scroller that is the frame goes to its top, and a page or column the
+	 * frame stands in comes back no further than the frame's own top, so
+	 * the search band above the rows holds its place. Answers where the
+	 * scroll now stands, for the memory a caller keeps of it.
+	 */
+	toHead(): number {
+		const { scroller } = this.options;
+		scroller.scrollTop = Math.min(scroller.scrollTop, this.frameTop());
+		return scroller.scrollTop;
+	}
+
+	/**
 	 * Where the frame starts, measured down the scroller's content: nothing
 	 * where the scroller is the frame, and the rows' own offsets count from
 	 * there.

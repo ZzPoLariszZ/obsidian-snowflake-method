@@ -2789,8 +2789,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.entityTable = virtual;
 		const feed = (resetScroll: boolean): void => {
 			if (resetScroll) {
-				this.entityScroll.set(kind, 0);
-				virtual.restore(0);
+				this.entityScroll.set(kind, virtual.toHead());
 			}
 			entries = this.entityEntries(model, kind);
 			count.setText(
@@ -6804,8 +6803,7 @@ export class SnowflakeDashboardView extends ItemView {
 			// A changed filter makes the old offset point at nothing the eye
 			// was on, so the list starts back at its head.
 			if (resetScroll) {
-				this.characterScroll = 0;
-				virtual.restore(0);
+				this.characterScroll = virtual.toHead();
 			}
 			entries = this.characterEntries(model);
 			count.setText(
@@ -7187,8 +7185,7 @@ export class SnowflakeDashboardView extends ItemView {
 			// A changed filter makes the old offset point at nothing the eye
 			// was on, so the list starts back at its head.
 			if (resetScroll) {
-				this.sceneScroll = 0;
-				virtual.restore(0);
+				this.sceneScroll = virtual.toHead();
 			}
 			entries = this.sceneEntries(model);
 			// Retained virtual rows keep this map in their drop callbacks.

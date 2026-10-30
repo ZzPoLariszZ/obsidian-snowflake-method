@@ -292,6 +292,18 @@ describe('a table windowed by the page it stands down', () => {
 		expect(page.scrollTop).toBe(120);
 	});
 
+	it('brings a page scrolled into the rows back to the frame’s top, and leaves one above it where it stands', () => {
+		const { page, table } = paged();
+		table.setTotal(100);
+		page.scrollTop = 1300;
+		expect(table.toHead()).toBe(300);
+		expect(page.scrollTop).toBe(300);
+		// The band above the rows is on the screen: nothing moves.
+		page.scrollTop = 100;
+		expect(table.toHead()).toBe(100);
+		expect(page.scrollTop).toBe(100);
+	});
+
 	it('lets go of the page once its frame has left the document', () => {
 		const { dom, page, frame, table, onScroll } = paged();
 		table.setTotal(100);
