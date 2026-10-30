@@ -263,10 +263,11 @@ export function renderBoard<
 			attr: { type: 'button' },
 		});
 	nameToolbarSymbol(addButton, 'plus');
-	// The workspace's board gathers its actions under one button on a tablet;
-	// the dashboard's band wraps its row instead, and its panels hang from
-	// their own buttons.
-	const gathered = standalone ? gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) }) : null;
+	// On a tablet the board gathers its actions under one button, on its own
+	// tab and in the pool alike, where a card's width holds the search, the
+	// refresh and that button and no more. The dashboard's bands wrap their
+	// rows instead, and their panels hang from their own buttons.
+	const gathered = gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) });
 	const stopBalance = standalone ? balanceToolbar(band, { start: viewHost, end }) : (): void => undefined;
 	if (variant.addButton === 'icon') {
 		setIcon(addButton, 'plus');

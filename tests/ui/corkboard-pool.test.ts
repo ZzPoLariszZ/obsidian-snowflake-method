@@ -188,7 +188,7 @@ describe('the corkboard as a pool', () => {
 		expect(spoken.getAttribute('aria-label')).toBe(null);
 	});
 
-	it('gathers its actions under one More actions button on a tablet, where the display and the funnel hang from that button', async () => {
+	it('gathers its actions under one More actions button on a tablet, in the pool too, where the display and the funnel hang from that button', async () => {
 		Platform.isMobile = true;
 		try {
 			const fixture = pool({ include: () => true });
@@ -210,7 +210,17 @@ describe('the corkboard as a pool', () => {
 			listed[0]!.click();
 			const { openFilter } = fixture.controls.popover as unknown as { openFilter: ReturnType<typeof vi.fn> };
 			expect(openFilter).toHaveBeenCalledWith(more, expect.anything(), expect.any(Function), 'corkboard.display');
-			expect(pool({ include: () => true, searchLabel: 'quiet' }).dom.container.querySelector('.snowflake-method-toolbar-more')).toBeNull();
+			// The pool beside a timeline gathers the same way: its band is one card
+			// wide, and keeps the search and the refresh beside the gathering button.
+			const quiet = pool({ include: () => true, searchLabel: 'quiet' });
+			await settle();
+			const quietEnd = quiet.root.querySelector('.snowflake-method-toolbar-end')!;
+			expect(quietEnd.children.map((child) => [...child.classes].pop())).toEqual([
+				'snowflake-method-toolbar-gathered', 'snowflake-method-prose-state', 'snowflake-method-prose-refresh', 'snowflake-method-toolbar-more',
+			]);
+			expect(quietEnd.children[0]!.children.map((child) => [...child.classes].pop())).toEqual([
+				'snowflake-method-corkboard-display', 'snowflake-method-corkboard-direction', 'snowflake-method-filter-button', 'snowflake-method-corkboard-add',
+			]);
 		} finally {
 			Platform.isMobile = false;
 		}
