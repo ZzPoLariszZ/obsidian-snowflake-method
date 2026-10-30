@@ -6735,7 +6735,7 @@ export class SnowflakeDashboardView extends ItemView {
 			'snowflake-method-character-table',
 			[
 				this.t('table.order'),
-				this.t('table.name'),
+				this.t('table.characterName'),
 				this.t('table.category'),
 				this.t('table.oneSentenceStoryline'),
 			],
@@ -6910,7 +6910,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		const nameCell = row.createEl('td', {
 			cls: 'snowflake-method-table-primary',
-			attr: { 'data-label': this.t('table.name') },
+			attr: { 'data-label': this.t('table.characterName') },
 		});
 		this.renderMemberNameCell(nameCell, {
 			name: character.name,

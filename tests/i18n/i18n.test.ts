@@ -398,11 +398,15 @@ describe('translation resources', () => {
 		// type, and the role reads as one category among them.
 		expect(en['table.category']).toBe('Category');
 		expect(zhCN['table.category']).toBe('类别');
-		// Both tables head their first column with a plain name; only Chinese
-		// tells a person's name from a thing's.
+		// Every table heads its first column with a plain name; only Chinese
+		// tells a person's name from a thing's, so the character table asks for
+		// the person's and every other table, the kinds' included, a thing's.
 		expect(en['table.sceneName']).toBe('Name');
 		expect(zhCN['table.sceneName']).toBe('名称');
-		expect(zhCN['table.name']).toBe('姓名');
+		expect(en['table.name']).toBe('Name');
+		expect(zhCN['table.name']).toBe('名称');
+		expect(en['table.characterName']).toBe('Name');
+		expect(zhCN['table.characterName']).toBe('姓名');
 		expect(Object.keys(en)).not.toContain('table.characterType');
 		expect(Object.keys(en)).not.toContain('character.major');
 	});

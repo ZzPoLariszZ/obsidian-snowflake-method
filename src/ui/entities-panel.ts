@@ -734,6 +734,9 @@ export function renderEntitiesPanel(
 			matches(entity.memberName),
 		);
 		if (searching() && shown.length === 0) return;
+		// Chinese tells a person's name from a thing's: the character section
+		// heads its names as the character table does, the other kinds as theirs.
+		const nameLabel = t(section.id === 'character' ? 'table.characterName' : 'table.name');
 		fold(`kind/${section.id}`, section.label, shown.length, (body) => {
 			if (shown.length === 0) {
 				emptyState(body, t('mentionView.empty'), false);
@@ -743,7 +746,7 @@ export function renderEntitiesPanel(
 				body,
 				['name', 'count', 'span', 'distribution'],
 				[
-					t('table.name'),
+					nameLabel,
 					t('tracking.column.count'),
 					t('tracking.column.span'),
 					t('tracking.column.distribution'),
@@ -756,7 +759,7 @@ export function renderEntitiesPanel(
 				tr.createEl('td', {
 					cls: 'snowflake-method-table-primary',
 					text: entity.memberName,
-					attr: { 'data-label': t('table.name') },
+					attr: { 'data-label': nameLabel },
 				});
 				const counts = tr.createEl('td', {
 					cls: 'snowflake-method-tracking-counts',

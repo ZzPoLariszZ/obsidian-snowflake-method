@@ -598,6 +598,7 @@ export const en = {
 	'fields.longSynopsisPlaceholder':
 		'Expand each paragraph of the plot synopsis into a full page.',
 	'table.name': 'Name',
+	'table.characterName': 'Name',
 	'table.category': 'Category',
 	'table.description': 'Description',
 	'table.oneSentenceStoryline': 'One-sentence storyline',

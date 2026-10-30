@@ -538,7 +538,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'fields.plotSynopsisPlaceholder': '把一段式梗概的每一句话扩展成一个段落。',
 	'fields.longSynopsis': '长篇大纲',
 	'fields.longSynopsisPlaceholder': '把情节大纲的每个段落扩展成完整的一页。',
-	'table.name': '姓名',
+	// 「名称」属于事物，「姓名」属于人：角色表用后者，其余表用前者。
+	'table.name': '名称',
+	'table.characterName': '姓名',
 	'table.category': '类别',
 	'table.description': '描述',
 	'table.oneSentenceStoryline': '一句话故事概述',
