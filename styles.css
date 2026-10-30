@@ -5514,8 +5514,11 @@ body.is-mobile .snowflake-method-gallery-item.is-current > .clickable-icon {
 	padding: var(--size-4-2) 0;
 }
 
-:where(.snowflake-method-dashboard.is-rail-compact)
-	.snowflake-method-project-control {
+/* Level with the open control's rule, which lets it grow, and after it: the
+   folded control had grown into the row's eight pixels of slack and stood
+   wider than the two buttons beside it, its icon nearer the wall than theirs. */
+.snowflake-method-dashboard:where(.is-rail-compact)
+	button.snowflake-method-project-control {
 	position: relative;
 	justify-content: center;
 	width: 1.875rem;
@@ -19842,9 +19845,22 @@ body.is-mobile .snowflake-method-dashboard button.snowflake-method-toolbar-butto
 
 body.is-mobile .snowflake-method-dashboard button.snowflake-method-project-control {
 	height: var(--touch-size-m, 2.75rem);
-	/* In the compact rail the toggle beside it has grown to the finger size,
-	   and the control, which shrinks first, kept a sliver: a finger's least. */
-	min-width: var(--touch-size-s, 2.5rem);
+}
+
+/* The folded rail's footer holds its three buttons in one row of ninety-eight
+   pixels, and at the finger sizes above the row ran fourteen pixels past each
+   wall. Folded, the three keep the desktop's width at the finger's height,
+   abreast and centred: the icons stand as far from the walls as from each
+   other, within a pixel or two, as they do on the desktop. */
+body.is-mobile
+	.snowflake-method-dashboard.is-rail-compact
+	button.snowflake-method-project-control,
+body.is-mobile
+	.snowflake-method-dashboard.is-rail-compact
+	.snowflake-method-project-actions
+	button.snowflake-method-toolbar-button {
+	width: 1.875rem;
+	min-width: 1.875rem;
 }
 
 body.is-mobile .snowflake-method-character-action-menu-trigger {

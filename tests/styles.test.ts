@@ -720,6 +720,11 @@ describe('styles.css', () => {
 		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-project-footer')).not.toContain(
 			'margin',
 		);
+		// The folded control keeps its width: its rule stands level with the open
+		// control's, which lets that one grow, and after it.
+		const control = declarations('.snowflake-method-dashboard:where(.is-rail-compact) button.snowflake-method-project-control');
+		expect(control).toContain('flex: 0 0 auto');
+		expect(control).toContain('width: 1.875rem');
 		// Two 28px circles and the open row's 8px gap, inside a row's 8px padding
 		// and hairline on each side, inside the rail's own: 100px.
 		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout')).toContain(
@@ -1622,6 +1627,19 @@ describe('styles.css', () => {
 			rem('body.is-mobile .snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column') -
 				rem('.snowflake-method-table.snowflake-method-foreshadowing-table'),
 		).toBeCloseTo(grown);
+		// The folded rail's footer keeps its three buttons abreast at the
+		// desktop's width, inside the rail's hundred pixels, at the finger's height.
+		const folded = declarations(
+			'body.is-mobile .snowflake-method-dashboard.is-rail-compact button.snowflake-method-project-control',
+		);
+		expect(folded).toContain('width: 1.875rem');
+		expect(folded).toContain('min-width: 1.875rem');
+		expect(declarations('body.is-mobile .snowflake-method-dashboard button.snowflake-method-project-control')).not.toContain(
+			'min-width',
+		);
+		expect(declarations('body.is-mobile .snowflake-method-dashboard button.snowflake-method-project-control')).toContain(
+			'height: var(--touch-size-m, 2.75rem)',
+		);
 		// The tabbed panes end where their content ends, as the member panels do, so the field never runs out of its pane.
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-statistics-pane')).toContain('flex: 0 0 auto');
 		expect(declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-panel.snowflake-method-member-panel')).toContain('flex: 0 0 auto');
