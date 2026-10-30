@@ -156,6 +156,7 @@ import {
 	sceneHasNonRangeFilters,
 	termName,
 } from './scene-filters';
+import { holdInPlace } from './hold-in-place';
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import {
@@ -3490,8 +3491,23 @@ export class SnowflakeDashboardView extends ItemView {
 			) {
 				return;
 			}
-			context.select(kind, node.taxonomyPath);
-			fold();
+			// On a pane too narrow for two columns the inspector stands above
+			// the trees and takes the height of the entry it shows, so choosing
+			// an entry would drop the row just tapped by the inspector's own
+			// growth. The row is held where the finger found it, and followed
+			// by its key, since opening or closing its fold makes the tree's
+			// rows anew.
+			holdInPlace(
+				{
+					getBoundingClientRect: () =>
+						(context.rows.get(rowKey) ?? row).getBoundingClientRect(),
+				},
+				scrollerOf(row),
+				() => {
+					context.select(kind, node.taxonomyPath);
+					fold();
+				},
+			);
 		});
 		// How deep the row sits, which is both its indent and how many guide
 		// lines run down its left: one for every branch it hangs from.
