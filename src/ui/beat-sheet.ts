@@ -75,6 +75,7 @@ import {
 	type TableEntry,
 } from './beat-sheet-layout';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
+import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { createLaneCells, type Lane, type LaneCell, type LaneCells, type SceneScope } from './lane-cells';
 import { promptForCustomFieldTemplate } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
@@ -287,6 +288,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
 	});
+	const fullScreenButton = mountFullScreenButton(end, refreshButton, t, controls.fullScreen);
 	const addActButton = end.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-add-timeline snowflake-method-beat-sheet-add-act',
 		text: t('beatSheet.act.add'),
@@ -306,7 +308,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	});
 	nameToolbarSymbol(addActButton, 'plus');
 	nameToolbarSymbol(addSheetButton, 'layout-grid');
-	gatherToolbarActions(end, { t, keep: [refreshButton] });
+	gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) });
 	const stopBalance = balanceToolbar(toolbar, { start: sheetHost, end });
 
 	// -- The folds, the empty states, the body and the pool --------------------

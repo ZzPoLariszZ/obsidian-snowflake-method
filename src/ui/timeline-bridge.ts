@@ -17,6 +17,7 @@ import type { App } from 'obsidian';
 import type { TimelineWrite } from '../services';
 import type { CorkboardHost, RenderCorkboard } from './corkboard-bridge';
 import type { LentFilterPopover } from './filter-rows';
+import type { FullScreenControl } from './full-screen';
 import type { Translate } from './modals';
 import type { TimelineMemory } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel } from './view-model';
@@ -130,6 +131,8 @@ export interface TimelineControls {
 	unloading?(): boolean;
 	/** What deals the scene pool: the corkboard, in its one-column variant. */
 	corkboard: RenderCorkboard;
+	/** The window, to fill with the board and to hand back. */
+	fullScreen?: FullScreenControl;
 }
 
 /** The same shape as the corkboard's handle, so the view holds one or the other alike. */

@@ -12,6 +12,7 @@ import {
 	Keymap,
 	Notice,
 	Scope,
+	type EventRef,
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from 'obsidian';
@@ -36,6 +37,7 @@ import type {
 	RenderFreeform,
 } from './freeform-bridge';
 import type { MountFreeformCanvas } from './freeform-canvas-port';
+import { FULL_SCREEN_CLASS, FULL_SCREEN_GROUP_CLASS, type FullScreenControl } from './full-screen';
 import type { Translate } from './modals';
 import { renderNoticePane, renderTabStrip } from './pane-parts';
 import type {
@@ -150,6 +152,19 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private refreshRun: Promise<void> = Promise.resolve();
 	private refreshQueuedWhileHidden = false;
 	private readonly filterPanel: FilterPanel;
+	/**
+	 * Whether the board fills the window: the family strip, the leaf's
+	 * header and the window's sidebars put away. Forgotten with the tab.
+	 */
+	private fullScreen = false;
+	/** What the board's toolbar asked to hear of full screen; forgotten with the board. */
+	private readonly fullScreenListeners = new Set<() => void>();
+	/** How the sidebars stood as full screen folded them, to bring back only the ones it folded; null outside full screen. */
+	private foldedSidebars: { left: boolean; right: boolean } | null = null;
+	/** The tab group marked for full screen, whose tab bar a tablet puts away. */
+	private fullScreenGroup: Element | null = null;
+	/** The workspace events full screen listens to while it stands. */
+	private fullScreenEvents: EventRef[] = [];
 	private readonly t: Translate = (key, vars) =>
 		this.deps.host.translateForProject(this.model?.locale ?? null, key, vars);
 
@@ -342,6 +357,15 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.opened = true;
 		this.contentEl.addClass('snowflake-method-story-structure');
 		keepEscapeInView(this);
+		// Escape leaves full screen, unless something inside the view answered
+		// it first or a box of words holds the keys, whose Escape is its own.
+		this.registerDomEvent(this.containerEl, 'keydown', (event) => {
+			if (event.key !== 'Escape' || !this.fullScreen || event.defaultPrevented || event.isComposing) return;
+			const target = event.target as { isContentEditable?: boolean; matches?: (selector: string) => boolean } | null;
+			if (target !== null && (target.isContentEditable === true || target.matches?.('input, textarea, select') === true)) return;
+			event.preventDefault();
+			this.setFullScreen(false);
+		});
 		this.registerDomEvent(this.contentEl, 'pointerdown', () => this.activateProjectContext());
 		this.registerDomEvent(this.contentEl, 'focusin', () => this.activateProjectContext());
 		if (this.app.workspace.layoutReady) {
@@ -355,6 +379,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 
 	onClose(): Promise<void> {
 		this.opened = false;
+		this.setFullScreen(false);
 		this.disposeBoard();
 		this.filterPanel.close();
 		this.shownFrame = null;
@@ -573,6 +598,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 		root.empty();
 		this.shownFrame = this.frameKey();
 		if (this.onPhone()) {
+			// A phone has no board to fill the window with, and its header is the way out of the tab.
+			this.setFullScreen(false);
 			this.renderPhoneNote(root);
 			return;
 		}
@@ -661,6 +688,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 					this.showCorkboardView(view);
 				},
 			},
+			fullScreen: this.fullScreenControl(),
 		};
 	}
 
@@ -681,6 +709,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			},
 			corkboard: this.deps.corkboard,
 			unloading: () => this.unloading || this.deps.unloading?.() === true,
+			fullScreen: this.fullScreenControl(),
 		};
 	}
 
@@ -701,6 +730,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			},
 			corkboard: this.deps.corkboard,
 			unloading: () => this.unloading || this.deps.unloading?.() === true,
+			fullScreen: this.fullScreenControl(),
 		};
 	}
 
@@ -731,6 +761,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			mountCanvas: this.deps.freeformCanvas,
 			// The plugin's own window is the one its code was loaded in.
 			atHome: (element) => element.win === window,
+			fullScreen: this.fullScreenControl(),
 		};
 	}
 
@@ -750,6 +781,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 				this.app.workspace.requestSaveLayout();
 			},
 			unloading: () => this.unloading || this.deps.unloading?.() === true,
+			fullScreen: this.fullScreenControl(),
 		};
 	}
 
@@ -811,6 +843,77 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private disposeBoard(): void {
 		this.board?.dispose();
 		this.board = null;
+		this.fullScreenListeners.clear();
+	}
+
+	/** What a board's toolbar is handed to fill the window and to hand it back. */
+	private fullScreenControl(): FullScreenControl {
+		return {
+			active: () => this.fullScreen,
+			toggle: () => {
+				this.setFullScreen(!this.fullScreen);
+			},
+			changed: (listener) => {
+				this.fullScreenListeners.add(listener);
+			},
+		};
+	}
+
+	/**
+	 * Fills the window with the board, or hands the window back. The leaf
+	 * wears the class the stylesheet puts the family strip and the leaf's
+	 * header away by, its tab group the one a tablet puts the group's tab
+	 * bar away by, and the window's sidebars fold, to come back as they
+	 * stood: one the author had folded stays folded. Full screen is the
+	 * shown tab's, and ends as the tab leaves the screen or closes.
+	 */
+	setFullScreen(on: boolean): void {
+		if (on === this.fullScreen) return;
+		this.fullScreen = on;
+		this.containerEl.toggleClass(FULL_SCREEN_CLASS, on);
+		const { workspace } = this.app;
+		if (on) {
+			this.foldedSidebars = { left: workspace.leftSplit.collapsed, right: workspace.rightSplit.collapsed };
+			workspace.leftSplit.collapse();
+			workspace.rightSplit.collapse();
+			this.fullScreenEvents = [
+				workspace.on('active-leaf-change', () => {
+					this.keepFullScreenInSight();
+				}),
+				workspace.on('layout-change', () => {
+					this.keepFullScreenInSight();
+				}),
+			];
+		} else {
+			for (const ref of this.fullScreenEvents) workspace.offref(ref);
+			this.fullScreenEvents = [];
+			if (this.foldedSidebars !== null) {
+				if (!this.foldedSidebars.left) workspace.leftSplit.expand();
+				if (!this.foldedSidebars.right) workspace.rightSplit.expand();
+				this.foldedSidebars = null;
+			}
+		}
+		this.markFullScreenGroup();
+		this.board?.remeasure();
+		for (const listener of this.fullScreenListeners) listener();
+	}
+
+	/** A tab that left the screen hands the window back; one moved to another group marks the group it stands in now. */
+	private keepFullScreenInSight(): void {
+		if (!this.fullScreen) return;
+		if (!this.containerEl.isShown()) {
+			this.setFullScreen(false);
+			return;
+		}
+		this.markFullScreenGroup();
+	}
+
+	private markFullScreenGroup(): void {
+		const group = this.fullScreen ? this.containerEl.closest('.workspace-tabs') : null;
+		if (group === this.fullScreenGroup) return;
+		this.fullScreenGroup?.classList.remove(FULL_SCREEN_GROUP_CLASS);
+		group?.classList.add(FULL_SCREEN_GROUP_CLASS);
+		this.fullScreenGroup = group;
 	}
 
 	/**

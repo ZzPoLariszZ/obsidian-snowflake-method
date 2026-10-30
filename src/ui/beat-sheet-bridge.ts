@@ -17,6 +17,7 @@ import type { App } from 'obsidian';
 import type { BeatSheetWrite } from '../services';
 import type { CorkboardHost, RenderCorkboard } from './corkboard-bridge';
 import type { LentFilterPopover } from './filter-rows';
+import type { FullScreenControl } from './full-screen';
 import type { Translate } from './modals';
 import type { BeatSheetMemory } from './story-structure-state';
 import type { ProjectDashboardModel } from './view-model';
@@ -138,6 +139,8 @@ export interface BeatSheetControls {
 	unloading?: () => boolean;
 	/** What deals the scene pool: the corkboard, in its one-column variant. */
 	corkboard: RenderCorkboard;
+	/** The window, to fill with the board and to hand back. */
+	fullScreen?: FullScreenControl;
 }
 
 /** The same shape as the corkboard's handle and the timeline's, so the view holds any of them alike. */

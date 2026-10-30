@@ -1684,6 +1684,25 @@
 	min-height: 0;
 }
 
+/* Full screen, from the button on a board's toolbar: the board takes the
+   leaf whole. The strip of the five families and the leaf's own header are
+   put away, the inset narrows to the gutter, and the frame's top edge, which
+   ran in the strip's last row, stands on its own. The view folds the
+   window's sidebars itself and brings them back as full screen is left, by
+   the button again or by Escape. */
+.workspace-leaf-content.snowflake-method-full-screen > .view-header,
+.snowflake-method-full-screen .view-content.snowflake-method-story-structure > .snowflake-method-tabs {
+	display: none;
+}
+
+.workspace-leaf-content.snowflake-method-full-screen .view-content.snowflake-method-story-structure {
+	padding: var(--size-4-2);
+}
+
+.snowflake-method-full-screen .snowflake-method-story-structure .snowflake-method-tab-panel {
+	margin-top: 0;
+}
+
 .snowflake-method-step-ten-description-row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
@@ -20346,6 +20365,14 @@ body.is-mobile .snowflake-method-panel {
 
 body.is-tablet .snowflake-method-story-structure {
 	--snowflake-method-tab-width: 7rem;
+}
+
+/* Full screen on a tablet puts the tab bar of the leaf's group away as well,
+   which on the desktop carries the window's own controls and stays. The
+   view marks the group while its leaf is the one shown, and the button on
+   the board's toolbar is the way back. */
+body.is-tablet .workspace-tabs.snowflake-method-full-screen-group > .workspace-tab-header-container {
+	display: none;
 }
 
 body.is-mobile .snowflake-method-tabs {

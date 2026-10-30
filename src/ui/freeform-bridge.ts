@@ -20,6 +20,7 @@ import type {
 import type { FreeformTransacted, FreeformViewWrite } from '../services';
 import type { MountFreeformCanvas } from './freeform-canvas-port';
 import type { FreeformResourceRequest, FreeformResources } from './freeform-resources';
+import type { FullScreenControl } from './full-screen';
 import type { Translate } from './modals';
 import type { SessionPanelContext } from './session-panel';
 import type { FreeformMemory } from './story-structure-state';
@@ -129,6 +130,8 @@ export interface FreeformControls {
 	mountCanvas: MountFreeformCanvas;
 	/** Whether the plugin's own window is the one the element stands in, which a view moved out is not in. */
 	atHome: (element: HTMLElement) => boolean;
+	/** The window, to fill with the board and to hand back. */
+	fullScreen?: FullScreenControl;
 }
 
 /** The same shape as the corkboard's handle, the timeline's and the beat sheet's, so the view holds any of them alike. */

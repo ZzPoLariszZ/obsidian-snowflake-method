@@ -128,6 +128,7 @@ import {
 	type ResolvedNode,
 } from './freeform-resources';
 import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
+import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { kindIcon } from './kind-icon';
 import { kindWord as kindWordFor, memberKindWord } from './kind-word';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
@@ -279,6 +280,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
 	});
+	const fullScreenButton = mountFullScreenButton(end, refreshButton, t, controls.fullScreen);
 	// The two words carry a symbol each, which is all that shows of them where
 	// the toolbar is too narrow for the words; the words stay their names.
 	const wordWithSymbol = (cls: string, icon: string, words: string): HTMLButtonElement => {
@@ -297,7 +299,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	addViewButton.addEventListener('click', () => {
 		openAddView();
 	});
-	gatherToolbarActions(end, { t, keep: [refreshButton] });
+	gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) });
 	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 
 	// -- The stage: the canvas, the word said of an empty one, and its controls --

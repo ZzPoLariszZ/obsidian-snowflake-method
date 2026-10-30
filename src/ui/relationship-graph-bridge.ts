@@ -15,6 +15,7 @@ import type {
 	ResolveGraphTarget,
 } from '../domain';
 import type { RelationshipGraphWrite } from '../services';
+import type { FullScreenControl } from './full-screen';
 import type { Translate } from './modals';
 import type { MountRelationshipGraph } from './relationship-graph-port';
 import type { SceneManuscriptOpening, SceneManuscriptWrite } from './scene-manuscript-graph';
@@ -92,6 +93,8 @@ export interface RelationshipGraphControls {
 	remember(): void;
 	/** Unload still settles what is in flight, but a refusal cannot open another dialog. */
 	unloading?(): boolean;
+	/** The window, to fill with the board and to hand back. */
+	fullScreen?: FullScreenControl;
 }
 
 /** The same shape as the other workspaces' handles, so the view holds any of them alike. */

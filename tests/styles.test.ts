@@ -1419,6 +1419,21 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * Full screen puts the family strip and the leaf's header away and
+	 * narrows the inset, by the class the view gives its leaf; on a tablet
+	 * the group's tab bar goes too, by the class the view gives the group,
+	 * while on the desktop the bar stays for the window's own controls.
+	 */
+	it('puts the chrome around a workspace away in full screen, and a tablet’s tab bar with it', () => {
+		expect(declarations('.workspace-leaf-content.snowflake-method-full-screen > .view-header')).toContain('display: none');
+		expect(declarations('.snowflake-method-full-screen .view-content.snowflake-method-story-structure > .snowflake-method-tabs')).toContain('display: none');
+		expect(declarations('.workspace-leaf-content.snowflake-method-full-screen .view-content.snowflake-method-story-structure')).toContain('padding: var(--size-4-2)');
+		expect(declarations('.snowflake-method-full-screen .snowflake-method-story-structure .snowflake-method-tab-panel')).toContain('margin-top: 0');
+		expect(declarations('body.is-tablet .workspace-tabs.snowflake-method-full-screen-group > .workspace-tab-header-container')).toContain('display: none');
+		expect(styles.replace(section('Mobile'), ' ')).not.toContain('snowflake-method-full-screen-group');
+	});
+
+	/**
 	 * What the plugin does differently on a phone or a tablet stands in one
 	 * section, under the body classes the app sets, so a desktop reader of
 	 * the sheet never meets it unawares: every rule there is rooted at

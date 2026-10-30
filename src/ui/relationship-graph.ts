@@ -39,6 +39,7 @@ import {
 	type GraphQueryIndex,
 	type GraphViewport,
 } from '../domain';
+import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { buildOptionField, type OptionPicker } from './option-picker';
 import type {
 	RelationshipGraphBridge,
@@ -400,6 +401,7 @@ export function renderRelationshipGraph(
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().catch(notice);
 	});
+	const fullScreenButton = mountFullScreenButton(end, refreshButton, t, controls.fullScreen);
 	// The graph's own menu is the ground's or the focused node's; on a tablet
 	// its button is put away unlisted and the gathered menu carries what the
 	// toolbar's buttons do not: the focused node's items without the fit the
@@ -407,7 +409,7 @@ export function renderRelationshipGraph(
 	// stand-in tab, which draws no graph, adds nothing.
 	gatherToolbarActions(end, {
 		t,
-		keep: [refreshButton],
+		keep: toolbarKept(fullScreenButton, refreshButton),
 		omit: [moreButton],
 		extend: (menu) => {
 			if (memory.view !== 'entities') return;

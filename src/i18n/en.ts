@@ -1282,6 +1282,8 @@ export const en = {
 		'Screen space is limited here. For a better experience, use the visualization workspace on a tablet or on the desktop.',
 	'storyStructure.phoneBack': 'Back to the dashboard',
 	'storyStructure.moreActions': 'More actions',
+	'storyStructure.fullScreen': 'Full screen',
+	'storyStructure.fullScreen.exit': 'Exit full screen',
 	'corkboard.display': 'Display',
 	'corkboard.cards': 'Cards',
 	'corkboard.cards.compact': 'Compact',

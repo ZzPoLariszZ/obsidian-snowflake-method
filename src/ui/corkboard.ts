@@ -47,6 +47,7 @@ import {
 import { entityDeal } from './entity-deal';
 import type { EntityFilters } from './entity-filters';
 import type { FilterRow } from './filter-rows';
+import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { kindWord } from './kind-word';
 import {
 	CARD_SELECTOR,
@@ -249,6 +250,8 @@ export function renderBoard<
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().catch(notice);
 	});
+	// The pools in the timeline's and the beat sheet's frames ask for no full screen of their own.
+	const fullScreenButton = standalone ? mountFullScreenButton(end, refreshButton, t, controls.fullScreen) : null;
 	const addButton = variant.addButton === 'icon'
 		? end.createEl('button', {
 			cls: 'clickable-icon snowflake-method-corkboard-add',
@@ -263,7 +266,7 @@ export function renderBoard<
 	// The workspace's board gathers its actions under one button on a tablet;
 	// the dashboard's band wraps its row instead, and its panels hang from
 	// their own buttons.
-	const gathered = standalone ? gatherToolbarActions(end, { t, keep: [refreshButton] }) : null;
+	const gathered = standalone ? gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) }) : null;
 	const stopBalance = standalone ? balanceToolbar(band, { start: viewHost, end }) : (): void => undefined;
 	if (variant.addButton === 'icon') {
 		setIcon(addButton, 'plus');

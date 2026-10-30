@@ -37,6 +37,7 @@ import {
 	type TimelineView,
 } from '../domain';
 import { entityGroupLabel } from './entity-form';
+import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { promptForEntityReference, type EntityReferenceSource } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
@@ -289,6 +290,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
 	});
+	const fullScreenButton = mountFullScreenButton(end, refreshButton, t, controls.fullScreen);
 	const addTimelineButton = end.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-add-timeline',
 		text: t('timeline.addTimeline'),
@@ -309,7 +311,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// them on, a lane takes a plus and a view the grid the freeform gives one.
 	nameToolbarSymbol(addTimelineButton, 'plus');
 	nameToolbarSymbol(addViewButton, 'layout-grid');
-	gatherToolbarActions(end, { t, keep: [refreshButton] });
+	gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) });
 	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 
 	// -- The folds, the empty states, the body and the pool --------------------

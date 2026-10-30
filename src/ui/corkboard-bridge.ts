@@ -9,6 +9,7 @@
 import type { App, Menu } from 'obsidian';
 
 import type { LentFilterPopover } from './filter-rows';
+import type { FullScreenControl } from './full-screen';
 import type { Translate } from './modals';
 import type { EntityFilters } from './entity-filters';
 import type { SceneFilters } from './scene-filters';
@@ -65,6 +66,8 @@ export interface CorkboardControls<Filters = CorkboardFilters> {
 	views?: {
 		choose(view: CorkboardView): void;
 	};
+	/** The window, to fill with the board and to hand back; none on a board that stands in another's frame. */
+	fullScreen?: FullScreenControl;
 }
 
 export interface CorkboardHandle {
