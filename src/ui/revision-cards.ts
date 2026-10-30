@@ -1,3 +1,5 @@
+import { setIcon } from 'obsidian';
+
 import { revisionKindFor, type OccurrenceRole, type Revision } from '../domain';
 import {
 	foreshadowingCardPrint,
@@ -108,7 +110,21 @@ export interface RevisionRail {
 	 * this first.
 	 */
 	editing(): boolean;
+	/** Visits every standing card with the key the rail knows it by. */
+	each(visit: (key: string, card: HTMLElement) => void): void;
 	dispose(): void;
+}
+
+export interface RailOptions {
+	/**
+	 * How the cards stand: in the margin, placed beside their words by the
+	 * tops handed in (the default), or as a list in reading order, for the
+	 * sidebar, where a card has no margin to stand in and the proposal being
+	 * written stays with the stream.
+	 */
+	layout?: 'margin' | 'list';
+	/** On a listed card, the button that brings its words onto the screen. */
+	locate?: { label: string; act(key: string): void };
 }
 
 const CARD_GAP = 8;
@@ -183,8 +199,11 @@ const unresolvedKey = (occurrenceId: string): string =>
 export function renderRevisionRail(
 	segmentEl: HTMLElement,
 	callbacks: RevisionRailCallbacks,
+	options: RailOptions = {},
 ): RevisionRail {
 	const rail = segmentEl.createDiv({ cls: 'snowflake-method-revision-rail' });
+	const listed = options.layout === 'list';
+	if (listed) rail.addClass('is-list');
 	const cards = new Map<string, CardState>();
 	let draftEl: HTMLElement | null = null;
 	/** Which draft the standing form was built for, so a new one rebuilds it. */
@@ -533,7 +552,33 @@ export function renderRevisionRail(
 		restack();
 	};
 
-	const sync = (model: RevisionRailModel): void => {
+	/**
+	 * On a listed card, the button that brings its words onto the screen:
+	 * first in the compass, so the three read as one row of ways through
+	 * the text. A pinned card has no words left to show, and the stream
+	 * takes the reader to its chapter instead.
+	 */
+	const addLocate = (card: HTMLElement, key: string): void => {
+		const locate = options.locate;
+		if (locate === undefined) return;
+		const nav = card.querySelector('.snowflake-method-rail-nav');
+		const host = nav instanceof HTMLElement ? nav : card;
+		const button = host.createEl('button', {
+			cls: 'clickable-icon snowflake-method-rail-nav-step snowflake-method-rail-locate',
+			attr: { type: 'button', 'aria-label': locate.label },
+		});
+		setIcon(button, 'locate-fixed');
+		button.addEventListener('click', (event) => {
+			event.stopPropagation();
+			locate.act(key);
+		});
+		host.prepend(button);
+	};
+
+	const sync = (given: RevisionRailModel): void => {
+		// A list has no margin for the proposal being written to stand in:
+		// the draft stays with the stream, over the prose's right edge.
+		const model = listed ? { ...given, draft: null } : given;
 		held = model;
 		const wanted = new Set<string>();
 		// A pinned card has no anchor to stand beside and keeps the head of
@@ -561,11 +606,16 @@ export function renderRevisionRail(
 			const kept = cards.get(spec.key);
 			if (kept !== undefined && (kept.editing || kept.print === spec.print)) return;
 			const card =
-				kept?.el ?? rail.createDiv({ cls: `snowflake-method-rail-card ${spec.cls}` });
+				kept?.el ??
+				rail.createDiv({
+					cls: `snowflake-method-rail-card ${spec.cls}`,
+					attr: { 'data-snowflake-method-card': spec.key },
+				});
 			card.empty();
 			card.removeClass('is-conflict');
 			const state: CardState = { el: card, editing: false, print: spec.print };
 			spec.draw(card, state);
+			addLocate(card, spec.key);
 			cards.set(spec.key, state);
 		};
 
@@ -801,6 +851,25 @@ export function renderRevisionRail(
 			return leftTop - rightTop;
 		});
 
+		// A list stands its cards in the flow, in the order the margin would
+		// stack them, and moves one only where the order changed. Never while
+		// a form is open: a text box moved in the DOM loses its focus and the
+		// caret with it, so the order waits for the form to close.
+		if (listed) {
+			if (![...cards.values()].some((state) => state.editing)) {
+				let cursor: Element | null = rail.firstElementChild;
+				for (const { el } of resolved) {
+					if (el === null) continue;
+					if (el === cursor) {
+						cursor = cursor.nextElementSibling;
+						continue;
+					}
+					rail.insertBefore(el, cursor);
+				}
+			}
+			return;
+		}
+
 		// Two passes: the cards must be in the DOM to have heights.
 		const measured = resolved.map(({ key, el, top }) => ({
 			key,
@@ -826,6 +895,9 @@ export function renderRevisionRail(
 			cards.get(unresolvedKey(id))?.el ??
 			null,
 		editing: () => [...cards.values()].some((state) => state.editing),
+		each: (visit) => {
+			for (const [key, state] of cards) visit(key, state.el);
+		},
 		dispose: () => {
 			rail.remove();
 		},

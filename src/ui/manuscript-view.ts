@@ -65,6 +65,7 @@ import {
 	type TextReplacement,
 	type WritingCountHeadings,
 	type WritingCountMode,
+	revealSpan,
 } from '../domain';
 import type { RevisionOutcome } from '../services';
 import {
@@ -94,6 +95,7 @@ import {
 	promptForForeshadowingPick,
 	promptForOccurrenceRelink,
 } from './foreshadowing-form';
+import type { MarginCardsSegment } from './margin-cards-hub';
 import { marginIsTight } from './margin-room';
 import { addMentionMenuItems, openMentionMenu } from './mention-menu';
 import { openMentionModeMenu } from './mention-mode-menu';
@@ -101,6 +103,8 @@ import {
 	renderRevisionRail,
 	type RevisionDraft,
 	type RevisionRail,
+	type RevisionRailCallbacks,
+	type RevisionRailModel,
 } from './revision-cards';
 import { projectedIndexAt } from './prose-projection';
 import { confirmStreamReplaceAll, confirmStreamReplaceMarked } from './modals';
@@ -214,6 +218,10 @@ interface MountedSegment {
 	} | null;
 	/** The card rail at the segment's right, once it has revisions to show. */
 	rail: RevisionRail | null;
+	/** What the rail was last brought level with, for the sidebar's list. */
+	railModel: RevisionRailModel | null;
+	/** The callbacks the rail's cards answer with, shared with the sidebar's. */
+	railCallbacks: RevisionRailCallbacks | null;
 	/**
 	 * The note's writing under the milestones' convention, by the text it was
 	 * counted from, so the notes after it can add it up without counting it
@@ -323,6 +331,10 @@ export class SnowflakeManuscriptView extends ItemView {
 	private streamEl: HTMLElement | null = null;
 	/** The formatting bar's buttons, greyed together while nothing is edited. */
 	private toolbarButtons: HTMLButtonElement[] = [];
+	/** The count of cards on the stream's door to the sidebar. */
+	private toolbarCardCount: HTMLElement | null = null;
+	/** The frame owed to the sidebar after a scroll, while one is pending. */
+	private marginViewportFrame: number | null = null;
 	/** Takes down the writing faces the bar carries on mobile, where it carries any. */
 	private releaseWritingFaces: (() => void) | null = null;
 	/** The toolbar's two writing-mode buttons, repainted as settings move. */
@@ -654,7 +666,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		);
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', (leaf) => {
-				if (leaf === this.leaf) this.recoverPlace();
+				if (leaf !== this.leaf) return;
+				this.host.marginCards.prefer(this);
+				this.recoverPlace();
 			}),
 		);
 		// A leaf Obsidian restores gets its state after onOpen. Rendering before
@@ -663,6 +677,11 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.host.marginCards.retire(this);
+		if (this.marginViewportFrame !== null) {
+			this.contentEl.win.cancelAnimationFrame(this.marginViewportFrame);
+			this.marginViewportFrame = null;
+		}
 		this.closePresentationPanel();
 		this.closeSearch();
 		this.searchBar?.destroy();
@@ -709,6 +728,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				if (entry.rail !== null) this.syncSegmentRail(entry);
 			}
 			this.syncMarginRoom();
+			this.publishMarginCards();
 		}
 		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
 		this.refreshQueuedWhileHidden = false;
@@ -1230,6 +1250,24 @@ export class SnowflakeManuscriptView extends ItemView {
 		setTooltip(mentions, this.t('manuscript.toolbar.mentions'));
 		wireCaretKeepingPress(mentions, (event) => {
 			this.openMentionModeMenu(event);
+		});
+		// The margin cards in the sidebar, live while reading: on a phone, or
+		// in a pane too narrow to show them beside the prose, it is where
+		// they are read and answered. The count on it says how many the
+		// chapters on the page carry, so a held-back card is never a secret.
+		const cards = bar.createEl('button', {
+			cls: 'clickable-icon snowflake-method-toolbar-button snowflake-method-toolbar-cards',
+			attr: { type: 'button' },
+		});
+		setIcon(cards, 'messages-square');
+		setTooltip(cards, this.t('manuscript.toolbar.marginCards'));
+		this.toolbarCardCount = cards.createSpan({
+			cls: 'snowflake-method-toolbar-count is-empty',
+		});
+		wireCaretKeepingPress(cards, () => {
+			void this.host.openMarginCards().catch((error: unknown) => {
+				this.showError(error);
+			});
 		});
 		// The manuscript as plain text, live while reading for the same reason
 		// again: it reads the notes and edits none of them.
@@ -2656,7 +2694,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (!wanted) {
 			entry.rail?.dispose();
 			entry.rail = null;
+			entry.railModel = null;
 			this.syncMarginRoom();
+			this.publishMarginCards();
 			return;
 		}
 		// The feed is dropped to null for as long as it takes to fetch again,
@@ -2710,7 +2750,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				left.from - right.from ||
 				compareOccurrencesAtOneSpot(left.occurrence, right.occurrence),
 		);
-		entry.rail.sync({
+		const model: RevisionRailModel = {
 			entries: standing.map(({ revision, top }) => ({ revision, top })),
 			conflicts: [...plan.conflicts],
 			draft,
@@ -2723,8 +2763,11 @@ export class SnowflakeManuscriptView extends ItemView {
 				})),
 				unresolved: threads.conflicts.map((ref) => ({ ...ref, top: null })),
 			},
-		});
+		};
+		entry.railModel = model;
+		entry.rail.sync(model);
 		this.syncMarginRoom();
+		this.publishMarginCards();
 	}
 
 	/**
@@ -2756,8 +2799,21 @@ export class SnowflakeManuscriptView extends ItemView {
 		);
 	}
 
-	/** The callbacks one segment's rail answers with, looked up per call. */
+	/**
+	 * One segment's rail, its callbacks kept on the segment: the sidebar's
+	 * list of the same cards answers with them too, so a card accepted,
+	 * rejected or edited there is handled exactly as one in the margin.
+	 */
 	private buildSegmentRail(path: string): RevisionRail {
+		const host = this.mounted.get(path);
+		if (host === undefined) throw new Error(`No segment at "${path}".`);
+		const callbacks = this.segmentRailCallbacks(path);
+		host.railCallbacks = callbacks;
+		return renderRevisionRail(host.el, callbacks);
+	}
+
+	/** The callbacks one segment's rail answers with, looked up per call. */
+	private segmentRailCallbacks(path: string): RevisionRailCallbacks {
 		const entryNow = (): MountedSegment | undefined => this.mounted.get(path);
 		const projectPath = (): string | null =>
 			this.model?.projectPath ?? this.projectPath;
@@ -2766,9 +2822,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				this.showError(error);
 			});
 		};
-		const host = this.mounted.get(path);
-		if (host === undefined) throw new Error(`No segment at "${path}".`);
-		return renderRevisionRail(host.el, {
+		return {
 			t: this.t,
 			onAccept: (revision) => {
 				const entry = entryNow();
@@ -2847,7 +2901,7 @@ export class SnowflakeManuscriptView extends ItemView {
 					rethrow(this.jumpToOccurrence(item, occurrence, step));
 				},
 			},
-		});
+		};
 	}
 
 	/**
@@ -3321,6 +3375,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		}
 		if (card === null) return;
 		const found = card;
+		const key = found.getAttribute('data-snowflake-method-card');
+		if (key !== null) this.host.marginCards.spotlight(key);
 		found.scrollIntoView({ block: 'center' });
 		found.addClass('is-jumped');
 		// The scroll lays out prose the height map had only estimated, and the
@@ -3373,6 +3429,93 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		this.contentEl.toggleClass('is-revision-tight', marginIsTight(margin));
 		this.contentEl.toggleClass('is-milestone-tight', !this.milestonesFit(stream));
+	}
+
+	/**
+	 * Tells the sidebar what the rails hold: every chapter on the page with
+	 * a rail, in reading order, the model its rail was last brought level
+	 * with, and which of its cards have their words on the screen. Asked
+	 * whenever a rail is synced or let go, a chapter leaves the page, the
+	 * pane resizes, or the page scrolls. The count on the toolbar's door to
+	 * the sidebar is brought level at the same time, so a card a tight pane
+	 * holds back is never a secret.
+	 */
+	private publishMarginCards(): void {
+		const stream = this.streamEl;
+		if (stream === null) return;
+		const segments: MarginCardsSegment[] = [];
+		const inView = new Set<string>();
+		const edge = stream.getBoundingClientRect().top;
+		const floor = edge + stream.clientHeight;
+		let count = 0;
+		for (const segment of this.model?.segments ?? []) {
+			const entry = this.mounted.get(segment.path);
+			if (
+				entry === undefined ||
+				entry.rail === null ||
+				entry.railModel === null ||
+				entry.railCallbacks === null
+			) {
+				continue;
+			}
+			segments.push({
+				path: segment.path,
+				title: segment.title,
+				model: entry.railModel,
+				callbacks: entry.railCallbacks,
+			});
+			entry.rail.each((key, card) => {
+				count += 1;
+				const box = card.getBoundingClientRect();
+				if (box.bottom > edge && box.top < floor) inView.add(key);
+			});
+		}
+		this.toolbarCardCount?.setText(String(count));
+		this.toolbarCardCount?.toggleClass('is-empty', count === 0);
+		this.host.marginCards.publish(this, {
+			segments,
+			inView,
+			tight: this.contentEl.hasClass('is-revision-tight'),
+			locate: (path, key) => {
+				void this.locateCard(path, key).catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+	}
+
+	/** The sidebar told where the page stands, once per frame of scrolling. */
+	private scheduleMarginViewport(): void {
+		if (this.marginViewportFrame !== null) return;
+		this.marginViewportFrame = this.contentEl.win.requestAnimationFrame(() => {
+			this.marginViewportFrame = null;
+			this.publishMarginCards();
+		});
+	}
+
+	/**
+	 * Brings a listed card's words onto the screen and flashes them, as the
+	 * tracking pane's jump does. A pinned card has no words left: its
+	 * chapter is brought up instead, where the card stands at the head.
+	 */
+	private async locateCard(path: string, key: string): Promise<void> {
+		const entry = this.mounted.get(path);
+		if (entry === undefined) return;
+		const dress = entry.mentions;
+		const span = key.startsWith('fs:')
+			? dress?.foreshadowing.anchors.get(key.slice('fs:'.length))
+			: key.startsWith('conflict:') || key.startsWith('fs-conflict:')
+				? undefined
+				: dress?.revisions.anchors.get(key);
+		if (span === undefined) {
+			await this.revealSegment(path);
+			return;
+		}
+		// An insertion is a point, and a point flashes nothing: the character
+		// it borrows is chosen as the table's jump chooses it.
+		const body = entry.pending ?? entry.text.body;
+		const spot = revealSpan(body, span.from, span.to) ?? span;
+		await this.revealMention(path, spot.from, spot.to);
 	}
 
 	/**
@@ -3809,6 +3952,13 @@ export class SnowflakeManuscriptView extends ItemView {
 			await beat();
 		}
 		if (!this.mounted.has(path)) return;
+		// A tight pane holds the card the jump lands on back: the sidebar
+		// shows it instead, opened first so that the name the jump leaves
+		// finds a column with a layout to scroll in (a drawer put away has
+		// none).
+		if (this.contentEl.hasClass('is-revision-tight')) {
+			await this.host.openMarginCards();
+		}
 		await this.jumpToCard(path, cardAt);
 	}
 
@@ -4120,6 +4270,8 @@ export class SnowflakeManuscriptView extends ItemView {
 			pending: null,
 			mentions: null,
 			rail: null,
+			railModel: null,
+			railCallbacks: null,
 			milestoneTotal: null,
 		};
 		this.mounted.set(path, entry);
@@ -5388,14 +5540,17 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.revisionRailTimers.delete(path);
 		}
 		entry.rail = null;
+		entry.railModel = null;
 		if (this.revisionDraft?.path === path) this.revisionDraft = null;
 		entry.el.remove();
+		this.publishMarginCards();
 	}
 
 	private readonly onScroll = (): void => {
 		const stream = this.streamEl;
 		if (stream === null) return;
 		this.noteScroll();
+		this.scheduleMarginViewport();
 		// Only the reader moves the reading position. A page shrinking under the
 		// scroll as notes are let go of moves it too, and answering that is how
 		// the view ends up chasing itself.

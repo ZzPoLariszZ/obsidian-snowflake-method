@@ -316,6 +316,8 @@ import {
 	MANUSCRIPT_VIEW_TYPE,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
+import { MarginCardsHub } from './ui/margin-cards-hub';
+import { MARGIN_CARDS_VIEW_TYPE, SnowflakeMarginCardsView } from './ui/margin-cards-view';
 import {
 	NoteMentions,
 	type MentionNote,
@@ -729,6 +731,8 @@ export default class SnowflakeMethodPlugin
 	projects!: SnowflakeProjectService;
 	/** The settings page, kept so a value changed elsewhere can reach its rows. */
 	private settingTab: SnowflakeSettingTab | null = null;
+	/** The bell between the manuscript streams and the margin card sidebar. */
+	readonly marginCards = new MarginCardsHub();
 	private settingsSaveTimer: number | null = null;
 	private refreshTimer: number | null = null;
 	private projectRescanTimer: number | null = null;
@@ -1489,6 +1493,19 @@ export default class SnowflakeMethodPlugin
 					bridge: () => this.stickyNotes(),
 					fingerprint: () => this.statisticsFingerprint(),
 					locale: () => this.currentLocale(),
+				}),
+		);
+		this.registerView(
+			MARGIN_CARDS_VIEW_TYPE,
+			(leaf) =>
+				new SnowflakeMarginCardsView(leaf, {
+					hub: this.marginCards,
+					t: this.globalT,
+					stepAside: () => {
+						// On mobile the sidebar is a drawer over the page: put
+						// away before the words are flashed, so the flash is seen.
+						if (isMobileDevice()) this.app.workspace.rightSplit.collapse();
+					},
 				}),
 		);
 		// Two feeds so the core Page preview plugin offers each with its own
@@ -5293,6 +5310,21 @@ export default class SnowflakeMethodPlugin
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (leaf === null) return;
 		await leaf.setViewState({ type: STICKY_NOTES_VIEW_TYPE, active: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	/** The margin card sidebar, opened or brought forward; on mobile, the drawer. */
+	async openMarginCards(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(
+			MARGIN_CARDS_VIEW_TYPE,
+		)[0];
+		if (existing !== undefined) {
+			await this.app.workspace.revealLeaf(existing);
+			return;
+		}
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf === null) return;
+		await leaf.setViewState({ type: MARGIN_CARDS_VIEW_TYPE, active: true });
 		await this.app.workspace.revealLeaf(leaf);
 	}
 
@@ -10568,6 +10600,15 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'open-margin-cards',
+			name: this.globalT('commands.openMarginCards'),
+			callback: () => {
+				void this.openMarginCards().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'new-task',
 			name: this.globalT('commands.newTask'),
 			checkCallback: (checking) => {
@@ -12539,6 +12580,11 @@ export default class SnowflakeMethodPlugin
 			STICKY_NOTES_VIEW_TYPE,
 		)) {
 			if (leaf.view instanceof SnowflakeStickyNotesView) leaf.view.rerender();
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			MARGIN_CARDS_VIEW_TYPE,
+		)) {
+			if (leaf.view instanceof SnowflakeMarginCardsView) leaf.view.rerender();
 		}
 		for (const leaf of this.app.workspace.getLeavesOfType(
 			STORY_STRUCTURE_VIEW_TYPE,

@@ -20,6 +20,8 @@ interface Mounted {
 	bar: HTMLElement;
 	/** Every opening of the find bar, as asked: with the replace row or without. */
 	searches: boolean[];
+	/** Every opening of the margin card sidebar. */
+	opened: number[];
 	view: { editingPath: string | null; refreshToolbar(): void };
 }
 
@@ -30,6 +32,7 @@ interface Mounted {
  */
 const mount = (faces: boolean): Mounted => {
 	const searches: boolean[] = [];
+	const opened: number[] = [];
 	const view = Object.create(SnowflakeManuscriptView.prototype) as SnowflakeManuscriptView;
 	const contentEl = document.body.createDiv();
 	Object.assign(view, {
@@ -46,6 +49,10 @@ const mount = (faces: boolean): Mounted => {
 				return () => {};
 			},
 			manuscriptWindowSettings: () => ({ typewriter: false, focusLevel: 'off' }),
+			openMarginCards: () => {
+				opened.push(1);
+				return Promise.resolve();
+			},
 		},
 		openSearch: (replace: boolean) => {
 			searches.push(replace);
@@ -55,7 +62,7 @@ const mount = (faces: boolean): Mounted => {
 	(view as unknown as { renderToolbar(): void }).renderToolbar();
 	const bar = contentEl.querySelector<HTMLElement>('.snowflake-method-manuscript-toolbar');
 	if (bar === null) throw new Error('the bar was not built');
-	return { bar, searches, view: view as unknown as Mounted['view'] };
+	return { bar, searches, opened, view: view as unknown as Mounted['view'] };
 };
 
 const has = (el: Element | null | undefined, name: string): boolean =>
@@ -98,5 +105,17 @@ describe('the stream toolbar', () => {
 		view.refreshToolbar();
 		expect(selection?.disabled).toBe(false);
 		expect(find?.disabled).toBe(false);
+	});
+
+	it('opens the margin card sidebar from the button after the mentions door, live while reading', () => {
+		const { bar, opened } = mount(false);
+		const cards = bar.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-cards');
+		expect(cards?.getAttribute('data-tooltip')).toBe('manuscript.toolbar.marginCards');
+		expect(has(cards?.previousElementSibling, 'snowflake-method-toolbar-mentions')).toBe(true);
+		expect(cards?.disabled).toBe(false);
+		// The count waits, hidden, for the stream to say what the page holds.
+		expect(cards?.querySelector('.snowflake-method-toolbar-count')?.classList.contains('is-empty')).toBe(true);
+		cards?.click();
+		expect(opened).toEqual([1]);
 	});
 });

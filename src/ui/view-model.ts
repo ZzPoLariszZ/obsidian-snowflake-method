@@ -77,6 +77,7 @@ import type {
 	EntityFormRequest,
 	Translate,
 } from './modals';
+import type { MarginCardsHub } from './margin-cards-hub';
 
 /**
  * Every base the dashboard can open or restore, one per generated file. Open
@@ -471,6 +472,10 @@ export interface ManuscriptHost {
 	 * the bar carries nothing. The release takes them down with the bar.
 	 */
 	mountWritingFaces(bar: HTMLElement): (() => void) | null;
+	/** The bell the margin card sidebar listens to; the stream rings it. */
+	marginCards: MarginCardsHub;
+	/** Opens the margin card sidebar, or brings it forward. */
+	openMarginCards(): Promise<void>;
 	loadManuscript(projectPath: string | null): Promise<ManuscriptModel | null>;
 	/**
 	 * The entities the wikilink popup may offer for one project, each name

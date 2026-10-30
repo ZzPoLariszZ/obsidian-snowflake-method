@@ -7602,6 +7602,82 @@ body {
 	margin-inline: var(--size-4-1) 0;
 }
 
+/* --- The margin cards in a sidebar ---------------------------------------- */
+
+/* The same cards in a column of their own, for a pane whose margin cannot
+   hold them: the view scrolls, each chapter on the page heads its cards,
+   and the cards stand in the flow in reading order rather than beside
+   their words. The frame, the stripe and the answers are the rail's. */
+.workspace-leaf-content .view-content.snowflake-method-margin-cards-view {
+	padding: var(--size-4-3);
+	overflow-y: auto;
+}
+
+.snowflake-method-margin-cards-chapter + .snowflake-method-margin-cards-chapter {
+	margin-top: var(--size-4-4);
+}
+
+.snowflake-method-margin-cards-title {
+	margin-bottom: var(--size-4-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-revision-rail.is-list {
+	position: static;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	width: auto;
+}
+
+/* A listed card stands in the flow: no top to glide to, and no place to
+   hold while a tight pane hides it, since the list is where a tight pane's
+   cards are read. */
+.snowflake-method-revision-rail.is-list .snowflake-method-rail-card {
+	position: static;
+	transition:
+		border-color 150ms ease-out,
+		box-shadow 150ms ease-out;
+}
+
+/* A listed card whose words are on the screen wears the stripe the pointer
+   gives it, so the column says where the page stands. */
+.snowflake-method-revision-rail.is-list .snowflake-method-revision-card.is-in-view {
+	border-left-color: var(--color-yellow);
+}
+
+.snowflake-method-revision-rail.is-list .snowflake-method-foreshadowing-card.is-in-view {
+	border-left-color: var(--color-purple);
+}
+
+/* The count of cards on the stream's door to the sidebar: a small pill on
+   the button's corner, gone while the chapters on the page carry none. */
+.snowflake-method-toolbar-cards {
+	position: relative;
+}
+
+.snowflake-method-toolbar-count {
+	position: absolute;
+	top: 1px;
+	right: 1px;
+	min-width: 1.25em;
+	padding: 0 0.3em;
+	border-radius: var(--radius-s);
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-size: 0.625rem;
+	font-weight: var(--font-semibold);
+	line-height: 1.5;
+	text-align: center;
+	pointer-events: none;
+}
+
+.snowflake-method-toolbar-count.is-empty {
+	display: none;
+}
+
 /* What this appearance does, in the ink the table gives the role, with the
    unresolved badge, when there is one, after it at the row's own gap; and
    the thread's status in the word the table gives it -- the same two
@@ -20274,6 +20350,7 @@ body.is-mobile .snowflake-method-source-summary-body {
 body.is-mobile .snowflake-method-dashboard,
 body.is-mobile .snowflake-method-statistics-view,
 body.is-mobile .snowflake-method-sticky-notes-view,
+body.is-mobile .snowflake-method-margin-cards-view,
 body.is-mobile .snowflake-method-story-structure,
 body.is-mobile .snowflake-method-manuscript-view,
 body.is-mobile .snowflake-method-settings,
@@ -20291,6 +20368,7 @@ body.is-mobile .modal.snowflake-method-dialog {
 body.is-mobile .snowflake-method-dashboard .dropdown,
 body.is-mobile .snowflake-method-statistics-view .dropdown,
 body.is-mobile .snowflake-method-sticky-notes-view .dropdown,
+body.is-mobile .snowflake-method-margin-cards-view .dropdown,
 body.is-mobile .snowflake-method-story-structure .dropdown,
 body.is-mobile .snowflake-method-manuscript-view .dropdown,
 body.is-mobile .snowflake-method-settings .dropdown,

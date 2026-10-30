@@ -329,6 +329,30 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The sidebar lists the same cards in the flow: no top, no glide, the
+	 * stripe lit on a card whose words are on the screen, and the stream's
+	 * door to it wearing the count of cards on the page.
+	 */
+	it('lists the margin cards in the sidebar as the rail draws them', () => {
+		const list = declarations('.snowflake-method-revision-rail.is-list');
+		expect(list).toContain('position: static');
+		expect(list).toContain('flex-direction: column');
+		const listed = declarations('.snowflake-method-revision-rail.is-list .snowflake-method-rail-card');
+		expect(listed).toContain('position: static');
+		expect(listed).not.toContain('top ');
+		expect(
+			declarations('.snowflake-method-revision-rail.is-list .snowflake-method-revision-card.is-in-view'),
+		).toContain('border-left-color: var(--color-yellow)');
+		expect(
+			declarations('.snowflake-method-revision-rail.is-list .snowflake-method-foreshadowing-card.is-in-view'),
+		).toContain('border-left-color: var(--color-purple)');
+		expect(declarations('.snowflake-method-toolbar-count.is-empty')).toContain('display: none');
+		expect(declarations('body.is-mobile .snowflake-method-margin-cards-view')).toContain(
+			'--background-modifier-form-field',
+		);
+	});
+
+	/**
 	 * A dialog's text box grows and shrinks with its words from the floor
 	 * its own rule gives it, without a handle, and the rule outweighs the
 	 * compact forms' own by naming it again after it.
