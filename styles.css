@@ -16575,8 +16575,13 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 /* A project that cannot be written shows no handle, so the words start
-   where the handle would have stood, and the line under them follows. */
-.snowflake-method-beat-sheet.is-read-only {
+   where the handle would have stood, and the line under them follows. So
+   do they when the time column is folded: the beats' handles go with the
+   fold, and an act's goes with them, so its words stand over the beats'
+   names as they do unfolded. Its plus and its menu stand at the row's end,
+   outside the column, and stay, and the menu moves the act. */
+.snowflake-method-beat-sheet.is-read-only,
+.snowflake-method-beat-sheet.is-time-collapsed {
 	--snowflake-method-beat-sheet-act-words-start: calc(
 		var(--snowflake-method-beat-sheet-act-padding-start) + var(--size-2-2)
 	);
@@ -16661,7 +16666,8 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	cursor: grab;
 }
 
-.snowflake-method-beat-sheet-act .snowflake-method-beat-sheet-act-handle:disabled {
+.snowflake-method-beat-sheet-act .snowflake-method-beat-sheet-act-handle:disabled,
+.snowflake-method-beat-sheet.is-time-collapsed .snowflake-method-beat-sheet-act-handle {
 	display: none;
 }
 

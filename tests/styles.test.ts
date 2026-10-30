@@ -1030,7 +1030,8 @@ describe('styles.css', () => {
 	 * The line under an empty act starts under the act's words, and where those
 	 * start is said once, from the header's own measures: written out again at
 	 * the foot, it stayed put when a project that cannot be written hid the
-	 * handle and the words moved. The words' colour and size are set over the
+	 * handle and the words moved. A folded column hides the handle too, as it
+	 * hides the beats', so the words stand over the beats' names either way. The words' colour and size are set over the
 	 * lane name's the button also wears, so their rule outweighs that one
 	 * rather than merely following it in the file.
 	 */
@@ -1049,6 +1050,11 @@ describe('styles.css', () => {
 		const readOnly = declarations('.snowflake-method-beat-sheet.is-read-only');
 		expect(readOnly).toContain('--snowflake-method-beat-sheet-act-words-start:');
 		expect(readOnly).not.toContain('action-size');
+		// Folded, the column has no handles, the act's among them, so the words start as the beats' names do.
+		expect(declarations('.snowflake-method-beat-sheet.is-time-collapsed')).toBe(readOnly);
+		expect(
+			declarations('.snowflake-method-beat-sheet.is-time-collapsed .snowflake-method-beat-sheet-act-handle'),
+		).toContain('display: none');
 		const weight = (selector: string): number => (selector.match(/\./g) ?? []).length;
 		const title = '.snowflake-method-beat-sheet .snowflake-method-beat-sheet-act button.snowflake-method-beat-sheet-act-title';
 		const laneName = '.snowflake-method-timeline button.snowflake-method-timeline-lane-name';
