@@ -1688,6 +1688,10 @@ describe('styles.css', () => {
 			'flex: 1 1 50%',
 		);
 		expect(declarations('body.is-phone .snowflake-method-task-archive-actions')).toContain('flex-wrap: wrap');
+		// One swipe is one lane on every phone: a lane takes the scroller's width, not a fixed 20rem.
+		expect(declarations('body.is-phone .snowflake-method-task-lane')).toContain('flex-basis: 100%');
+		expect(declarations('body.is-phone .snowflake-method-task-lane')).toContain('width: 100%');
+		expect(declarations('body.is-phone .snowflake-method-task-lane')).toContain('scroll-snap-align: start');
 		expect(declarations('body.is-phone .snowflake-method-settings .setting-item-control textarea')).toContain('min-width: 0');
 		expect(declarations('body.is-tablet .snowflake-method-settings .setting-item-control textarea')).toContain(
 			'min-width: var(--snowflake-method-settings-box)',

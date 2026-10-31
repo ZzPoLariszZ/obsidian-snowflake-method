@@ -20929,9 +20929,12 @@ body.is-phone .snowflake-method-task-lanes {
 	scroll-snap-type: x mandatory;
 }
 
+/* A lane takes the scroller's whole width, whatever the phone's: at a fixed
+   20rem a wider phone showed the next lane's edge beside it, and one swipe
+   was no longer one lane. */
 body.is-phone .snowflake-method-task-lane {
-	flex-basis: min(20rem, 100%);
-	width: min(20rem, 100%);
+	flex-basis: 100%;
+	width: 100%;
 	scroll-snap-align: start;
 }
 
