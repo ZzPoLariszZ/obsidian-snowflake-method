@@ -2069,7 +2069,8 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
    paragraph and a page or four of prose are written in one kind of box,
    so that the four steps read alike. The box is not resizable, since the
    column already gives it all there is, and keeps a floor of six lines,
-   a paragraph's worth, so a short column still shows one. The panel grows
+   a paragraph's worth, so a short column still shows one; a sentence's
+   box keeps two lines and a half. The panel grows
    to the column but never shrinks under what it holds: shrunk, its frame
    closed above a box that ran on past it, where now the column scrolls. */
 .snowflake-method-panel.snowflake-method-filling-panel {
@@ -2089,11 +2090,21 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
    scrolling what runs past it: at a basis of its content a page of prose
    would stand the box as tall as itself and carry the buttons under it
    off the screen. */
-.snowflake-method-field .snowflake-method-one-sentence-summary-input,
 .snowflake-method-field .snowflake-method-one-paragraph-summary-input,
 .snowflake-method-field .snowflake-method-synopsis-input {
 	flex: 1 1 0;
 	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
+	font-size: var(--font-text-size);
+	line-height: 1.65;
+	resize: none;
+}
+
+/* The one sentence of step 1 takes the column as the other boxes do, from
+   a floor of two lines and a half, besides its padding of a size-4-1 above
+   and below and its frame. */
+.snowflake-method-field .snowflake-method-one-sentence-summary-input {
+	flex: 1 1 0;
+	min-height: calc(2.5 * 1.65em + 2 * var(--size-4-1) + 2 * var(--input-border-width));
 	font-size: var(--font-text-size);
 	line-height: 1.65;
 	resize: none;
@@ -20426,10 +20437,11 @@ body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-
    the finger's swipe for its own. The quote of the step before grows with
    its words as well: a column that takes the height of its content has no
    room for it to share with the box, and a quote that scrolled inside the
-   page took the swipe as the box did. The reasons box grows from three
-   lines and a half on a tablet, where the desktop's box stands that high,
-   and from the other boxes' floor of six lines on a phone; the app pads a
-   field here by a size-4-3 above and below and draws it no frame. */
+   page took the swipe as the box did. On a tablet the reasons box grows
+   from three lines and a half, the desktop box's height, and the summary
+   of step 1 from two lines and a half, the desktop box's floor; on a phone
+   both grow from the other boxes' floor of six lines. The app pads a field
+   here by a size-4-3 above and below and draws it no frame. */
 body.is-mobile .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box {
 	flex: 0 0 auto;
 	height: auto;
@@ -20442,7 +20454,12 @@ body.is-tablet .snowflake-method-dashboard .snowflake-method-field .snowflake-me
 	min-height: calc(3.5 * 1.65em + 2 * var(--size-4-3) + 2 * var(--input-border-width));
 }
 
-body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-audience-reasons-input {
+body.is-tablet .snowflake-method-dashboard .snowflake-method-field .snowflake-method-one-sentence-summary-input {
+	min-height: calc(2.5 * 1.65em + 2 * var(--size-4-3) + 2 * var(--input-border-width));
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-audience-reasons-input,
+body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-one-sentence-summary-input {
 	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
 }
 

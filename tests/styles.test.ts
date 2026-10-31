@@ -492,17 +492,23 @@ describe('styles.css', () => {
 		expect(declarations('body.snowflake-method-hide-scrollbars *:not(.snowflake-method-scrollbar-probe)')).toContain('scrollbar-width: none');
 		expect(styles).toContain('body.snowflake-method-hide-scrollbars :not(.snowflake-method-scrollbar-probe)::-webkit-scrollbar');
 		expect(declarations('.snowflake-method-source-summary-content')).toContain('font-size: var(--font-text-size)');
-		// The summary boxes and the synopsis boxes take the column by one rule,
-		// from a floor of six lines, and the description box inside step 2's
-		// section shares the type and the floor without taking a column. The
-		// reasons box inside step 1's stands three lines and a half high and
+		// The paragraph box and the synopsis boxes take the column by one rule,
+		// from a floor of six lines, and the sentence box of step 1 takes it
+		// from two lines and a half. The description box inside step 2's
+		// section shares the type and the six lines without taking a column.
+		// The reasons box inside step 1's stands three lines and a half high and
 		// scrolls past them; no rule gives the other four a height of their own.
 		const floor = 'min-height: calc(6 * 1.65em + 2 * var(--size-4-2))';
 		const stepBox = declarations('.snowflake-method-field .snowflake-method-synopsis-input');
 		expect(stepBox).toContain('flex: 1 1 0');
 		expect(stepBox).toContain(floor);
 		expect(stepBox).toContain('resize: none');
-		expect(declarations('.snowflake-method-field .snowflake-method-one-sentence-summary-input')).toBe(stepBox);
+		const sentenceBox = declarations('.snowflake-method-field .snowflake-method-one-sentence-summary-input');
+		expect(sentenceBox).toContain('flex: 1 1 0');
+		expect(sentenceBox).toContain('min-height: calc(2.5 * 1.65em + 2 * var(--size-4-1) + 2 * var(--input-border-width))');
+		for (const line of ['font-size: var(--font-text-size)', 'line-height: 1.65', 'resize: none']) {
+			expect(sentenceBox).toContain(line);
+		}
 		expect(declarations('.snowflake-method-field .snowflake-method-one-paragraph-summary-input')).toBe(stepBox);
 		const sectionBox = declarations('.snowflake-method-field .snowflake-method-description-input');
 		expect(sectionBox).not.toContain('flex:');
@@ -1802,8 +1808,9 @@ describe('styles.css', () => {
 		);
 		// The quote of the step before grows with its words there as the box
 		// under it does, so a swipe over it moves the page, not the quote. The
-		// reasons box grows too, from three lines and a half on a tablet and
-		// from the other boxes' floor on a phone.
+		// reasons box grows too, from three lines and a half on a tablet, the
+		// sentence box of step 1 from two lines and a half there, and both from
+		// the other boxes' floor on a phone.
 		const mobileQuote = declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-source-summary');
 		expect(mobileQuote).toContain('flex: 0 0 auto');
 		expect(mobileQuote).toContain('max-height: none');
@@ -1811,9 +1818,14 @@ describe('styles.css', () => {
 		expect(declarations('body.is-tablet .snowflake-method-dashboard .snowflake-method-field .snowflake-method-audience-reasons-input')).toContain(
 			'min-height: calc(3.5 * 1.65em + 2 * var(--size-4-3) + 2 * var(--input-border-width))',
 		);
-		expect(declarations('body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-audience-reasons-input')).toContain(
-			'min-height: calc(6 * 1.65em + 2 * var(--size-4-2))',
+		expect(declarations('body.is-tablet .snowflake-method-dashboard .snowflake-method-field .snowflake-method-one-sentence-summary-input')).toContain(
+			'min-height: calc(2.5 * 1.65em + 2 * var(--size-4-3) + 2 * var(--input-border-width))',
 		);
+		for (const box of ['audience-reasons', 'one-sentence-summary']) {
+			expect(declarations(`body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-${box}-input`), box).toContain(
+				'min-height: calc(6 * 1.65em + 2 * var(--size-4-2))',
+			);
+		}
 		// The panels' insets come in on both and a tab is as wide as its word,
 		// in the workspace's strip too. A tablet keeps its bands over the
 		// strip's gap in one row, in a field whose top inset gives them air
