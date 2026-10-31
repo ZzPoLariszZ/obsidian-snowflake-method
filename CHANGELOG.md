@@ -8,6 +8,77 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0]
+
+### Added
+
+- **Phones and tablets.** The plugin now lays itself out for Obsidian on iOS and Android. On a phone, the dashboard's rail becomes a **Steps** button. It lists the rail's rows in a sheet, from the steps to the worldbuilding kinds and the creation tools, with your projects after them. **New project** and **Check** sit beside the button. The dashboard scrolls as one page, with its tables and synopsis boxes at full length. Dialogs open at full width above the keyboard, and panels such as the filter open from the bottom of the screen. The task board shows one column per swipe, and the formatting bar scrolls in one row. Obsidian hides the status bar on mobile, so the writing count and the writing session appear on the toolbars of the stream and of your project notes. A long press opens the menus a right-click opens on the desktop, on the freeform canvas and the relationship graph too. In the stream a long press selects text as usual, and the toolbar's **Selection actions** button opens the plugin's menu for the selection. On a phone the revision and foreshadowing cards are read in the **Margin cards** sidebar, since the margin beside the stream is too narrow. Anything you can drag also has a menu. Grips on records, custom fields, rules and timeline lanes open a **Reorder** menu, and a task card's menu moves it up or down its column. Tablets keep the desktop layout, with controls sized for a finger.
+- A **Margin cards** sidebar lists the revision and foreshadowing cards of the chapters on the stream's page. They stand in reading order under each chapter's title, with the same buttons as in the margin. Accept, reject, edit and delete work as they do beside the prose, and **Show in text** brings a card's words onto the screen. Open it with the **Margin cards** button on the stream's toolbar, which shows how many cards are on the page, or the **Open margin card sidebar** command. On a phone, or in a pane too narrow for the margin, this is where you read and answer the cards. A jump from the dashboard's Revision or Foreshadowing tab opens it on that card. A search box and the funnel sit above the list, as in the sticky notes sidebar. The funnel asks for the kind of card first. Then it asks what the dashboard's table asks: type and anchor for revisions, and status, role and anchor for foreshadowing. Its count shows how many cards match. The card for the words under the cursor is marked and kept in view. With the cursor in a card's words, the toolbar's button opens the sidebar on that card. The sidebar uses the current project's language, like the statistics and sticky notes sidebars.
+- A **Full screen** button sits beside **Refresh** on every view of the visualization workspace. It hides the view's tab strip, the tab's header and the panel's frame, and on the desktop it folds both sidebars, so the board fills the window. On a tablet it hides Obsidian's tab bar too. Press the button again, or Escape, to bring everything back.
+- A search button on the manuscript stream's toolbar, beside **Selection actions**, opens the find bar, as Ctrl+F (Cmd+F on a Mac) does. It works while you're only reading the stream, on the desktop, a phone or a tablet.
+- **Show mobile diagnostics.** On a phone or tablet, this command shows what the device reports to the plugin about itself. **Copy report** puts it on the clipboard for a bug report, and **Record touches** adds your next twenty seconds of touches to it.
+
+### Changed
+
+- The visualization workspace isn't offered on a phone. Its commands, its ribbon icon and the dashboard's **Open workspace** button, menu item and hint are hidden there. A workspace tab kept from a larger screen shows a short note and a button back to the dashboard. A phone's screen leaves no useful room for the corkboard, freeform canvas, timeline, beat sheet and relationship graph. The dashboard's tables still hold the scenes and characters. Tablets keep the whole workspace.
+- On a phone, floating sticky notes open in the sticky notes sidebar instead. Tablets keep the floating notes, inside the screen's safe area and above the keyboard.
+- The settings **Open notes beside the dashboard**, **Hide scrollbars** and **Hide tooltips**, and their commands, are hidden on mobile and have no effect there. Obsidian has no split panes on mobile, scroll indicators take no room and are the only sign of more below, and nothing hovers. Focus mode's **solo** level works as **deep** there. A phone's browser has no full screen, and solo would hide the tab header, the only way to switch tabs on a phone.
+- On mobile, the modification history looks for changes every fifteen minutes instead of every five. A look that falls due while the app is in the background waits for the next one.
+- The relationship graph's **Entity ↔ Entity** view now says **No relationships** in the same line every board uses when it's empty. It used to say so in a sentence of its own.
+- With no project open, the visualization workspace now says so on a pane like the **Scene ↔ Manuscript** view's, with **Open project manager** under the words. It used to say so in a muted line under the tabs. A project whose story structure can't be read shows the same pane.
+- **Hide tooltips** and the file explorer's **Immersive mode** now start off. Both used to start on. A vault that already uses the plugin keeps its saved values. Turn them off in the settings, or with their commands, if you want the new defaults.
+- The dashboard's one-sentence and one-paragraph summary boxes now work like the plot and long synopsis boxes of steps 4 and 6, so the four steps read alike. On the desktop they fill the column's height, and none of them has a resize handle. On a phone or a tablet they grow with their words. Each is at least six lines tall, or two and a half for the one-sentence summary on the desktop and a tablet. The two boxes inside those steps' sections use the same type and have no handle either. The step 2 description grows with its words from six lines. The box for the reasons your readers would enjoy the story, in step 1, is three and a half lines tall on the desktop and scrolls inside. On a tablet it grows from three and a half lines, and on a phone from six.
+- On the desktop, the quote from the previous step, above each step's box, is never taller than the box. A long quote and the box share the room equally, and a short quote leaves the rest to the box. The quote used to scroll only after a third of the window, so it could stand taller than the box below it.
+- A worldbuilding kind's **Open workspace** button now opens the visualization workspace, with the corkboard on that kind's view, as a character step's button opens the character view. It used to open the kind's base. The base is now in the button's menu, under the five visualizations and beside **Restore base**. On a phone, where the workspace isn't offered, the button still opens the base.
+
+### Fixed
+
+- The relationship graph could open with no node in sight on a view saved in a wider window, since a narrower canvas shows only one corner of it. When a saved view shows none of the nodes, the graph now fits them on screen instead. The saved view itself is kept.
+- On a phone or a tablet, Obsidian draws form fields with no border, only four percent darker than the background. Inside the plugin's cards, panes, settings and dialogs, you couldn't tell a field from what it stood on. Every field, box and dropdown in the plugin now gets a light tint of the text color, darker in the light theme and lighter in the dark.
+- On a phone, the plugin's settings page had several layout faults. The word lists ran past their card, and two typography dropdowns cut their answers short. The custom color chip shrank to a sliver beside the swatches, and the highlight options' gear sat alone under its description. Each box now fills its row as Obsidian's own do, the swatches stay round, and the gear sits beside its name.
+- The custom field pane's kind headings and rows sat a pixel further in on every side than those of the category, world status and relationship panes. Its frame was a border around them, while the other three draw theirs over the trees. It's drawn the same way now. In a pane too narrow for two columns, the custom field pane also lays its templates down the page, as the other panes lay their trees. It used to scroll them inside a frame of its own.
+- In a pane too narrow for its columns, the custom field pane's template rows stack into cards. Those cards now label their fields, as the character and scene cards do. The name used to sit in the value column beside an empty label, above an unlabeled blank line for the description.
+- On a Mac, the app gives buttons rounded superellipse corners. A split button's seam, between its word and its chevron, showed a wedge of page color beside it. It was two pixels wide on the desktop and a finger wide on a phone, because the chevron's border ran along one side only. The border now runs around all four sides, colored only on the seam's side, so the seam is a plain line.
+- In a table stacked into cards, a character, scene or entity with several categories showed the second one under the **Category** label and the rest beside it. Each line of the cell took the next free place in the card's grid of labels and values. The lines now all sit in the value column, one under another.
+- On a phone, the modification history's forward arrow wrapped onto a row of its own, beside the **Today** button and the range chooser. A week's two dates with the arrows were a few pixels wider than the row. The arrows and the title now stay together, and the other controls wrap below them. On a phone the title uses the pane's own text size and the arrows sit a little closer, so a week's dates fit on one line. In an even narrower pane, the title wraps at its separator while the arrows stay put.
+- On a phone, the search field under a pane's tab strip filled the gap between the strip and the content. On the desktop that row sits in the gap at the strip's height, and a finger-sized field took all of it. Its focus ring overlapped the strip above and the first card below. The row now sits a little below the strip, and the content follows with the pane's usual spacing.
+- On a phone, the search field on the task, foreshadowing, revision and sticky note tabs was a sliver. It shared one row with the funnel, refresh and add buttons. The search and the funnel now take the first row, with the sticky notes' sort beside them, and the other buttons go on a row below. The task archive's controls wrap the same way.
+- On a phone, a long press on the stream's words opened the stream's right-click menu over the system's selection and edit menu. Holding selected words to drag them opened it in the middle of the drag, because Obsidian treats a long press as a right-click. On a phone or a tablet, a long press anywhere on the stream is now left to the system. The toolbar's **Selection actions** button is the way to the menu there. It sits beside the writing session at the start of the bar, so swiping back along the bar brings it into view. A mouse's right button on a tablet still opens the menu, and nothing changes on the desktop. A mention in a note's reading view answers a long press the same way.
+- On a phone with typewriter scrolling on, dragging a selection's handles in the stream scrolled the page under the finger, and the selection grew with it. The stream mistook the handles for the arrow keys moving the cursor. Moving the handles, or tapping to place the cursor, now leaves the page where it is. Typing and the arrow keys still bring the line to the middle.
+- On a phone, the manuscript stream's find bar sat under a blank band as tall as the app's header. The app pads a note's find bar by the header's height, and the stream's bar took the same padding, though its toolbar already clears the header. The bar is now only as tall as its rows.
+- On a phone, each entry in the **Check** report squeezed its text into a narrow column beside its **Repair** button. The button now sits under the text, which takes the dialog's full width.
+- On a phone, the quote from the previous step, above each step's box, scrolled inside its own height. A swipe over it moved the quote instead of the page. The quote now grows with its words there, and the page scrolls past it.
+- On a tablet, the dashboard's main column now scrolls as one page, while the rail keeps its own scroll and stays put, as on the desktop. The summary and synopsis boxes of steps 1, 2, 4 and 6 grow with their words. A step's table runs down the column under its header, and the quote from the previous step grows with its words too.
+- On a tablet, the row of search, funnel and buttons under a tab strip was cramped, with no space above or below it. This showed in the dashboard and the visualization workspace alike. The row now sits a little below the strip, with the column's usual spacing above the content. Tabs are as wide as their words there, as on a phone, so a tablet held upright shows every tab instead of clipping the last.
+- On a tablet, each board's toolbar in the visualization workspace crowded its search with a row of icons and words. The search shrank to a sliver, or the bar scrolled. Every action except **Refresh** now sits in a **More actions** menu at the end of the bar, each with its icon and name. The search gets the room. The desktop keeps its row.
+- On a tablet, the dashboard rail's finger-sized fold button sat a few pixels off the column of counts below it. A row scrolling under a pinned group heading could also show as a dotted line just above the heading. The button is now centered on that column, and a pinned heading covers the pixel above it.
+- On a tablet, the scene pool's search and buttons in the timeline and beat sheet had slipped down over the pool's header, covering its name and count. The two fold buttons at the workspace's corners were cut off at the window's edges too. The row sits beside the tab strip again, as on the desktop, and the workspace keeps the desktop's side margins, so the fold buttons show whole.
+- On a tablet, the counts in the dashboard's vocabulary trees (category, world status, relationship, custom field) sat a few pixels off the row menus below them. The scene pool's count was off its add button in the same way. Each was centered for a button of another width. The trees' row menus are now finger-sized like the tables' menus, and the pool's count is centered on its finger-wide button.
+- On a tablet, the view field at the start of every board's toolbar kept the desktop's width, a wide box for two words. The search beside it grew to match. The field is now narrower and the search a little wider, on every board alike.
+- On a tablet, each dropdown on the settings page took the width of its own answer, so the controls ended at a dozen different places. Every dropdown, slider and the font list now line up with the number boxes. A dropdown widens only for an answer that wouldn't fit.
+- On a phone or tablet, the progress status on a scene card showed the gray box of a mobile dropdown. It's a plain word again, as on the desktop.
+- On a phone or tablet, tapping a board's view field selected its text. The system's edit menu covered the list of views, and the keyboard came up for a field nobody types in. A field that only offers a fixed list now takes no typing there: a tap opens the list, with nothing selected and no keyboard. A field that searches a long list, or can create a new entry, keeps its keyboard, and the first letter typed replaces the shown value. The list also used to show only the view already chosen, because the app reads the field again half a second after a tap. It now lists every view until you type.
+- In Chinese, tables of things headed their first column with **姓名**, the word for a person's name. This showed in the worldbuilding kind tables, custom kinds included, the custom field templates and the mention tracking's kind sections. They now say **名称**, a thing's name. **姓名** stays with the characters, in their table and in the tracking's character section. English says **Name** in both places.
+- In a table stacked into cards, a cell with more than one line put every second line under the label. The mention tracking's counts and first and last mentions took turns under **Count** and **First / last mention**. Every line of every cell now stays in the value column, spaced as in the wide table. The fix for the categories above now holds for every table.
+- In a pane too narrow for two columns, a vocabulary pane's inspector sits above its trees. Choosing an entry pushed the tapped row down as the inspector grew to fit it, by about a quarter of a phone's screen the first time. The row now stays where it was, because the page scrolls by however much the inspector grew or shrank. On a phone this showed on the first kind you tapped, usually the characters.
+- On some Android tablets, the timeline and the beat sheet showed two scrollbars along an edge. The web view there is older than Chromium 121 and ignores `scrollbar-width`, so the native bars showed beside the plugin's own. The native bars are now hidden the WebKit way as well.
+- On a phone or a tablet, tapping the freeform canvas's empty background didn't deselect the chosen node. The canvas treats a finger there as the start of a pan. A tap now deselects, as a click does on the desktop.
+- On a phone or a tablet, a chosen node on the freeform canvas showed four corner squares the desktop never draws, and its four dots were desktop-sized. The squares are gone. A finger can't hover to reveal a dot, so a chosen node shows all four, a little larger than on the desktop. A line can start from any of them. You still resize the node from its corners, as before.
+- On a tablet, the scene pool beside a timeline or beat sheet put its search and five buttons in one row wider than the pool. The last ones were out of reach. The pool now keeps the search and **Refresh**, and gathers the display, order, filter and add buttons under **More actions**, as the board toolbars do on a tablet.
+- On a tablet or a phone, holding a finger on a draggable card started a drag and opened its menu at once. This affected corkboard cards, timeline rows and scene cards, beat sheet acts and beats, and task cards. The browser answers a long press on a draggable item with both. If the finger holds still, the menu stays. The menu now closes as soon as the finger moves off with the card, and no menu opens during a drag.
+- When the beat sheet scrolls sideways in a narrow field, an act's handle, title, plus and menu scrolled away, while the beats' names stayed in view. The act's title is now pinned at the start and its two buttons at the end, like the beats' names, with the act's line running between them.
+- Folding the beat column hid the beats' handles but not the acts', so an act's title sat a handle's width to the right of its beats' names. The folded column now keeps the handles and their room. The names line up under the act's title, folded or not, and beats and acts can be dragged either way.
+- When the timeline or the beat sheet scrolls sideways, the time column stayed pinned for only one screen of scrolling and then scrolled away with the lane. Each row was only as wide as the field, while its columns ran on past it. A row is now as wide as its columns, so the time column stays pinned all the way, like the act's title.
+- On a tablet or a phone, the Data statistics and Task management panes kept the column's height while the content under their tabs ran on down the page. The pane's bottom edge crossed the content, whose own frame closed below the pane. Both panes now grow with their content, as the other steps' panes do, and the column scrolls them as one.
+- On a tablet, the foreshadowing table's **Edit** and **Delete** buttons ran past the table's frame in English. Their chevrons had grown to finger size, but the column kept the desktop's width. On a phone or a tablet the column is now wider to fit them. The table also turns into cards a little sooner, so the description keeps its room.
+- On a tablet, the folded rail's three finger-sized buttons ran past both of its edges: the project switcher, the add button and the check button. Folded, they now keep the desktop's width at finger height, centered with even gaps. On every platform, the switcher had also stretched into spare room and sat nearer the edge than the others. It keeps its width now.
+- On a tablet, and in a dashboard narrower than about 960 pixels on the desktop, the category, world status, relationship and custom field panes kept the window's height. Their trees ran on down the page, and the pane's frame closed above the end of the trees. Stacked, a pane now grows with its trees, and still fills a taller window.
+- On a tablet held upright, and in any pane under 968 pixels wide, the revision and foreshadowing cards never showed beside the prose. A card needed a 300-pixel margin, and the margin there is 226. The cards now narrow with the margin, from 260 pixels down to 192, so they show in any margin of 212 pixels or more. Their buttons wrap to a second row when a card is too narrow for one.
+- On an iPhone or iPad, the cursor in the manuscript stream sat too high on every wrapped line, reaching into the gap above the words. Only a paragraph's first line showed it in place. WebKit draws the cursor from the bottom of the line above, and the stream's line spacing leaves a gap. The stream now draws its own cursor there, as Obsidian's own editor does everywhere.
+- On a tablet, the manuscript stream's toolbar wrapped onto a second row in a narrow pane, such as a split view or a tablet held upright. With the keyboard up, the two rows took much of the page. The bar now scrolls sideways in one row, as on a phone, and stays centered wherever it fits.
+- On an iPad, dragging a corkboard card showed a picture of the first card, whichever card you lifted, though the right card landed where you dropped it. The board placed cards with a transform, which WebKit ignores when it paints a dragged item. Cards are now placed directly, so the picture is the card you lifted. The two insert buttons at its sides no longer show in the picture either.
+- On a phone or a tablet, the quote from the previous step started its text seven pixels left of the box below it. It also ran eight pixels past it on the right. The quote kept the desktop's padding, while the app pads fields more there and draws no border. The quote's text now lines up with the box's, as on the desktop.
+
 ## [0.30.0]
 
 ### Added
@@ -687,6 +758,77 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.31.0]
+
+### 新增
+
+- **手机和平板。** 插件现在会为 iOS 和 Android 版的 Obsidian 调整版面。手机上，工作台的导航栏变成一个**步骤**按钮。点开后以底部菜单列出导航栏的各行，从各个步骤到世界观种类和创作工具，后面是你的项目。**新建项目**和**检查**按钮就在它旁边。工作台作为一整页滚动，表格和梗概框按内容完整展开。对话框占满屏幕宽度并停在键盘上方，筛选等面板改为从屏幕底部弹出。任务看板每次滑动显示一列，格式栏收成一行横向滚动。Obsidian 在移动端隐藏了状态栏，所以字数和写作时段显示在正文流和项目笔记的工具栏上。长按可以打开桌面端用右键打开的菜单，在自由画布和关系图上也一样。在正文流里长按照常选择文字，工具栏的**选中文字操作**按钮会为选中的文字打开插件的菜单。手机上正文流旁的页边太窄，修订和伏笔卡片改在**页边卡片**侧边栏里查看。凡是能拖动的，也都能用菜单完成。记录、自定义字段、规则和时间线列表上的拖动把手会打开**调整顺序**菜单，任务卡片的菜单可以把它在本列内上移或下移。平板保持桌面端的版面，控件放大到适合手指的尺寸。
+- 新增**页边卡片**侧边栏，列出正文流页面上各章的修订与伏笔卡片。卡片按阅读顺序排在各章标题下，按钮和页边的一样。接受、拒绝、编辑与删除的作用和正文旁完全相同，**在正文中显示**会把卡片对应的文字带到屏幕上。可以用正文流工具栏的**页边卡片**按钮打开它，按钮上标着页面上卡片的数量，也可以用**打开页边卡片侧边栏**命令。在手机上，或者窗格窄到页边放不下卡片时，就在这里阅读和处理卡片。从工作台的修订或伏笔标签页跳转到某张卡片时，也会在这里打开它。列的上方有搜索框和筛选按钮，和便签侧边栏一样。筛选先问卡片的类型，再问工作台表格里的那几个问题：修订问类型和锚点，伏笔问状态、环节和锚点。筛选按钮旁标着符合条件的卡片数量。光标所在文字对应的卡片会带上记号，并保持在视野内。光标停在某张卡片的文字里时，按工具栏的这个按钮会直接在侧边栏里打开那张卡片。侧边栏的文字随当前项目的语言，与写作统计和便签侧边栏一致。
+- 可视化工作区每个视图的**刷新**按钮旁新增**全屏**按钮。它会收起视图标签栏、页头和面板边框，桌面端还会折叠两侧边栏，让看板占满窗口。平板上还会一并收起 Obsidian 的标签页栏。再按一次按钮或按 Escape 键即可恢复。
+- 正文流工具栏上的**选中文字操作**旁边新增了一个查找按钮，作用和按 Ctrl+F（Mac 上是 Cmd+F）一样，会打开查找栏。只读正文时它也可用，桌面端和手机、平板上都一样。
+- **显示移动端诊断。** 在手机或平板上，这条命令会显示设备向插件报告的信息。**复制报告**会把它放到剪贴板上，方便提交问题，**记录触摸**会把接下来二十秒的触摸附进报告。
+
+### 变更
+
+- 手机上不提供可视化工作区。它的命令、功能区图标，以及工作台上的**打开工作区**按钮、菜单项和提示都不再出现。在更大屏幕上留下的工作区标签页会显示一段说明和回到工作台的按钮。手机屏幕留不出值得探索卡片看板、自由画布、时间线、节拍表和关系图的空间。场景和角色仍在工作台的表格里。平板保留完整的工作区。
+- 手机上，浮动便签改为在便签侧边栏中打开。平板上仍然浮动，并保持在安全区之内、键盘之上。
+- 设置**在工作台旁打开笔记**、**隐藏滚动条**和**隐藏工具提示**及对应的命令在移动端隐藏，在那里也不起作用。移动端的 Obsidian 没有分栏，滚动条不占位置，而且是下面还有内容的唯一提示，也没有鼠标悬停。专注模式的**仅正文**一档在移动端按**深度**执行。手机浏览器没有全屏，而仅正文会收起标签页标题栏，那是手机上切换标签页的唯一方式。
+- 在移动端，修改历史每十五分钟而不是每五分钟查看一次改动。应用在后台时到期的那一次会等到下一次。
+- 关系图的**实体 ↔ 实体**视图在没有关系时显示**暂无关系**，样式和其他看板的空状态提示一致。之前是单独的一句说明。
+- 可视化工作区在没有打开项目时，改用和**场景 ↔ 正文**页面一样的提示面板，文字下方有**打开项目管理器**按钮。之前是标签下的一行灰色斜体说明。项目的故事结构无法读取时也显示同样的面板。
+- **隐藏工具提示**和文件列表的**沉浸模式**现在默认关闭，此前两者默认开启。已经装有插件的仓库沿用保存过的设置。想改用新的默认值，可以在设置里或用对应命令关掉它们。
+- 工作台上一句话概述和一段式梗概的文本框改成了与第 4、6 步情节大纲和长篇大纲相同的文本框，四个步骤看起来一致。桌面端它们占满整列高度，这些文本框都不带拖拽手柄。手机和平板上它们随文字伸展。最低高度为六行，桌面端和平板上一句话概述的文本框为两行半。这几步折叠区里的两个文本框也用同样的字号，同样不带手柄。第 2 步的简介从六行起随文字伸展。第 1 步里填写目标读者喜欢这类故事的理由的文本框，在桌面端高三行半，内容更多时在框内滚动。平板上它从三行半起随文字伸展，手机上从六行起。
+- 桌面端每一步文本框上方引用的上一步内容，现在不会比下方的文本框高。引用较长时与文本框平分空间，引用较短时其余空间都留给文本框。此前引用超过窗口三分之一高度才滚动，可能比下方的文本框还高。
+- 世界观种类的**打开工作区**按钮现在打开可视化工作区，卡片看板直接停在该种类的视图上，和角色步骤的按钮打开角色视图一样。这个按钮以前打开的是该种类的数据库。数据库现在放在按钮的菜单里，列在五个可视化之后、**重置数据库**旁边。在不提供工作区的手机上，按钮仍然打开数据库。
+
+### 修复
+
+- 关系图在更宽的窗口里保存的视野下打开时，可能一个节点都看不到，因为较窄的画布只显示它的一角。现在保存的视野里看不到任何节点时，关系图会改为让所有节点适配屏幕。项目里保存的视野保持不变。
+- 在手机和平板上，Obsidian 的输入框没有边框，颜色只比底色深百分之四。插件的卡片、页面、设置和对话框里，输入框都与底色分不开。现在插件里的每个输入框、文本框和下拉框都铺上一层淡淡的文字颜色，浅色主题下更深，深色主题下更浅。
+- 手机上的插件设置页有几处排版问题。词表超出了所在卡片，排版的两个下拉框短于自己的选项。自定义颜色块在色样旁被挤成一条细线，高亮选项的齿轮孤零零地立在说明下面。现在每个框都像 Obsidian 自己的一样填满整行，色样保持圆形，齿轮立在名称旁边。
+- 自定义字段页里各类的标题和行，比类别、世界状态和关系三页的四边都多缩进一个像素。它的边框画在内容外围，而那三页的边框画在树的上方。现在画法相同。窗格窄到放不下两栏时，自定义字段页也像那三页排树一样，把模板排在页面上。此前它们在自己的框里滚动。
+- 窗格窄到放不下各列时，自定义字段页的模板行会叠成卡片。这些卡片现在像角色和场景的卡片一样标出各字段的名称。此前名称立在空标签旁的取值栏里，描述则是下面一行没有名称的空行。
+- 在 Mac 上，应用把按钮的圆角画成超椭圆。拆分按钮的文字和下拉箭头之间的分隔线旁，会多出一块页面底色的楔形，桌面端两个像素宽，手机上有一指宽。原因是箭头半边的边框只画在一侧。现在边框四边都画，只在分隔线一侧上色，分隔线就是一条普通的线。
+- 表格叠成卡片后，带有多个类别的角色、场景或实体会把第二个类别显示在**类别**标签下面，其余的又排在旁边。单元格里的每一行都占了卡片标签和取值网格中的下一个空位。现在这些行全都排在取值栏里，一行接一行。
+- 在手机上，修改历史里向后翻的箭头会单独换到一行，和**今天**按钮、范围选择器排在一起。一周的两个日期加上箭头，比这一行宽出几个像素。现在箭头和标题不会分开，其余控件换到它们下面。手机上标题改用窗格本身的字号，箭头也靠得更近，一周的日期能排在一行里。窗格更窄时，标题会在分隔处换行，箭头留在原处。
+- 在手机上，窗格标签栏下方的搜索框占满了标签栏和内容之间的整条空隙。桌面端这一行就立在空隙里，与标签栏同高，而放大到手指大小的搜索框把它占满了。搜索框的焦点边框会压到上面的标签栏和下面的第一张卡片。现在这一行在标签栏下方留出一点间距，内容再以窗格本身的间距跟在后面。
+- 在手机上，任务、伏笔、修订和便签标签页的搜索框被挤成一条细线，因为它和筛选、刷新、添加按钮挤在同一行。现在搜索框和筛选按钮占第一行，便签的排序按钮也在这一行，其余按钮排在下面一行。任务归档的那行控件也同样换行。
+- 在手机上，长按正文流里的文字，会在系统自己的选择和编辑菜单之上打开正文流的右键菜单。按住已选中的文字准备拖动时，菜单也会在拖动中途弹出，因为 Obsidian 把长按当作右键。现在在手机和平板上，正文流里的长按一律交给系统处理，工具栏的**选中文字操作**按钮是在那里打开这个菜单的入口。这个按钮在工具栏开头的写作时段旁边，工具栏横向滚动后，划回开头就能找到它。平板上用鼠标右键仍能打开菜单，桌面端没有变化。笔记阅读视图里的提及对长按的处理相同。
+- 在手机上开着打字机滚动时，拖动正文流里选区两端的手柄，页面会在手指下面滚动，选区也随之扩大。正文流把手柄的移动误当成了用方向键移动光标。现在拖动手柄或轻点放置光标都不会滚动页面。打字和方向键仍会把当前行带回页面中部。
+- 在手机上，正文流的查找栏上方空出一条和应用标题栏一样高的空白。应用会给笔记的查找栏加上标题栏高度的内边距，正文流的查找栏也得到了同样的内边距，尽管它的工具栏已经避开了标题栏。现在查找栏只占它各行需要的高度。
+- 在手机上，**检查**报告里的每一条，文字都被挤在**修复**按钮旁边很窄的一栏里。现在按钮立在文字下方，文字占满对话框的宽度。
+- 在手机上，每一步文本框上方引用的上一步内容，原本在自己的固定高度里滚动。手指在上面滑动时，动的是引用而不是页面。现在手机上引用随文字伸展，页面从它上面滚过。
+- 在平板上，工作台的内容栏现在整页滚动，导航栏和桌面端一样保留自己的滚动，内容滚动时它不动。第 1、2、4、6 步的概述和大纲文本框随文字伸展。各步骤的表格在表头之下顺着内容栏延伸，上一步内容的引用也随文字伸展。
+- 在平板上，标签栏下方由搜索框、筛选和按钮组成的那一行太挤，上下都没有留白，工作台和可视化工作区都是如此。现在这一行离标签栏有一点距离，离下方的内容有一栏的间距。标签栏里的标签也和手机上一样按文字宽度排列，竖持平板时每个标签都能看全，不再截掉最后一个。
+- 在平板上，可视化工作区每个看板的工具栏在搜索框旁边排着一行图标和文字按钮，搜索框只剩一条缝，或者整条工具栏要横向滚动。现在除**刷新**外的所有操作都收进工具栏末端的**更多操作**菜单，每一项带着自己的图标和名称，搜索框就有了空间。桌面端仍是一行按钮。
+- 在平板上，工作台导航栏手指大小的折叠按钮，和它下方那列数字圆圈错开了几个像素。分组标题吸顶时，滑到它下面的那一行会在标题上方露出一条虚线。现在按钮对准那一列的中心，吸顶的标题会盖住上方的那一个像素。
+- 在平板上，时间线和节拍表里场景池的搜索框和按钮落到了场景池的表头上，压住了名称和数量。工作区两角的折叠按钮也被窗口边缘截掉。现在这一行和桌面端一样回到标签栏旁边，工作区两侧保留桌面端的留白，折叠按钮完整显示。
+- 在平板上，工作台词汇树（类别、世界状态、关系、自定义字段）里的数量圆圈，和下方各行的更多按钮差了几个像素。场景池的数量圆圈和它的添加按钮也没有对齐。它们各自按另一种宽度的按钮居中。现在词汇树各行的更多按钮放大到和表格里一样的手指大小，场景池的数量按手指宽的按钮居中。
+- 在平板上，每个看板工具栏开头的视图选择框沿用了桌面端的宽度，两个字占了一个很宽的框。旁边的搜索框也跟着变宽。现在每个看板上选择框都窄一些，搜索框宽一些。
+- 在平板上，设置页里的下拉框各自按自己答案的宽度排列，控件的右边参差不齐。现在每个下拉框、滑块和字体列表都和数字框对齐。只有答案放不下时，下拉框才会加宽。
+- 在手机和平板上，场景卡片上的进度带着移动端下拉框的灰色底框。现在和桌面端一样只显示文字。
+- 在手机和平板上，点看板的视图选择框会选中里面的文字。系统的编辑菜单盖在视图列表上，还会为一个不需要输入的框弹出键盘。现在只从固定列表里选的框不再接受输入：一点就打开列表，不选中文字，也不弹出键盘。需要搜索长列表或可以新建条目的框仍然弹出键盘，输入的第一个字会替换掉显示的值。另外，列表以前只列出当前的视图，因为触屏上应用会在点按半秒后再读一次输入框。现在在输入文字之前始终列出全部视图。
+- 中文界面里，列出事物的表格都把第一列标为**姓名**，这是指人的名字。世界观各类的表格（含自定义种类）、自定义字段模板和提及追踪里各类的分区都是如此。现在这些表格标为**名称**，**姓名**只留给角色，角色表和提及追踪的角色分区照旧。英文两处都是 Name。
+- 表格叠成卡片后，单元格里有多行内容时，每隔一行就会排到标签下面。提及追踪的计数和首次、末次提及就轮流落在**计数**和**首次 / 末次提及**标签下。现在每个单元格的每一行都留在取值列里，行距和宽表格一样。上面对类别做的修正现在对所有表格生效。
+- 窗格窄到只剩一列时，词汇页的检视面板立在各类的树上方。选中一个条目时，面板随内容增高，把刚点的那一行往下推，第一次约有手机屏幕的四分之一。现在这一行会留在原处，因为页面会按面板增减的高度相应滚动。在手机上，这个问题出现在最先点的那一类上，通常是角色。
+- 在部分安卓平板上，时间线和节拍表的同一条边上出现了两条滚动条。那里的 WebView 早于 Chromium 121，不认识 `scrollbar-width`，于是自带的滚动条和插件绘制的滚动条同时出现。现在自带的滚动条也用 WebKit 的方式隐藏了。
+- 在手机或平板上，点击自由画布的空白处不会取消节点的选中。画布把手指在空白处的操作当作平移的开始。现在点击空白处会取消选中，和桌面端的鼠标点击一样。
+- 在手机或平板上，自由画布中选中的节点会显示四个角上的方块，而桌面端从不绘制它们，四个圆点也只有桌面端的大小。现在方块不再出现。手指没有悬停可以让圆点浮现，所以选中的节点会显示全部四个圆点，比桌面端略大，从任何一个都能拉出连线。仍然可以从四角调整节点大小，和以前一样。
+- 在平板上，时间线和节拍表旁边的场景池把搜索框和五个按钮排成一行，比场景池本身还宽，最后几个按钮够不到。现在场景池只保留搜索框和**刷新**，把显示、顺序、筛选和添加按钮收进**更多操作**里，和平板上各看板的工具栏一样。
+- 在平板或手机上，长按可拖动的卡片会在开始拖动的同时打开它的菜单，因为浏览器对可拖动元素的长按会同时给出这两种回应。卡片看板的卡片、时间线的时间行和场景卡片、节拍表的幕和节拍、任务卡片都是如此。现在手指按住不动时菜单照常打开，手指带着卡片一动菜单就会关闭，拖动进行中也不会再打开菜单。
+- 节拍表在窄窗格里横向滚动时，幕的拖动柄、名称、加号和菜单会滚走，而节拍的名称却留在原处。现在幕的名称固定在起始处，两个按钮固定在末端，和节拍的名称一样，幕的横线从它们之间穿过。
+- 收起节拍列时，节拍的拖动柄会收起，幕的拖动柄却留着，于是幕的名称比节拍的名称向右错开了一个拖动柄的宽度。现在收起的节拍列保留各个拖动柄和它们的位置。无论收起与否，节拍的名称都在幕的名称下方对齐，节拍和幕也都能拖动。
+- 时间线或节拍表横向滚动时，时间列只在一个屏幕宽度之内保持固定，之后就随泳道一起滚走。原因是每一行只有窗格那么宽，而它的各列却延伸到了窗格之外。现在行和它的各列一样宽，时间列一直固定到滚动的尽头，和幕的名称一样。
+- 在平板和手机上，数据统计和任务管理两步的面板被限制在栏的高度内，而标签页下方的内容却顺着页面向下延伸。面板的底边横穿内容，内容自己的边框又在面板之外收口。现在这两个面板随内容增高，和其他步骤的面板一样，栏把它们当作一页一起滚动。
+- 在平板上，英文界面里伏笔表格的**编辑**和**删除**按钮超出了表格边框。文字旁的下拉箭头放大到了手指大小，操作列却还是桌面端的宽度。现在在手机和平板上，操作列加宽到放得下它们，表格也会稍早一点叠成卡片，给描述留足空间。
+- 在平板上，收起的导航栏底部有项目切换、添加项目和检查三个按钮，放大到手指大小后超出了导航栏的左右两边。现在收起时它们保持桌面端的宽度和手指高度，居中排列，间距均匀。此外在所有平台上，项目切换按钮原本会占掉多出的空间，比另外两个更靠近边框，现在它保持自己的宽度。
+- 在平板上，以及桌面端窄于约 960 像素的工作台里，类别、世界状态、关系和自定义字段四个面板保持着窗口的高度，而面板里的树沿页面向下延伸。面板的边框在树结束之前就闭合了。现在单列排布时面板随树一起增高，窗口更高时仍然填满窗口。
+- 在竖持的平板上，以及任何窄于 968 像素的窗格里，修订和伏笔卡片不会显示在正文旁。一张卡片需要 300 像素的页边，而那里的页边只有 226 像素。现在卡片会随页边收窄，从 260 像素宽缩到 192 像素，页边有 212 像素以上就能显示。卡片窄到放不下一排按钮时，按钮会折成两行。
+- 在 iPhone 和 iPad 上，正文流里的光标在每个折行上都偏高，伸进上方的行距里，只有段落首行的光标位置正常。WebKit 从上一行的底部开始画光标，而正文流的行距在两行之间留有空隙。现在正文流在这些设备上自己绘制光标，与 Obsidian 自带的编辑器一样。
+- 在平板上，分屏或竖持时窗格较窄，正文流的工具栏会折成两行，键盘弹出后两行占去不少页面。现在工具栏在那里像手机上一样横向滚动成一行，放得下时仍然居中。
+- 在 iPad 上，无论提起卡片看板上的哪一张卡片，拖动时浮起的图像都是第一张卡片，尽管正确的卡片会落在放下的位置。看板用变换来放置卡片，而 WebKit 绘制被拖动的元素时不计变换。现在卡片直接放在各自的位置上，浮起的图像就是你提起的那张卡片。两侧的插入按钮也不再出现在图像里。
+- 在手机或平板上，上一步内容的引用比下方输入框的文字左边多出七像素、右边多出八像素。引用沿用了桌面的内边距，而移动端的输入框内边距更宽，也没有边框。现在引用的文字与输入框对齐，和桌面一样。
 
 ## [0.30.0]
 
