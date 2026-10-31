@@ -2032,14 +2032,11 @@
 	line-height: 1.35;
 }
 
-/* Held to a third of the frame and scrolled past it: the view writes the
-   main column's height on the root, and a column not yet measured leaves
-   the viewport's third to stand in. The text is one block set exactly as
-   the box sets its own -- the same face and size, the same line height,
-   newlines kept -- so the field typography rules indent and justify it as
-   they do the box. */
+/* Scrolled past the quote's share of the panel (see the filling panels
+   below). The text is one block set exactly as the box sets its own -- the
+   same face and size, the same line height, newlines kept -- so the field
+   typography rules indent and justify it as they do the box. */
 .snowflake-method-source-summary-body {
-	max-height: calc(var(--snowflake-method-frame-height, 100vh) / 3);
 	padding-inline: calc(var(--size-4-2) - 2px) var(--size-4-2);
 	overflow-y: auto;
 	/* The scrollbar's room on both edges, as the box below holds it, so a
@@ -2100,6 +2097,25 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
 	font-size: var(--font-text-size);
 	line-height: 1.65;
 	resize: none;
+}
+
+/* The quote of the step before shares the panel's room with the box under
+   it and is never the taller of the two: both grow from the box's floor
+   alike, the quote no further than its own words. A long quote and the box
+   stand the same height, a short quote takes its lines and leaves the rest
+   to the box, and in a short column both keep the floor, the quote less
+   where its words are fewer, while the column scrolls. */
+.snowflake-method-filling-panel .snowflake-method-source-summary {
+	display: flex;
+	flex: 1 1 calc(6 * 1.65 * var(--font-text-size) + 2 * var(--size-4-2));
+	flex-direction: column;
+	min-height: 0;
+	max-height: max-content;
+}
+
+.snowflake-method-filling-panel .snowflake-method-source-summary-body {
+	flex: 1 1 auto;
+	min-height: 0;
 }
 
 /* The description of the novel, inside a section of step 2, is the same
@@ -20408,8 +20424,8 @@ body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-
 /* A synopsis or a summary grows with its words and the page scrolls past
    them, as the app's own notes do; a box that scrolled inside a page that scrolls took
    the finger's swipe for its own. The quote of the step before grows with
-   its words as well: a column that takes the height of its content
-   measures no third to hold it to, and a quote that scrolled inside the
+   its words as well: a column that takes the height of its content has no
+   room for it to share with the box, and a quote that scrolled inside the
    page took the swipe as the box did. The reasons box grows from three
    lines and a half on a tablet, where the desktop's box stands that high,
    and from the other boxes' floor of six lines on a phone; the app pads a
@@ -20430,6 +20446,11 @@ body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-met
 	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
 }
 
+body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-source-summary {
+	flex: 0 0 auto;
+	max-height: none;
+}
+
 body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-sentence-summary-field,
 body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-paragraph-summary-field,
 body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-synopsis-field {
@@ -20437,7 +20458,6 @@ body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snow
 }
 
 body.is-mobile .snowflake-method-source-summary-body {
-	max-height: none;
 	overflow-y: visible;
 	scrollbar-gutter: auto;
 	/* The app pads a field on a phone or a tablet by a size-4-4 at each side

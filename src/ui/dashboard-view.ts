@@ -952,7 +952,6 @@ export class SnowflakeDashboardView extends ItemView {
 			this.railObserver = new view.ResizeObserver((entries) => {
 				const width = entries[entries.length - 1]?.contentRect.width;
 				if (width !== undefined) this.measureRail(width);
-				this.publishFrameHeight();
 			});
 			this.railObserver.observe(this.contentEl);
 		}
@@ -1354,7 +1353,6 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	onResize(): void {
-		this.publishFrameHeight();
 		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
 		this.refreshQueuedWhileHidden = false;
 		void this.refresh().catch((error: unknown) => {
@@ -1371,24 +1369,6 @@ export class SnowflakeDashboardView extends ItemView {
 	 * for what the width alone decides: the head hides there, having
 	 * nothing to open.
 	 */
-	/**
-	 * The height of the main column, written on the root for the rules that
-	 * hold a block to a share of the frame: a quoted synopsis is held to half
-	 * of it. A column not yet laid out measures nothing, and says nothing,
-	 * so the rule's own fallback stands until it is.
-	 */
-	private publishFrameHeight(): void {
-		// The tests draw the view over a fake that has no style of its own.
-		const style = (this.contentEl as Partial<HTMLElement>).style;
-		if (style === undefined) return;
-		const main = this.contentEl.querySelector<HTMLElement>(MAIN_PANEL_SELECTOR);
-		const height = main?.clientHeight ?? 0;
-		if (height > 0) {
-			style.setProperty('--snowflake-method-frame-height', `${String(height)}px`);
-		} else {
-			style.removeProperty('--snowflake-method-frame-height');
-		}
-	}
 
 	private measureRail(width: number): void {
 		const root = this.contentEl;
@@ -1730,7 +1710,6 @@ export class SnowflakeDashboardView extends ItemView {
 				root, RAIL_SCROLL_SELECTOR, ACTIVE_STEP_SELECTOR, headerHeight,
 			);
 		}
-		this.publishFrameHeight();
 	}
 
 	private createDisclosure(
@@ -8033,11 +8012,11 @@ export class SnowflakeDashboardView extends ItemView {
 			text: this.t(titleKey),
 		});
 		// One block, newlines kept, set as the box below sets its own text,
-		// so the two read alike; in a body that scrolls, held to a third of
-		// the frame, so a long synopsis quoted above the box does not push
-		// the box off the page. On a phone, where the page itself scrolls,
-		// and on a tablet, where the column does, the stylesheet lets it
-		// grow with its words instead.
+		// so the two read alike; in a body that scrolls, never taller than
+		// the box, so a long synopsis quoted above the box does not push the
+		// box off the page. On a phone, where the page itself scrolls, and
+		// on a tablet, where the column does, the stylesheet lets it grow
+		// with its words instead.
 		const body = sourceSummary.createDiv({
 			cls: 'snowflake-method-source-summary-body',
 		});

@@ -427,7 +427,7 @@ describe('styles.css', () => {
 	 * no look of its own: only the room the leaf's content gives up, and only
 	 * while the bar stands before it.
 	 */
-	it('dresses the prose box as the app dresses a textarea, and holds the quoted text to half the frame', () => {
+	it('dresses the prose box as the app dresses a textarea, and never stands the quoted text taller than the box', () => {
 		const box = declarations(':where(.snowflake-method-prose-box)');
 		expect(box).toContain('background: var(--background-modifier-form-field)');
 		expect(box).toContain('white-space: pre-wrap');
@@ -438,9 +438,20 @@ describe('styles.css', () => {
 		expect(box).toContain('user-select: text');
 		expect(declarations('.snowflake-method-prose-box:empty::before')).toContain('content: attr(data-placeholder)');
 		expect(declarations('.snowflake-method-prose-box.is-disabled')).toContain('cursor: not-allowed');
-		expect(declarations('.snowflake-method-source-summary-body')).toContain(
-			'max-height: calc(var(--snowflake-method-frame-height, 100vh) / 3)',
-		);
+		// The quote grows from the box's floor as the box does, no further than
+		// its words, so the two share the panel's room and the quote is never
+		// the taller; its body scrolls the rest. Nothing measures the frame.
+		const quote = declarations('.snowflake-method-filling-panel .snowflake-method-source-summary');
+		expect(quote).toContain('display: flex');
+		expect(quote).toContain('flex-direction: column');
+		expect(quote).toContain('flex: 1 1 calc(6 * 1.65 * var(--font-text-size) + 2 * var(--size-4-2))');
+		expect(quote).toContain('min-height: 0');
+		expect(quote).toContain('max-height: max-content');
+		const quoteBody = declarations('.snowflake-method-filling-panel .snowflake-method-source-summary-body');
+		expect(quoteBody).toContain('flex: 1 1 auto');
+		expect(quoteBody).toContain('min-height: 0');
+		expect(declarations('.snowflake-method-source-summary-body')).not.toContain('max-height:');
+		expect(styles).not.toContain('--snowflake-method-frame-height');
 		expect(declarations('.snowflake-method-source-summary-body')).toContain('overflow-y: auto');
 		// Both hold the scrollbar's room on both edges, so neither jumps when
 		// one of them scrolls and the other does not.
@@ -1793,7 +1804,9 @@ describe('styles.css', () => {
 		// under it does, so a swipe over it moves the page, not the quote. The
 		// reasons box grows too, from three lines and a half on a tablet and
 		// from the other boxes' floor on a phone.
-		expect(declarations('body.is-mobile .snowflake-method-source-summary-body')).toContain('max-height: none');
+		const mobileQuote = declarations('body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-source-summary');
+		expect(mobileQuote).toContain('flex: 0 0 auto');
+		expect(mobileQuote).toContain('max-height: none');
 		expect(declarations('body.is-mobile .snowflake-method-source-summary-body')).toContain('overflow-y: visible');
 		expect(declarations('body.is-tablet .snowflake-method-dashboard .snowflake-method-field .snowflake-method-audience-reasons-input')).toContain(
 			'min-height: calc(3.5 * 1.65em + 2 * var(--size-4-3) + 2 * var(--input-border-width))',
