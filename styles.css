@@ -20219,7 +20219,9 @@ body.is-mobile .snowflake-method-writing-face.is-break {
    reaches its head, and the auto margins at its two ends centre it where
    it fits, as the desktop's row stands: a row that overflows ignores them.
    The bar mounts the count and the session at its head on mobile, with the
-   selection button beside them, so they are never scrolled out of sight. */
+   selection button beside them. A flick along the row scrolls the three
+   away as it does the formatting buttons, and the bar itself stays in
+   place, so a flick back finds them at the head. */
 body.is-mobile .snowflake-method-manuscript-toolbar {
 	flex-wrap: nowrap;
 	justify-content: flex-start;
