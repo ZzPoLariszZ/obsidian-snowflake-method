@@ -2102,13 +2102,23 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
 	resize: none;
 }
 
-/* The boxes inside a step's sections, the reasons a reader would pick
-   the book up and the description of the novel, are the same box with
-   the same floor, but grow with their words: the column is the summary's,
-   and a section's box has no room to take but its own. */
-.snowflake-method-field .snowflake-method-audience-reasons-input,
+/* The description of the novel, inside a section of step 2, is the same
+   box with the same floor, but grows with its words: the column is the
+   summary's, and a section's box has no room to take but its own. */
 .snowflake-method-field .snowflake-method-description-input {
 	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
+	font-size: var(--font-text-size);
+	line-height: 1.65;
+	resize: none;
+}
+
+/* The reasons a reader would pick the book up run to two or three lines,
+   so their box stands three lines and a half high, besides its padding of
+   a size-4-1 above and below and its frame, and scrolls what runs past
+   them as the summary boxes do; the half line shows there is more. */
+.snowflake-method-field .snowflake-method-audience-reasons-input {
+	height: calc(3.5 * 1.65em + 2 * var(--size-4-1) + 2 * var(--input-border-width));
+	min-height: 0;
 	font-size: var(--font-text-size);
 	line-height: 1.65;
 	resize: none;
@@ -20400,13 +20410,24 @@ body.is-mobile .snowflake-method-dashboard .snowflake-method-tab-scroll.is-self-
    the finger's swipe for its own. The quote of the step before grows with
    its words as well: a column that takes the height of its content
    measures no third to hold it to, and a quote that scrolled inside the
-   page took the swipe as the box did. */
+   page took the swipe as the box did. The reasons box grows from three
+   lines and a half on a tablet, where the desktop's box stands that high,
+   and from the other boxes' floor of six lines on a phone; the app pads a
+   field here by a size-4-3 above and below and draws it no frame. */
 body.is-mobile .snowflake-method-dashboard .snowflake-method-field .snowflake-method-prose-box {
 	flex: 0 0 auto;
 	height: auto;
 	max-height: none;
 	overflow-y: visible;
 	resize: none;
+}
+
+body.is-tablet .snowflake-method-dashboard .snowflake-method-field .snowflake-method-audience-reasons-input {
+	min-height: calc(3.5 * 1.65em + 2 * var(--size-4-3) + 2 * var(--input-border-width));
+}
+
+body.is-phone .snowflake-method-dashboard .snowflake-method-field .snowflake-method-audience-reasons-input {
+	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
 }
 
 body.is-mobile .snowflake-method-dashboard .snowflake-method-filling-panel .snowflake-method-one-sentence-summary-field,
