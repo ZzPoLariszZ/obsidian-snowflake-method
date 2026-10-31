@@ -110,6 +110,7 @@ Thank you for your support!
 | Revision awareness | Get reminders that never block you when the material a step builds on changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Choose English or Simplified Chinese separately for the interface and for each project. |
+| Phones and tablets | Use the plugin on Obsidian for iOS and Android, laid out for the screen, with a menu for anything you'd drag. |
 
 ## Workflow
 
@@ -201,7 +202,7 @@ A note can also keep a **gallery** of pictures, shown in its form as a row with 
 
 ### Story structure
 
-Scenes are easier to judge when you can see them all at once. The **Visualization workspace** has a tab of its own. You can open it from the row of links at the bottom of the dashboard's Creation tools, or from the Command palette. It brings together a family of views of the scenes you planned in steps 8 and 9. **Corkboard**, **Freeform**, **Timeline**, **Beat sheet** and **Relationship graph** appear side by side in its tab strip, and each asks a different question about the same project.
+Scenes are easier to judge when you can see them all at once. The **Visualization workspace** has a tab of its own. You can open it from the row of links at the bottom of the dashboard's Creation tools, or from the Command palette. It brings together a family of views of the scenes you planned in steps 8 and 9. **Corkboard**, **Freeform**, **Timeline**, **Beat sheet** and **Relationship graph** appear side by side in its tab strip, and each asks a different question about the same project. A **Full screen** button sits beside each view's **Refresh**. It hides the tab strip, the tab's header and the panel's frame, and on the desktop it folds both sidebars, so the board fills the window. On a tablet it hides Obsidian's tab bar too. Press it again, or Escape, to bring everything back.
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab, with Scene view chosen in the field above and a search in the middle. The twenty-four scene cards of the Clocktower Snow project run in narrative order across three rows, each numbered, tinted and marked with its status at the top right, its summary in the middle and its point of view at the foot. Three are complete, three are in revision, four are in progress and the rest are not started. Display, sort, filter, refresh and Add scene are in the bar above." /></a></p>
 
@@ -237,7 +238,7 @@ In the manuscript stream, click any chapter and it switches to an editing view. 
 
 **Typewriter scrolling** keeps the line you're writing in the middle of the page. **Focus mode** fades everything except the paragraph you're writing. Its deepest level, solo, shows only the manuscript, in full screen. Each has a button in the toolbar. The arrow keys move the cursor from one chapter into the next.
 
-**Search and replace** reaches the whole manuscript. Press Ctrl+F, or Cmd+F on a Mac, and a bar like Obsidian's own opens above the page. It finds every match in every chapter, even the ones the stream hasn't loaded yet, and Enter takes you to the next one. Buttons in the box match case, match whole words or read the query as a regular expression. The arrow at the left, or Ctrl+Alt+F, opens the replace row. In the note you're writing in, Undo takes a replacement back. Replace all asks before it changes other notes, because those are saved straight away. Replacing text a revision or foreshadowing marks asks first too, since the mark would lose its place.
+**Search and replace** reaches the whole manuscript. Press Ctrl+F, or Cmd+F on a Mac, and a bar like Obsidian's own opens above the page. The search button in the toolbar opens the same bar. It finds every match in every chapter, even the ones the stream hasn't loaded yet, and Enter takes you to the next one. Buttons in the box match case, match whole words or read the query as a regular expression. The arrow at the left, or Ctrl+Alt+F, opens the replace row. In the note you're writing in, Undo takes a replacement back. Replace all asks before it changes other notes, because those are saved straight away. Replacing text a revision or foreshadowing marks asks first too, since the mark would lose its place.
 
 **The right-click menu** has more for the words you select. It works in the manuscript stream, in your projects' notes, and in the text boxes of the dashboard, the plugin's dialogs and the visualization workspace's cards. **Add as entity** asks which kind of note to make, from characters, scenes and your worldbuilding kinds. That kind's form then opens with the words as its name, while the page you're on stays in front. **Add to existing entity as alias** asks for a kind and then a note, and adds the words to its aliases. **Add as sticky note** puts the words on a new sticky note. The menu also exports the selected words as plain text, to a new numbered excerpt file each time. In a note it exports the whole note too, and in the manuscript stream the whole manuscript. In a text box, right-click words you've already selected to get this menu, with Cut, Copy and Paste at its top.
 
@@ -270,6 +271,8 @@ The work around the writing has a pane of its own. The dashboard's **Task manage
 <p align="center"><a href="assets/screenshots/revision_en.png"><img src="assets/screenshots/revision_en.png" width="100%" alt="Three cards beside the first chapter in the manuscript stream, in focus mode with the chrome hidden. A replacement strikes through the shop was as cold as a well, a deletion strikes through unable to speak for a long while further down, and between them the foreshadowing plant about the pocket watch is highlighted in the prose. The two revision cards carry the type, the original text, the proposed text, a comment, and Edit, Reject and Accept, and the foreshadowing card its role, name, description, text and note, with Open, Edit and Delete." /></a></p>
 
 **Revision** makes a change easier to judge before it is made. Select the words in question and choose **Add revision** from the same menu. The selection becomes a replacement, or a deletion if you leave the proposed text empty. With just the cursor and nothing selected, you get an insertion at that point. The words a proposal would take out are struck through in place. But the chapter itself doesn't change, and nothing is counted, analyzed or tracked until the proposal is accepted. Each proposal is a card in the margin, with the original text, the proposed text and a comment. **Accept** writes the change into the chapter as if you had typed it. **Reject** leaves the text as it was, and **Edit** changes the proposal or the comment. A proposal stays with its words as you write around them. If you change its words directly, it's shown as a conflict, and you can only discard it, not apply it.
+
+The **Margin cards** sidebar lists the revision and foreshadowing cards of the chapters on the page. Open it from the stream's toolbar or with the **Open margin card sidebar** command, and **Show in text** brings a card's words onto the screen. On a phone, or in a pane too narrow for the margin, this is where you read and answer the cards. A search box and the funnel sit above the list. The funnel asks for the kind of card first, then for the details that kind's table shows on the dashboard. The card for the words under the cursor is marked in the list. With the cursor in a card's words, the toolbar's **Margin cards** button opens the sidebar on that card. The sidebar uses the current project's language, like the statistics and sticky notes sidebars.
 
 <p align="center"><a href="assets/screenshots/sticky_note_en.png"><img src="assets/screenshots/sticky_note_en.png" width="100%" alt="The dashboard's Sticky notes tab with five colored cards in two rows and a collapsed archive, the same five notes as compact cards in the Sticky notes sidebar on the right, and two of them floating as resizable panels over the lower part of the page." /></a></p>
 
@@ -340,6 +343,14 @@ Install from the community plugin browser unless you have a reason not to. The b
 
 Updating the plugin never rewrites your notes on its own. The files the plugin generates keep themselves up to date. These are the system templates under `00_System` and the version stamp on the project metadata note. They are quietly updated the first time a dashboard shows the project. The notes you write change only when you click one button. If any of them was written by an older release, the dashboard shows **Older project format** with a count. **Update** then brings them all up to date in one safe pass, and you can repeat it.
 
+### Phones and tablets
+
+The plugin runs on Obsidian for iOS and Android. A tablet shows the desktop layout, with controls sized for a finger. On a phone, the dashboard's steps sit behind a **Steps** button, and every dialog opens at full width. Obsidian has no status bar on a phone, so the writing count and the writing session appear on the toolbars instead. The dashboard scrolls as one page, so a long cast or scene list runs down the screen under its search box.
+
+A long press opens the menus a right-click opens on the desktop, and anything you can drag can also be arranged from a menu. In the stream, a long press selects text as usual, and the **Selection actions** button on the toolbar opens the plugin's menu for the selected words. On a phone, you read and answer the revision and foreshadowing cards in the **Margin cards** sidebar, since the margin beside the stream is too narrow.
+
+The visualization workspace, with its corkboard, freeform canvas, timeline, beat sheet and relationship graph, is for tablets and the desktop. A phone's screen leaves it no useful room, and the dashboard's tables still hold the scenes and characters. On a phone, floating sticky notes open in the sticky notes sidebar. The right-click menu in text boxes, notes beside the dashboard, hidden scrollbars and hidden tooltips stay desktop features. **Show mobile diagnostics** in the Command palette shows what your device reports to the plugin, with a button that copies the report for a bug report.
+
 <a id="guide"></a>
 
 ## Guide
@@ -386,6 +397,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Open dashboard | Open the current project's dashboard, or bring it into view. |
 | Open health checker | Check the project's structure and fix any issues that are safe to fix. |
 | Open manuscript stream | Open the manuscript at the note you last wrote in. |
+| Open margin card sidebar | Open the stream's revision and foreshadowing cards in their own sidebar. |
 | Open modification history | Open the Data statistics pane on its Modification history tab. |
 | Open project manager | Create, rename, open, archive, or trash projects. |
 | Open relationship graph workspace | Open the visualization workspace to its relationship graph, with your characters and worldbuilding notes joined by the relationships you recorded. |
@@ -400,6 +412,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Search and replace in the manuscript | Open the manuscript stream's search bar with its replace row. |
 | Search the manuscript | Open the search bar above the manuscript stream, to find words anywhere in the manuscript. |
 | Set focus mode to off / on / deep / solo | Set how far focus mode reaches, with one command for each level. |
+| Show mobile diagnostics | On a phone or tablet, show what the device reports, ready to copy. |
 | Split manuscript note at the cursor | Split the note open for writing in two at the caret. |
 | Start a countdown writing session | Begin a session that ends when its clock runs out. |
 | Start a pomodoro writing session | Begin a session that alternates work periods with breaks. |
@@ -431,7 +444,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Update from series | Bring a sibling book's changes into the notes the two books share. |
 | Update notes in older format | Update every note written by an older release. |
 
-Commands that act on the manuscript are available only while a manuscript stream is the current view. **Split manuscript note at the cursor** also needs a note in the stream to be open for writing. **Toggle typewriter scrolling** works in the notes under the typography scope as well, and the focus mode commands work in your projects' notes. The two commands that copy or export the current note use the note at the center of the page.
+Commands that act on the manuscript are available only while a manuscript stream is the current view. **Split manuscript note at the cursor** also needs a note in the stream to be open for writing. **Toggle typewriter scrolling** works in the notes under the typography scope as well, and the focus mode commands work in your projects' notes. The two commands that copy or export the current note use the note at the center of the page. **Show mobile diagnostics** is offered only on a phone or a tablet. **Toggle opening notes beside the dashboard**, **Toggle scrollbars**, **Toggle tooltips** and the solo focus mode command aren't offered there. On a phone, neither are **Toggle the dashboard rail** and the commands that open the visualization workspace.
 
 <a id="settings"></a>
 
@@ -446,13 +459,13 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Open notes beside the dashboard | On | Reuse one companion pane for the notes you open. |
 | Reduce animations | Off | Replace animations with static visuals. |
 | Hide scrollbars | On | Hide every scrollbar in Obsidian. Scrolling still works. |
-| Hide tooltips | On | Hide every tooltip in Obsidian except the warning on section markers. |
+| Hide tooltips | Off | Hide every tooltip in Obsidian except the warning on section markers. |
 | Protect managed boundaries | On | Prevent accidental edits to synchronization markers. Turning it off asks you first. |
 | Show progress status in tables | Off | Show each note's progress status under its name in the member tables. |
 | Show the actions column in tables | On | Keep each row's actions visible beside it. |
 | New notes from a field | Open its form | Choose whether a note created from a picker field opens its form first or is created directly. |
 | Enhancement scope | Snowflake projects | Apply the file explorer enhancement to Snowflake projects or to the whole Vault, or turn it off. |
-| Immersive mode | On | Show only the project you're working on in the file explorer. |
+| Immersive mode | Off | Show only the project you're working on in the file explorer. |
 | Hide numbering prefixes | On | Show `50_Manuscript` as Manuscript without renaming anything. |
 | Hide plugin-managed files | On | Hide the JSON files and sticky notes the plugin keeps. |
 | Additional files to hide | None | More files to hide, one name or path per line, with `*` as a wildcard. |
@@ -520,6 +533,7 @@ Snowflake Method for Obsidian is local-first. Your project files and plugin sett
 
 - You don't need an account, a subscription, or any outside service.
 - The plugin makes no network requests and includes no AI service, telemetry, or analytics. A web link on the freeform canvas shows its address and loads nothing.
+- **Show mobile diagnostics** only shows what your device reports. The report leaves the device only if you copy it and share it yourself.
 - Projects are made of ordinary files that work in Obsidian. You can still read and edit them when the plugin is turned off.
 
 <a id="structure"></a>
@@ -674,7 +688,8 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Relationship graph (0.27.0)
 - [x] Import and series (0.28.0)
 - [x] Modification history (0.29.0)
-- [ ] Better display on tablets and phones
+- [x] Better display on tablets and phones (0.31.0)
+- [x] Margin cards sidebar (0.31.0)
 
 <a id="development"></a>
 
@@ -848,6 +863,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 修订提醒 | 上游材料有变化时给出复核提示，不会打断写作。 |
 | 安全修复 | 检测项目结构问题，安全地补齐缺失的托管文件，不会覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
+| 手机和平板 | 在 iOS 和 Android 版的 Obsidian 上使用插件，版面随屏幕调整，凡是要拖动的都有菜单可用。 |
 
 ## 流程
 
@@ -939,7 +955,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 ### 故事结构
 
-把所有场景摊开在眼前，才好判断它们的次序。**可视化工作区**会在单独的标签页中打开。你可以从工作台创作工具一组末尾的链接行进入，也可以用命令面板打开它。这里汇集了一组视图，展示的都是同一批场景，也就是你在第八步和第九步规划的那些。**卡片看板**、**自由画布**、**时间线**、**节拍表**与**关系图**并列在标签栏上，每个视图都对同一个项目提出一个不同的问题。
+把所有场景摊开在眼前，才好判断它们的次序。**可视化工作区**会在单独的标签页中打开。你可以从工作台创作工具一组末尾的链接行进入，也可以用命令面板打开它。这里汇集了一组视图，展示的都是同一批场景，也就是你在第八步和第九步规划的那些。**卡片看板**、**自由画布**、**时间线**、**节拍表**与**关系图**并列在标签栏上，每个视图都对同一个项目提出一个不同的问题。每个视图的**刷新**按钮旁边都有一个**全屏**按钮。它会收起视图标签栏、页头和面板边框，桌面端还会折叠两侧边栏，让看板占满窗口。平板上还会一并收起 Obsidian 的标签页栏。再按一次按钮或按 Escape 键即可恢复。
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的卡片看板标签页。上方的选择框里选着场景视图，中间是搜索。钟楼雪项目的二十四张场景卡片按叙事顺序排成三行，每张都带有编号和底色，右上角是状态，中间是概要，底部是视点人物。三张已完成，三张修订中，四张进行中，其余未开始。右上方一栏是显示、排序、筛选、刷新与添加场景。" /></a></p>
 
@@ -975,7 +991,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 **打字机滚动**让正在写的那一行保持在页面中部。**专注模式**会淡化正在写的段落以外的一切，最深的一档「仅正文」会全屏只显示正文。两者在工具栏里各有一个按钮。用方向键也能让光标从一章移到下一章。
 
-**查找和替换**覆盖整部正文。按 Ctrl+F（Mac 上是 Cmd+F），页面上方就会打开一个和 Obsidian 自带的一样的查找栏。它会找出每一章里的每一处匹配，正文流还没有载入的章节也不例外，按 Enter 就能跳到下一处。输入框里的按钮可以区分大小写、全字匹配，或者把查询当作正则表达式。点左侧的箭头或按 Ctrl+Alt+F，可以打开替换栏。在正在写的笔记里，替换可以撤销。全部替换要改动其他笔记时，会先请你确认，因为那些笔记会立即保存。替换修订或伏笔标记的文字时，也会先请你确认，因为标记会因此失效。
+**查找和替换**覆盖整部正文。按 Ctrl+F（Mac 上是 Cmd+F），页面上方就会打开一个和 Obsidian 自带的一样的查找栏。工具栏上的查找按钮也能打开它。它会找出每一章里的每一处匹配，正文流还没有载入的章节也不例外，按 Enter 就能跳到下一处。输入框里的按钮可以区分大小写、全字匹配，或者把查询当作正则表达式。点左侧的箭头或按 Ctrl+Alt+F，可以打开替换栏。在正在写的笔记里，替换可以撤销。全部替换要改动其他笔记时，会先请你确认，因为那些笔记会立即保存。替换修订或伏笔标记的文字时，也会先请你确认，因为标记会因此失效。
 
 **右键菜单**为选中的文字提供了更多操作，正文流、项目的笔记，以及工作台、插件对话框和可视化工作区卡片上的文本框都可以使用。**添加为实体**会先问要建哪一类实体，可以是角色、场景，也可以是你的任一类世界观，然后打开这一类的表单，并把选中的文字填作名称，你所在的页面保持不变。**加入已有实体作为别名**会先问种类，再选一篇笔记，把选中的文字加进它的别名。**添加为便签**会把这些文字写进一张新便签。菜单还能把选中的文字导出为纯文本，每次都写进一个新的带编号的节选文件。在笔记里还能导出整篇笔记，在正文流里还能导出整部正文。在文本框里，先选中文字再在上面点击右键，就会出现这个菜单，顶部仍有剪切、复制和粘贴。
 
@@ -1008,6 +1024,8 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 <p align="center"><a href="assets/screenshots/revision_cn.png"><img src="assets/screenshots/revision_cn.png" width="100%" alt="正文流第一章旁的三张卡片，专注模式下界面元素都隐藏了。一处替换把「铺子里冷得像一口井。」划去，往下一处删除把「半天说不出话」划去，两者之间关于怀表的伏笔埋设在正文里高亮。两张修订卡片写着类型、原文、建议文本与备注，以及编辑、拒绝与接受按钮，伏笔卡片写着环节、名称、描述、文字与备注，以及打开、编辑与删除按钮。" /></a></p>
 
 **修订**让改动先摆在眼前看清楚，再落到纸上。选中要改的文字，在同一个右键菜单里选择**添加修订**。所选文字会成为一处替换，建议文本留空则成为一处删除，只放一个光标就在那里插入。将被改掉的文字会在原处划去，但这一章本身不会改变。在接受之前，这处修订也不计入字数、分析与追踪。每一处修订都是页边的一张卡片，写着原文、建议文本与备注。**接受**会把改动写进这一章，就像你亲手打出来的一样。**拒绝**会移除修订，让正文保持原样。**编辑**可以修改建议文本与备注。修订会跟着它所指的文字走。如果你直接改动了那段文字，它就会被标为冲突，只能丢弃，不能应用。
+
+**页边卡片**侧边栏列出页面上各章的修订与伏笔卡片。可以从正文流的工具栏或用**打开页边卡片侧边栏**命令打开它，**在正文中显示**会把卡片对应的文字带到屏幕上。在手机上，或者窗格窄到页边放不下卡片时，就在这里阅读和处理卡片。列表上方有搜索框和筛选按钮。筛选先问卡片的类型，再问该类型在工作台表格里的那几个问题。光标所在文字对应的卡片会在列表里带上记号。光标停在某张卡片的文字里时，按工具栏的**页边卡片**按钮会直接打开那张卡片。侧边栏的文字随当前项目的语言，与写作统计和便签侧边栏一致。
 
 <p align="center"><a href="assets/screenshots/sticky_note_cn.png"><img src="assets/screenshots/sticky_note_cn.png" width="100%" alt="工作台的便签标签页里有两行共五张彩色卡片和折叠起来的归档。右侧的便签侧栏里是同样五张便签的紧凑卡片。其中两张还作为可调整大小的面板，悬浮在页面下方。" /></a></p>
 
@@ -1076,6 +1094,14 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 更新插件本身绝不会改写你的笔记。插件生成的文件会自己保持最新。工作台第一次显示一个项目时，会悄悄把 `00_系统` 下的系统模板和项目元数据笔记上的版本戳更新到当前版本。你自己写的笔记，只有在你点了一个按钮之后才会改变。只要其中有一篇出自旧版本，工作台就会显示「较旧的项目格式」，并注明有几篇。点击「更新」，一次就能把它们全部更新到当前版本。这个操作是安全的，可以重复执行。
 
+### 手机和平板
+
+插件可以在 iOS 和 Android 版的 Obsidian 上使用。平板显示与桌面端相同的版面，控件放大到适合手指的尺寸。手机上，工作台的各步收在**步骤**按钮后面，每个对话框都占满屏幕宽度。Obsidian 在手机上没有状态栏，所以字数和写作时段改为显示在工具栏上。工作台作为一整页滚动，长长的角色表和场景表在搜索框下面一路排开。
+
+长按可以打开桌面端用右键打开的菜单，凡是能拖动排列的，也都能在菜单里排列。在正文流里长按照常选择文字，工具栏上的**选中文字操作**按钮会为选中的文字打开插件的菜单。手机上正文流旁的页边太窄，修订和伏笔卡片改在**页边卡片**侧边栏里阅读和处理。
+
+可视化工作区，包括卡片看板、自由画布、时间线、节拍表和关系图，只在平板和桌面端提供。手机屏幕留不出值得探索的空间，场景和角色仍在工作台的表格里。浮动便签在手机上改为在便签侧边栏中打开。文本框里的右键菜单、在工作台旁打开笔记、隐藏滚动条和隐藏工具提示仍是桌面端的功能。命令面板中的**显示移动端诊断**会显示设备向插件报告的信息，并提供复制报告的按钮，方便提交问题。
+
 ## 指南
 
 1. 打开命令面板，运行 **打开项目管理器** 命令。
@@ -1127,6 +1153,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 复制当前正文笔记为纯文本 | 去掉页面正中这一篇的所有标记，再放到剪贴板。 |
 | 在正文中查找 | 打开正文流上方的查找栏，在整部正文里查找。 |
 | 在正文中查找并替换 | 打开带替换栏的查找栏，在整部正文里替换。 |
+| 打开页边卡片侧边栏 | 在独立的侧栏中打开正文流的修订与伏笔卡片。 |
 | 按选项开始写作时段 | 先选好计时方式、时长和写作阶段，再开始。 |
 | 开始正计时写作时段 | 开始一个时段，直到你停止才结束。 |
 | 开始倒计时写作时段 | 开始一个时段，倒计时走完就结束。 |
@@ -1162,8 +1189,9 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 切换文件列表的排列模式 | 开始或停止把文件和文件夹拖成自己的顺序。 |
 | 从系列更新 | 把同系列另一册的改动带进两册共有的笔记。 |
 | 切换文件列表中的字数 | 显示或隐藏每篇笔记和每个文件夹旁的字数。 |
+| 显示移动端诊断 | 在手机或平板上显示设备报告的信息，可以复制下来。 |
 
-与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。**切换打字机滚动**在排版范围内的笔记里也能使用。设置专注模式的四条命令，在项目里的笔记中也能使用。两条针对当前笔记的命令，作用于页面正中的那一篇。
+与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。**切换打字机滚动**在排版范围内的笔记里也能使用。设置专注模式的四条命令，在项目里的笔记中也能使用。两条针对当前笔记的命令，作用于页面正中的那一篇。**显示移动端诊断**只在手机和平板上提供。**切换在工作台旁打开笔记**、**切换滚动条**、**切换工具提示**和设为仅正文的专注模式命令在那里不提供。手机上也不提供**切换工作台导航栏**和打开可视化工作区的各条命令。
 
 ## 设置
 
@@ -1176,13 +1204,13 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 在工作台旁打开笔记 | 开启 | 长篇笔记都在工作台旁的同一个固定分栏里打开。 |
 | 减少动画 | 关闭 | 用静态的视觉效果代替动画。 |
 | 隐藏滚动条 | 开启 | 隐藏 Obsidian 里的所有滚动条，滚动不受影响。 |
-| 隐藏工具提示 | 开启 | 隐藏 Obsidian 里的所有工具提示，区段标记上的警告除外。 |
+| 隐藏工具提示 | 关闭 | 隐藏 Obsidian 里的所有工具提示，区段标记上的警告除外。 |
 | 保护托管区段边界 | 开启 | 防止同步标记被意外修改。关闭前会先请你确认。 |
 | 在表格中显示进度状态 | 关闭 | 在成员表格中，把每条笔记的进度状态显示在名称下方。 |
 | 在表格中显示操作列 | 开启 | 每一行的操作按钮都始终显示。 |
 | 从字段新建笔记 | 打开它的表单 | 从字段新建笔记时，选择先打开表单还是直接创建。 |
 | 增强范围 | 雪花项目 | 文件列表增强应用于雪花项目或整个仓库，也可以关闭。 |
-| 沉浸模式 | 开启 | 文件列表里只显示你正在写的项目。 |
+| 沉浸模式 | 关闭 | 文件列表里只显示你正在写的项目。 |
 | 隐藏编号前缀 | 开启 | 把 `50_正文` 显示为 正文，不会重命名任何东西。 |
 | 隐藏插件管理的文件 | 开启 | 隐藏插件存放的 JSON 文件和便签。 |
 | 额外隐藏的文件 | 无 | 还要隐藏的文件，每行一个名称或路径，`*` 为通配符。 |
@@ -1248,6 +1276,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 - 不需要注册账号、订阅，也不需要连接外部服务。
 - 插件不会发起网络请求，也不包含 AI 服务、遥测或数据分析。自由画布上的网页链接只显示网址，不会抓取任何内容。
+- **显示移动端诊断**只把设备报告的信息显示出来。只有你自己复制并分享时，这份报告才会离开设备。
 - 项目用的都是 Obsidian 兼容的文件。停用插件后，内容照样可以正常阅读和编辑。
 
 ## 结构
@@ -1398,7 +1427,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 关系图 (0.27.0)
 - [x] 导入与系列 (0.28.0)
 - [x] 修改历史 (0.29.0)
-- [ ] 改进平板和手机上的显示
+- [x] 改进平板和手机上的显示 (0.31.0)
+- [x] 页边卡片侧边栏 (0.31.0)
 
 ## 开发
 
