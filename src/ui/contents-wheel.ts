@@ -484,7 +484,11 @@ export function renderContentsWheel(
 	list.addEventListener('click', (event) => {
 		if (menued) {
 			menued = false;
-			return;
+			// Only a click a pointer made can be the lift of that hold. A
+			// right-click with a mouse leaves the mark standing, since no
+			// lift follows it, and a row pressed from the keys after it
+			// comes as a click no pointer made: that one is a press.
+			if (event.detail !== 0) return;
 		}
 		const pressed = event.target;
 		if (

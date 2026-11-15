@@ -812,7 +812,7 @@ describe('the wheel of chapters', () => {
 		expect(lift.defaultPrevented).toBe(true);
 		// Some hands end a long press with a click all the same: the menu is
 		// what was asked for.
-		row?.click();
+		row?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
 		expect(asked).toEqual([`menu ${rows[2]?.path ?? ''}`]);
 		expect(went).toEqual([]);
 		// The next press is a press again, and its lift is left alone.
@@ -822,6 +822,23 @@ describe('the wheel of chapters', () => {
 		expect(tap.defaultPrevented).toBe(false);
 		row?.click();
 		expect(went).toEqual([rows[2]?.path]);
+	});
+
+	it('takes a row pressed from the keys as a press, whatever menu was asked for before', () => {
+		const { wheel, went, items } = mount({ acts: true });
+		const rows = chapters(5);
+		wheel.sync({ rows, active: rows[0]?.path ?? null, reach: 5 });
+		// A right-click with a mouse: no lift follows it, and no click.
+		items()[2]?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+		items()[2]?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		// Enter on a row is a click no pointer made. It was taken for the
+		// lift of the hold and went nowhere, once.
+		items()[3]?.click();
+		expect(went).toEqual([rows[3]?.path]);
+		// The menu key asks with no pointer at all, and the same holds.
+		items()[1]?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		items()[4]?.click();
+		expect(went).toEqual([rows[3]?.path, rows[4]?.path]);
 	});
 
 	it('leaves a right-click to the app where rows offer nothing more', () => {
