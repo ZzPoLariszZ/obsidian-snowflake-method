@@ -60,23 +60,27 @@ function board(settings: Partial<CorkboardMemory> = {}, variant?: CorkboardVaria
 		path: 'Novel/Novel.md', projectId: 'novel', locale: 'en',
 		scenes, characters: [], manuscriptPaths: [], readOnly: false,
 	} as unknown as ProjectDashboardModel;
-	let open: { rows: readonly FilterRow[]; changed: () => void; title: string | undefined } | null = null;
+	let open: { anchor: CorkboardElement; rows: readonly FilterRow[]; changed: () => void; title: string | undefined } | null = null;
 	const drafts = new Map<FilterRow, string | number>();
 	const putBack = (rows: readonly FilterRow[]): void => {
 		for (const row of rows) if (isFilterOptionRow(row)) row.preview?.(row.value);
 		for (const row of rows) if (row.presentation === 'stop-slider') row.preview(row.value);
 	};
+	// The popover marks the button its panel hangs from, as the real one does.
 	const popover = {
 		filterOpen: () => open !== null,
-		openFilter: vi.fn((_anchor: unknown, rows: readonly FilterRow[], changed: () => void, title?: string) => {
+		openFilter: vi.fn((anchor: CorkboardElement, rows: readonly FilterRow[], changed: () => void, title?: string) => {
 			popover.closeFilter();
-			open = { rows, changed, title };
+			open = { anchor, rows, changed, title };
+			anchor.setAttribute('aria-expanded', 'true');
 		}),
 		closeFilter: vi.fn(() => {
 			const standing = open;
 			open = null;
 			drafts.clear();
-			if (standing !== null) putBack(standing.rows);
+			if (standing === null) return;
+			standing.anchor.setAttribute('aria-expanded', 'false');
+			putBack(standing.rows);
 		}),
 	};
 	const remember = vi.fn();
@@ -142,6 +146,7 @@ function board(settings: Partial<CorkboardMemory> = {}, variant?: CorkboardVaria
 			}
 			open = null;
 			drafts.clear();
+			standing.anchor.setAttribute('aria-expanded', 'false');
 			standing.changed();
 			dom.flushFrame();
 		},
@@ -420,6 +425,29 @@ describe('a pool\'s display panel', () => {
 		expect(fixture.root.styles[TEXT_SIZE]).toBe('14px');
 		expect(fixture.memory).toMatchObject({ cardWidth: 300, textSize: 14 });
 		expect(fixture.remember).not.toHaveBeenCalled();
+		fixture.handle.dispose();
+	});
+
+	it('closes its own panel on a second press, and opens over one another surface hung from the lent popover since', () => {
+		const fixture = board({ mode: 'standard' }, { ...POOL, wear: vi.fn() });
+		fixture.openDisplay();
+		expect(fixture.rows()).toHaveLength(5);
+		fixture.openDisplay();
+		expect(fixture.popover.filterOpen()).toBe(false);
+		// The pool's panel again, and then the lanes' own Display hung from
+		// the same popover under a button of the workspace's.
+		fixture.openDisplay();
+		const lanes = fixture.dom.container.createEl('button');
+		fixture.popover.openFilter(lanes, [], () => undefined, 'corkboard.display');
+		expect(fixture.rows()).toHaveLength(0);
+		// A press on the pool's button from the keys, with no press of a
+		// pointer to close the lanes' panel first: it took the panel for its
+		// own, closed it and opened nothing.
+		fixture.openDisplay();
+		expect(fixture.popover.filterOpen()).toBe(true);
+		expect(fixture.rows()).toHaveLength(5);
+		expect(lanes.getAttribute('aria-expanded')).toBe('false');
+		fixture.dismiss();
 		fixture.handle.dispose();
 	});
 

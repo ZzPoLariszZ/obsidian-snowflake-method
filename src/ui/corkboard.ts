@@ -1252,9 +1252,26 @@ export function renderBoard<
 
 	// -- The popovers --------------------------------------------------------
 
+	/** The button each of the board's two panels hangs from: its own, or the one the toolbar gathered them under. */
+	const panelAnchor = (kind: 'funnel' | 'display'): HTMLElement =>
+		gathered?.button ?? (kind === 'funnel' ? filterButton : displayButton);
+	/**
+	 * Whether the panel standing open is this board's own, of one kind. The
+	 * popover is lent, and the surface the board stands in may have hung a
+	 * panel of its own from it since, as a workspace's lanes hang their
+	 * Display beside a pool's. The popover marks the button its panel hangs
+	 * from, and a panel hung anywhere else is not this board's to close: a
+	 * press from the keys on the pool's button closed the lanes' panel and
+	 * opened nothing.
+	 */
+	const ownsPanel = (kind: 'funnel' | 'display'): boolean =>
+		popoverKind === kind &&
+		controls.popover.filterOpen() &&
+		panelAnchor(kind).getAttribute('aria-expanded') === 'true';
+
 	const openFunnel = async (): Promise<void> => {
 		const request = ++popoverRequest;
-		if (controls.popover.filterOpen() && popoverKind === 'funnel') {
+		if (ownsPanel('funnel')) {
 			controls.popover.closeFilter();
 			popoverKind = null;
 			return;
@@ -1267,7 +1284,7 @@ export function renderBoard<
 		const extra = await deal.filters.extra(current);
 		if (disposed || request !== popoverRequest || !filterButton.isConnected || model?.path !== owningProject) return;
 		controls.popover.openFilter(
-			gathered?.button ?? filterButton,
+			panelAnchor('funnel'),
 			deal.filters.rows(model, memory.filters, extra),
 			() => {
 				markFilterButton();
@@ -1384,7 +1401,7 @@ export function renderBoard<
 
 	const openDisplay = (): void => {
 		popoverRequest++;
-		if (controls.popover.filterOpen() && popoverKind === 'display') {
+		if (ownsPanel('display')) {
 			controls.popover.closeFilter();
 			popoverKind = null;
 			return;
@@ -1392,7 +1409,7 @@ export function renderBoard<
 		popoverKind = 'display';
 		const before = { mode: memory.mode, group: memory.group, cardWidth: memory.cardWidth, cardHeight: memory.cardHeight, textSize: memory.textSize };
 		controls.popover.openFilter(
-			gathered?.button ?? displayButton,
+			panelAnchor('display'),
 			displayRows(),
 			() => {
 				// Confirmed: what was tried is the memory's now, and the tab's
@@ -1529,7 +1546,7 @@ export function renderBoard<
 		deck.closeColorPanel();
 		deck.releasePress();
 		// A panel hung in the window the board has left would stand there alone.
-		if (popoverKind !== null && controls.popover.filterOpen()) controls.popover.closeFilter();
+		if (ownsPanel('funnel') || ownsPanel('display')) controls.popover.closeFilter();
 		popoverKind = null;
 		dragRect = null;
 		if (frame !== null) {
