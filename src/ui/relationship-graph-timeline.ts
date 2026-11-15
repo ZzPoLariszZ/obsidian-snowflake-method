@@ -7,7 +7,8 @@
  * The scrubber is the app's own range control, so a mouse, the arrow keys,
  * Home and End, and a screen reader all move it as they move any slider,
  * and the two buttons beside the play button step it for a hand that would
- * rather press than drag. The app draws the track, the played part and the
+ * rather press than drag. Where no line in sight names a time, every time
+ * draws the same graph, and the thumb and the three buttons are all stilled. The app draws the track, the played part and the
  * thumb, as it draws every slider's; behind the control the strip draws the
  * axis's points where the thumb's centre stops, the stronger ones where
  * something in sight changes, and under it the name of the one time the
@@ -218,6 +219,8 @@ export function renderGraphTimeline(host: HTMLElement, deps: TimelineStripDeps):
 	let captionFor = '';
 	let shownThumb = '';
 	let shownStep = '';
+	/** Whether the thumb was last stilled; neither before the first paint. */
+	let shownStill: boolean | null = null;
 
 	const drawTicks = (list: readonly TimelinePoint[]): void => {
 		rail.empty();
@@ -264,7 +267,6 @@ export function renderGraphTimeline(host: HTMLElement, deps: TimelineStripDeps):
 			points = list;
 			drawTicks(list);
 			range.max = String(Math.max(0, count - 1));
-			range.disabled = count < 2;
 			current = -1;
 			captionFor = '';
 			// The same time on another axis is another place along it: the thumb and the played part are set again.
@@ -272,6 +274,14 @@ export function renderGraphTimeline(host: HTMLElement, deps: TimelineStripDeps):
 		}
 		playing = view.playing;
 		el.toggleClass('is-playing', view.playing);
+		// An axis with nowhere to go, or one no line in sight is set on, has
+		// nothing to step to, to drag to or to play: every time draws the same
+		// graph, so the thumb and the three buttons are stilled together.
+		const still = !view.dated || count < 2;
+		if (still !== shownStill) {
+			shownStill = still;
+			range.disabled = still;
+		}
 		const at = Math.max(0, Math.min(count - 1, view.current));
 		if (at !== current) {
 			tickEls[current]?.removeClass('is-current');
@@ -307,10 +317,10 @@ export function renderGraphTimeline(host: HTMLElement, deps: TimelineStripDeps):
 		paintSymbol(play, playMemo, {
 			icon: view.playing ? 'pause' : 'play',
 			label: t(view.playing ? 'relationshipGraph.timeline.pause' : 'relationshipGraph.timeline.play'),
-			disabled: !view.dated || count < 2,
+			disabled: still,
 		});
-		previous.disabled = count < 2 || at <= 0;
-		next.disabled = count < 2 || at >= count - 1;
+		previous.disabled = still || at <= 0;
+		next.disabled = still || at >= count - 1;
 	};
 
 	// Whether the points have room is the rail's width to say, which moves with the pane.

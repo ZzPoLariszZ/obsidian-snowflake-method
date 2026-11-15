@@ -311,17 +311,40 @@ describe('the timeline strip', () => {
 		expect(view.deps.seek).not.toHaveBeenCalled();
 	});
 
-	it('says so, and stills the play button, where no line in sight names a time', () => {
-		const view = strip({ dated: false });
+	it('says so, and stills the three buttons and the thumb together, where no line in sight names a time', () => {
+		// In the middle of the axis, where each of the two steps would have somewhere to go.
+		const view = strip({ dated: false, current: 3, thumb: 3 });
 		expect(view.el.classes.has('is-undated')).toBe(true);
 		// The line under the rail says so, from the rail's start, in place of the time's name, which the control still says.
 		expect(view.part('caption-name').textContent).toBe('relationshipGraph.timeline.undated');
 		expect(view.part('caption').styles[AT]).toBe('0');
-		expect(view.part('range').getAttribute('aria-valuetext')).toBe('Mon');
+		expect(view.part('range').getAttribute('aria-valuetext')).toBe('Thu');
+		// Every time draws the same graph, so there is nothing to play, to step to or to drag to.
+		expect(view.part('previous').disabled).toBe(true);
 		expect(view.part('play').disabled).toBe(true);
-		// The axis still stands, and still steps.
+		expect(view.part('next').disabled).toBe(true);
+		expect(view.part('range').disabled).toBe(true);
+		// The axis still stands, its points drawn and the thumb where the time is.
+		expect(view.ticks()).toHaveLength(7);
+		expect(view.part('range').value).toBe('3');
+		// A finger on the stilled axis moves nothing.
+		const held = view.touch('touchstart', [[1, 500]]);
+		expect(held.preventDefault).not.toHaveBeenCalled();
+		expect(view.deps.seek).not.toHaveBeenCalled();
+		expect(view.deps.pause).not.toHaveBeenCalled();
+		// A line that names a time brings all four back, each step stilled only at its own end.
+		view.paint({ dated: true, current: 3, thumb: 3 });
+		expect(view.el.classes.has('is-undated')).toBe(false);
+		expect(view.part('previous').disabled).toBe(false);
+		expect(view.part('play').disabled).toBe(false);
 		expect(view.part('next').disabled).toBe(false);
 		expect(view.part('range').disabled).toBe(false);
+		expect(view.part('caption-name').textContent).toBe('Thu');
+		// And the last one going stills them again.
+		view.paint({ dated: false, current: 3, thumb: 3 });
+		expect(view.part('previous').disabled).toBe(true);
+		expect(view.part('next').disabled).toBe(true);
+		expect(view.part('range').disabled).toBe(true);
 	});
 
 	it('says a project has no time in the words every board says an empty list in, and takes them back when it has one', () => {
