@@ -96,7 +96,7 @@ import {
 	promptForForeshadowingPick,
 	promptForOccurrenceRelink,
 } from './foreshadowing-form';
-import type { ContentsRow } from './contents-hub';
+import type { ContentsFeed, ContentsRow } from './contents-hub';
 import { renderContentsWheel, type ContentsWheel } from './contents-wheel';
 import type { MarginCardsSegment } from './margin-cards-hub';
 import {
@@ -378,6 +378,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private contentsTold: string | null = null;
 	/** The chapter a press on the wheel is on its way to, which the wheel says until the page has arrived. */
 	private contentsBound: string | null = null;
+	/** What a row of the wheel asks of the stream, once they have first been asked for. */
+	private chapterAsks: ChapterAsks | null = null;
 	/** Notes renamed since the manuscript was last read, each with where it went, for whatever stood on it. */
 	private renamed = new Map<string, string>();
 	/** Takes down the watch kept on the page's box. */
@@ -3800,20 +3802,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.contents = renderContentsWheel(margin, {
 			t: this.t,
 			still: () => this.host.isReduceMotionEnabled(),
-			go: (path) => {
-				void this.goToChapter(path).catch((error: unknown) => {
-					this.showError(error);
-				});
-			},
-			menu: (path, event) => {
-				this.openChapterMenu(path, event);
-			},
-			rename: (path) => {
-				this.pressRenameChapter(path);
-			},
-			remove: (path) => {
-				this.pressDeleteChapter(path);
-			},
+			...this.asksOfChapters(),
 			// Escape hands the keys back to the words, where a note is open.
 			leave: () => {
 				if (this.editingPath !== null) {
@@ -3924,6 +3913,19 @@ export class SnowflakeManuscriptView extends ItemView {
 			active,
 			reach,
 			editable,
+			...this.asksOfChapters(),
+		});
+	}
+
+	/**
+	 * What a row of the wheel asks of the stream: the way to its chapter,
+	 * its menu, a new name and the way out of the book. The margin's wheel
+	 * and the sidebar's are handed the same four, made once: they were
+	 * written out for each, and made again for the sidebar on every turn of
+	 * the wheel.
+	 */
+	private asksOfChapters(): ChapterAsks {
+		this.chapterAsks ??= {
 			go: (path) => {
 				void this.goToChapter(path).catch((error: unknown) => {
 					this.showError(error);
@@ -3938,7 +3940,8 @@ export class SnowflakeManuscriptView extends ItemView {
 			remove: (path) => {
 				this.pressDeleteChapter(path);
 			},
-		});
+		};
+		return this.chapterAsks;
 	}
 
 	/**
@@ -6893,6 +6896,9 @@ interface CarriedRenames {
 	active: string | null;
 	place: ReadingPlace | null;
 }
+
+/** What a row of the wheel asks of the stream, as the sidebar's feed carries it. */
+type ChapterAsks = Pick<ContentsFeed, 'go' | 'menu' | 'rename' | 'remove'>;
 
 /**
  * An editor put away because its note's file was about to be renamed, with

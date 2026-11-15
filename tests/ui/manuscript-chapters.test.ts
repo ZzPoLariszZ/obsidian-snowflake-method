@@ -852,6 +852,16 @@ describe('the stream’s chapters: followed, added, renamed and deleted', () => 
 	it('hands the sidebar the same three ways to a chapter itself', async () => {
 		const { view, hub, said, answers } = stream();
 		view.syncContents();
+		// One set of them, made once: a turn of the wheel makes none again.
+		const first = hub.current() as unknown as Record<string, unknown>;
+		view.activePath = chapter(4).path;
+		view.syncContents();
+		const turned = hub.current() as unknown as Record<string, unknown>;
+		expect(turned).not.toBe(first);
+		for (const ask of ['go', 'menu', 'rename', 'remove']) {
+			expect(typeof turned[ask]).toBe('function');
+			expect(turned[ask]).toBe(first[ask]);
+		}
 		answers.renamed = { from: chapter(1).path, to: chapter(1).path };
 		hub.current()?.rename(chapter(1).path);
 		await vi.waitFor(() =>
