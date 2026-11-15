@@ -2566,6 +2566,56 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	font-size: var(--font-ui-smaller);
 }
 
+/* A measure on a rail of stops. Its words end the name's line, so the rail
+   under it has the row's whole width, the button that puts the measure back
+   at its start as the manuscript's sliders have it. The row is a setting's
+   own, undressed: no rule above it, no room around it, no name beside the
+   control, which the label above already is, and none of the ground the app
+   lays under every setting, which would stand in the panel as a grey band
+   around the rail. */
+.snowflake-method-filter-slider > .snowflake-method-filter-label {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-filter-slider > .snowflake-method-filter-label > .snowflake-method-presentation-value {
+	min-width: 0;
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-filter-slider > .setting-item {
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+}
+
+.snowflake-method-filter-slider > .setting-item > .setting-item-info {
+	display: none;
+}
+
+.snowflake-method-filter-slider > .setting-item > .setting-item-control {
+	flex: 1 1 auto;
+	justify-content: flex-start;
+	gap: var(--size-2-2);
+	min-width: 0;
+}
+
+.snowflake-method-filter-slider > .setting-item > .setting-item-control > input.slider {
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+}
+
+/* A measure of something the drafted answers do not show is put away. */
+.snowflake-method-filter-row.is-hidden {
+	display: none;
+}
+
 /* A bounded question on one line: two ends of a range sharing the row,
    each free to shrink so the pair never outgrows the panel. */
 .snowflake-method-filter-range {
@@ -20971,6 +21021,13 @@ body.is-phone .snowflake-method-presentation-panel {
 	border-width: 0;
 	border-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
 	box-shadow: var(--shadow-l);
+}
+
+/* The button beside a panel's rail, which puts the measure back, takes a
+   finger: the rail's own handle is already the app's wider one here. */
+body.is-mobile .snowflake-method-filter-slider .snowflake-method-presentation-reset {
+	min-width: var(--touch-size-s, 2.5rem);
+	min-height: var(--touch-size-s, 2.5rem);
 }
 
 /* A field's list opens upward from a field near the foot of the sheet, and

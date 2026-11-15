@@ -8,7 +8,7 @@ import {
 	type MarginCardsFeed,
 	type MarginCardsSegment,
 } from '../../src/ui/margin-cards-hub';
-import type { FilterOptionRow, FilterRow, LentFilterPopover } from '../../src/ui/filter-rows';
+import { isFilterOptionRow, type FilterOptionRow, type FilterRow, type LentFilterPopover } from '../../src/ui/filter-rows';
 import {
 	marginCardsLens,
 	renderMarginCardsList,
@@ -165,7 +165,7 @@ const lentPopover = (): {
 };
 
 const option = (row: FilterRow | undefined): FilterOptionRow => {
-	if (row === undefined || row.presentation === 'number-range') throw new Error('not a picker row');
+	if (row === undefined || !isFilterOptionRow(row)) throw new Error('not a picker row');
 	return row;
 };
 

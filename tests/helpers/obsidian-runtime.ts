@@ -210,6 +210,7 @@ class QuietComponent {
 	disabled = false;
 	private value: unknown = '';
 	private handler: ((value: never) => unknown) | null = null;
+	private pressed: (() => unknown) | null = null;
 	readonly inputEl = quietElement();
 	readonly clearButtonEl = quietElement();
 	readonly containerEl = quietElement();
@@ -234,8 +235,13 @@ class QuietComponent {
 		this.value = value;
 		this.handler?.(value as never);
 	}
-	onClick(): this {
+	onClick(handler?: () => unknown): this {
+		this.pressed = handler ?? null;
 		return this;
+	}
+	/** A press on the button, as the user gives one; a disabled button takes none. */
+	click(): void {
+		if (!this.disabled) this.pressed?.();
 	}
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
@@ -251,6 +257,9 @@ class QuietComponent {
 		return this;
 	}
 	setInstant(): this {
+		return this;
+	}
+	setDisplayFormat(): this {
 		return this;
 	}
 	addOption(): this {
@@ -287,6 +296,8 @@ export class Setting {
 	nameEl: QuietElement;
 	descEl: QuietElement;
 	controlEl: QuietElement;
+	/** Every control the row was given, in the order it was added, as the app's own Setting keeps them. */
+	readonly components: QuietComponent[] = [];
 	constructor(container?: unknown) {
 		const parent = container as Partial<QuietElement> | undefined;
 		this.settingEl = typeof parent?.createDiv === 'function' ? parent.createDiv({ cls: 'setting-item' }) : quietElement();
@@ -316,7 +327,9 @@ export class Setting {
 		return this;
 	}
 	private add(build?: (component: never) => unknown): this {
-		build?.(new QuietComponent() as never);
+		const component = new QuietComponent();
+		this.components.push(component);
+		build?.(component as never);
 		return this;
 	}
 	addDropdown(build?: (component: never) => unknown): this {

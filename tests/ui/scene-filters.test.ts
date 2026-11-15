@@ -15,6 +15,7 @@ import {
 	termName,
 	type SceneFilters,
 } from '../../src/ui/scene-filters';
+import { isFilterOptionRow } from '../../src/ui/filter-rows';
 import type { SceneViewModel } from '../../src/ui/view-model';
 
 const t = (key: string, vars?: Record<string, string | number>): string =>
@@ -375,7 +376,7 @@ describe('the scene funnel', () => {
 			'table.sceneColor',
 			'table.sceneLinked',
 		]);
-		const optionRows = rows.filter((row) => row.presentation !== 'number-range');
+		const optionRows = rows.filter(isFilterOptionRow);
 		expect(optionRows.map((row) => row.empty)).toEqual(['all', '', '', '', '', '', '', '']);
 		expect(optionRows[2]?.options().map((option) => option.value)).toEqual([
 			'omniscient',

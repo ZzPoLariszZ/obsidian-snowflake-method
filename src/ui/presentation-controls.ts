@@ -43,6 +43,16 @@ export interface StopSliderSpec {
 	 * theme's own, if it has one. Read to place the handle, never to store.
 	 */
 	themeVar?: string;
+	/**
+	 * What the surface is already doing while the setting is at rest, where
+	 * no theme variable says it: a width shared out by a layout, a height a
+	 * style holds. Read to place the handle, never to store.
+	 */
+	rest?: () => number;
+	/** Names the rail where the row's own name is not written beside it. */
+	label?: string;
+	/** Where the value in words is written, when it is not beside the slider. */
+	valueHost?: HTMLElement;
 	/** The stop in words, for the value beside the slider. */
 	format(value: number): string;
 	onPick(value: number): void;
@@ -89,7 +99,7 @@ export function addStopSlider(
 	spec: StopSliderSpec,
 ): ControlHandle<number> {
 	setting.settingEl.addClass('snowflake-method-presentation-row');
-	const value = setting.controlEl.createSpan({
+	const value = (spec.valueHost ?? setting.controlEl).createSpan({
 		cls: 'snowflake-method-presentation-value',
 	});
 	const first = spec.stops[0] ?? 0;
@@ -97,6 +107,10 @@ export function addStopSlider(
 	// no indent is a real value, no font size is not.
 	const atTheme = (stop: number): boolean => stop <= 0 && !spec.stops.includes(0);
 	const themeStop = (): number => {
+		if (spec.rest !== undefined) {
+			const standing = spec.rest();
+			if (Number.isFinite(standing) && standing > 0) return standing;
+		}
 		if (spec.themeVar === undefined) return first;
 		const measured = themeVarValue(setting.settingEl, spec.themeVar);
 		return measured ?? first;
@@ -121,7 +135,10 @@ export function addStopSlider(
 		current = stop;
 		// A value stored outside the stops reads as the stop it snaps to, and
 		// is not written back until the handle moves.
-		value.setText(spec.format(atTheme(stop) ? stop : (spec.stops[indexOf(stop)] ?? stop)));
+		const words = spec.format(atTheme(stop) ? stop : (spec.stops[indexOf(stop)] ?? stop));
+		value.setText(words);
+		// The rail's own value is a stop's place in the list; the words are what it means.
+		slider?.sliderEl.setAttribute('aria-valuetext', words);
 		// Nothing to put back while the measure is already where the button
 		// would take it, and the app dims an icon that says it is disabled.
 		const spent = stop === spec.resetValue;
@@ -145,6 +162,7 @@ export function addStopSlider(
 	});
 	setting.addSlider((component) => {
 		slider = component;
+		if (spec.label !== undefined) component.sliderEl.setAttribute('aria-label', spec.label);
 		component
 			.setLimits(0, spec.stops.length - 1, 1)
 			.setValue(indexOf(spec.value))

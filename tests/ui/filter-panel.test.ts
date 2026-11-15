@@ -3,12 +3,26 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { FilterPanel } from '../../src/ui/filter-panel';
 import { MACARON_COLORS } from '../../src/domain/macaron';
-import type { FilterOptionRow, FilterRangeRow } from '../../src/ui/filter-rows';
+import type { FilterOptionRow, FilterRangeRow, FilterRow, FilterSliderRow } from '../../src/ui/filter-rows';
+import type { StopSliderSpec } from '../../src/ui/presentation-controls';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
 // Positioning is independent of the range fields' draft and confirm behavior.
 vi.mock('../../src/ui/anchored-panel', () => ({
 	followAnchor: () => () => undefined,
+}));
+
+// The rail itself is the manuscript's own control, tested beside it; here
+// each one built is kept with what it was told, so a test can move it.
+const rails = vi.hoisted(() => ({
+	built: [] as { spec: StopSliderSpec; sync: ReturnType<typeof vi.fn> }[],
+}));
+vi.mock('../../src/ui/presentation-controls', () => ({
+	addStopSlider: (_setting: unknown, spec: StopSliderSpec) => {
+		const sync = vi.fn();
+		rails.built.push({ spec, sync });
+		return { sync };
+	},
 }));
 
 function setup() {
@@ -173,5 +187,167 @@ describe('questions under an answer', () => {
 		expect(view.applied).toEqual([]);
 		view.press('.mod-cta');
 		expect(view.applied).toEqual(['ground=', 'rose edge=', 'mint edge=']);
+	});
+});
+
+describe('a measure on a rail of stops', () => {
+	const [rose] = MACARON_COLORS;
+	if (rose === undefined) throw new Error('a colour wanted');
+
+	function measuring(options: { hidden?: () => boolean; style?: FilterOptionRow } = {}) {
+		rails.built.length = 0;
+		const dom = new CorkboardDom();
+		Object.assign(dom.win, { activeDocument: dom.doc });
+		const anchor = dom.container.createEl('button');
+		const applied: number[] = [];
+		const previewed: number[] = [];
+		const changed = vi.fn();
+		const width: FilterSliderRow = {
+			presentation: 'stop-slider',
+			label: 'Card width',
+			stops: [208, 256, 320],
+			value: 256,
+			empty: 0,
+			resetLabel: 'Reset to default',
+			format: (value) => (value === 0 ? 'Automatic' : `${String(value)} px`),
+			rest: () => 300,
+			...(options.hidden === undefined ? {} : { hidden: options.hidden }),
+			preview: (value) => {
+				previewed.push(value);
+			},
+			apply: (value) => {
+				applied.push(value);
+			},
+		};
+		const rows: FilterRow[] = options.style === undefined ? [width] : [options.style, width];
+		const panel = new FilterPanel({} as App, (key) => key);
+		const open = (): void => {
+			panel.open(anchor as unknown as HTMLElement, rows, changed, 'Display');
+		};
+		const press = (selector: string): void => {
+			const button = dom.container.querySelector(selector);
+			if (button === null) throw new Error(`Missing ${selector}`);
+			button.dispatch('click');
+		};
+		const rail = (): { spec: StopSliderSpec; sync: ReturnType<typeof vi.fn> } => {
+			const last = rails.built[rails.built.length - 1];
+			if (last === undefined) throw new Error('no rail built');
+			return last;
+		};
+		const row = (): CorkboardElement => {
+			const found = dom.container.querySelector('.snowflake-method-filter-slider');
+			if (found === null) throw new Error('no slider row');
+			return found;
+		};
+		open();
+		return { dom, panel, width, applied, previewed, changed, open, press, rail, row };
+	}
+
+	it('builds the rail on the measure held, named for the row, its words written on the name\'s line', () => {
+		const view = measuring();
+		const { spec } = view.rail();
+		expect(spec).toMatchObject({ stops: [208, 256, 320], value: 256, resetValue: 0, resetLabel: 'Reset to default', label: 'Card width' });
+		expect(spec.rest?.()).toBe(300);
+		expect(spec.format(0)).toBe('Automatic');
+		const name = view.row().querySelector('.snowflake-method-filter-label');
+		expect(name?.textContent).toBe('Card width');
+		expect(spec.valueHost).toBe(name);
+		expect(view.previewed).toEqual([]);
+		view.panel.close();
+	});
+
+	it('shows the board each stop the handle passes and keeps the last only when confirmed', () => {
+		const view = measuring();
+		view.rail().spec.onPick(320);
+		view.rail().spec.onPick(208);
+		expect(view.previewed).toEqual([320, 208]);
+		expect(view.applied).toEqual([]);
+		// The row handed in still holds the standing measure.
+		expect(view.width.value).toBe(256);
+		view.press('.mod-cta');
+		expect(view.applied).toEqual([208]);
+		expect(view.changed).toHaveBeenCalledOnce();
+		// Confirmed: nothing is handed back.
+		expect(view.previewed).toEqual([320, 208]);
+		expect(view.panel.isOpen()).toBe(false);
+	});
+
+	it('hands the standing measure back when the panel closes any other way', () => {
+		const view = measuring();
+		view.rail().spec.onPick(320);
+		view.panel.close();
+		expect(view.previewed).toEqual([320, 256]);
+		expect(view.applied).toEqual([]);
+		expect(view.changed).not.toHaveBeenCalled();
+		// Opened again, the rail stands on the measure held.
+		view.open();
+		expect(view.rail().spec.value).toBe(256);
+		// And one panel opened over another puts the first one's board back too.
+		view.rail().spec.onPick(208);
+		view.open();
+		expect(view.previewed).toEqual([320, 256, 208, 256]);
+		view.panel.close();
+	});
+
+	it('takes the reset as the board\'s own measure, shown at once and kept on confirmation', () => {
+		const view = measuring();
+		view.rail().spec.onPick(320);
+		view.press('.snowflake-method-filter-reset');
+		expect(view.previewed).toEqual([320, 0]);
+		expect(view.rail().spec.value).toBe(0);
+		expect(view.applied).toEqual([]);
+		view.press('.mod-cta');
+		expect(view.applied).toEqual([0]);
+	});
+
+	it('puts a rail away while its measure has nothing to act on, and leaves it as stored', () => {
+		let hidden = true;
+		const view = measuring({ hidden: () => hidden });
+		expect(view.row().classes.has('is-hidden')).toBe(true);
+		view.press('.mod-cta');
+		expect(view.applied).toEqual([]);
+		expect(view.changed).toHaveBeenCalledOnce();
+		hidden = false;
+		view.open();
+		expect(view.row().classes.has('is-hidden')).toBe(false);
+		view.press('.mod-cta');
+		expect(view.applied).toEqual([256]);
+	});
+
+	it('shows a choice that asks to be seen, brings the rails it uncovers back, and puts both back when dismissed', () => {
+		const styles: string[] = [];
+		let shown = '';
+		const style: FilterOptionRow = {
+			label: 'Cards',
+			presentation: 'color-swatches',
+			placeholder: 'any',
+			empty: '',
+			options: () => [],
+			value: '',
+			apply: (next) => {
+				styles.push(`apply=${next}`);
+			},
+			preview: (next) => {
+				shown = next;
+				styles.push(`preview=${next}`);
+			},
+		};
+		const view = measuring({ style, hidden: () => shown === '' });
+		expect(view.row().classes.has('is-hidden')).toBe(true);
+		const swatch = view.dom.container
+			.querySelectorAll('.snowflake-method-sticky-swatch')
+			.find((candidate) => candidate.getAttribute('data-color') === rose);
+		if (swatch === undefined) throw new Error('no swatch');
+		swatch.dispatch('click');
+		expect(styles).toEqual([`preview=${rose}`]);
+		expect(view.row().classes.has('is-hidden')).toBe(false);
+		// A rail brought back is told where to wait.
+		expect(view.rail().sync).toHaveBeenLastCalledWith(256);
+		view.rail().spec.onPick(320);
+		view.panel.close();
+		// The choice goes back first, since the measure may be of what it shows.
+		expect(styles).toEqual([`preview=${rose}`, 'preview=']);
+		expect(view.previewed).toEqual([320, 256]);
+		expect(view.applied).toEqual([]);
 	});
 });

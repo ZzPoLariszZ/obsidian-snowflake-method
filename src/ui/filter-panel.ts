@@ -5,17 +5,20 @@
  * it holds through `lend()`, so the pickers' lifetime and the outside-click
  * rules are written once and every surface asks its questions in the same
  * box. The same panel serves a board's display settings under a title of
- * their own: the rows are the same shape.
+ * their own: the rows are the same shape, with a rail of stops beside them
+ * for a measure, which the board follows while the handle moves and keeps
+ * only when the panel is confirmed.
  */
 
-import type { App } from 'obsidian';
+import { Setting, type App } from 'obsidian';
 
 import { isMacaronColor } from '../domain';
 import { followAnchor } from './anchored-panel';
 import { DIALOG_CLASS } from './dialog-class';
-import type { FilterRow, LentFilterPopover } from './filter-rows';
+import type { FilterRow, FilterSliderRow, LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
 import { buildOptionField, type OptionPicker } from './option-picker';
+import { addStopSlider, type ControlHandle } from './presentation-controls';
 import { renderStickySwatches } from './sticky-note-card';
 
 /** The rows copied, branches and all, so nothing changes until confirmed. */
@@ -24,6 +27,7 @@ const draftOf = (rows: readonly FilterRow[]): FilterRow[] =>
 		if (entry.presentation === 'number-range') {
 			return { ...entry, min: { ...entry.min }, max: { ...entry.max } };
 		}
+		if (entry.presentation === 'stop-slider') return { ...entry };
 		if (entry.under === undefined) return { ...entry };
 		return {
 			...entry,
@@ -36,13 +40,18 @@ const draftOf = (rows: readonly FilterRow[]): FilterRow[] =>
 /**
  * The drafted answers handed back, and those under an answer not drafted
  * handed back as not asked: a question that was not on show cannot have
- * been answered.
+ * been answered. A measure out of sight is another matter: it measures
+ * something the drafted answers do not show, and is left as it is stored.
  */
 const applyRows = (rows: readonly FilterRow[], shown: boolean): void => {
 	for (const entry of rows) {
 		if (entry.presentation === 'number-range') {
 			if (shown) entry.apply(entry.min.value, entry.max.value);
 			else entry.apply('', '');
+			continue;
+		}
+		if (entry.presentation === 'stop-slider') {
+			if (shown && entry.hidden?.() !== true) entry.apply(entry.value);
 			continue;
 		}
 		entry.apply(shown ? entry.value : entry.empty);
@@ -61,15 +70,44 @@ const clearRows = (rows: readonly FilterRow[]): void => {
 			continue;
 		}
 		entry.value = entry.empty;
+		if (entry.presentation === 'stop-slider') continue;
 		for (const under of Object.values(entry.under ?? {})) clearRows(under);
 	}
 };
 
+/**
+ * Every answer that is shown while it is drafted handed to the surface as
+ * the rows hold it: the drafts after a reset, or the standing answers when
+ * the panel closes unconfirmed. The choices go first, since a measure may be
+ * of what a choice shows.
+ */
+const previewRows = (rows: readonly FilterRow[]): void => {
+	for (const entry of rows) {
+		if (entry.presentation === 'number-range' || entry.presentation === 'stop-slider') continue;
+		entry.preview?.(entry.value);
+		previewRows(entry.under?.[entry.value] ?? []);
+	}
+	for (const entry of rows) {
+		if (entry.presentation === 'stop-slider') entry.preview(entry.value);
+	}
+};
+
+/** Whether any row is shown on the surface while it is drafted. */
+const previews = (rows: readonly FilterRow[]): boolean =>
+	rows.some((entry) => {
+		if (entry.presentation === 'number-range') return false;
+		if (entry.presentation === 'stop-slider') return true;
+		return entry.preview !== undefined || Object.values(entry.under ?? {}).some(previews);
+	});
+
 export class FilterPanel {
 	/** The pickers the open panel is using, for release. */
 	private pickers: OptionPicker[] = [];
-	/** The panel while it is open, with what it has to let go of. */
-	private panel: { el: HTMLElement; release: () => void } | null = null;
+	/**
+	 * The panel while it is open, with what it has to let go of, and what
+	 * puts the surface back as it stood when the panel closes unconfirmed.
+	 */
+	private panel: { el: HTMLElement; release: () => void; putBack: (() => void) | null } | null = null;
 
 	constructor(
 		private readonly app: App,
@@ -121,8 +159,20 @@ export class FilterPanel {
 		const draft = draftOf(rows);
 		const apply = (): void => {
 			applyRows(draft, true);
+			// Confirmed: the surface keeps what it shows, and the caller draws it for good.
+			if (this.panel !== null) this.panel.putBack = null;
 			this.close();
 			changed();
+		};
+		/** The measures on show, each with its row, to put away or bring back as the drafted answers move. */
+		let rails: { entry: FilterSliderRow; field: HTMLElement; handle: ControlHandle<number> }[] = [];
+		const paintRails = (): void => {
+			for (const { entry, field, handle } of rails) {
+				const hidden = entry.hidden?.() === true;
+				field.toggleClass('is-hidden', hidden);
+				// A rail brought back waits where the surface now stands.
+				if (!hidden) handle.sync(entry.value);
+			}
 		};
 		/**
 		 * The rows drawn into a box, each a field of its own. A row with
@@ -140,10 +190,33 @@ export class FilterPanel {
 		): void => {
 			for (const entry of entries) {
 				const field = into.createDiv({ cls: 'snowflake-method-filter-row' });
-				field.createDiv({
+				const name = field.createDiv({
 					cls: 'snowflake-method-filter-label',
 					text: entry.label,
 				});
+				if (entry.presentation === 'stop-slider') {
+					// The measure in words ends the name's line, so the rail has the
+					// row's whole width under it; the button beside the rail puts the
+					// surface's own measure back.
+					field.addClass('snowflake-method-filter-slider');
+					const handle = addStopSlider(new Setting(field), {
+						stops: entry.stops,
+						value: entry.value,
+						resetValue: entry.empty,
+						resetLabel: entry.resetLabel,
+						format: entry.format,
+						label: entry.label,
+						valueHost: name,
+						...(entry.rest === undefined ? {} : { rest: entry.rest }),
+						...(entry.themeVar === undefined ? {} : { themeVar: entry.themeVar }),
+						onPick: (value) => {
+							entry.value = value;
+							entry.preview(value);
+						},
+					});
+					rails.push({ entry, field, handle });
+					continue;
+				}
 				if (entry.presentation === 'number-range') {
 					const range = field.createDiv({ cls: 'snowflake-method-filter-range' });
 					for (const bound of [entry.min, entry.max]) {
@@ -195,7 +268,9 @@ export class FilterPanel {
 							const chosen = entry.value === next ? '' : next;
 							entry.value = chosen;
 							strip.sync(chosen);
+							entry.preview?.(chosen);
 							drawBranch();
+							paintRails();
 						},
 					});
 				} else {
@@ -207,7 +282,9 @@ export class FilterPanel {
 						value: () => entry.value,
 						choose: (value) => {
 							entry.value = value;
+							entry.preview?.(value);
 							drawBranch();
+							paintRails();
 						},
 						label: entry.label,
 						placeholder: entry.placeholder,
@@ -225,7 +302,9 @@ export class FilterPanel {
 		const fill = (): void => {
 			body.empty();
 			this.releasePickers();
+			rails = [];
 			draw(body, draft, []);
+			paintRails();
 		};
 		fill();
 		const actions = panel.createDiv({
@@ -240,6 +319,8 @@ export class FilterPanel {
 		// and this is not it.
 		reset.addEventListener('click', () => {
 			clearRows(draft);
+			// What is shown while it is drafted follows the fields back to rest.
+			previewRows(draft);
 			fill();
 		});
 		const confirm = actions.createEl('button', {
@@ -291,16 +372,27 @@ export class FilterPanel {
 				unfollow();
 				anchor.setAttribute('aria-expanded', 'false');
 			},
+			// The rows as they were handed in hold the standing answers: a panel
+			// dismissed changes nothing, so whatever was shown meanwhile goes back.
+			putBack: previews(rows)
+				? () => {
+						previewRows(rows);
+					}
+				: null,
 		};
 	}
 
-	/** Takes the panel down, and lets go of its pickers either way. */
+	/**
+	 * Takes the panel down, and lets go of its pickers either way. A panel
+	 * closed without being confirmed puts the surface back as it stood.
+	 */
 	close(): void {
 		const open = this.panel;
 		if (open !== null) {
 			this.panel = null;
 			open.release();
 			open.el.remove();
+			open.putBack?.();
 		}
 		this.releasePickers();
 	}

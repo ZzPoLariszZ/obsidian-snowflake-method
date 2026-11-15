@@ -11,6 +11,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import { SnowflakeDashboardView } from '../../src/ui/dashboard-view';
+import { isFilterOptionRow } from '../../src/ui/filter-rows';
 import type { MemberFormContext } from '../../src/ui/modals';
 import { sceneFilterRows, sceneFilters } from '../../src/ui/scene-filters';
 import type { ProjectDashboardModel } from '../../src/ui/view-model';
@@ -77,7 +78,7 @@ describe('manuscript options in dashboards for different projects', () => {
 			categoryPaths: [], manuscriptNotes: first.manuscriptNotesFor(firstModel),
 		});
 		const linked = rows.find((row) => row.label === 'table.sceneLinked');
-		if (linked === undefined || linked.presentation === 'number-range') {
+		if (linked === undefined || !isFilterOptionRow(linked)) {
 			throw new Error('Missing linked manuscript filter');
 		}
 		expect(linked.options()).toEqual([
