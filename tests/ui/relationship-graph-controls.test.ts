@@ -136,7 +136,7 @@ function mountPanel(options: PanelOptions = {}) {
 }
 
 describe('the graph controls panel', () => {
-	it('builds the native panel: two symbols, five sections, filters open and the rest folded', () => {
+	it('builds the native panel: two symbols, six sections, filters open and the rest folded', () => {
 		const fixture = mountPanel();
 		expect(fixture.el.classes.has('graph-controls')).toBe(true);
 		for (const symbol of ['mod-close', 'mod-reset']) {
@@ -146,9 +146,13 @@ describe('the graph controls panel', () => {
 		}
 		expect(fixture.el.querySelector('.graph-controls-button.mod-open')).toBeNull();
 		expect(fixture.section('filter').classes.has('is-collapsed')).toBe(false);
-		for (const name of ['color-groups', 'display', 'forces', 'relationships']) {
+		for (const name of ['color-groups', 'display', 'timeline', 'forces', 'relationships']) {
 			expect(fixture.section(name).classes.has('is-collapsed')).toBe(true);
 		}
+		// The timeline's section stands between how the graph is drawn and how it is pulled.
+		expect(fixture.el.children.filter((child) => child.classes.has('graph-control-section')).map((child) => [...child.classes].find((name) => name.startsWith('mod-')))).toEqual([
+			'mod-filter', 'mod-color-groups', 'mod-display', 'mod-timeline', 'mod-forces', 'mod-local',
+		]);
 		const local = fixture.section('local');
 		expect(local.classes.has('is-collapsed')).toBe(false);
 		expect(local.classes.has('is-hidden')).toBe(true);
@@ -254,6 +258,32 @@ describe('the graph controls panel', () => {
 		expect(fixture.state().display).toEqual({ arrows: false, labels: 'both', textFade: 1.5, nodeSize: 2, lineSize: 0.5 });
 	});
 
+	it('writes the rule a dated line stands by, one of its two', () => {
+		const fixture = mountPanel();
+		expect(fixture.state().timeline).toEqual({ rule: 'latest', undated: 'before' });
+		fixture.row('relationshipGraph.timeline.rule', 'dropdown').change('since');
+		// The whole part is handed over, the other rule as it stood.
+		expect(fixture.lastChange()).toEqual({ timeline: { rule: 'since', undated: 'before' } });
+		expect(fixture.state().timeline.rule).toBe('since');
+		fixture.row('relationshipGraph.timeline.rule', 'dropdown').change('exact');
+		expect(fixture.state().timeline.rule).toBe('since');
+	});
+
+	it('writes where the lines that name no time stand, before the axis starts or after it ends', () => {
+		const fixture = mountPanel();
+		const undated = fixture.row('relationshipGraph.timeline.undatedRule', 'dropdown');
+		undated.change('after');
+		expect(fixture.lastChange()).toEqual({ timeline: { rule: 'latest', undated: 'after' } });
+		expect(fixture.state().timeline).toEqual({ rule: 'latest', undated: 'after' });
+		// A word that is neither moves nothing, and each rule keeps the other's answer.
+		undated.change('always');
+		expect(fixture.state().timeline.undated).toBe('after');
+		fixture.row('relationshipGraph.timeline.rule', 'dropdown').change('since');
+		expect(fixture.state().timeline).toEqual({ rule: 'since', undated: 'after' });
+		undated.change('before');
+		expect(fixture.state().timeline).toEqual({ rule: 'since', undated: 'before' });
+	});
+
 	it('writes the force sliders', () => {
 		const fixture = mountPanel();
 		fixture.row('relationshipGraph.force.center').change(0.2);
@@ -285,7 +315,7 @@ describe('the graph controls panel', () => {
 		});
 		fixture.el.querySelector('.graph-controls-button.mod-reset')!.dispatch('click');
 		const fresh = defaultEntityGraphState();
-		expect(fixture.lastChange()).toEqual({ filters: fresh.filters, groups: null, display: fresh.display, forces: fresh.forces });
+		expect(fixture.lastChange()).toEqual({ filters: fresh.filters, groups: null, display: fresh.display, forces: fresh.forces, timeline: fresh.timeline });
 	});
 
 	it('brings the rows up to date with the state without saying anything back', () => {

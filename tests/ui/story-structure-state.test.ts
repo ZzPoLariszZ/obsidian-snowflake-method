@@ -41,7 +41,7 @@ const current: StoryStructureViewStateSnapshot = {
 	timeline: { pool: { mode: 'extended', group: 'time', reversed: false, ...own }, poolCollapsed: true, timeCollapsed: false },
 	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false, ...own }, poolCollapsed: false, beatsCollapsed: true },
 	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false, snapObjects: false, readOnly: false },
-	relationshipGraph: { view: 'entities', controlsOpen: true },
+	relationshipGraph: { view: 'entities', controlsOpen: true, timelineOpen: false },
 };
 
 describe('story structure restored state', () => {
@@ -418,25 +418,32 @@ describe('story structure restored state', () => {
 		expect(JSON.stringify(current)).toBe(before);
 	});
 
-	it('restores the relationship graph view and the fold of its controls, and ignores what it does not know', () => {
+	it('restores the relationship graph view and the folds of its controls and its timeline, and ignores what it does not know', () => {
 		expect(mergeStoryStructureViewState(current, { relationshipGraph: { view: 'scene-manuscript' } })).toEqual({
-			state: { ...current, relationshipGraph: { view: 'scene-manuscript', controlsOpen: true } },
+			state: { ...current, relationshipGraph: { view: 'scene-manuscript', controlsOpen: true, timelineOpen: false } },
 			changed: true,
 		});
 		expect(
 			mergeStoryStructureViewState(current, { relationshipGraph: { controlsOpen: false } }).state.relationshipGraph,
-		).toEqual({ view: 'entities', controlsOpen: false });
-		expect(mergeStoryStructureViewState(current, { relationshipGraph: { view: 'tags', controlsOpen: 'yes' } })).toEqual({
+		).toEqual({ view: 'entities', controlsOpen: false, timelineOpen: false });
+		expect(mergeStoryStructureViewState(current, { relationshipGraph: { timelineOpen: true } })).toEqual({
+			state: { ...current, relationshipGraph: { view: 'entities', controlsOpen: true, timelineOpen: true } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { relationshipGraph: { view: 'tags', controlsOpen: 'yes', timelineOpen: 1 } })).toEqual({
 			state: current,
 			changed: false,
 		});
 		expect(mergeStoryStructureViewState(current, { relationshipGraph: 7 })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().relationshipGraph).toEqual({ view: 'entities', controlsOpen: true });
-		expect(relationshipGraphMemory({ view: 'scene-manuscript', controlsOpen: false })).toEqual({
+		// A tab opens with the whole graph: the timeline is folded until asked for.
+		expect(defaultStoryStructureState().relationshipGraph).toEqual({ view: 'entities', controlsOpen: true, timelineOpen: false });
+		expect(relationshipGraphMemory({ view: 'scene-manuscript', controlsOpen: false, timelineOpen: true })).toEqual({
 			view: 'scene-manuscript',
 			controlsOpen: false,
+			timelineOpen: true,
 			query: '',
 			focus: null,
+			time: null,
 			positions: new Map(),
 		});
 	});

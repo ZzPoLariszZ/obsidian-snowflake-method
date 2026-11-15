@@ -734,7 +734,7 @@ describe('the relationship graph tab', () => {
 		await view.setState({
 			projectPath: firstProject,
 			visualization: 'relationship-graph',
-			relationshipGraph: { view: 'scene-manuscript', controlsOpen: false },
+			relationshipGraph: { view: 'scene-manuscript', controlsOpen: false, timelineOpen: true },
 		}, { history: false });
 		await view.onOpen();
 		expect(relationshipGraph).toHaveBeenCalledOnce();
@@ -745,14 +745,17 @@ describe('the relationship graph tab', () => {
 		expect(controls.bridge()).toBe(relationshipGraphBridge);
 		expect(controls.projectPath()).toBe(firstProject);
 		// The layout's view and fold reach the memory the workspace reads.
-		expect(controls.memory).toMatchObject({ view: 'scene-manuscript', controlsOpen: false, query: '', focus: null });
+		expect(controls.memory).toMatchObject({ view: 'scene-manuscript', controlsOpen: false, timelineOpen: true, query: '', focus: null, time: null });
 		await view.refresh();
 		expect(handle.refresh).toHaveBeenCalledOnce();
 		expect(handle.dispose).not.toHaveBeenCalled();
 		// A choice the workspace writes on the memory is the layout's on the next save.
 		controls.memory.view = 'entities';
 		controls.remember();
-		expect(view.getState()).toMatchObject({ relationshipGraph: { view: 'entities', controlsOpen: false } });
+		expect(view.getState()).toMatchObject({ relationshipGraph: { view: 'entities', controlsOpen: false, timelineOpen: true } });
+		controls.memory.timelineOpen = false;
+		controls.remember();
+		expect(view.getState()).toMatchObject({ relationshipGraph: { timelineOpen: false } });
 		view.showVisualization('corkboard-freeform');
 		expect(handle.dispose).toHaveBeenCalledOnce();
 		expect(dom.container.querySelector('.snowflake-method-relationship-graph-host')).toBeNull();

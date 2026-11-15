@@ -267,6 +267,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 		Object.assign(this.freeformMemory, update.state.freeform);
 		this.relationshipGraphMemory.view = update.state.relationshipGraph.view;
 		this.relationshipGraphMemory.controlsOpen = update.state.relationshipGraph.controlsOpen;
+		this.relationshipGraphMemory.timelineOpen = update.state.relationshipGraph.timelineOpen;
 		await super.setState(state, result);
 		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first
@@ -334,6 +335,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			relationshipGraph: {
 				view: this.relationshipGraphMemory.view,
 				controlsOpen: this.relationshipGraphMemory.controlsOpen,
+				timelineOpen: this.relationshipGraphMemory.timelineOpen,
 			},
 		};
 	}
@@ -357,9 +359,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 		// Which view is shown is kept: it is the saved layout's to say, and one
 		// that names no view of the project standing falls back by itself.
 		this.freeformMemory.viewports.clear();
-		// The graph's search, focus and positions were the project's it showed.
+		// The graph's search, focus, time and positions were the project's it showed.
 		this.relationshipGraphMemory.query = '';
 		this.relationshipGraphMemory.focus = null;
+		this.relationshipGraphMemory.time = null;
 		this.relationshipGraphMemory.positions.clear();
 	}
 

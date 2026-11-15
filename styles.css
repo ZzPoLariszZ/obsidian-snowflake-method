@@ -18997,15 +18997,26 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 /* The stage keeps what is drawn on it inside its own edges, framed as the
-   freeform canvas is; the controls panel stands in its corner. */
+   freeform canvas is. It is a column: the ground the graph is drawn on, the
+   controls panel standing in its corner, and under it the timeline while
+   that is open, so the ground ends above the strip and the panel, which
+   measures itself against the ground, keeps clear of it. */
 .snowflake-method-relationship-graph-stage {
 	position: relative;
+	display: flex;
 	flex: 1 1 auto;
+	flex-direction: column;
 	min-height: 0;
 	overflow: hidden;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background-color: var(--background-primary);
+}
+
+.snowflake-method-relationship-graph-ground {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
 }
 
 /* The word said of an empty graph, in the shape every board says its own in. */
@@ -19020,6 +19031,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-fit,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-reset-view,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-controls,
+.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-timeline-toggle,
 .snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-toolbar-more,
 .snowflake-method-relationship-graph .snowflake-method-relationship-graph-zoom-in,
 .snowflake-method-relationship-graph .snowflake-method-relationship-graph-zoom-out,
@@ -19141,6 +19153,178 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 
 .snowflake-method-graph-controls .snowflake-method-graph-local-whole {
 	width: 100%;
+}
+
+/* The timeline under the ground: the project's times as one axis, shown
+   while the toolbar's switch has it open and there is a graph to draw. A
+   row of two parts: the buttons that step and play, and the axis, which
+   takes the rest of the row, with the name of the time the thumb is on
+   under it. */
+.snowflake-method-relationship-graph-timeline {
+	--snowflake-method-graph-timeline-row: 1.75rem;
+	display: none;
+	flex: 0 0 auto;
+	align-items: flex-start;
+	gap: var(--size-4-3);
+	padding: var(--size-4-2) var(--size-4-3);
+	border-block-start: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+}
+
+.snowflake-method-relationship-graph.is-timeline-open .snowflake-method-relationship-graph-timeline {
+	display: flex;
+}
+
+.snowflake-method-relationship-graph-timeline-transport {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-1);
+	min-height: var(--snowflake-method-graph-timeline-row);
+}
+
+/* The axis: the app's own slider, which draws the track, the played part
+   and the thumb, over a layer of the strip's own points, and under both the
+   current time's name. The control and the points share the first row and
+   are centred on one line in it, whatever height the app gives a track. */
+.snowflake-method-relationship-graph-timeline-scrub {
+	display: grid;
+	flex: 1 1 auto;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: var(--snowflake-method-graph-timeline-row) auto;
+	align-items: center;
+	min-width: 8rem;
+}
+
+/* A thumb's centre travels from half its width inside one end of the
+   control to half its width inside the other, so the points stand in a box
+   set in by that much either side: each is then where the thumb's centre
+   stops on it. The measure is the app's own, which is wider on a touch
+   screen. */
+.snowflake-method-relationship-graph-timeline-rail {
+	position: relative;
+	grid-area: 1 / 1;
+	height: 100%;
+	margin-inline: calc(var(--slider-thumb-width, 18px) / 2);
+	pointer-events: none;
+}
+
+/* A point is a dot the track runs through: a little wider than the track
+   where nothing in sight changes, wider again where a line comes or goes,
+   and the accent's once the thumb has passed it. A period's is squared. */
+.snowflake-method-relationship-graph-timeline-tick {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: calc(100% * var(--snowflake-method-graph-timeline-at, 0));
+	width: calc(var(--slider-track-height, 4px) + 2px);
+	height: calc(var(--slider-track-height, 4px) + 2px);
+	border-radius: 50%;
+	background-color: var(--slider-track-background, var(--background-modifier-border-hover));
+	translate: -50% -50%;
+}
+
+.snowflake-method-relationship-graph-timeline-tick.is-change {
+	width: calc(var(--slider-track-height, 4px) + 6px);
+	height: calc(var(--slider-track-height, 4px) + 6px);
+}
+
+.snowflake-method-relationship-graph-timeline-tick.is-period {
+	border-radius: var(--radius-s);
+}
+
+.snowflake-method-relationship-graph-timeline-tick.is-passed {
+	background-color: var(--interactive-accent);
+}
+
+/* A project with hundreds of times has them a pixel or two apart, where the
+   points would run into one thick bar that says nothing the track does
+   not. They are left out then, and the axis is the track, the thumb and the
+   names. */
+.snowflake-method-relationship-graph-timeline-rail.is-dense .snowflake-method-relationship-graph-timeline-tick {
+	display: none;
+}
+
+/* The control stands over the points, so its thumb covers the one it is on.
+   It keeps the app's track and takes the app's own rule for the played
+   part, which the strip tells how far along the thumb stands.
+
+   The app's control is only as tall as its track, a few pixels, so a press
+   a little above or below a point would land on nothing. The control is
+   made as tall as its row with a clear border above and below the track:
+   the border is the control's, so a press anywhere in the row is a press on
+   the axis, while the track is still drawn in the box between them. The
+   corners are rounded by half the track across and by that and the border
+   down, which leaves the track's ends the half circles the app draws. */
+.snowflake-method-relationship-graph-timeline .snowflake-method-relationship-graph-timeline-range {
+	--snowflake-method-graph-timeline-reach: calc((var(--snowflake-method-graph-timeline-row) - var(--slider-track-height, 4px)) / 2);
+	position: relative;
+	z-index: 1;
+	grid-area: 1 / 1;
+	box-sizing: border-box;
+	width: 100%;
+	height: var(--snowflake-method-graph-timeline-row);
+	margin: 0;
+	border-block: var(--snowflake-method-graph-timeline-reach) solid transparent;
+	border-radius: calc(var(--slider-track-height, 4px) / 2) / calc(var(--slider-track-height, 4px) / 2 + var(--snowflake-method-graph-timeline-reach));
+	background-clip: padding-box;
+}
+
+/* The name of the time the thumb is on, under the rail, and no other: the
+   points say where the times are, and one name says which the picture is of.
+   It stands under its point while there is room either side, and is held
+   inside the row at the two ends: the room before it and after it is shared
+   as the point divides the rail, so at the first time the name starts where
+   the row does, at the last it ends where the row does, and between the two
+   it slides, always under the thumb. A name longer than the row is cut. */
+.snowflake-method-relationship-graph-timeline-caption {
+	display: flex;
+	grid-area: 2 / 1;
+	min-width: 0;
+	height: 1.25rem;
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	line-height: 1.25rem;
+}
+
+.snowflake-method-relationship-graph-timeline-caption::before {
+	content: '';
+	flex-grow: var(--snowflake-method-graph-timeline-at, 0);
+	flex-shrink: 1;
+	flex-basis: 0;
+}
+
+.snowflake-method-relationship-graph-timeline-caption::after {
+	content: '';
+	flex-grow: calc(1 - var(--snowflake-method-graph-timeline-at, 0));
+	flex-shrink: 1;
+	flex-basis: 0;
+}
+
+.snowflake-method-relationship-graph-timeline-caption-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Where no line in sight names a time, the line says so instead, in the ink
+   of a remark. */
+.snowflake-method-relationship-graph-timeline.is-undated .snowflake-method-relationship-graph-timeline-caption {
+	color: var(--text-muted);
+	font-weight: var(--font-normal);
+}
+
+/* A project with no time has no axis: the strip says so in the words every
+   board says an empty list in, and nothing else. */
+.snowflake-method-relationship-graph-timeline.is-empty .snowflake-method-relationship-graph-timeline-transport,
+.snowflake-method-relationship-graph-timeline.is-empty .snowflake-method-relationship-graph-timeline-scrub {
+	display: none;
+}
+
+.snowflake-method-relationship-graph-timeline > .snowflake-method-relationship-graph-timeline-empty {
+	margin: 0;
 }
 
 /* The pane that stands in for a board the tab cannot draw: a column of
@@ -20272,6 +20456,18 @@ body.is-mobile .snowflake-method-widget-controls button.snowflake-method-widget-
    field, which grows to the finger and moves to the field's edge. */
 body.is-mobile .snowflake-method-balanced-toolbar .clickable-icon,
 body.is-mobile .snowflake-method-history-range .clickable-icon {
+	min-width: var(--touch-size-s, 2.5rem);
+	min-height: var(--touch-size-s, 2.5rem);
+}
+
+/* The relationship graph's timeline on a tablet: its three buttons take a
+   finger, and the axis's row is as tall as they are, so the thumb, which
+   the app already draws wider here, has the same room to be caught in. */
+body.is-mobile .snowflake-method-relationship-graph-timeline {
+	--snowflake-method-graph-timeline-row: var(--touch-size-s, 2.5rem);
+}
+
+body.is-mobile .snowflake-method-relationship-graph-timeline-transport .clickable-icon {
 	min-width: var(--touch-size-s, 2.5rem);
 	min-height: var(--touch-size-s, 2.5rem);
 }

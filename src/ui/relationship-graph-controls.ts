@@ -30,7 +30,11 @@ import {
 	GRAPH_NODE_SIZE_RANGE,
 	GRAPH_REPEL_RANGE,
 	GRAPH_TEXT_FADE_RANGE,
+	GRAPH_TIME_RULES,
+	GRAPH_UNDATED_RULES,
 	isGraphLabelMode,
+	isGraphTimeRule,
+	isGraphUndatedRule,
 	type EntityGraphGroup,
 	type EntityGraphState,
 } from '../domain';
@@ -159,7 +163,7 @@ export function renderGraphControls(stage: HTMLElement, deps: GraphControlsDeps)
 	fixed.buttons.push(
 		symbol('mod-reset', 'rotate-ccw', t('relationshipGraph.resetControls'), () => {
 			const fresh = defaultEntityGraphState();
-			deps.onChange({ filters: fresh.filters, groups: null, display: fresh.display, forces: fresh.forces });
+			deps.onChange({ filters: fresh.filters, groups: null, display: fresh.display, forces: fresh.forces, timeline: fresh.timeline });
 		}),
 	);
 
@@ -437,6 +441,40 @@ export function renderGraphControls(stage: HTMLElement, deps: GraphControlsDeps)
 	sliderRow(displayChildren, fixed, t('relationshipGraph.display.lineSize'), GRAPH_LINE_SIZE_RANGE, () => display().lineSize, (at) => {
 		deps.onChange({ display: { ...display(), lineSize: at } });
 	});
+
+	// -- Timeline -----------------------------------------------------------------
+
+	// How the timeline under the graph reads a line dated by a point: only
+	// what each note last said of each target, or every line from its time on.
+	// And where it stands the lines that name no time, with the notes none of
+	// whose lines does: there before the axis starts, or held back to its end.
+	const timelineChildren = section(el, 'timeline', t('relationshipGraph.timeline'), true);
+	new Setting(timelineChildren)
+		.setName(t('relationshipGraph.timeline.rule'))
+		.setClass('mod-dropdown')
+		.addDropdown((dropdown) => {
+			for (const rule of GRAPH_TIME_RULES) dropdown.addOption(rule, t(`relationshipGraph.timeline.rule.${rule}`));
+			dropdown.setValue(state().timeline.rule).onChange((rule) => {
+				if (!quiet && isGraphTimeRule(rule)) deps.onChange({ timeline: { ...state().timeline, rule } });
+			});
+			fixed.components.push(dropdown);
+			fixed.syncs.push(() => {
+				if (dropdown.getValue() !== state().timeline.rule) dropdown.setValue(state().timeline.rule);
+			});
+		});
+	new Setting(timelineChildren)
+		.setName(t('relationshipGraph.timeline.undatedRule'))
+		.setClass('mod-dropdown')
+		.addDropdown((dropdown) => {
+			for (const rule of GRAPH_UNDATED_RULES) dropdown.addOption(rule, t(`relationshipGraph.timeline.undatedRule.${rule}`));
+			dropdown.setValue(state().timeline.undated).onChange((undated) => {
+				if (!quiet && isGraphUndatedRule(undated)) deps.onChange({ timeline: { ...state().timeline, undated } });
+			});
+			fixed.components.push(dropdown);
+			fixed.syncs.push(() => {
+				if (dropdown.getValue() !== state().timeline.undated) dropdown.setValue(state().timeline.undated);
+			});
+		});
 
 	// -- Forces -------------------------------------------------------------------
 

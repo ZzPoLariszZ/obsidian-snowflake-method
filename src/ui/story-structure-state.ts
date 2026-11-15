@@ -308,14 +308,16 @@ export function isRelationshipGraphView(value: unknown): value is RelationshipGr
 	return (RELATIONSHIP_GRAPH_VIEWS as readonly unknown[]).includes(value);
 }
 
-/** How the relationship graph tab is set: the view it shows, and whether the controls panel stands open. */
+/** How the relationship graph tab is set: the view it shows, whether the controls panel stands open, and whether the timeline does. */
 export interface RelationshipGraphSettings {
 	view: RelationshipGraphView;
 	controlsOpen: boolean;
+	/** The timeline strip standing under the graph, which draws the graph as it stands at one time. */
+	timelineOpen: boolean;
 }
 
 export function defaultRelationshipGraphSettings(): RelationshipGraphSettings {
-	return { view: 'entities', controlsOpen: true };
+	return { view: 'entities', controlsOpen: true, timelineOpen: false };
 }
 
 export interface StoryStructureViewStateSnapshot {
@@ -533,6 +535,10 @@ export function mergeStoryStructureViewState(
 			typeof graphCandidate.controlsOpen === 'boolean'
 				? graphCandidate.controlsOpen
 				: current.relationshipGraph.controlsOpen,
+		timelineOpen:
+			typeof graphCandidate.timelineOpen === 'boolean'
+				? graphCandidate.timelineOpen
+				: current.relationshipGraph.timelineOpen,
 	};
 	const state = { projectPath, visualization, corkboard, timeline, beatSheet, freeform, relationshipGraph };
 	return {
@@ -556,7 +562,8 @@ export function mergeStoryStructureViewState(
 			state.freeform.snapObjects !== current.freeform.snapObjects ||
 			state.freeform.readOnly !== current.freeform.readOnly ||
 			state.relationshipGraph.view !== current.relationshipGraph.view ||
-			state.relationshipGraph.controlsOpen !== current.relationshipGraph.controlsOpen,
+			state.relationshipGraph.controlsOpen !== current.relationshipGraph.controlsOpen ||
+			state.relationshipGraph.timelineOpen !== current.relationshipGraph.timelineOpen,
 	};
 }
 
@@ -703,10 +710,12 @@ export interface RelationshipGraphMemory extends RelationshipGraphSettings {
 	query: string;
 	/** The node the local graph is drawn about, or null for the whole graph. */
 	focus: string | null;
+	/** The time the timeline stands on, by its note's id; null for the first of them. */
+	time: string | null;
 	/** Where each node stood, by id, and whether it was pinned there. */
 	positions: Map<string, { x: number; y: number; pinned: boolean }>;
 }
 
 export function relationshipGraphMemory(settings?: RelationshipGraphSettings): RelationshipGraphMemory {
-	return { ...(settings ?? defaultRelationshipGraphSettings()), query: '', focus: null, positions: new Map() };
+	return { ...(settings ?? defaultRelationshipGraphSettings()), query: '', focus: null, time: null, positions: new Map() };
 }

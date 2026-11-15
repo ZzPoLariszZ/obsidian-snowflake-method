@@ -1562,6 +1562,64 @@ describe('styles.css', () => {
 		expect(timeline).not.toContain('!important');
 	});
 
+	it("stands the relationship graph's timeline under the ground, its points where the app's thumb stops", () => {
+		// The stage is a column: the ground the graph and its panel stand on, then the strip.
+		const stage = declarations('.snowflake-method-relationship-graph-stage');
+		expect(stage).toContain('display: flex');
+		expect(stage).toContain('flex-direction: column');
+		const ground = declarations('.snowflake-method-relationship-graph-ground');
+		expect(ground).toContain('position: relative');
+		expect(ground).toContain('flex: 1 1 auto');
+		expect(ground).toContain('min-height: 0');
+		// The strip is out of sight until the toolbar's switch opens it, and its switch goes with the view that draws no graph.
+		expect(declarations('.snowflake-method-relationship-graph-timeline')).toContain('display: none');
+		expect(declarations('.snowflake-method-relationship-graph.is-timeline-open .snowflake-method-relationship-graph-timeline')).toContain('display: flex');
+		expect(declarations('.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-timeline-toggle')).toContain('display: none');
+		// The points stand in a box set in by half the app's own thumb either side, each by its share of the travel.
+		const rail = declarations('.snowflake-method-relationship-graph-timeline-rail');
+		expect(rail).toContain('margin-inline: calc(var(--slider-thumb-width, 18px) / 2)');
+		expect(rail).toContain('pointer-events: none');
+		expect(declarations('.snowflake-method-relationship-graph-timeline-tick')).toContain(
+			'inset-inline-start: calc(100% * var(--snowflake-method-graph-timeline-at, 0))',
+		);
+		// The control stands over the points, on one row with them, as wide as the row.
+		const range = declarations('.snowflake-method-relationship-graph-timeline .snowflake-method-relationship-graph-timeline-range');
+		expect(range).toContain('z-index: 1');
+		expect(range).toContain('width: 100%');
+		expect(range).toContain('margin: 0');
+		// The app's control is as tall as its track alone: a clear border above and below makes the whole row a press on the axis,
+		// and the track is still drawn in the box between them.
+		expect(range).toContain('height: var(--snowflake-method-graph-timeline-row)');
+		expect(range).toContain('border-block: var(--snowflake-method-graph-timeline-reach) solid transparent');
+		expect(range).toContain('background-clip: padding-box');
+		// One name stands under the rail, the current time's: the room before it and after it is shared as its point divides the rail,
+		// so it follows the thumb and never leaves the row. Nothing stands at the strip's end, and no name is written for another time.
+		const caption = declarations('.snowflake-method-relationship-graph-timeline-caption');
+		expect(caption).toContain('display: flex');
+		expect(caption).toContain('min-width: 0');
+		expect(declarations('.snowflake-method-relationship-graph-timeline-caption::before')).toContain(
+			'flex-grow: var(--snowflake-method-graph-timeline-at, 0)',
+		);
+		expect(declarations('.snowflake-method-relationship-graph-timeline-caption::after')).toContain(
+			'flex-grow: calc(1 - var(--snowflake-method-graph-timeline-at, 0))',
+		);
+		const name = declarations('.snowflake-method-relationship-graph-timeline-caption-name');
+		expect(name).toContain('text-overflow: ellipsis');
+		expect(name).toContain('min-width: 0');
+		expect(styles).not.toContain('snowflake-method-relationship-graph-timeline-readout');
+		expect(styles).not.toContain('snowflake-method-relationship-graph-timeline-label');
+		// Points too close to tell apart are left out, and the axis is the track's.
+		expect(
+			declarations('.snowflake-method-relationship-graph-timeline-rail.is-dense .snowflake-method-relationship-graph-timeline-tick'),
+		).toContain('display: none');
+		const strip = section('Relationship graph');
+		expect(strip).not.toContain('!important');
+		expect(strip).not.toContain(':has(');
+		// On a tablet the row and its three buttons take a finger.
+		expect(declarations('body.is-mobile .snowflake-method-relationship-graph-timeline')).toContain('--snowflake-method-graph-timeline-row: var(--touch-size-s, 2.5rem)');
+		expect(declarations('body.is-mobile .snowflake-method-relationship-graph-timeline-transport .clickable-icon')).toContain('min-width: var(--touch-size-s, 2.5rem)');
+	});
+
 	it('scopes a sheet without touching what its rules say', () => {
 		const scoped = scopeCss(
 			[

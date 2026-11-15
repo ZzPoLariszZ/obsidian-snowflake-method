@@ -30,7 +30,9 @@ export class CorkboardDom {
 		property: string;
 	}[] = [];
 	private sequence = 0;
-	readonly frames = new Map<number, () => void>();
+	/** The time a flushed frame is told it is drawn at, in ms; a test moves it to let time pass. */
+	clock = 0;
+	readonly frames = new Map<number, (now: number) => void>();
 	/** Interval callbacks, run by hand with tick(). */
 	readonly intervals = new Map<number, () => void>();
 	readonly windowListeners = new Map<string, { listener: unknown; capture: boolean }[]>();
@@ -47,7 +49,7 @@ export class CorkboardDom {
 	constructor() {
 		const observers = this.observers;
 		this.win = {
-			requestAnimationFrame: (callback: () => void): number => {
+			requestAnimationFrame: (callback: (now: number) => void): number => {
 				const id = ++this.sequence;
 				this.frames.set(id, callback);
 				return id;
@@ -100,7 +102,13 @@ export class CorkboardDom {
 	flushFrame(): void {
 		const callbacks = [...this.frames.values()];
 		this.frames.clear();
-		for (const callback of callbacks) callback();
+		for (const callback of callbacks) callback(this.clock);
+	}
+
+	/** Time passed, then the frames owed drawn at the new time. */
+	advance(ms: number): void {
+		this.clock += ms;
+		this.flushFrame();
 	}
 
 	dispatchWindow(type: string): void {
@@ -246,6 +254,9 @@ export class CorkboardElement {
 	createEl(tag: string, spec: ElementSpec = {}): CorkboardElement { return this.create(tag, spec); }
 	createDiv(spec: ElementSpec = {}): CorkboardElement { return this.create('div', spec); }
 	createSpan(spec: ElementSpec = {}): CorkboardElement { return this.create('span', spec); }
+	/** A range control's own limits, as the page keeps them: words, whatever was written. */
+	max = '';
+	step = '';
 	setText(text: string): void { this.textWrites++; this.textContent = text; }
 	setAttribute(key: string, value: string): void {
 		this.attributeWrites++;
@@ -263,11 +274,16 @@ export class CorkboardElement {
 		Object.assign(this.styles, styles);
 	}
 	setCssProps(styles: Record<string, string>): void { this.setCssStyles(styles); }
-	/** Every box is one row high, stacked under its siblings, so a list measures as rows of 37. */
-	getBoundingClientRect(): { top: number; height: number } {
+	/** Where a box stands across the page, for the few places that read it; a test sets what it needs. */
+	box: { left: number; width: number } | null = null;
+	/**
+	 * Every box is one row high, stacked under its siblings, so a list measures as rows of 37; across, it
+	 * starts at the page's edge and is as wide as the page unless a test has said where it stands.
+	 */
+	getBoundingClientRect(): { top: number; height: number; left?: number; width?: number } {
 		this.readGeometry('getBoundingClientRect');
 		const at = this.parent === null ? 0 : this.parent.children.indexOf(this);
-		return { top: Math.max(0, at) * 37, height: 37 };
+		return { top: Math.max(0, at) * 37, height: 37, left: this.box?.left ?? 0, width: this.box?.width ?? this.dom.width };
 	}
 	matches(selector: string): boolean {
 		// A class or several joined, a tag, or a comma-separated list of either, as the boards ask.

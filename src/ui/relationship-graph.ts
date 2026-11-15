@@ -13,6 +13,12 @@
  * words searched for and where the nodes stand last the session; how the
  * graph is filtered, coloured, drawn and left is the file's.
  *
+ * Under the stage a timeline can be opened: the project's times as one
+ * axis, the graph drawn as it stands at the one the thumb is on, and a
+ * time-lapse that runs the axis from there to its end. Whether it stands
+ * open is the layout's, the time it is on the session's, and how a dated
+ * line is read the file's, with the other controls.
+ *
  * The drawing itself is the engine's (`relationship-graph-engine.ts`),
  * raised once in a host of its own that outlives every repaint, and fed a
  * picture on each reading. The engine says where the view was moved to and
@@ -23,21 +29,34 @@ import { Keymap, Notice, type Menu } from 'obsidian';
 
 import {
 	buildEntityGraph,
+	buildGraphTimeline,
 	defaultEntityGraphState,
 	EMPTY_ENTITY_GRAPH,
+	EMPTY_GRAPH_TIMELINE,
 	GRAPH_CUSTOM_KIND_COLOR_NAMES,
 	GRAPH_DEFAULT_COLOR_NAMES,
+	hiddenAt,
 	indexGraphForQueries,
 	isWorldbuildingKind,
+	NO_UNDATED_PARTS,
 	patchEntityGraphState,
 	sameEntityGraphState,
+	sameGraphTimeline,
+	timeChanges,
+	undatedHeldAt,
+	undatedParts,
 	UNRESOLVED_GROUP,
 	type EntityGraph,
 	type EntityGraphState,
 	type GraphEdge,
 	type GraphNode,
 	type GraphQueryIndex,
+	type GraphTimeline,
+	type GraphTimeRule,
+	type GraphUndatedRule,
 	type GraphViewport,
+	type TimeChange,
+	type UndatedParts,
 } from '../domain';
 import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { buildOptionField, type OptionPicker } from './option-picker';
@@ -56,8 +75,10 @@ import {
 } from './relationship-graph-controls';
 import { inBox, type Point } from './relationship-graph-layout';
 import { addPanItems, addWholeGraphItem, buildBackgroundMenu, buildEdgeMenu, buildNodeMenu, type GraphMenuDeps } from './relationship-graph-menus';
-import { pictureOf, tabOrder, type GraphPicture } from './relationship-graph-model';
+import { pictureBase, pictureFrom, tabOrder, type GraphPicture, type PictureBase } from './relationship-graph-model';
 import type { GraphClickModifiers, GraphColors, GraphHandle, GraphPort } from './relationship-graph-port';
+import { renderGraphTimeline, type TimelinePoint } from './relationship-graph-timeline';
+import { playbackFrame, playbackSchedule, type PlaybackSchedule } from './relationship-graph-timeline-layout';
 import { renderEmptyLine } from './pane-parts';
 import { renderSceneManuscriptPane } from './scene-manuscript-pane';
 import {
@@ -69,8 +90,10 @@ import {
 	balanceToolbar,
 	createSearchField,
 	gatherToolbarActions,
+	paintSymbol,
 	toolbarEnd,
 	toolbarIconButton,
+	type SymbolMemo,
 } from './workspace-frame';
 
 /** The word each view goes by in the field. */
@@ -87,6 +110,12 @@ export const GRAPH_ACCENT_NAMES: readonly string[] = [
 
 /** How long the view may keep moving before where it stands is written to the file. */
 export const VIEWPORT_SAVE_MS = 1500;
+
+/** The symbol the timeline's switch wears on the toolbar. */
+export const TIMELINE_SYMBOL = 'chart-gantt';
+
+/** The longest a frame of the time-lapse counts for, in ms: a window put away and brought back carries on where it stood. */
+const PLAY_FRAME_MAX_MS = 100;
 
 /** Whether two states set the picture alike, the viewport aside: the engine moves that, and the scene has an echo rule of its own for it. */
 const sameControls = (a: EntityGraphState, b: EntityGraphState): boolean =>
@@ -123,6 +152,43 @@ export function renderRelationshipGraph(
 	let graph: EntityGraph = EMPTY_ENTITY_GRAPH;
 	let index: GraphQueryIndex | null = null;
 	let nodesById = new Map<string, GraphNode>();
+	/**
+	 * The timeline of the reading held, built when the strip first asks for
+	 * it and again when the graph or the rule it was built by moves.
+	 */
+	let timeline: GraphTimeline = EMPTY_GRAPH_TIMELINE;
+	let timelineOf: { graph: EntityGraph; rule: GraphTimeRule } | null = null;
+	/** What every picture of the filters, the search and the groups standing is drawn from, whatever the time. */
+	let base: PictureBase | null = null;
+	/** What each time changes among the lines the filters leave, and the same as the strip draws its points by. */
+	let changes: TimeChange[] = [];
+	let points: TimelinePoint[] = [];
+	/** The counts the changes come to, written out: a time-lapse scheduled over others has nothing left to follow. */
+	let changesKey = '';
+	/** Whether some line in sight names a time. */
+	let dated = false;
+	/** The lines in sight that name no time, and the nodes none of the dated ones touches. */
+	let undated: UndatedParts = NO_UNDATED_PARTS;
+	/** Where those stand along the axis, by the file's word: there before it starts, or held back to its end. */
+	let undatedRule: GraphUndatedRule = 'before';
+	/**
+	 * While a time-lapse runs or has just been paused mid-time: how many of
+	 * the lines entering at a time are shown yet. Null is all of them.
+	 */
+	let partial: { index: number; revealed: number } | null = null;
+	/** The time-lapse while it runs: what it follows, how long it has run, and where it last drew. */
+	let play: {
+		schedule: PlaybackSchedule;
+		/** The time it started on, whose lines stood already unless it began afresh. */
+		from: number;
+		fresh: boolean;
+		key: string;
+		elapsed: number;
+		last: number | null;
+		frame: number | null;
+		index: number;
+		revealed: number;
+	} | null = null;
 
 	const root = container.createDiv({ cls: 'snowflake-method-relationship-graph' });
 
@@ -397,6 +463,34 @@ export function renderRelationshipGraph(
 	controlsButton.addEventListener('click', () => {
 		foldControls(!memory.controlsOpen);
 	});
+	// The timeline stands under the stage and folds from one symbol, whose
+	// name says what a press does; the fold is the layout's, as the panel's is.
+	const timelineButton = iconButton(
+		'snowflake-method-relationship-graph-timeline-toggle',
+		TIMELINE_SYMBOL,
+		t('relationshipGraph.timeline.show'),
+	);
+	const timelineMemo: SymbolMemo = { icon: TIMELINE_SYMBOL };
+	const paintTimelineButton = (): void => {
+		paintSymbol(timelineButton, timelineMemo, {
+			icon: TIMELINE_SYMBOL,
+			label: t(memory.timelineOpen ? 'relationshipGraph.timeline.hide' : 'relationshipGraph.timeline.show'),
+			pressed: memory.timelineOpen,
+			disabled: false,
+		});
+	};
+	const foldTimeline = (open: boolean): void => {
+		stopPlay();
+		memory.timelineOpen = open;
+		paintTimelineButton();
+		controls.remember();
+		// The graph of one time and the whole graph ease into each other, as two times do.
+		paintStage(true);
+	};
+	paintTimelineButton();
+	timelineButton.addEventListener('click', () => {
+		foldTimeline(!memory.timelineOpen);
+	});
 	const refreshButton = iconButton('snowflake-method-relationship-graph-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().catch(notice);
@@ -430,12 +524,16 @@ export function renderRelationshipGraph(
 	// started over; the sheet beside it is drawn afresh each time, with the
 	// words that stand in for the graph while there is nothing to draw or
 	// while the tab stands in for Obsidian's own.
+	// The stage is a column: the ground the graph is drawn on, with the sheet
+	// and the controls panel in its corner, and under it the timeline when it
+	// is open, so the ground ends above the strip and the panel keeps clear.
 	const stage = root.createDiv({ cls: 'snowflake-method-relationship-graph-stage' });
-	const canvasHost = stage.createDiv({
+	const ground = stage.createDiv({ cls: 'snowflake-method-relationship-graph-ground' });
+	const canvasHost = ground.createDiv({
 		cls: 'snowflake-method-relationship-graph-canvas',
 		attr: { tabindex: '0', role: 'application', 'aria-label': t('relationshipGraph.view.entities') },
 	});
-	const sheet = stage.createDiv({ cls: 'snowflake-method-relationship-graph-sheet' });
+	const sheet = ground.createDiv({ cls: 'snowflake-method-relationship-graph-sheet' });
 
 	const menuDeps: GraphMenuDeps = {
 		t,
@@ -561,7 +659,7 @@ export function renderRelationshipGraph(
 				return;
 		}
 	});
-	const panel = renderGraphControls(stage, {
+	const panel = renderGraphControls(ground, {
 		t,
 		state: () => reading?.held.entities ?? defaultEntityGraphState(),
 		query: () => memory.query,
@@ -635,22 +733,127 @@ export function renderRelationshipGraph(
 		return colors;
 	};
 
+	// -- The timeline ----------------------------------------------------------
+
+	/** Whether the graph is drawn at one time: the strip open on the entity view, and the project has times. */
+	const timed = (): boolean =>
+		memory.timelineOpen && memory.view === 'entities' && timeline.times.length > 0;
+	/** The time the thumb stands on: the one the session remembers, or the first. */
+	const timeIndex = (): number => {
+		if (memory.time === null) return 0;
+		const at = timeline.times.findIndex((time) => time.id === memory.time);
+		return at < 0 ? 0 : at;
+	};
+	/** The timeline of the reading held, by the rule the file keeps; built only while the strip asks for it. */
+	const readTimeline = (read: RelationshipGraphReading): void => {
+		const rule = read.held.entities.timeline.rule;
+		if (!memory.timelineOpen || memory.view !== 'entities') return;
+		if (timelineOf !== null && timelineOf.graph === graph && timelineOf.rule === rule) return;
+		const built = buildGraphTimeline({ members: read.members, graph, times: read.times, resolve: read.resolveTarget, rule });
+		const moved = !sameGraphTimeline(timeline, built);
+		// The new timeline stands before anything is drawn from it: stopping a
+		// time-lapse draws the time it reached, and must draw it from this one.
+		timeline = built;
+		timelineOf = { graph, rule };
+		// A time-lapse carries on through a reading that says the same; one that
+		// moved a time or a dated line has nothing left to follow.
+		if (play !== null && moved) stopPlay();
+	};
+	/** What each time changes among the lines the base holds, and the points the strip draws by. */
+	const readChanges = (): void => {
+		const standing = base !== null && timed();
+		undatedRule = reading?.held.entities.timeline.undated ?? 'before';
+		undated = base !== null && standing ? undatedParts(timeline, base.shown, base.edges) : NO_UNDATED_PARTS;
+		changes = base !== null && standing ? timeChanges(timeline, base.edges, undatedRule) : [];
+		changesKey = changes.map((change) => `${String(change.entering.length)}/${String(change.leaving.length)}`).join(',');
+		// The lines that name a time, and no others: an undated line set at the axis's end is no date.
+		dated = undated.dated;
+		points = timeline.times.map((time, at) => ({
+			name: time.name,
+			period: time.kind === 'period',
+			changes: (changes[at]?.entering.length ?? 0) + (changes[at]?.leaving.length ?? 0) > 0,
+		}));
+		if (play !== null && play.key !== changesKey) stopPlay();
+	};
+	/**
+	 * Whether the lines and notes no time is said of are held back at a time:
+	 * the file's rule says after the axis ends, this is not its last time, and
+	 * some line in sight is dated, without which there is no axis to wait on.
+	 */
+	const holdsUndated = (at: number): boolean => dated && undatedHeldAt(timeline, at, undatedRule);
+	/**
+	 * The lines the picture leaves out: the dated ones not standing at the
+	 * time, the ones a time-lapse has yet to bring in, and the undated ones
+	 * while they are held back.
+	 */
+	const hiddenNow = (): Set<string> | null => {
+		if (!timed()) return null;
+		const at = timeIndex();
+		const waiting = partial !== null && partial.index === at ? (changes[at]?.entering.slice(partial.revealed) ?? []) : [];
+		const hidden = hiddenAt(timeline, at, waiting);
+		if (holdsUndated(at)) for (const id of undated.edges) hidden.add(id);
+		return hidden;
+	};
+	/**
+	 * The nodes that wait for a line to bring them in: the ones no dated line
+	 * touches, while the undated are held back, and at the axis's end while a
+	 * time-lapse is still bringing their lines in, so each comes with its
+	 * first. Null where every node stands as the filters leave it.
+	 */
+	const heldNow = (): ReadonlySet<string> | null => {
+		if (!timed() || !dated || undatedRule !== 'after') return null;
+		const at = timeIndex();
+		if (holdsUndated(at)) return undated.nodes;
+		return partial !== null && partial.index === at ? undated.nodes : null;
+	};
+
+	const strip = renderGraphTimeline(stage, {
+		t,
+		seek: (at) => {
+			stopPlay();
+			setTime(at);
+		},
+		step: (by) => {
+			stopPlay();
+			setTime(timeIndex() + by);
+		},
+		toggle: () => {
+			if (play === null) startPlay();
+			else stopPlay();
+		},
+		pause: () => {
+			stopPlay();
+		},
+		leave: () => {
+			canvasHost.focus();
+		},
+	});
+	const paintStrip = (thumb?: number): void => {
+		// A strip out of sight is left as it was: it is drawn again when it is opened.
+		if (!memory.timelineOpen || memory.view !== 'entities' || graph.edges.length === 0) return;
+		const at = timeIndex();
+		strip.paint({ points, current: at, thumb: thumb ?? at, playing: play !== null, dated });
+	};
+
 	/** The picture of the reading held handed to the engine, and the file's view when it changed from outside. */
-	const drawScene = (read: RelationshipGraphReading): void => {
+	const drawScene = (read: RelationshipGraphReading, fade = false): void => {
 		const first = engine === null;
 		const handle = ensureEngine();
 		const colors = themeColors();
 		const state = read.held.entities;
-		const picture = pictureOf({
-			graph,
-			state,
-			search: memory.query,
-			focus: memory.focus,
-			customKinds: read.kinds.filter((kind) => kind.custom).map((kind) => kind.id),
-			index: index ?? undefined,
-		});
+		if (base === null) {
+			base = pictureBase({
+				graph,
+				state,
+				search: memory.query,
+				customKinds: read.kinds.filter((kind) => kind.custom).map((kind) => kind.id),
+				index: index ?? undefined,
+			});
+			readChanges();
+		}
+		const picture = pictureFrom(base, memory.focus, hiddenNow(), heldNow());
 		lastPicture = picture;
-		handle.setScene({ picture, display: state.display, forces: state.forces, colors });
+		handle.setScene({ picture, display: state.display, forces: state.forces, colors, fade });
 		paintSearchCount();
 		const next = state.viewport;
 		if (first || (!sameViewport(next, readViewport) && !sameViewport(next, writtenViewport))) {
@@ -659,8 +862,98 @@ export function renderRelationshipGraph(
 		readViewport = next;
 	};
 
-	/** The stage drawn afresh for the view shown and the document read. */
-	const paintStage = (): void => {
+	/**
+	 * Another time, drawn alone: the picture of it from the base standing,
+	 * eased in the engine, and the strip. The sheet and the panel are not the
+	 * time's to redraw.
+	 */
+	const drawTime = (): void => {
+		if (reading === null || memory.view !== 'entities' || graph.edges.length === 0) return;
+		drawScene(reading, true);
+		paintStrip();
+	};
+	const setTime = (at: number): void => {
+		const count = timeline.times.length;
+		if (count === 0) return;
+		const next = Math.max(0, Math.min(count - 1, at));
+		const id = timeline.times[next]?.id ?? null;
+		if (id === memory.time && partial === null) {
+			paintStrip();
+			return;
+		}
+		memory.time = id;
+		partial = null;
+		drawTime();
+	};
+
+	/** The time-lapse ended where it stands: the time it reached is shown whole, the thumb on it. */
+	const stopPlay = (): void => {
+		if (play === null) return;
+		if (play.frame !== null) win.cancelAnimationFrame(play.frame);
+		play = null;
+		const shown = partial !== null;
+		partial = null;
+		if (disposed) return;
+		if (shown) drawTime();
+		else paintStrip();
+	};
+	/** One frame of the time-lapse, off the clock: the time and the lines it has reached, then the thumb. */
+	const playFrame = (now: number): void => {
+		const running = play;
+		if (running === null || disposed || reading === null) return;
+		running.frame = null;
+		// A stage out of sight has no frames worth drawing: the time-lapse waits where it is.
+		if (canvasHost.clientWidth === 0) {
+			stopPlay();
+			return;
+		}
+		running.elapsed += running.last === null ? 0 : Math.min(Math.max(0, now - running.last), PLAY_FRAME_MAX_MS);
+		running.last = now;
+		const at = playbackFrame(running.schedule, running.elapsed);
+		if (at.index !== running.index || at.revealed !== running.revealed) {
+			running.index = at.index;
+			running.revealed = at.revealed;
+			memory.time = timeline.times[at.index]?.id ?? null;
+			// The time it started on stood whole already, unless it began afresh.
+			partial = at.index === running.from && !running.fresh ? null : { index: at.index, revealed: at.revealed };
+			drawScene(reading, true);
+		}
+		if (at.done) {
+			play = null;
+			// While the last time's lines came in, the notes no time is said of
+			// came each with its first: the ones with no line at all stand now
+			// that the axis has ended.
+			const waited = partial !== null && heldNow() !== null;
+			partial = null;
+			if (waited) drawScene(reading, true);
+			paintStrip();
+			return;
+		}
+		paintStrip(at.thumb);
+		running.frame = win.requestAnimationFrame(playFrame);
+	};
+	/** The time-lapse from the time the thumb is on to the last; from the last, over again from the first. */
+	const startPlay = (): void => {
+		const count = timeline.times.length;
+		if (play !== null || !timed() || !dated || count < 2 || reading === null) return;
+		const here = timeIndex();
+		const fresh = here >= count - 1;
+		const from = fresh ? 0 : here;
+		const schedule = playbackSchedule(
+			changes.map((change) => ({ entering: change.entering.length, leaving: change.leaving.length })),
+			from,
+			{ fresh, stagger: !host.isReduceMotionEnabled() },
+		);
+		play = { schedule, from, fresh, key: changesKey, elapsed: 0, last: null, frame: null, index: -1, revealed: -1 };
+		play.frame = win.requestAnimationFrame(playFrame);
+		paintStrip();
+	};
+
+	/**
+	 * The stage drawn afresh for the view shown and the document read; eased
+	 * where the caller says the picture is another time's or another fold's.
+	 */
+	const paintStage = (fade = false): void => {
 		sheet.empty();
 		root.toggleClass('is-entities', memory.view === 'entities');
 		root.toggleClass('is-scene-manuscript', memory.view === 'scene-manuscript');
@@ -668,15 +961,22 @@ export function renderRelationshipGraph(
 		root.toggleClass('is-controls-open', memory.controlsOpen);
 		const empty = reading !== null && graph.edges.length === 0;
 		root.toggleClass('is-empty', empty);
+		root.toggleClass('is-timeline-open', memory.timelineOpen && memory.view === 'entities' && !empty);
 		panel.setOpen(memory.controlsOpen);
+		// The filters, the search and the groups may have moved: the base is worked out again.
+		base = null;
+		if (memory.view !== 'entities' || empty) stopPlay();
 		if (memory.view === 'entities') {
 			if (empty) {
 				searchField.count.setText('');
 				renderEmptyLine(sheet, t('relationshipGraph.empty'));
 			} else if (reading !== null) {
-				drawScene(reading);
+				readTimeline(reading);
+				// A reading that lands while a time-lapse runs is drawn as its next frame would be.
+				drawScene(reading, fade || play !== null);
 				panel.setQuery(memory.query);
 				panel.refresh();
+				paintStrip();
 			}
 		} else if (reading !== null) {
 			renderSceneManuscriptPane(sheet, {
@@ -716,6 +1016,11 @@ export function renderRelationshipGraph(
 		graph = next === null ? EMPTY_ENTITY_GRAPH : buildEntityGraph(next.members, next.resolveTarget);
 		index = next === null ? null : indexGraphForQueries(graph);
 		nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+		if (next === null) {
+			stopPlay();
+			timeline = EMPTY_GRAPH_TIMELINE;
+			timelineOf = null;
+		}
 		paintAll();
 	};
 	const unsubscribe = controls.bridge().subscribe(() => {
@@ -742,11 +1047,13 @@ export function renderRelationshipGraph(
 		saveFocusedBody: () => false,
 		dispose: () => {
 			disposed = true;
+			stopPlay();
 			flushState();
 			flushViewport();
 			app.workspace.offref(themeRef);
 			unsubscribe();
 			stopBalance();
+			strip.dispose();
 			searchField.dispose();
 			viewField.destroy();
 			if (engine !== null) {

@@ -53,6 +53,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		}
 		addToggle(build?: Build): this { return super.addToggle(this.record('toggle', build)); }
 		addSlider(build?: Build): this { return super.addSlider(this.record('slider', build)); }
+		addDropdown(build?: Build): this { return super.addDropdown(this.record('dropdown', build)); }
 		addSearch(build?: Build): this { return super.addSearch(this.record('search', build)); }
 	}
 	class MenuItem {
@@ -98,6 +99,9 @@ import {
 	defaultRelationshipGraphDocument,
 	rememberSceneManuscriptOptions,
 	type GraphMember,
+	type GraphTime,
+	type GraphTimeRule,
+	type GraphUndatedRule,
 	type GraphViewport,
 } from '../../src/domain';
 import type { RecordLine } from '../../src/templates/record-lines';
@@ -125,6 +129,14 @@ interface MountOptions {
 	viewport?: GraphViewport;
 	/** Where the nodes stood when the tab was last shown this session. */
 	positions?: Map<string, GraphNodePlace>;
+	/** The timeline strip standing open as the tab is restored. */
+	timelineOpen?: boolean;
+	/** The project's time notes, in the order the axis runs. */
+	times?: GraphTime[];
+	/** The rule the file keeps for a line dated by a point. */
+	rule?: GraphTimeRule;
+	undated?: GraphUndatedRule;
+	reduceMotion?: boolean;
 }
 
 /** An engine that only records what it is asked, and lets a test speak through its port. */
@@ -231,7 +243,11 @@ function family(): GraphMember[] {
 function mount(options: MountOptions = {}) {
 	menus.length = 0;
 	const dom = new CorkboardDom();
-	const memory = relationshipGraphMemory({ view: options.view ?? 'entities', controlsOpen: options.controlsOpen ?? true });
+	const memory = relationshipGraphMemory({
+		view: options.view ?? 'entities',
+		controlsOpen: options.controlsOpen ?? true,
+		timelineOpen: options.timelineOpen ?? false,
+	});
 	if (options.positions !== undefined) memory.positions = options.positions;
 	const listeners = new Set<() => void>();
 	const empty = defaultRelationshipGraphDocument();
@@ -247,11 +263,18 @@ function mount(options: MountOptions = {}) {
 		projectPath: 'Demo/001_Project_Metadata.md',
 		rootPath: 'Demo',
 		locale: 'en',
-		held:
-			options.viewport === undefined
-				? stored
-				: { ...stored, entities: { ...stored.entities, viewport: options.viewport } },
+		held: {
+			...stored,
+			entities: {
+				...stored.entities,
+				...(options.viewport === undefined ? {} : { viewport: options.viewport }),
+				...(options.rule === undefined && options.undated === undefined
+					? {}
+					: { timeline: { rule: options.rule ?? 'latest', undated: options.undated ?? 'before' } }),
+			},
+		},
 		members: options.members ?? [],
+		times: options.times ?? [],
 		kinds: [],
 		resolveTarget: (link) => `${link}.md`,
 		readOnly: options.readOnly ?? false,
@@ -287,6 +310,7 @@ function mount(options: MountOptions = {}) {
 		openEntityForm: vi.fn(() => Promise.resolve(null)),
 		openProjectFile: vi.fn(() => Promise.resolve()),
 		openRelationship: vi.fn(() => Promise.resolve(true)),
+		isReduceMotionEnabled: vi.fn(() => options.reduceMotion ?? false),
 	};
 	const activateProject = vi.fn();
 	const controls = {
@@ -353,9 +377,11 @@ describe('the relationship graph workspace', () => {
 			'relationshipGraph.fit',
 			'relationshipGraph.resetView',
 			'relationshipGraph.controls',
+			'relationshipGraph.timeline.show',
 			'corkboard.refresh',
 		]);
 		expect(fixture.button('snowflake-method-relationship-graph-controls').getAttribute('aria-pressed')).toBe('true');
+		expect(fixture.button('snowflake-method-relationship-graph-timeline-toggle').getAttribute('aria-pressed')).toBe('false');
 		expect(fixture.viewField().options()).toEqual([
 			{ value: 'entities', label: 'relationshipGraph.view.entities' },
 			{ value: 'scene-manuscript', label: 'relationshipGraph.view.sceneManuscript' },
@@ -1078,12 +1104,14 @@ describe('the keys and menus of the entities view', () => {
 			expect(end.children[0]!.children.map((child) => child.getAttribute('aria-label'))).toEqual([
 				'relationshipGraph.zoomIn', 'relationshipGraph.zoomOut', 'relationshipGraph.menu',
 				'relationshipGraph.fit', 'relationshipGraph.resetView', 'relationshipGraph.controls',
+				'relationshipGraph.timeline.show',
 			]);
 			const before = menus.length;
 			fixture.button('snowflake-method-toolbar-more').dispatch('click');
 			expect(menus).toHaveLength(before + 1);
 			expect(menuTitles()).toEqual([
 				'relationshipGraph.zoomIn', 'relationshipGraph.zoomOut', 'relationshipGraph.fit', 'relationshipGraph.resetView', 'relationshipGraph.controls',
+				'relationshipGraph.timeline.show',
 				'relationshipGraph.pan.up', 'relationshipGraph.pan.down', 'relationshipGraph.pan.left', 'relationshipGraph.pan.right',
 			]);
 			menus[menus.length - 1]!.items[0]!.click();
@@ -1091,5 +1119,398 @@ describe('the keys and menus of the entities view', () => {
 		} finally {
 			Platform.isMobile = false;
 		}
+	});
+});
+
+describe('the timeline under the graph', () => {
+	const TIME = 'Demo/60_Worldbuilding/61_Time';
+	const year = (name: string): GraphTime => ({ id: `time-${name}`, name, path: `${TIME}/${name}.md`, kind: 'point', start: null, end: null });
+	const years = (): GraphTime[] => ['Y1', 'Y2', 'Y3', 'Y4'].map(year);
+	/** A relationship line toward a character, dated by a time note or by none. */
+	const dated = (label: string, target: string, when?: string): RecordLine => ({
+		label: { path: `Demo/20_Character/23_Relationship/${label}/${label}`, display: label },
+		value: '',
+		clauses: [
+			{ kind: 'target', term: { kind: 'link', path: `Demo/20_Character/${target}`, name: target } },
+			...(when === undefined ? [] : [{ kind: 'when' as const, term: { kind: 'link' as const, path: `${TIME}/${when}`, name: when } }]),
+		],
+	});
+	/** Alice and Bob over four years: strangers, then friends; Bob takes a rival in the second; Alice's sister is no year's. */
+	function saga(): GraphMember[] {
+		return [
+			member('character-alice', 'character', 'character', 'Alice', 'Demo/20_Character/Alice.md', [
+				dated('Stranger', 'Bob', 'Y1'),
+				dated('Friend', 'Bob', 'Y3'),
+				dated('Family', 'Carol'),
+			]),
+			member('character-bob', 'character', 'character', 'Bob', 'Demo/20_Character/Bob.md', [dated('Rival', 'Carol', 'Y2')]),
+			member('character-carol', 'character', 'character', 'Carol', 'Demo/20_Character/Carol.md'),
+		];
+	}
+	const STRIP = 'snowflake-method-relationship-graph-timeline';
+	type Fixture = ReturnType<typeof mount>;
+	const lastScene = (fixture: Fixture): GraphScene => {
+		const scenes = fixture.engines[0]!.scenes;
+		return scenes[scenes.length - 1]!;
+	};
+	const words = (fixture: Fixture): string[] => lastScene(fixture).picture.edges.map((edge) => edge.label);
+	const names = (fixture: Fixture): string[] => lastScene(fixture).picture.nodes.map((node) => node.name);
+	const part = (fixture: Fixture, suffix: string): CorkboardElement => fixture.root.querySelector(`.${STRIP}-${suffix}`)!;
+	const toggle = (fixture: Fixture): CorkboardElement => fixture.button(`${STRIP}-toggle`);
+	/** The thumb set on a time, as a drag, a press on the rail or a key sets it. */
+	const seek = (fixture: Fixture, at: number): void => {
+		const range = part(fixture, 'range');
+		range.value = String(at);
+		range.dispatch('input');
+	};
+	/** Time passed a frame at a time, as the page draws. */
+	const run = (fixture: Fixture, ms: number): void => {
+		for (let passed = 0; passed < ms; passed += 100) fixture.dom.advance(100);
+	};
+	const rule = (): { change(value: unknown): void } =>
+		[...rows].reverse().find((row) => row.name === 'relationshipGraph.timeline.rule')!.component;
+
+	it('opens from its symbol, which says what a press does, and draws the graph as it stands at the first time', async () => {
+		const fixture = mount({ members: saga(), times: years() });
+		await settle();
+		expect(words(fixture)).toEqual(['Stranger', 'Friend', 'Family', 'Rival']);
+		expect(fixture.root.classes.has('is-timeline-open')).toBe(false);
+		toggle(fixture).dispatch('click');
+		expect(fixture.memory.timelineOpen).toBe(true);
+		expect(fixture.remember).toHaveBeenCalledOnce();
+		expect(toggle(fixture).getAttribute('aria-pressed')).toBe('true');
+		expect(toggle(fixture).getAttribute('aria-label')).toBe('relationshipGraph.timeline.hide');
+		expect(fixture.root.classes.has('is-timeline-open')).toBe(true);
+		// The first year: the strangers, and the line no year dates. The change is eased.
+		expect(words(fixture)).toEqual(['Stranger', 'Family']);
+		expect(lastScene(fixture).fade).toBe(true);
+		// The one name under the rail is the time's the graph is drawn at, and nothing stands at the strip's end.
+		expect(part(fixture, 'caption-name').textContent).toBe('Y1');
+		expect(fixture.root.querySelector(`.${STRIP}-readout`)).toBeNull();
+		expect(part(fixture, 'range').getAttribute('aria-valuetext')).toBe('Y1');
+		expect(part(fixture, 'range').max).toBe('3');
+		// Folded again, the whole graph is back.
+		toggle(fixture).dispatch('click');
+		expect(fixture.memory.timelineOpen).toBe(false);
+		expect(toggle(fixture).getAttribute('aria-label')).toBe('relationshipGraph.timeline.show');
+		expect(fixture.root.classes.has('is-timeline-open')).toBe(false);
+		expect(words(fixture)).toEqual(['Stranger', 'Friend', 'Family', 'Rival']);
+		expect(lastScene(fixture).fade).toBe(true);
+	});
+
+	it('draws the graph at the time the thumb is set on, by the latest each note said of each target', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		// A tab restored with the strip open draws the first time at once, set rather than eased.
+		expect(words(fixture)).toEqual(['Stranger', 'Family']);
+		expect(lastScene(fixture).fade).toBe(false);
+		seek(fixture, 1);
+		expect(words(fixture)).toEqual(['Stranger', 'Family', 'Rival']);
+		expect(lastScene(fixture).fade).toBe(true);
+		expect(fixture.memory.time).toBe('time-Y2');
+		seek(fixture, 2);
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival']);
+		expect(part(fixture, 'caption-name').textContent).toBe('Y3');
+		expect(part(fixture, 'caption').styles['--snowflake-method-graph-timeline-at']).toBe(String(2 / 3));
+		// Alone between its two nodes now, the line runs straight.
+		expect(lastScene(fixture).picture.edges.find((edge) => edge.label === 'Friend')!.lane).toBe(0);
+		// The points where a line in sight comes or goes are the stronger ones.
+		expect(fixture.root.querySelectorAll(`.${STRIP}-tick`).map((tick) => tick.classes.has('is-change'))).toEqual([true, true, true, false]);
+		// The same time again draws nothing.
+		const drawn = fixture.engines[0]!.scenes.length;
+		seek(fixture, 2);
+		expect(fixture.engines[0]!.scenes).toHaveLength(drawn);
+	});
+
+	it('steps from the two buttons beside the play button, which stop at the ends', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		expect(part(fixture, 'previous').disabled).toBe(true);
+		part(fixture, 'next').click();
+		expect(fixture.memory.time).toBe('time-Y2');
+		expect(part(fixture, 'previous').disabled).toBe(false);
+		part(fixture, 'next').click();
+		part(fixture, 'next').click();
+		expect(fixture.memory.time).toBe('time-Y4');
+		expect(part(fixture, 'next').disabled).toBe(true);
+		part(fixture, 'previous').click();
+		expect(fixture.memory.time).toBe('time-Y3');
+	});
+
+	it('keeps every line from its time on under the other rule, which the panel sets and the file keeps', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		seek(fixture, 2);
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival']);
+		rule().change('since');
+		expect(words(fixture)).toEqual(['Stranger', 'Friend', 'Family', 'Rival']);
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledWith({ timeline: { rule: 'since', undated: 'before' } });
+		// A file that already keeps the rule opens by it.
+		const kept = mount({ members: saga(), times: years(), timelineOpen: true, rule: 'since' });
+		await settle();
+		seek(kept, 2);
+		expect(words(kept)).toEqual(['Stranger', 'Friend', 'Family', 'Rival']);
+	});
+
+	it('lets a node with no line standing go with the Orphans toggle, as any other does', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		// With orphans shown, every disc stands at every time.
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol']);
+		const orphans = [...rows].reverse().find((row) => row.name === 'relationshipGraph.filter.orphans')!.component;
+		orphans.change(false);
+		const solo = mount({
+			members: [
+				member('character-alice', 'character', 'character', 'Alice', 'Demo/20_Character/Alice.md', [dated('Friend', 'Bob', 'Y3')]),
+				member('character-bob', 'character', 'character', 'Bob', 'Demo/20_Character/Bob.md'),
+			],
+			times: years(),
+			timelineOpen: true,
+		});
+		await settle();
+		[...rows].reverse().find((row) => row.name === 'relationshipGraph.filter.orphans')!.component.change(false);
+		expect(names(solo)).toEqual([]);
+		seek(solo, 2);
+		expect(names(solo)).toEqual(['Alice', 'Bob']);
+	});
+
+	it('plays from the time the thumb is on to the last that changes anything, a line at a time, the thumb gliding between', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		const play = part(fixture, 'play');
+		const range = part(fixture, 'range');
+		expect(play.getAttribute('aria-label')).toBe('relationshipGraph.timeline.play');
+		expect(range.step).toBe('1');
+		play.click();
+		expect(play.getAttribute('aria-label')).toBe('relationshipGraph.timeline.pause');
+		expect(fixture.dom.frames.size).toBe(1);
+		fixture.dom.advance(0);
+		// The first year stands as it was drawn; the thumb sets out for the second.
+		expect(words(fixture)).toEqual(['Stranger', 'Family']);
+		expect(range.step).toBe('any');
+		run(fixture, 400);
+		expect(Number(range.value)).toBeCloseTo(0.5);
+		run(fixture, 400);
+		expect(fixture.memory.time).toBe('time-Y2');
+		expect(words(fixture)).toEqual(['Stranger', 'Family', 'Rival']);
+		expect(lastScene(fixture).fade).toBe(true);
+		run(fixture, 800);
+		expect(fixture.memory.time).toBe('time-Y3');
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival']);
+		// The fourth year changes nothing, so the third is the last stop: held its while, then the time-lapse is over.
+		run(fixture, 800);
+		expect(play.getAttribute('aria-label')).toBe('relationshipGraph.timeline.play');
+		expect(fixture.dom.frames.size).toBe(0);
+		expect(range.step).toBe('1');
+		expect(range.value).toBe('2');
+		expect(fixture.memory.time).toBe('time-Y3');
+	});
+
+	it('starts over from the first time when played from the last, bringing its lines in from nothing', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		seek(fixture, 3);
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival']);
+		part(fixture, 'play').click();
+		fixture.dom.advance(0);
+		expect(fixture.memory.time).toBe('time-Y1');
+		expect(words(fixture)).toEqual(['Stranger', 'Family']);
+	});
+
+	it('is paused by a hand on the thumb, a step, a press of its own button, or the strip folding', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		const play = part(fixture, 'play');
+		const playing = (): boolean => play.getAttribute('aria-label') === 'relationshipGraph.timeline.pause';
+		play.click();
+		fixture.dom.advance(0);
+		part(fixture, 'range').dispatch('pointerdown');
+		expect(playing()).toBe(false);
+		expect(fixture.dom.frames.size).toBe(0);
+		play.click();
+		part(fixture, 'next').click();
+		expect(playing()).toBe(false);
+		expect(fixture.memory.time).toBe('time-Y2');
+		play.click();
+		expect(playing()).toBe(true);
+		play.click();
+		expect(playing()).toBe(false);
+		play.click();
+		toggle(fixture).dispatch('click');
+		expect(fixture.dom.frames.size).toBe(0);
+		expect(words(fixture)).toEqual(['Stranger', 'Friend', 'Family', 'Rival']);
+	});
+
+	it('sets each time whole, with no glide, where motion is reduced', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true, reduceMotion: true });
+		await settle();
+		part(fixture, 'play').click();
+		fixture.dom.advance(0);
+		run(fixture, 400);
+		expect(part(fixture, 'range').value).toBe('0');
+		run(fixture, 400);
+		expect(part(fixture, 'range').value).toBe('1');
+		expect(words(fixture)).toEqual(['Stranger', 'Family', 'Rival']);
+	});
+
+	it('carries on through a reading that says the same, and stops for one that moved a dated line', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		const play = part(fixture, 'play');
+		play.click();
+		fixture.dom.advance(0);
+		// The graph's own file rang its bell: the same members, the same times.
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(play.getAttribute('aria-label')).toBe('relationshipGraph.timeline.pause');
+		run(fixture, 800);
+		expect(fixture.memory.time).toBe('time-Y2');
+		// Now a line is given a time: what the time-lapse followed is no longer what stands.
+		(fixture.reading.members[1]!.relationships as RecordLine[]).push(dated('Ally', 'Alice', 'Y4'));
+		for (const listener of fixture.listeners) listener();
+		await settle();
+		expect(play.getAttribute('aria-label')).toBe('relationshipGraph.timeline.play');
+		expect(fixture.dom.frames.size).toBe(0);
+		expect(fixture.root.querySelectorAll(`.${STRIP}-tick`).map((tick) => tick.classes.has('is-change'))).toEqual([true, true, true, true]);
+	});
+
+	it('says so where the project has no time, or no line names one, and plays nothing', async () => {
+		const none = mount({ members: saga(), times: [], timelineOpen: true });
+		await settle();
+		expect(words(none)).toEqual(['Stranger', 'Friend', 'Family', 'Rival']);
+		const strip = none.root.querySelector(`.${STRIP}`)!;
+		expect(strip.classes.has('is-empty')).toBe(true);
+		expect(strip.querySelector(`.${STRIP}-empty`)!.querySelectorAll('span').map((span) => span.textContent)).toContain('relationshipGraph.timeline.empty');
+		const undated = mount({ members: family(), times: years(), timelineOpen: true });
+		await settle();
+		expect(part(undated, 'caption-name').textContent).toBe('relationshipGraph.timeline.undated');
+		expect(part(undated, 'play').disabled).toBe(true);
+		part(undated, 'play').click();
+		expect(undated.dom.frames.size).toBe(0);
+		// The axis still stands, and the whole graph at every point of it.
+		seek(undated, 2);
+		expect(words(undated)).toEqual(['Family']);
+		// With nothing dated there is no end to wait for: the rule that holds the undated back holds nothing here.
+		const waiting = mount({ members: family(), times: years(), timelineOpen: true, undated: 'after' });
+		await settle();
+		expect(words(waiting)).toEqual(['Family']);
+		expect(names(waiting)).toEqual(['Alice', 'Bob', 'Town']);
+		expect(part(waiting, 'caption-name').textContent).toBe('relationshipGraph.timeline.undated');
+	});
+
+	/** The saga with a mentor whose one line names no year, and a stranger to everyone with no line at all. */
+	const sagaAndOthers = (): GraphMember[] => [
+		...saga(),
+		member('character-dave', 'character', 'character', 'Dave', 'Demo/20_Character/Dave.md', [dated('Mentor', 'Alice')]),
+		member('character-erin', 'character', 'character', 'Erin', 'Demo/20_Character/Erin.md'),
+	];
+	const undatedRule = (): { change(value: unknown): void } =>
+		[...rows].reverse().find((row) => row.name === 'relationshipGraph.timeline.undatedRule')!.component;
+
+	it('draws the lines that name no time at every time, as it always did, until the other rule is chosen', async () => {
+		const fixture = mount({ members: sagaAndOthers(), times: years(), timelineOpen: true });
+		await settle();
+		expect(words(fixture)).toEqual(['Stranger', 'Family', 'Mentor']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol', 'Dave', 'Erin']);
+		// The last point changes nothing under this rule: no dated line comes or goes there.
+		expect(fixture.root.querySelectorAll(`.${STRIP}-tick`).map((tick) => tick.classes.has('is-change'))).toEqual([true, true, true, false]);
+		undatedRule().change('after');
+		// The first year again, now of the dated alone: the two lines no year dates wait, and so do Dave and Erin, whom no dated line touches.
+		expect(words(fixture)).toEqual(['Stranger']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol']);
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledWith({ timeline: { rule: 'latest', undated: 'after' } });
+		// Back again, they stand from the start.
+		undatedRule().change('before');
+		expect(words(fixture)).toEqual(['Stranger', 'Family', 'Mentor']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol', 'Dave', 'Erin']);
+	});
+
+	it('holds the undated back to the last time under the rule that has them after the axis ends, and shows them all on it', async () => {
+		const fixture = mount({ members: sagaAndOthers(), times: years(), timelineOpen: true, undated: 'after' });
+		await settle();
+		expect(words(fixture)).toEqual(['Stranger']);
+		// Carol has a dated line, Bob's rival of the second year, so she stands as an orphan before it: only the undated wait.
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol']);
+		seek(fixture, 1);
+		expect(words(fixture)).toEqual(['Stranger', 'Rival']);
+		seek(fixture, 2);
+		expect(words(fixture)).toEqual(['Friend', 'Rival']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol']);
+		// The last time is the axis's end: everything stands, the note with no line among it.
+		seek(fixture, 3);
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival', 'Mentor']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol', 'Dave', 'Erin']);
+		expect(lastScene(fixture).fade).toBe(true);
+		// So the last point is one where something comes, and the strip marks it.
+		expect(fixture.root.querySelectorAll(`.${STRIP}-tick`).map((tick) => tick.classes.has('is-change'))).toEqual([true, true, true, true]);
+		// A step back puts them away again.
+		part(fixture, 'previous').click();
+		expect(words(fixture)).toEqual(['Friend', 'Rival']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol']);
+		// With orphans off, the held and the orphans are away alike, and a note comes with its first line.
+		[...rows].reverse().find((row) => row.name === 'relationshipGraph.filter.orphans')!.component.change(false);
+		seek(fixture, 0);
+		expect(names(fixture)).toEqual(['Alice', 'Bob']);
+		seek(fixture, 3);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol', 'Dave']);
+	});
+
+	it('brings the undated in at the end of a time-lapse, a line at a time, each note with its first line and the rest when it is over', async () => {
+		const fixture = mount({ members: sagaAndOthers(), times: years(), timelineOpen: true, undated: 'after' });
+		await settle();
+		const play = part(fixture, 'play');
+		play.click();
+		fixture.dom.advance(0);
+		expect(words(fixture)).toEqual(['Stranger']);
+		run(fixture, 800);
+		expect(words(fixture)).toEqual(['Stranger', 'Rival']);
+		run(fixture, 800);
+		expect(words(fixture)).toEqual(['Friend', 'Rival']);
+		// The fourth year is a stop now: the two undated lines begin there, the first as it is reached.
+		run(fixture, 800);
+		expect(fixture.memory.time).toBe('time-Y4');
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival']);
+		// Dave waits for his line, and Erin, who has none, for the end.
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol']);
+		run(fixture, 200);
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival', 'Mentor']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol', 'Dave']);
+		expect(play.getAttribute('aria-label')).toBe('relationshipGraph.timeline.pause');
+		// The time held its while, the time-lapse is over, and the note no line reaches stands with the rest.
+		run(fixture, 600);
+		expect(play.getAttribute('aria-label')).toBe('relationshipGraph.timeline.play');
+		expect(fixture.dom.frames.size).toBe(0);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol', 'Dave', 'Erin']);
+		expect(lastScene(fixture).fade).toBe(true);
+		expect(part(fixture, 'range').value).toBe('3');
+	});
+
+	it('shows every note at once when a time-lapse is paused while the undated are coming in', async () => {
+		const fixture = mount({ members: sagaAndOthers(), times: years(), timelineOpen: true, undated: 'after' });
+		await settle();
+		seek(fixture, 2);
+		const play = part(fixture, 'play');
+		play.click();
+		fixture.dom.advance(0);
+		run(fixture, 800);
+		expect(fixture.memory.time).toBe('time-Y4');
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol']);
+		play.click();
+		// Paused on the last time, the time is shown whole, as a press on its point would show it.
+		expect(words(fixture)).toEqual(['Friend', 'Family', 'Rival', 'Mentor']);
+		expect(names(fixture)).toEqual(['Alice', 'Bob', 'Carol', 'Dave', 'Erin']);
+	});
+
+	it('ends its time-lapse with the workspace', async () => {
+		const fixture = mount({ members: saga(), times: years(), timelineOpen: true });
+		await settle();
+		part(fixture, 'play').click();
+		fixture.dom.advance(0);
+		expect(fixture.dom.frames.size).toBe(1);
+		fixture.handle.dispose();
+		expect(fixture.dom.frames.size).toBe(0);
+		expect(fixture.dom.container.querySelector(`.${STRIP}`)).toBeNull();
 	});
 });

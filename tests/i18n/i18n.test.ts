@@ -4,6 +4,7 @@ import {
 	BAND_SPANS,
 	DERIVED_TASK_KEYS,
 	FORESHADOWING_STATUSES,
+	GRAPH_TIME_RULES,
 	HEATMAP_MEASURES,
 	OCCURRENCE_ROLES,
 	READING_MEASURES,
@@ -37,6 +38,42 @@ describe('translation resources', () => {
 		for (const code of PROJECT_STRUCTURE_ISSUE_CODES) {
 			expect(Object.keys(en)).toContain(`projectStructure.issue.${code}`);
 		}
+	});
+
+	it("names the relationship graph's timeline, its two rules and its place in both languages", () => {
+		for (const rule of GRAPH_TIME_RULES) {
+			expect(en[`relationshipGraph.timeline.rule.${rule}`]).toBeTruthy();
+			expect(zhCN[`relationshipGraph.timeline.rule.${rule}`]).toBeTruthy();
+		}
+		for (const key of [
+			'relationshipGraph.timeline',
+			'relationshipGraph.timeline.show',
+			'relationshipGraph.timeline.hide',
+			'relationshipGraph.timeline.previous',
+			'relationshipGraph.timeline.next',
+			'relationshipGraph.timeline.play',
+			'relationshipGraph.timeline.pause',
+			'relationshipGraph.timeline.time',
+			'relationshipGraph.timeline.empty',
+			'relationshipGraph.timeline.undated',
+			'relationshipGraph.timeline.rule',
+			'relationshipGraph.timeline.undatedRule',
+			'relationshipGraph.timeline.undatedRule.before',
+			'relationshipGraph.timeline.undatedRule.after',
+		] as const) {
+			expect(en[key]).toBeTruthy();
+			expect(zhCN[key]).toBeTruthy();
+		}
+		// The strip writes one name and no count of the times: the words for a place among them are gone.
+		for (const locale of [en, zhCN]) {
+			expect(Object.keys(locale)).not.toContain('relationshipGraph.timeline.position');
+		}
+		// The two rules are told apart: one for the lines that name a time, one for the lines that name none.
+		expect(en['relationshipGraph.timeline.rule']).not.toBe(en['relationshipGraph.timeline.undatedRule']);
+		expect(zhCN['relationshipGraph.timeline.rule']).not.toBe(zhCN['relationshipGraph.timeline.undatedRule']);
+		// The strip is the axis under the graph, told apart from the Timeline workspace in Chinese.
+		expect(zhCN['relationshipGraph.timeline']).toBe('时间轴');
+		expect(zhCN['storyStructure.family.timeline']).not.toBe(zhCN['relationshipGraph.timeline']);
 	});
 
 	it('keeps English and Simplified Chinese key sets identical', () => {

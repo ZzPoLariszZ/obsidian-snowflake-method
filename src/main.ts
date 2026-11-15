@@ -233,6 +233,7 @@ import {
 	isFreeformFilePath,
 	isImportFilePath,
 	graphMembersOf,
+	graphTimesOf,
 	isRelationshipGraphFilePath,
 	isStickyNotePath,
 	isTaskFilePath,
@@ -5809,17 +5810,19 @@ export default class SnowflakeMethodPlugin
 				// project's graph is still there to look at.
 				const project = await this.resolveProject(panelProject());
 				if (project === null) return null;
+				// Within the project's folder, as every other member link is read:
+				// a bare name that another project also uses is this project's.
+				const resolveTarget = (link: string, sourcePath: string): string | null =>
+					this.projects.repository.resolveLinkWithin(link, sourcePath, project.rootPath)?.path ?? null;
 				return {
 					projectPath: project.projectFile,
 					rootPath: project.rootPath,
 					locale: project.locale,
 					held: await graphs.read(project),
 					members: graphMembersOf(project),
+					times: graphTimesOf(project, resolveTarget),
 					kinds: project.worldbuildingKinds,
-					// Within the project's folder, as every other member link is read:
-					// a bare name that another project also uses is this project's.
-					resolveTarget: (link, sourcePath) =>
-						this.projects.repository.resolveLinkWithin(link, sourcePath, project.rootPath)?.path ?? null,
+					resolveTarget,
 					readOnly: project.readOnly,
 				};
 			},

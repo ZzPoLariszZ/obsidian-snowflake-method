@@ -10,6 +10,7 @@ import type { App } from 'obsidian';
 import type {
 	EntityGraphState,
 	GraphMember,
+	GraphTime,
 	ProjectWorldbuildingKind,
 	RelationshipGraphDocument,
 	ResolveGraphTarget,
@@ -37,6 +38,8 @@ export interface RelationshipGraphReading {
 	held: RelationshipGraphDocument;
 	/** Every member whose relationships are drawn, kinds in the project's order. */
 	members: readonly GraphMember[];
+	/** The project's time notes in the order they keep, which the timeline's axis runs in. */
+	times: readonly GraphTime[];
 	/** The project's worldbuilding kinds in order, built-ins first. */
 	kinds: readonly ProjectWorldbuildingKind[];
 	/** Where a relationship's link leads from the note that holds it, within the project. */
@@ -70,6 +73,7 @@ export type RelationshipGraphHost = Pick<
 	| 'openEntityForm'
 	| 'openProjectFile'
 	| 'openRelationship'
+	| 'isReduceMotionEnabled'
 >;
 
 export interface RelationshipGraphControls {
