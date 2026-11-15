@@ -8,6 +8,29 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0]
+
+### Added
+
+- **Card sizes on the corkboard.** **Display** now has three sliders: **Card width**, **Card height** and **Font size**. Width and height run from 240 to 720 px and the font size from 12 to 36 px, a pixel at a time. A width you set is exact, and the spare room is shared between the cards, so each row still reaches both edges. The height and the font size change only the card's text box: a scene's conflict, a character's one-sentence storyline or another note's description. The board follows each slider as you drag. **Confirm** keeps the new sizes, and Escape or a click outside puts the old ones back. **Reset to default** beside a slider returns it to **Automatic**, the size the board picks itself. Each view keeps its own sizes, and a new tab opens with the ones you last confirmed. **Compact** and **Gallery** cards have no text box, so the height and font size sliders are hidden for them.
+- **Display on the timeline and the beat sheet.** A new **Display** button on both toolbars holds the card style and the same three sliders for the scene cards on the lanes. The scene pool keeps a card style and sizes of its own, set from **Display** on the pool's band. A scene can be a compact card in the pool and a full one once it's placed. On the toolbar's panel the font size also sets the descriptions and the sub-descriptions, so it's offered for every card style. The toolbar's button works while the pool is folded away, and each workspace keeps both looks with the tab. On a tablet it's under **More actions**.
+- **A timeline under the relationship graph.** **Show timeline** on the **Entity ↔ Entity** toolbar opens a strip with a point for every Time note, in the Time table's order. The name of the time you're on shows under the thumb. A relationship whose **When** names one of those times is drawn only while it stands. Drag the thumb, press a point, or use the step buttons or the arrow keys to move through the times. **Play** runs on from the time you're on. It brings lines in one at a time and fades out the ones that end, as the time-lapse of Obsidian's own graph does. A relationship dated by a period lasts from the period's start to its end. For one dated by a point, **Dated lines** in the panel's new **Timeline** section decides. **Latest** ends it when the same note records a later relationship with the same target, and **From then on** keeps it to the end. **Undated lines** places the relationships with no time, along with the notes that have no dated relationship. **At the start** draws them at every time. **At the end** holds them back until the last time, where a time-lapse brings them in last. Where no relationship in sight names a time, the strip says so and its buttons and thumb are disabled. With **Reduce animations** on, **Play** shows each time whole and the thumb steps instead of gliding. On a tablet a finger anywhere on the strip's row moves the thumb, and the button is under **More actions**.
+- **Contents wheel in the manuscript stream.** A wheel of chapter names now stands in the stream's left margin. The chapter you're reading sits in the middle, highlighted. The names above and below fade and shrink with distance, and dissolve at the top and bottom. It shows as many chapters on each side as **Notes to keep loaded** keeps. The wheel follows you as you read. Scroll it to browse without moving the page: a name always comes to rest in the middle, and the wheel glides back when the pointer leaves. Click a name to jump to the start of that chapter, even one the stream hasn't loaded. From the keyboard, Tab reaches the wheel, the arrow keys walk it, Enter jumps and Escape leaves. The **Contents** button on the toolbar, before **Margin cards**, shows or hides it. So do **Show contents in the margin** in the settings and the **Toggle contents in the manuscript** command. It starts shown. Where the margin is too narrow for it, on a phone or in a narrow pane, the button opens the same wheel in a new **Contents** sidebar. The **Open contents sidebar** command opens it too. With word milestones on, the wheel stands clear of their labels. In focus mode it fades with the other chapters while you write. With **Reduce animations** on, it moves at once and its names keep their size.
+- **Rename and delete chapters from the contents wheel.** Right-click a name on the wheel, or long-press it on a touch screen, and choose **Rename…** or **Delete**. Dots appear beside the name under the pointer, and beside the current chapter on a touch screen. A click on them opens the same menu. With the keys on a name, F2 renames and Delete deletes. The rename dialog asks for the new name and has a switch to rename the note's first heading too. The switch starts on when the heading still says the old name, and off when you wrote a different heading. Keep the name and turn the switch on to bring a heading back in step. Deleting asks first, then moves the note to the trash. With chapter numbering on, it can also move the later numbers down by one. While you write, the wheel marks the chapter you're writing in for as long as that chapter is on the page. Renaming the chapter you're writing in keeps the editor open, with the cursor where it was.
+
+### Changed
+
+- On the timeline and the beat sheet, **Cards** under the scene pool's **Display** now sets the pool's cards alone. The cards on the lanes follow the toolbar's **Display**, and they start with the style they already had.
+- In the relationship graph's panel, a dropdown now sits under its name and spans the row. Every dropdown there is the same width, and **Line labels** no longer wraps beside a long answer.
+- A chapter added in the manuscript stream now always opens at the top of the page. Before, the page stayed still when the new chapter was already in view and moved only when it was not.
+
+### Fixed
+
+- In the relationship graph, every letter you typed in the search made the dimmed lines flash back to full strength for about half a second. They now stay dim while you type.
+- On a phone or a tablet, **Text alignment** and **Grid lines** in the **Typography** panel cut their answer short, so **Justified** read as "Justifie". Both dropdowns are wider there now.
+- In the manuscript stream, deleting the chapter you were in from the file explorer could take the chapter before it off the page. The stream lost its place and showed the start of the book. It now stays on the chapter beside the one that went.
+- Renaming a chapter from the file explorer no longer moves the page, even when you are reading the book's last chapter.
+
 ## [0.31.0]
 
 ### Added
@@ -758,6 +781,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.32.0]
+
+### 新增
+
+- **卡片看板的卡片大小。** **显示**里新增三个滑块：**卡片宽度**、**卡片高度**和**字号**。宽度和高度从 240 到 720 像素，字号从 12 到 36 像素，每次一个像素。设定的宽度是精确的，多出来的空间平分在卡片之间，所以每一行仍然顶到两边。高度和字号只改变卡片上的文本框，也就是场景的冲突、角色的一句话故事概述，或者其他笔记的描述。拖动滑块时，看板会跟着变化。点**确定**保留新的大小，按 Escape 或点面板外面则恢复原样。滑块旁的**恢复默认**会回到**自动**，也就是看板自己选的大小。每个视图各自记住自己的大小，新开的标签页沿用你上次确定的那一组。**紧凑**和**图库**卡片没有文本框，所以这两种样式下不显示高度和字号滑块。
+- **时间线和节拍表的显示。** 两处工具栏上新增**显示**按钮，里面是卡片样式和同样的三个滑块，调整的是时间线上的场景卡片。场景池有自己的卡片样式和大小，在场景池工具栏的**显示**里设置。同一个场景在池里可以是紧凑的卡片，放上时间线后再显示全部内容。在工具栏的面板里，字号还会改变描述和子描述，所以不管卡片是哪种样式，都可以调整它。场景池收起时，工具栏上的按钮照样可用，两个工作区各自随标签页记住这两组设置。在平板上，它收在**更多操作**里。
+- **关系图下方的时间轴。** **实体 ↔ 实体**工具栏上的**显示时间轴**会打开一条时间轴，每篇时间笔记占一个点，顺序和时间表格一致。滑块下方写着当前时间的名称。关系的**时间**一栏填了其中某个时间时，连线只在关系成立的那段时间里出现。拖动滑块、点轴上的某个点，或者用步进按钮和方向键，都能在各个时间之间移动。**播放**会从当前时间一路播下去。连线逐条出现，结束的连线渐渐淡出，就像 Obsidian 自带关系图谱的生长动画。以时间段标注的关系，从时间段的开始持续到结束。以时间点标注的关系，由面板里新增的**时间轴**一节的**带时间的连线**决定。选**仅最新**时，同一篇笔记对同一个对象记下更晚的关系后，旧的那条就结束，选**此后保留**则一直留到最后。**无时间的连线**决定没有填时间的关系放在哪里，没有任何带时间关系的笔记也跟着它走。选**从开始起**时，它们在每个时间都显示。选**结束之后**时，它们要到最后一个时间才出现，播放时也排在最后。看到的关系都没有填时间时，时间轴会写明这一点，按钮和滑块也都不可用。打开**减少动画**时，**播放**会让每个时间的连线一次出现，滑块逐点前进而不滑动。在平板上，手指落在时间轴那一行的任何位置都能移动滑块，按钮则收在**更多操作**里。
+- **正文流的目录滚轮。** 正文流左侧的页边现在有一列章节名，像滚轮一样转动。正在读的那一章停在中间并高亮。上下的章节名离得越远越淡、越小，到顶端和底端渐渐隐去。上下各显示多少章，跟**保持载入的笔记数**一致。阅读时滚轮会跟着你走。滚动它可以翻看全书而不移动正文：总有一个章节名停在正中，指针移开后滚轮会滑回当前章节。点击章节名会跳到那一章的开头，还没载入的章节也一样。用键盘时，按 Tab 进入滚轮，方向键上下移动，回车跳转，Esc 离开。工具栏上**页边卡片**前面的**目录**按钮可以显示或隐藏它。设置里的**在页边显示目录**和**切换正文中的目录**命令也可以。它默认显示。在手机上或窗格较窄、页边放不下时，这个按钮改为在新的**目录**侧边栏里打开同一个滚轮，**打开目录侧边栏**命令也能打开它。开启字数里程碑时，滚轮会给里程碑的标注让出位置。在专注模式下写作时，它会和其他章节一起变淡。开启**减少动画**时，滚轮直接到位，章节名不再缩小。
+- **在目录滚轮上重命名和删除章节。** 右键点击滚轮上的章节名，或在触屏上长按它，选择**重命名…** 或**删除**。指针停在章节名上时，旁边会出现三个点，触屏上这三个点显示在当前章节旁边。点击它也能打开同一个菜单。键盘焦点在某个章节名上时，按 F2 重命名，按 Delete 删除。重命名对话框里填写新名称，并有一个开关，可以同时重命名笔记的首个一级标题。标题仍与旧名称一致时，开关默认打开。标题是你另写的，开关默认关闭。名称不变而打开开关，就能让标题重新与名称一致。删除前会先询问，确认后笔记移入回收站。开启章节编号时，还可以把其后各章的编号减一。写作时，只要正在写的那一章还在页面上，滚轮就标出这一章。重命名正在写的那一章时，编辑器不会关闭，光标也留在原处。
+
+### 变更
+
+- 在时间线和节拍表上，场景池**显示**里的**卡片**现在只改变场景池里的卡片。时间线上的卡片改由工具栏的**显示**设置，并沿用它们原来的样式。
+- 在关系图的控制面板里，下拉框现在排在名称下方，占满一整行。那里的下拉框宽度全都一样，**连线标签**这个名称也不再因为选项太长而换行。
+- 在正文流里新增的一章，现在总是出现在页面顶部。以前新的一章已经在视野里时页面不动，不在视野里时才会移动。
+
+### 修复
+
+- 在关系图的搜索框里每输入一个字，变暗的连线都会闪回原来的亮度，约半秒后才暗下去。现在输入时它们一直保持暗淡。
+- 在手机和平板上，**排版**面板里的**文本对齐**和**网格线**显示不全，**两端对齐**会被截掉一部分。这两个下拉框在那里已经加宽。
+- 在正文流里，从文件列表删除正在读的那一章时，它前面的一章有时也会从页面上消失。正文流丢了位置，显示成全书的开头。现在它会停在被删章节旁边的那一章。
+- 从文件列表重命名章节不会再让页面移动，正在读全书最后一章时也一样。
 
 ## [0.31.0]
 
