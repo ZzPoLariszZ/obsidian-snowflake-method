@@ -366,6 +366,10 @@ export class SnowflakeManuscriptView extends ItemView {
 	private contentsRows: readonly ContentsRow[] = [];
 	/** The manuscript those rows were drawn from. */
 	private contentsShape: string | null = null;
+	/** The reading of the manuscript whose read-only notes were last looked for. */
+	private contentsModel: ManuscriptModel | null = null;
+	/** The notes of that reading that may not be written to, which the rows say with their names. */
+	private contentsLocked = '';
 	/** Whether the left margin holds the wheel, as last measured. */
 	private contentsRoomy = false;
 	/** Whether the wheel stands in the margin: asked for, and the margin holding it. */
@@ -3863,13 +3867,26 @@ export class SnowflakeManuscriptView extends ItemView {
 	private syncContents(): void {
 		if (this.closing) return;
 		const model = this.model;
-		const shape = `${model?.projectPath ?? ''}\n${this.shape}`;
+		// Looked for once a reading, not once a turn of the wheel: a book of
+		// fifteen hundred chapters is turned far more often than it is read.
+		if (model !== this.contentsModel) {
+			this.contentsModel = model;
+			this.contentsLocked = (model?.segments ?? [])
+				.filter((segment) => segment.readOnly)
+				.map((segment) => segment.path)
+				.join('\n');
+		}
+		const shape = `${model?.projectPath ?? ''}\n${this.shape}\n\n${this.contentsLocked}`;
 		if (shape !== this.contentsShape) {
 			this.contentsShape = shape;
-			this.contentsRows = (model?.segments ?? []).map((segment) => ({
-				path: segment.path,
-				title: segment.title,
-			}));
+			// A note a newer build wrote keeps its chapter as it is, in a
+			// manuscript that otherwise may be written to: its row says so,
+			// and offers nothing to do to it.
+			this.contentsRows = (model?.segments ?? []).map((segment) =>
+				segment.readOnly
+					? { path: segment.path, title: segment.title, readOnly: true }
+					: { path: segment.path, title: segment.title },
+			);
 		}
 		const reach = this.host.manuscriptWindowSettings().before;
 		const active = this.contentsActive();
@@ -3993,14 +4010,17 @@ export class SnowflakeManuscriptView extends ItemView {
 		menu.showAtMouseEvent(event);
 	}
 
-	/** Whether a note is one of this manuscript's, in a manuscript that may be written to. */
+	/**
+	 * Whether a note is one of this manuscript's that may be written to, in
+	 * a manuscript that may be. A note a newer build wrote is read-only by
+	 * itself, and renaming or deleting it was refused only after the author
+	 * had answered the dialog.
+	 */
 	private holdsWritable(path: string): boolean {
 		const model = this.model;
-		return (
-			model !== null &&
-			!model.readOnly &&
-			model.segments.some((segment) => segment.path === path)
-		);
+		if (model === null || model.readOnly) return false;
+		const segment = model.segments.find((candidate) => candidate.path === path);
+		return segment !== undefined && !segment.readOnly;
 	}
 
 	private pressRenameChapter(path: string): void {

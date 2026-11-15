@@ -379,9 +379,15 @@ export function renderContentsWheel(
 		return button === null ? -1 : items.findIndex((item) => item === button);
 	};
 
-	/** Whether rows offer their menu and their keys: asked for, in a manuscript that may be written to. */
+	/**
+	 * Whether a row offers its menu and its keys: asked for, in a manuscript
+	 * that may be written to, for a chapter whose own note may be.
+	 */
 	let editable = true;
-	const acts = (): boolean => editable && deps.menu !== undefined;
+	const acts = (at: number): boolean => {
+		const row = rows[at];
+		return editable && deps.menu !== undefined && row !== undefined && row.readOnly !== true;
+	};
 	const hovers = (): boolean => deps.hovers ?? systemHovers(nav.win);
 
 	/**
@@ -411,7 +417,7 @@ export function renderContentsWheel(
 	/** Stands the dots in a row, or takes them off the wheel where there is no such row. */
 	const offer = (at: number): void => {
 		if (more === null) return;
-		const line = acts() ? (items[at]?.parentElement ?? null) : null;
+		const line = acts(at) ? (items[at]?.parentElement ?? null) : null;
 		const from = more.parentElement;
 		if (from === line) return;
 		from?.removeClass('has-more');
@@ -499,16 +505,18 @@ export function renderContentsWheel(
 		) {
 			// The dots: the row's menu, where a press on its name is the way
 			// to its chapter.
-			const row = rows[rowAround(more)];
-			if (row !== undefined && acts()) deps.menu?.(row.path, event);
+			const dotted = rowAround(more);
+			const row = rows[dotted];
+			if (row !== undefined && acts(dotted)) deps.menu?.(row.path, event);
 			return;
 		}
 		const at = rowOf(event.target);
 		if (at >= 0) choose(at);
 	});
 	list.addEventListener('contextmenu', (event) => {
-		const row = rows[rowAround(event.target)];
-		if (row === undefined || !acts()) return;
+		const asked = rowAround(event.target);
+		const row = rows[asked];
+		if (row === undefined || !acts(asked)) return;
 		event.preventDefault();
 		menued = true;
 		deps.menu?.(row.path, event);
@@ -572,7 +580,7 @@ export function renderContentsWheel(
 		const at = rowOf(event.target);
 		if (at < 0) return;
 		const row = rows[at];
-		if (row !== undefined && !event.isComposing && acts()) {
+		if (row !== undefined && !event.isComposing && acts(at)) {
 			// The keys the file explorer gives a file: F2 names it anew, and
 			// Delete, or Backspace with the command key, throws it away.
 			const command = event.ctrlKey || event.metaKey;
@@ -729,11 +737,10 @@ export function renderContentsWheel(
 			const moved = model.active !== active;
 			active = model.active;
 			mark();
-			const may = model.editable !== false;
-			if (may !== editable) {
-				editable = may;
-				if (!may) offer(-1);
-			}
+			editable = model.editable !== false;
+			// The dots do not outstay a row that has stopped offering anything:
+			// the manuscript, or the row's own note, turned read-only under them.
+			if (more !== null && more.parentElement !== null && !acts(rowAround(more))) offer(-1);
 			offerAtRest();
 			// A list that changed may have moved every row after the change:
 			// the row holding the keys is brought back to the middle at once,

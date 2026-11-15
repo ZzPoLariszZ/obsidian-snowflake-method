@@ -2,6 +2,12 @@
 export interface ContentsRow {
 	path: string;
 	title: string;
+	/**
+	 * Whether the chapter's own note may not be written to, in a manuscript
+	 * that otherwise may: one a newer build wrote. Its row then offers
+	 * nothing to do to the chapter itself. Left out, it may.
+	 */
+	readOnly?: boolean;
 }
 
 /** What one stream has to show the contents sidebar. */

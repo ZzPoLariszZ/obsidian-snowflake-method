@@ -1009,6 +1009,38 @@ describe('the wheel of chapters', () => {
 		expect(dotsOf(list)).toHaveLength(1);
 	});
 
+	it('offers nothing for a chapter whose own note may not be written to, in a manuscript that may', () => {
+		const { wheel, list, asked, items } = mount({ acts: true });
+		const rows = chapters(5).map((row, at) => (at === 2 ? { ...row, readOnly: true } : row));
+		wheel.sync({ rows, active: rows[0]?.path ?? null, reach: 5 });
+		items()[2]?.dispatchEvent(over('mouse'));
+		expect(dotsOf(list)).toEqual([]);
+		const press = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+		items()[2]?.dispatchEvent(press);
+		expect(press.defaultPrevented).toBe(false);
+		items()[2]?.focus();
+		const rename = key('F2');
+		items()[2]?.dispatchEvent(rename);
+		const erase = key('Delete');
+		items()[2]?.dispatchEvent(erase);
+		expect(rename.defaultPrevented).toBe(false);
+		expect(erase.defaultPrevented).toBe(false);
+		expect(asked).toEqual([]);
+		// The chapters beside it offer what they did.
+		items()[3]?.dispatchEvent(over('mouse'));
+		expect(dotsOf(list)).toHaveLength(1);
+		// And the dots do not outstay a row whose note turns read-only under them.
+		const locked = rows.map((row, at) => (at === 3 ? { ...row, readOnly: true } : row));
+		wheel.sync({ rows: locked, active: rows[0]?.path ?? null, reach: 5 });
+		expect(dotsOf(list)).toEqual([]);
+		// Where no pointer can rest, the page's row keeps none while its note is read-only.
+		const touching = mount({ acts: true, hovers: false });
+		touching.wheel.sync({ rows, active: rows[2]?.path ?? null, reach: 5 });
+		expect(dotsOf(touching.list)).toEqual([]);
+		touching.wheel.sync({ rows, active: rows[1]?.path ?? null, reach: 5 });
+		expect(dotsOf(touching.list)).toHaveLength(1);
+	});
+
 	it('draws no dots where rows offer nothing more', () => {
 		const { wheel, list, items } = mount();
 		const rows = chapters(3);

@@ -101,7 +101,7 @@ interface Inside {
 	model: {
 		projectPath: string;
 		readOnly: boolean;
-		segments: { path: string; title: string }[];
+		segments: { path: string; title: string; readOnly?: boolean }[];
 	} | null;
 	mounted: Map<string, Entry>;
 	refreshRun: Promise<void> | null;
@@ -625,6 +625,32 @@ describe('the stream’s chapters: followed, added, renamed and deleted', () => 
 		await view.deleteChapter(chapter(3).path);
 		expect(menus).toEqual([]);
 		expect(said).toEqual([]);
+	});
+
+	it('offers nothing for a note that may not be written to in a manuscript that may, and says so on its row', async () => {
+		const { view, hub, said } = stream();
+		if (view.model === null) throw new Error('no manuscript');
+		// A note a newer build wrote: the services refuse to rename or delete
+		// it, which the author used to learn only after answering the dialog.
+		view.model.segments = view.model.segments.map((segment) =>
+			segment.path === chapter(3).path ? { ...segment, readOnly: true } : segment,
+		);
+		view.syncContents();
+		expect(hub.current()?.rows.map((row) => row.readOnly === true)).toEqual([
+			false,
+			false,
+			true,
+			false,
+			false,
+		]);
+		view.openChapterMenu(chapter(3).path, new MouseEvent('contextmenu'));
+		await view.renameChapter(chapter(3).path);
+		await view.deleteChapter(chapter(3).path);
+		expect(menus).toEqual([]);
+		expect(said).toEqual([]);
+		// The chapters beside it are offered what they were.
+		view.openChapterMenu(chapter(4).path, new MouseEvent('contextmenu'));
+		expect(menus).toHaveLength(1);
 	});
 
 	it('renames a chapter that is only being read with nothing taken down', async () => {
