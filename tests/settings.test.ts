@@ -228,6 +228,17 @@ describe('settings', () => {
 		).toBe(true);
 	});
 
+	it('shows the wheel of chapters in the stream\u2019s margin unless it is turned off', () => {
+		expect(DEFAULT_SETTINGS.showManuscriptContents).toBe(true);
+		expect(sanitizeSettings({}).showManuscriptContents).toBe(true);
+		expect(
+			sanitizeSettings({ showManuscriptContents: false }).showManuscriptContents,
+		).toBe(false);
+		expect(
+			sanitizeSettings({ showManuscriptContents: 'no' }).showManuscriptContents,
+		).toBe(true);
+	});
+
 	it('holds the session clocks to their ranges, or the defaults', () => {
 		expect(DEFAULT_SETTINGS.sessionIdleThresholdSeconds).toBe(60);
 		expect(DEFAULT_SETTINGS.sessionCountdownMinutes).toBe(45);

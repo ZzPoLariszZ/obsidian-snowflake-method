@@ -75,6 +75,12 @@ export function installObsidianDom(win: Window & typeof globalThis): void {
 	// And the loose builders the app puts on the window, which make an
 	// element of nobody's until it is placed.
 	const loose = {
+		createEl: (tag: string, spec: ElementSpec = {}): HTMLElement => {
+			const holder = win.document.createElement('div');
+			const made = create.call(holder, tag, spec) as HTMLElement;
+			made.remove();
+			return made;
+		},
 		createSpan: (spec: ElementSpec = {}): HTMLSpanElement => {
 			const holder = win.document.createElement('div');
 			const span = create.call(holder, 'span', spec) as HTMLSpanElement;

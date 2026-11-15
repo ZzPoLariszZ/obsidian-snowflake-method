@@ -611,6 +611,105 @@ export class ManuscriptService {
   }
 
   /**
+   * What the rename form opens on: the name a note goes by, its first
+   * heading where it has one, and whether that heading still says the name.
+   */
+  async segmentNaming(path: string): Promise<{
+    name: string;
+    heading: string | null;
+    matches: boolean;
+  }> {
+    const record = await this.repository.readManaged(path);
+    const name = fileStem(record.path);
+    const heading = firstHeading(record.body);
+    return { name, heading, matches: headingNamesStem(heading, name) };
+  }
+
+  /**
+   * Gives one note a new name, asked for by the author on that note alone.
+   * The note keeps its folder and its position. `heading` says whether its
+   * first heading takes the name as well, which is the author's call here
+   * where a renumbering decides it by the guard: asked for one note, they
+   * can see the heading they would be replacing. A name already taken in
+   * the folder refuses the rename with nothing done, and a rename that
+   * keeps the name is how a heading alone is brought level with it.
+   */
+  async renameSegment(
+    project: ProjectRef,
+    path: string,
+    title: string,
+    options: { heading: boolean },
+  ): Promise<{ from: string; to: string }> {
+    const name = title.replace(/\s+/gu, " ").trim();
+    if (!name) throw new Error("Segment title is required.");
+    const from = normalizePath(path);
+    // The one note is read, not the manuscript: a batch reads every note to
+    // settle an order among its renames, and one rename has no order. On a
+    // book of fifteen hundred chapters that reading was most of a second.
+    if (!this.isInManuscriptFolder(project, from)) {
+      throw new ManagedFileNotFoundError(from);
+    }
+    const segment = await this.repository.readManaged(from);
+    if (segment.readOnly) {
+      throw new UnsupportedSchemaError(from, SCHEMA_VERSION + 1, SCHEMA_VERSION);
+    }
+    const wanted = normalizePath(`${parentOf(from)}/${safeFileName(name)}.md`);
+    let to = from;
+    if (wanted !== from) {
+      if (this.repository.get(wanted) !== null) throw new PathConflictError(wanted);
+      to = await this.repository.renameFile(from, wanted);
+    }
+    if (options.heading) {
+      const record = await this.repository.readManaged(to);
+      const heading = firstHeading(record.body);
+      // Only a heading that is there is rewritten: a note without one is
+      // not given one for having been renamed.
+      if (heading !== null && heading !== name) {
+        await this.repository.updateFirstHeading(to, name, { userInput: true });
+      }
+    }
+    return { from, to };
+  }
+
+  /**
+   * Takes one note out of the manuscript and puts its file in the trash, as
+   * deleting it in the file explorer does. `renames` are the renumberings
+   * that follow, the numbered notes after it moving down by one, settled
+   * before anything is thrown away and with the note's own name counted as
+   * free, as a merge settles them.
+   */
+  async removeSegment(
+    project: ProjectRef,
+    path: string,
+    renames: readonly { path: string; title: string }[] = [],
+  ): Promise<{
+    removed: string;
+    /** The note that stood before it, or after it where it was the first. */
+    neighbour: string | null;
+    renumbered: SegmentRenameOutcome;
+  }> {
+    const target = normalizePath(path);
+    const ordered = await this.listSegmentsFromFiles(project);
+    const index = ordered.findIndex((segment) => segment.path === target);
+    const segment = ordered[index];
+    if (segment === undefined) throw new ManagedFileNotFoundError(target);
+    if (segment.readOnly) {
+      throw new UnsupportedSchemaError(target, SCHEMA_VERSION + 1, SCHEMA_VERSION);
+    }
+    const plan = await this.planRenames(project, renames, [target]);
+    await this.repository.trashFile(target);
+    const { outcome: renumbered } = await this.runRenames(plan);
+    const beside = ordered[index - 1] ?? ordered[index + 1];
+    // A neighbour the renumbering moved is named by where it went.
+    const moved = renumbered.renamed.find(({ from }) => from === beside?.path);
+    return {
+      removed: target,
+      neighbour: moved?.to ?? beside?.path ?? null,
+      renumbered,
+    };
+  }
+
+  /**
    * The batch settled: every rename checked, and put in the order it can
    * run. A note taking a name another note in the batch is giving up runs
    * after that note has given it up -- the last note first when the numbers

@@ -116,11 +116,15 @@ describe('the stream toolbar', () => {
 		expect(find?.disabled).toBe(false);
 	});
 
-	it('opens the margin card sidebar from the button after the mentions door, live while reading', async () => {
+	it('opens the margin card sidebar from the button after the two margins’ other door, live while reading', async () => {
 		const { bar, opened, lit, view } = mount(false);
 		const cards = bar.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-cards');
 		expect(cards?.getAttribute('data-tooltip')).toBe('manuscript.toolbar.marginCards');
-		expect(has(cards?.previousElementSibling, 'snowflake-method-toolbar-mentions')).toBe(true);
+		// The left margin's door stands before the right margin's, after the mentions.
+		expect(has(cards?.previousElementSibling, 'snowflake-method-toolbar-contents')).toBe(true);
+		expect(
+			has(cards?.previousElementSibling?.previousElementSibling, 'snowflake-method-toolbar-mentions'),
+		).toBe(true);
 		expect(cards?.disabled).toBe(false);
 		// The count waits, hidden, for the stream to say what the page holds,
 		// and stands beside the icon, not over it.

@@ -32,3 +32,21 @@ export const RAIL_TIGHT_MARGIN = RAIL_FLOOR + RAIL_ROOM;
 
 export const marginIsTight = (margin: number): boolean =>
 	margin < RAIL_TIGHT_MARGIN;
+
+/**
+ * The lane the word milestones keep beside the column before one has been
+ * measured, in ems of the labels' own type: room for a count of six figures
+ * and its unit, less what of a label stands inside the column's own margin.
+ * A label that reaches further widens the lane to its own reach.
+ */
+export const MILESTONE_LANE_EMS = 6.5;
+
+/**
+ * The wheel of chapters stands in the other margin by the rail's own
+ * figures: as wide as a card where the margin has the room, narrower down
+ * to the card's floor, and held back under it. What the word milestones
+ * keep beside the column is the labels', so the wheel counts its room
+ * without that lane, which is nothing while no milestone is drawn.
+ */
+export const contentsIsTight = (margin: number, lane: number): boolean =>
+	margin - lane < RAIL_TIGHT_MARGIN;

@@ -5410,6 +5410,40 @@ export class SnowflakeProjectService {
     };
   }
 
+  /**
+   * Deletes one manuscript note. The project's own draft link is moved to
+   * the note beside it when it named the one going, as a merge moves it to
+   * the note that absorbed the other: the link is the way back into the
+   * manuscript, and one left on a note in the trash leads nowhere.
+   */
+  async deleteManuscriptSegment(
+    projectLocator: ProjectLocator,
+    path: string,
+    renames: readonly { path: string; title: string }[] = [],
+  ): Promise<{ neighbour: string | null; renumbered: SegmentRenameOutcome }> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const gone = await this.manuscript.removeSegment(project, path, renames);
+    if (project.links.draft === gone.removed && gone.neighbour !== null) {
+      await this.repository.updateFrontmatter(project.projectFile, {
+        [FRONTMATTER_KEYS.draft]: toWikiLink(gone.neighbour, fileStem(gone.neighbour)),
+      });
+    }
+    return { neighbour: gone.neighbour, renumbered: gone.renumbered };
+  }
+
+  /** Renames one manuscript note, in a project that may be written to. */
+  async renameManuscriptSegment(
+    projectLocator: ProjectLocator,
+    path: string,
+    title: string,
+    options: { heading: boolean },
+  ): Promise<{ from: string; to: string }> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    return this.manuscript.renameSegment(project, path, title, options);
+  }
+
   async reorderScene(
     projectLocator: ProjectLocator,
     sceneId: string,

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { RANK_GAP, type ManuscriptSegment } from '../../src/domain';
 import {
 	activeSegmentAt,
+	carriedOffset,
 	isReadingPlace,
 	planWindow,
 	readingPlaceAt,
@@ -209,5 +210,32 @@ describe('isReadingPlace', () => {
 		expect(isReadingPlace({ path: at(2), offset: Number.NaN })).toBe(false);
 		expect(isReadingPlace(null)).toBe(false);
 		expect(isReadingPlace('Chapter 2')).toBe(false);
+	});
+});
+
+describe('carriedOffset', () => {
+	const before = '# Chapter 3\n\nThe bell rang twice.\n';
+	const after = '# Chapter 3 - Dusk\n\nThe bell rang twice.\n';
+
+	it('leaves a place before the change where it is, and moves one after it by what the change added', () => {
+		expect(carriedOffset(before, after, 0)).toBe(0);
+		expect(carriedOffset(before, after, 5)).toBe(5);
+		// After the heading: seven characters further on.
+		expect(carriedOffset(before, after, 13)).toBe(20);
+		expect(carriedOffset(before, after, before.length)).toBe(after.length);
+	});
+
+	it('moves a place back by what the change took', () => {
+		expect(carriedOffset(after, before, 20)).toBe(13);
+		expect(carriedOffset(after, before, after.length)).toBe(before.length);
+	});
+
+	it('puts a place inside the change at the end of what stands there now', () => {
+		// In the middle of a heading that was replaced whole.
+		expect(carriedOffset('# Old Words\n\nProse.\n', '# Dusk\n\nProse.\n', 6)).toBe(6);
+	});
+
+	it('answers the same place for a text that did not change', () => {
+		expect(carriedOffset(before, before, 9)).toBe(9);
 	});
 });

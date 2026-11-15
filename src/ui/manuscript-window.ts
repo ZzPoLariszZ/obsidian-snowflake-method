@@ -128,6 +128,30 @@ export function readingPlaceAt(
 	return held === undefined ? null : { path: held.path, offset: edge - held.top };
 }
 
+/**
+ * Where a place in a text stands once one stretch of the text has changed:
+ * a caret before the change stays where it is, one after it moves by what
+ * the change added or took, and one inside it goes to the end of what
+ * stands there now. This is how a caret is put back in a note whose heading
+ * was rewritten while the note was down.
+ */
+export function carriedOffset(before: string, after: string, at: number): number {
+	if (before === after) return at;
+	const reach = Math.min(before.length, after.length);
+	let head = 0;
+	while (head < reach && before[head] === after[head]) head += 1;
+	let tail = 0;
+	while (
+		tail < reach - head &&
+		before[before.length - 1 - tail] === after[after.length - 1 - tail]
+	) {
+		tail += 1;
+	}
+	if (at <= head) return at;
+	if (at >= before.length - tail) return at + after.length - before.length;
+	return after.length - tail;
+}
+
 /** A place as it comes back from a saved state, which may say anything. */
 export function isReadingPlace(value: unknown): value is ReadingPlace {
 	if (typeof value !== 'object' || value === null) return false;

@@ -70,6 +70,7 @@ import {
 import type { RevisionOutcome } from '../services';
 import {
 	activeSegmentAt,
+	carriedOffset,
 	isReadingPlace,
 	planWindow,
 	readingPlaceAt,
@@ -95,8 +96,15 @@ import {
 	promptForForeshadowingPick,
 	promptForOccurrenceRelink,
 } from './foreshadowing-form';
+import type { ContentsRow } from './contents-hub';
+import { renderContentsWheel, type ContentsWheel } from './contents-wheel';
 import type { MarginCardsSegment } from './margin-cards-hub';
-import { marginIsTight } from './margin-room';
+import {
+	MILESTONE_LANE_EMS,
+	RAIL_GAP,
+	contentsIsTight,
+	marginIsTight,
+} from './margin-room';
 import { addMentionMenuItems, openMentionMenu } from './mention-menu';
 import { openMentionModeMenu } from './mention-mode-menu';
 import {
@@ -346,6 +354,36 @@ export class SnowflakeManuscriptView extends ItemView {
 	private marginInView: ReadonlySet<string> = new Set();
 	/** Set as the view closes: the chapters coming down publish no feed, so the hub forgets the view for good. */
 	private closing = false;
+	/** The wheel of chapters in the left margin, while the page holds a manuscript. */
+	private contents: ContentsWheel | null = null;
+	/** The box the wheel stands in: the left margin, as tall as the page. */
+	private contentsMargin: HTMLElement | null = null;
+	/** The bar's door to the wheel: a switch where the margin holds it, the way to the sidebar where it does not. */
+	private contentsToggle: HTMLButtonElement | null = null;
+	/** What the bar's door was last painted as, so a measure that changed nothing paints nothing. */
+	private contentsPainted = '';
+	/** The chapters as last handed to the wheel and the sidebar: one array while the manuscript keeps its shape. */
+	private contentsRows: readonly ContentsRow[] = [];
+	/** The manuscript those rows were drawn from. */
+	private contentsShape: string | null = null;
+	/** Whether the left margin holds the wheel, as last measured. */
+	private contentsRoomy = false;
+	/** Whether the wheel stands in the margin: asked for, and the margin holding it. */
+	private contentsShown = false;
+	/** The chapter the wheel was last turned to, so a scroll that changes nothing tells it nothing. */
+	private contentsTold: string | null = null;
+	/** The chapter a press on the wheel is on its way to, which the wheel says until the page has arrived. */
+	private contentsBound: string | null = null;
+	/** Notes renamed since the manuscript was last read, each with where it went, for whatever stood on it. */
+	private renamed = new Map<string, string>();
+	/** Takes down the watch kept on the page's box. */
+	private releaseStreamWatch: (() => void) | null = null;
+	/** Where the outermost milestone label stands, as the last look at the labels found it. */
+	private milestoneEdge: number | null = null;
+	/** The furthest a milestone label has reached from the column, for the lane the wheel leaves them. */
+	private milestoneReach = 0;
+	/** The size of the labels' type, read once a dress of the app. */
+	private milestoneType: number | null = null;
 	/** Takes down the writing faces the bar carries on mobile, where it carries any. */
 	private releaseWritingFaces: (() => void) | null = null;
 	/** The toolbar's two writing-mode buttons, repainted as settings move. */
@@ -482,7 +520,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private saveWindow: Window | null = null;
 	/** The flush in progress, if any: the next one waits its turn behind it. */
 	private saving: Promise<void> = Promise.resolve();
-	private refreshing = false;
+	/** The refresh under way, with any asked for meanwhile, for whoever must wait it out. */
+	private refreshRun: Promise<void> | null = null;
 	/** A refresh asked for while one was running, run once that one is done. */
 	private refreshAgain = false;
 	/** A refresh that landed while hidden, owed at the next reveal. */
@@ -537,6 +576,16 @@ export class SnowflakeManuscriptView extends ItemView {
 		// the app registers its own: on a Mac, Option types another character.
 		scope.register(['Mod'], 'F', () => this.openSearchFromKeys(false));
 		scope.register(['Mod', 'Alt'], 'F', () => this.openSearchFromKeys(true));
+		// F2 on a row of the wheel renames its chapter, as it renames a file
+		// in the file explorer. The app binds F2 to its own rename and reads
+		// it at the window, so the wheel never hears the key: it is answered
+		// here, and passed on wherever no row holds the keys.
+		scope.register([], 'F2', () => {
+			const path = this.contents?.held() ?? null;
+			if (path === null) return true;
+			this.pressRenameChapter(path);
+			return false;
+		});
 	}
 
 	/**
@@ -666,6 +715,11 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.registerEvent(
 			this.app.workspace.on('css-change', () => {
 				this.closePresentationPanel();
+				// The milestone labels are set in the theme's type: the lane the
+				// wheel leaves them is measured afresh under a new one.
+				this.milestoneType = null;
+				this.milestoneReach = 0;
+				this.syncMarginRoom();
 			}),
 		);
 		// The two moments at which the browser may have forgotten where the
@@ -679,6 +733,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.app.workspace.on('active-leaf-change', (leaf) => {
 				if (leaf !== this.leaf) return;
 				this.host.marginCards.prefer(this);
+				this.host.contents.prefer(this);
 				this.recoverPlace();
 			}),
 		);
@@ -691,6 +746,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.closing = true;
 		this.dropCaretCard();
 		this.host.marginCards.retire(this);
+		this.host.contents.retire(this);
+		this.dropContents();
 		if (this.marginViewportFrame !== null) {
 			this.contentEl.win.cancelAnimationFrame(this.marginViewportFrame);
 			this.marginViewportFrame = null;
@@ -742,6 +799,9 @@ export class SnowflakeManuscriptView extends ItemView {
 			}
 			this.syncMarginRoom();
 			this.publishMarginCards();
+			// A wheel turned to another chapter while its tab was put away had
+			// no layout to turn in: it is stood on the page's chapter now.
+			if (this.contentsShown) this.contents?.settle();
 		}
 		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
 		this.refreshQueuedWhileHidden = false;
@@ -762,107 +822,256 @@ export class SnowflakeManuscriptView extends ItemView {
 	 */
 	async refresh(): Promise<void> {
 		this.refreshQueuedWhileHidden = false;
-		if (this.refreshing) {
+		if (this.refreshRun !== null) {
 			// Asked for while one was running: what the running one loaded is
 			// already out of date, and dropping the request left the page showing
 			// one project while the leaf had been told to show another.
 			this.refreshAgain = true;
+			// And waited for. Whoever has just made a note, renamed one or
+			// thrown one away goes on to act on the manuscript as it now
+			// stands, and being handed back at once left them holding the one
+			// from before: a new note the page could not find, and a window
+			// thrown to the head of the book for it. A failure is the first
+			// asker's to report.
+			await this.refreshRun.catch(() => undefined);
 			return;
 		}
-		this.refreshing = true;
+		const run = (async () => {
+			try {
+				do {
+					this.refreshAgain = false;
+					await this.refreshOnce();
+				} while (this.refreshAgain);
+			} finally {
+				// Let go of here, in the same breath as the last look at the
+				// flag: an asker arriving between this and anything later
+				// would wait on a run that is over and be answered by none.
+				this.refreshRun = null;
+			}
+		})();
+		this.refreshRun = run;
+		await run;
+	}
+
+	/** One reading of the manuscript and the page brought level with it. */
+	private async refreshOnce(): Promise<void> {
 		this.wikilinkTargets = null;
 		this.mentionFeed = null;
 		this.mentionState = null;
 		this.milestoneFeed = null;
 		this.milestoneTotals = null;
-		try {
-			const settings = this.host.manuscriptWindowSettings();
-			const previousShape = this.shape;
-			const previousHeaders = this.headerShape;
-			this.model = await this.host.loadManuscript(this.projectPath);
-			this.shape = shapeOf(this.model);
-			this.headerShape = headerShapeOf(settings);
-			// The writing count reads this stream's context back, and the model
-			// is half of that context: a count taken while it was still loading
-			// spoke for the wrong project, and nothing else would correct it.
-			this.host.manuscriptWritingChanged();
-			// The modes are classes and nothing else, so flipping one moves nothing.
-			this.contentEl.toggleClass(
-				'snowflake-method-typewriter',
-				settings.typewriter,
-			);
-			this.contentEl.toggleClass(
-				'snowflake-method-focus',
-				settings.focusLevel !== 'off',
-			);
-			// The toolbar's pair wears the same truth: lit and captioned anew.
-			this.paintModeToggle('typewriter');
-			this.paintModeToggle('focus');
-			// The page speaks the project's language, not the app's: hyphenation
-			// dictionaries and CJK font fallback follow this tag, and an English
-			// manuscript under a Chinese Obsidian should still break its words.
-			if (this.model === null) this.contentEl.removeAttribute('lang');
-			else this.contentEl.setAttribute('lang', this.model.locale);
-			this.applyPresentation();
-			// The popover shows the Enter toggle too, which is no part of the
-			// dress the shape above memoises: kept in step here, cheaply.
-			//
-			// Read afresh rather than from the snapshot taken at the top of this
-			// method: loading a manuscript is awaited, and a slider dragged in
-			// the popover during that wait would be handed back the value it had
-			// before the drag -- the handle snapping back while the page kept
-			// the new measure, and the next drag starting from the wrong stop.
-			this.presentationPanel?.sync(
-				this.host.manuscriptWindowSettings().presentation,
-			);
+		const settings = this.host.manuscriptWindowSettings();
+		const previousShape = this.shape;
+		const previousHeaders = this.headerShape;
+		const before = this.model?.segments ?? [];
+		this.model = await this.host.loadManuscript(this.projectPath);
+		// Whatever stood on a note renamed since the last reading stands on
+		// the name it has now, and a page whose own chapter has gone is given
+		// the one beside it, both before the window is drawn round anything.
+		const carried = this.carryRenames();
+		const lost = this.reseatActive(before);
+		this.shape = shapeOf(this.model);
+		this.headerShape = headerShapeOf(settings);
+		// The writing count reads this stream's context back, and the model
+		// is half of that context: a count taken while it was still loading
+		// spoke for the wrong project, and nothing else would correct it.
+		this.host.manuscriptWritingChanged();
+		// The modes are classes and nothing else, so flipping one moves nothing.
+		this.contentEl.toggleClass(
+			'snowflake-method-typewriter',
+			settings.typewriter,
+		);
+		this.contentEl.toggleClass(
+			'snowflake-method-focus',
+			settings.focusLevel !== 'off',
+		);
+		// The toolbar's pair wears the same truth: lit and captioned anew.
+		this.paintModeToggle('typewriter');
+		this.paintModeToggle('focus');
+		// The page speaks the project's language, not the app's: hyphenation
+		// dictionaries and CJK font fallback follow this tag, and an English
+		// manuscript under a Chinese Obsidian should still break its words.
+		if (this.model === null) this.contentEl.removeAttribute('lang');
+		else this.contentEl.setAttribute('lang', this.model.locale);
+		this.applyPresentation();
+		// The popover shows the Enter toggle too, which is no part of the
+		// dress the shape above memoises: kept in step here, cheaply.
+		//
+		// Read afresh rather than from the snapshot taken at the top of this
+		// method: loading a manuscript is awaited, and a slider dragged in
+		// the popover during that wait would be handed back the value it had
+		// before the drag -- the handle snapping back while the page kept
+		// the new measure, and the next drag starting from the wrong stop.
+		this.presentationPanel?.sync(
+			this.host.manuscriptWindowSettings().presentation,
+		);
 
-			const project = this.model?.projectPath ?? null;
-			if (
-				this.streamEl !== null &&
-				this.renderedProject === project &&
-				(this.model?.segments.length ?? 0) > 0
-			) {
-				// A note arriving, leaving, being cut in two or joined to the next is
-				// a change to what is on the page, not a reason to build a new one.
-				// Rebuilding threw the reader to the top of a note every time they
-				// added one — and rendered every note in the window to do it, when
-				// planWindow already knows which have arrived and which have gone.
-				// A setting they just flipped is no reason to move them either, so
-				// the chrome is redrawn where it stands.
-				const reshaped = this.shape !== previousShape;
-				if (reshaped) this.redrawBoundaries();
-				if (reshaped || this.headerShape !== previousHeaders) {
-					this.redrawHeaders();
-				}
-				await this.applyWindow();
-				await this.refreshMountedBodies();
-				// The notes that did not re-render keep their old dress, and the
-				// roster behind it may be why this refresh fired: a member just
-				// created should light up where it already stands.
-				this.applyMentionMode();
-				// And the find bar's count is the manuscript's, wherever it changed.
-				this.searchBar?.setReplaceAllowed(this.model?.readOnly !== true);
-				void this.search.reconcile().catch((error: unknown) => {
-					this.showError(error);
-				});
-				return;
+		const project = this.model?.projectPath ?? null;
+		if (
+			this.streamEl !== null &&
+			this.renderedProject === project &&
+			(this.model?.segments.length ?? 0) > 0
+		) {
+			// A note arriving, leaving, being cut in two or joined to the next is
+			// a change to what is on the page, not a reason to build a new one.
+			// Rebuilding threw the reader to the top of a note every time they
+			// added one — and rendered every note in the window to do it, when
+			// planWindow already knows which have arrived and which have gone.
+			// A setting they just flipped is no reason to move them either, so
+			// the chrome is redrawn where it stands.
+			const reshaped = this.shape !== previousShape;
+			if (reshaped) this.redrawBoundaries();
+			if (reshaped || this.headerShape !== previousHeaders) {
+				this.redrawHeaders();
 			}
+			await this.applyWindow();
+			await this.refreshMountedBodies();
+			if (lost || carried.active !== null || carried.place !== null) {
+				await this.settleCarried(carried);
+			}
+			// The notes that did not re-render keep their old dress, and the
+			// roster behind it may be why this refresh fired: a member just
+			// created should light up where it already stands.
+			this.applyMentionMode();
+			// And the find bar's count is the manuscript's, wherever it changed.
+			this.searchBar?.setReplaceAllowed(this.model?.readOnly !== true);
+			void this.search.reconcile().catch((error: unknown) => {
+				this.showError(error);
+			});
+			return;
+		}
 
-			const editing = this.editingPath;
-			await this.render();
-			if (
-				editing !== null &&
-				this.model?.segments.some((segment) => segment.path === editing) === true
-			) {
-				await this.activateSegment(editing);
-			}
-		} finally {
-			this.refreshing = false;
+		const editing = this.editingPath;
+		await this.render();
+		if (
+			editing !== null &&
+			this.model?.segments.some((segment) => segment.path === editing) === true
+		) {
+			await this.activateSegment(editing);
 		}
-		if (this.refreshAgain) {
-			this.refreshAgain = false;
-			await this.refresh();
+	}
+
+	/**
+	 * Told that a note has taken a new name, from the wheel or from anywhere
+	 * else in the app. Kept until the manuscript is next read, when whatever
+	 * stood on the old name is moved onto the new one.
+	 */
+	noteRenamed(from: string, to: string): void {
+		// A name taken again before the manuscript was read: the note that
+		// came to it earlier has moved on with it.
+		let followed = false;
+		for (const [earlier, later] of this.renamed) {
+			if (later !== from) continue;
+			this.renamed.set(earlier, to);
+			followed = true;
 		}
+		// Only a note the stream stands on, or holds on its page, has
+		// anything to carry. A project folder moved renames every note in
+		// it, each told to every stream, and none of those is worth keeping.
+		const stood =
+			from === this.activePath ||
+			from === this.anchorPath ||
+			from === this.place?.path ||
+			this.mounted.has(from);
+		if (stood || followed) this.renamed.set(from, to);
+	}
+
+	/**
+	 * Moves whatever stood on a renamed note onto the name it has now: the
+	 * note the stream was opened from and the place kept for a tab put away.
+	 * Answers with the two things that cannot simply be renamed, because the
+	 * window has yet to take the old note down and put the new one up: the
+	 * page's own chapter, and where the reader stands when the note under
+	 * the top of the page is a renamed one, measured while it is still up.
+	 */
+	private carryRenames(): CarriedRenames {
+		const renamed = this.renamed;
+		if (renamed.size === 0) return { active: null, place: null };
+		this.renamed = new Map();
+		if (this.anchorPath !== null) {
+			this.anchorPath = renamed.get(this.anchorPath) ?? this.anchorPath;
+		}
+		if (this.place !== null) {
+			this.place = {
+				...this.place,
+				path: renamed.get(this.place.path) ?? this.place.path,
+			};
+		}
+		const active =
+			this.activePath === null ? undefined : renamed.get(this.activePath);
+		const stream = this.streamEl;
+		const stood =
+			stream !== null && stream.isShown() ? this.measurePlace() : null;
+		const under = stood === null ? undefined : renamed.get(stood.path);
+		return {
+			active: active ?? null,
+			place:
+				stood === null || under === undefined
+					? null
+					: { path: under, offset: stood.offset },
+		};
+	}
+
+	/**
+	 * Keeps the page's chapter one the manuscript still holds.
+	 *
+	 * A chapter deleted or renamed in the file explorer is gone from the
+	 * manuscript under the name the page knew it by. Left pointing at it,
+	 * the window could not find its centre and fell back to the head of the
+	 * book: measured on eight chapters, deleting the last took the seventh
+	 * off the page with it, since a window drawn round the first chapter
+	 * reaches only the sixth. The chapter that stood before it is the page's
+	 * instead, or the one after where it was the first. Says whether the
+	 * page's chapter had gone.
+	 */
+	private reseatActive(before: readonly { path: string }[]): boolean {
+		const active = this.activePath;
+		const segments = this.model?.segments ?? [];
+		if (
+			active === null ||
+			segments.some((segment) => segment.path === active)
+		) {
+			return false;
+		}
+		const at = before.findIndex((segment) => segment.path === active);
+		if (at === -1) return false;
+		const held = new Set(segments.map((segment) => segment.path));
+		const neighbour =
+			before
+				.slice(0, at)
+				.reverse()
+				.find((segment) => held.has(segment.path)) ??
+			before.slice(at + 1).find((segment) => held.has(segment.path));
+		if (neighbour === undefined) return false;
+		this.activePath = neighbour.path;
+		return true;
+	}
+
+	/**
+	 * Stands the page right once the window has been drawn round a
+	 * manuscript in which a note under the reader changed its name, or the
+	 * page's own chapter went.
+	 *
+	 * A renamed chapter is the same chapter, and is the page's again now
+	 * that it is back up under its new name. Not before: pointed at first it
+	 * is a note newly put up, and the window takes the reader to the top of
+	 * one of those. The reader is then stood where they were in it, which
+	 * the window's own hold cannot do for the last chapter of a book, there
+	 * being no note after it to hold on to. A chapter that went for good
+	 * leaves its neighbour, and which of the two beside it the page is now
+	 * in is read off the page.
+	 */
+	private async settleCarried(carried: CarriedRenames): Promise<void> {
+		if (carried.active !== null && this.mounted.has(carried.active)) {
+			this.activePath = carried.active;
+		}
+		if (carried.place !== null) await this.restorePlace(carried.place);
+		// Off the page, and only off a page that is on the screen: a tab put
+		// away measures nothing, and every chapter would read as the last.
+		if (carried.active === null && this.streamEl?.isShown() === true) {
+			this.readActiveFromPage();
+		}
+		await this.applyWindow();
 	}
 
 	/**
@@ -1090,6 +1299,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.closePresentationPanel();
 		this.releaseWritingFaces?.();
 		this.releaseWritingFaces = null;
+		this.dropContents();
 		this.contentEl.empty();
 		this.contentEl.removeClass('is-toolbar');
 		this.toolbarButtons = [];
@@ -1104,16 +1314,23 @@ export class SnowflakeManuscriptView extends ItemView {
 			// Nothing left to search: the bar goes with the page it searched.
 			this.closeSearch();
 			this.renderEmpty();
+			// And the sidebar hears that this stream has no chapter to list.
+			this.syncContents();
 			return;
 		}
 		// The column layout arrives with the bar and leaves with it, so the
 		// empty state above keeps the layout it always had.
 		this.contentEl.addClass('is-toolbar');
 		this.renderToolbar();
+		// The wheel stands between the bar and the page in the document, so
+		// the Tab key reaches it before the chapters, and is laid over the
+		// page's left margin by the measures `syncMarginRoom` publishes.
+		this.mountContents();
 		this.streamEl = this.contentEl.createDiv({
 			cls: 'snowflake-method-manuscript-stream',
 		});
 		this.streamEl.addEventListener('scroll', this.onScroll);
+		this.watchStreamBox(this.streamEl);
 		// A find bar left open stands over the page built afresh, and is
 		// asked again of the manuscript it now holds.
 		const bar = this.searchOpen ? this.searchBar : null;
@@ -1264,6 +1481,20 @@ export class SnowflakeManuscriptView extends ItemView {
 		wireCaretKeepingPress(mentions, (event) => {
 			this.openMentionModeMenu(event);
 		});
+		// The wheel of chapters in the left margin, live while reading: a
+		// switch where the margin holds the wheel, and where it does not, on
+		// a phone or in a narrow pane, the door to the same wheel in the
+		// sidebar. It stands beside the door to the other margin's cards.
+		const contents = bar.createEl('button', {
+			cls: 'clickable-icon snowflake-method-toolbar-button snowflake-method-toolbar-contents',
+			attr: { type: 'button' },
+		});
+		setIcon(contents, 'table-of-contents');
+		wireCaretKeepingPress(contents, () => {
+			this.pressContents();
+		});
+		this.contentsToggle = contents;
+		this.paintContentsToggle(true);
 		// The margin cards in the sidebar, live while reading: on a phone, or
 		// in a pane too narrow to show them beside the prose, it is where
 		// they are read and answered. The count on it says how many the
@@ -1925,6 +2156,9 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	private async bringWindowIntoLine(): Promise<void> {
+		// Every road to another chapter comes through here, and so does every
+		// reading of the manuscript afresh: the wheel is turned to both.
+		this.syncContents();
 		const model = this.model;
 		const stream = this.streamEl;
 		if (model === null || stream === null) return;
@@ -1972,16 +2206,34 @@ export class SnowflakeManuscriptView extends ItemView {
 				this.scrollToActive();
 			}
 
-			const release = this.holdPosition(new Set(plan.visible));
+			// Held from before anything was let go of, unless a note arrived
+			// and moved the page on purpose. A note taken down at the foot of
+			// the book shortens the page under a reader standing near its
+			// end, and the browser pulls them up by the note's height. A hold
+			// taken after that keeps them there once the note is back, which
+			// is what a chapter renamed in sight did to the page: taken down
+			// under one name and put up under the other, it left the reader
+			// a chapter's height from where they were.
+			const release =
+				arriving === null
+					? releaseUnmount
+					: this.holdPosition(new Set(plan.visible));
 			for (const path of plan.mount) {
 				if (path === arriving) continue;
 				await this.mountSegment(path);
 			}
 			this.reorder(plan.visible);
 			this.renderEnds(plan.atStart, plan.atEnd);
+			// Put back while the room below is still what it was, then the
+			// room is measured for where the reader now stands, and the hold
+			// is asked once more in case the new room is what it needed.
+			release();
 			this.settleTail();
 			release();
 		});
+		// The margin is measured beside a mounted chapter: the first ones up
+		// are what gives the wheel and the cards a margin to stand in.
+		this.syncMarginRoom();
 	}
 
 	/**
@@ -2094,6 +2346,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.mentionState = null;
 		this.milestoneFeed = null;
 		this.milestoneTotals = null;
+		// The labels may have another interval or unit now, or be gone: the
+		// lane the wheel leaves them starts over.
+		this.milestoneReach = 0;
 		void this.applyMentionDress().catch((error: unknown) => {
 			this.showError(error);
 		});
@@ -3442,6 +3697,444 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		this.contentEl.toggleClass('is-revision-tight', marginIsTight(margin));
 		this.contentEl.toggleClass('is-milestone-tight', !this.milestonesFit(stream));
+		this.syncContentsRoom(stream, sample?.el ?? null, margin);
+	}
+
+	/**
+	 * Says whether the left margin has room for the wheel of chapters, by
+	 * the rule the cards go by on the right: as wide as a card where the
+	 * margin allows, narrower down to the card's floor, and held back under
+	 * it, where the bar's button opens the same wheel in the sidebar instead.
+	 * The word milestones stand in this margin too, right beside the column,
+	 * so the wheel leaves them a lane and counts its room without it.
+	 *
+	 * The wheel is laid over the page rather than set inside it, so that it
+	 * stays put while the page scrolls and adds nothing to what the page can
+	 * scroll: where the page stands in the leaf is published with the room,
+	 * and the stylesheet places the wheel's box by it.
+	 */
+	private syncContentsRoom(
+		stream: HTMLElement,
+		column: HTMLElement | null,
+		margin: number,
+	): void {
+		const lane = this.milestoneLane(column);
+		this.contentEl.setCssProps({
+			'--snowflake-method-contents-lane': `${String(lane)}px`,
+			'--snowflake-method-stream-top': `${String(stream.offsetTop)}px`,
+			'--snowflake-method-stream-left': `${String(stream.offsetLeft)}px`,
+			'--snowflake-method-stream-height': `${String(stream.clientHeight)}px`,
+		});
+		this.contentsRoomy = column !== null && !contentsIsTight(margin, lane);
+		const shown =
+			this.contentsRoomy && this.host.manuscriptWindowSettings().contents;
+		const arrived = shown && !this.contentsShown;
+		this.contentsShown = shown;
+		this.contentEl.toggleClass('is-contents', shown);
+		// A wheel that stood hidden kept no place: it is stood on the page's
+		// chapter as it comes back.
+		if (arrived) this.contents?.settle();
+		this.paintContentsToggle();
+	}
+
+	/**
+	 * The lane the milestone labels keep beside the column, in pixels, and
+	 * nothing while no milestone is drawn. A floor in the labels' own type
+	 * until a label has been measured, so the wheel does not step aside the
+	 * moment the first one scrolls onto the page, and from then on the
+	 * furthest any label has reached, which only ever widens: a wheel that
+	 * moved in and out as labels came and went would never stand still.
+	 */
+	private milestoneLane(column: HTMLElement | null): number {
+		const box = this.contentsMargin;
+		if (column === null || box === null || this.milestoneSettings() === null) {
+			this.milestoneReach = 0;
+			return 0;
+		}
+		const edge = this.milestoneEdge;
+		if (edge !== null) {
+			this.milestoneReach = Math.max(
+				this.milestoneReach,
+				Math.ceil(column.getBoundingClientRect().left - edge),
+			);
+		}
+		if (this.milestoneType === null) {
+			const size = Number.parseFloat(
+				this.contentEl.win.getComputedStyle(box).fontSize,
+			);
+			this.milestoneType = Number.isFinite(size) && size > 0 ? size : 12;
+		}
+		return (
+			Math.max(
+				this.milestoneReach,
+				Math.round(MILESTONE_LANE_EMS * this.milestoneType),
+			) + RAIL_GAP
+		);
+	}
+
+	/** The wheel's box and the wheel in it, built with the page. */
+	private mountContents(): void {
+		const margin = this.contentEl.createDiv({
+			cls: 'snowflake-method-contents-margin',
+		});
+		this.contentsMargin = margin;
+		this.contents = renderContentsWheel(margin, {
+			t: this.t,
+			still: () => this.host.isReduceMotionEnabled(),
+			go: (path) => {
+				void this.goToChapter(path).catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+			menu: (path, event) => {
+				this.openChapterMenu(path, event);
+			},
+			rename: (path) => {
+				this.pressRenameChapter(path);
+			},
+			remove: (path) => {
+				this.pressDeleteChapter(path);
+			},
+			// Escape hands the keys back to the words, where a note is open.
+			leave: () => {
+				if (this.editingPath !== null) {
+					this.backend.focus(this.editingPath);
+					return;
+				}
+				const focused = this.contentEl.doc.activeElement;
+				if (focused !== null && focused.instanceOf(HTMLElement)) focused.blur();
+			},
+		});
+	}
+
+	/** The wheel taken down with the page it stood beside. */
+	private dropContents(): void {
+		this.releaseStreamWatch?.();
+		this.releaseStreamWatch = null;
+		this.contents?.dispose();
+		this.contents = null;
+		this.contentsMargin?.remove();
+		this.contentsMargin = null;
+		this.contentsToggle = null;
+		this.contentsPainted = '';
+		this.contentsShown = false;
+		this.contentsRoomy = false;
+		this.contentEl.removeClass('is-contents');
+	}
+
+	/**
+	 * Watches the page's box. The bar wrapping onto a second row, or the
+	 * find bar opening above the page, moves and shortens the page without
+	 * a word to the leaf, and the wheel's box is placed by the page's.
+	 */
+	private watchStreamBox(stream: HTMLElement): void {
+		this.releaseStreamWatch?.();
+		let observer: { disconnect(): void } | null = null;
+		const watch = (): void => {
+			observer?.disconnect();
+			observer = null;
+			const Observer = (stream.win as MeasuringWindow).ResizeObserver;
+			if (Observer === undefined) return;
+			const watching = new Observer(() => {
+				this.syncMarginRoom();
+			});
+			watching.observe(stream);
+			observer = watching;
+		};
+		watch();
+		// A leaf moved to a window of its own is watched by that window.
+		const stopMigration = stream.onWindowMigrated(() => {
+			watch();
+		});
+		this.releaseStreamWatch = () => {
+			stopMigration();
+			observer?.disconnect();
+			observer = null;
+		};
+	}
+
+	/**
+	 * Turns the wheel, and the sidebar's, to the manuscript as it stands:
+	 * its chapters, the one the page is in, and how many the wheel shows
+	 * either side, which is how many the stream keeps loaded there. The
+	 * rows are one array for as long as the manuscript keeps its shape, so
+	 * a wheel holding them draws nothing again on a save.
+	 */
+	private syncContents(): void {
+		if (this.closing) return;
+		const model = this.model;
+		const shape = `${model?.projectPath ?? ''}\n${this.shape}`;
+		if (shape !== this.contentsShape) {
+			this.contentsShape = shape;
+			this.contentsRows = (model?.segments ?? []).map((segment) => ({
+				path: segment.path,
+				title: segment.title,
+			}));
+		}
+		const reach = this.host.manuscriptWindowSettings().before;
+		const active = this.contentsActive();
+		this.contentsTold = active;
+		// A manuscript that may not be written to keeps its chapters as they
+		// are: its rows offer no menu, and so no sign of one.
+		const editable = model !== null && !model.readOnly;
+		this.contents?.sync({
+			rows: this.contentsRows,
+			active,
+			reach,
+			editable,
+		});
+		if (model === null) {
+			this.host.contents.retire(this);
+			return;
+		}
+		this.host.contents.publish(this, {
+			rows: this.contentsRows,
+			active,
+			reach,
+			editable,
+			go: (path) => {
+				void this.goToChapter(path).catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+			menu: (path, event) => {
+				this.openChapterMenu(path, event);
+			},
+			rename: (path) => {
+				this.pressRenameChapter(path);
+			},
+			remove: (path) => {
+				this.pressDeleteChapter(path);
+			},
+		});
+	}
+
+	/**
+	 * The chapter the wheel marks: the one a press on it is bound for, else
+	 * the one being written in while any of it is on the page, else the one
+	 * the page is in.
+	 *
+	 * The page's own chapter is read off a line a quarter of the way down,
+	 * which a short chapter near the end of a book can never reach: measured
+	 * on a book whose last two chapters were a line each, the wheel sat on
+	 * the sixth while the caret stood in the eighth. Where the author is
+	 * writing is where they are, and the window still answers to the line.
+	 */
+	private contentsActive(): string | null {
+		if (this.contentsBound !== null) return this.contentsBound;
+		const writing = this.editingPath;
+		const stream = this.streamEl;
+		const entry = writing === null ? undefined : this.mounted.get(writing);
+		if (writing === null || stream === null || entry === undefined) {
+			return this.activePath;
+		}
+		const page = stream.getBoundingClientRect();
+		const box = entry.el.getBoundingClientRect();
+		return box.bottom > page.top && box.top < page.bottom
+			? writing
+			: this.activePath;
+	}
+
+	/** A chapter's start brought to the top of the page, from a press on the wheel. */
+	private async goToChapter(path: string): Promise<void> {
+		if (this.model?.segments.some((segment) => segment.path === path) !== true) {
+			return;
+		}
+		// The wheel says where it was sent until the page has arrived.
+		// Putting the editor away on the road tells the wheel of the chapter
+		// being left, and it would turn back to that one and out again.
+		this.contentsBound = path;
+		try {
+			await this.goTo(path);
+		} finally {
+			if (this.contentsBound === path) this.contentsBound = null;
+			this.syncContents();
+		}
+	}
+
+	/**
+	 * What can be done to a chapter itself, on its row of the wheel: a new
+	 * name, and the way out of the book. They used to be the file
+	 * explorer's alone, which meant leaving the page to find the note
+	 * there. A manuscript that may not be written to offers neither.
+	 */
+	private openChapterMenu(path: string, event: MouseEvent): void {
+		if (!this.holdsWritable(path)) return;
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('contents.rename'))
+				.setIcon('pencil')
+				.onClick(() => {
+					this.pressRenameChapter(path);
+				}),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.delete'))
+				.setIcon('trash-2')
+				.setWarning(true)
+				.onClick(() => {
+					this.pressDeleteChapter(path);
+				}),
+		);
+		menu.showAtMouseEvent(event);
+	}
+
+	/** Whether a note is one of this manuscript's, in a manuscript that may be written to. */
+	private holdsWritable(path: string): boolean {
+		const model = this.model;
+		return (
+			model !== null &&
+			!model.readOnly &&
+			model.segments.some((segment) => segment.path === path)
+		);
+	}
+
+	private pressRenameChapter(path: string): void {
+		void this.renameChapter(path).catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
+	private pressDeleteChapter(path: string): void {
+		void this.deleteChapter(path).catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
+	/**
+	 * A chapter given a new name from the wheel.
+	 *
+	 * The note being written in is saved first, so the form opens on the
+	 * heading as the author has it, and taken down only once there is a name
+	 * to take it down for: its editor is bound to the name the file is about
+	 * to stop having. It is put up again afterwards with the caret where it
+	 * was, moved along by whatever the heading gained or lost, whether the
+	 * rename went through or the author stepped back from a refused one.
+	 */
+	private async renameChapter(path: string): Promise<void> {
+		const model = this.model;
+		if (model === null || !this.holdsWritable(path)) return;
+		if (this.editingPath === path) await this.flushPendingSave();
+		const editor =
+			this.editingPath === path ? (this.mounted.get(path)?.editor ?? null) : null;
+		const caret = editor?.selection() ?? null;
+		const body = editor?.read() ?? null;
+		let writing = false;
+		const renamed = await this.host.renameManuscriptSegment(
+			model.projectPath,
+			path,
+			async () => {
+				if (this.editingPath !== path) return;
+				writing = true;
+				await this.deactivateSegment();
+			},
+		);
+		if (renamed !== null) await this.refreshAfterChange();
+		if (!writing) return;
+		const at = renamed?.to ?? path;
+		const entry = this.mounted.get(at);
+		if (entry === undefined) return;
+		const now = entry.pending ?? entry.text.body;
+		await this.activateSegment(
+			at,
+			undefined,
+			undefined,
+			undefined,
+			caret === null || body === null
+				? undefined
+				: {
+						from: carriedOffset(body, now, caret.from),
+						to: carriedOffset(body, now, caret.to),
+					},
+		);
+	}
+
+	/**
+	 * A chapter deleted from the wheel, once the author has said so. The
+	 * words being written in it are saved into it first, so the trash holds
+	 * the note as the author left it.
+	 */
+	private async deleteChapter(path: string): Promise<void> {
+		const model = this.model;
+		if (model === null || !this.holdsWritable(path)) return;
+		const deleted = await this.host.deleteManuscriptSegment(
+			model.projectPath,
+			path,
+			async () => {
+				if (this.editingPath === path) await this.deactivateSegment();
+			},
+		);
+		if (deleted) await this.refreshAfterChange();
+	}
+
+	/**
+	 * Reads the manuscript again after a change made from here. A stream in
+	 * a tab put away pays at its next reveal instead, as it does for every
+	 * change made anywhere else: the sidebar's wheel can ask on its behalf.
+	 */
+	private async refreshAfterChange(): Promise<void> {
+		if (this.containerEl.isShown()) await this.refresh();
+		else this.queueRefreshWhenShown();
+	}
+
+	/**
+	 * A press on the bar's door to the wheel: where the margin holds the
+	 * wheel it is shown or put away, in every stream at once; where it does
+	 * not, the sidebar's wheel is opened.
+	 */
+	private pressContents(): void {
+		const work = this.contentsRoomy
+			? this.host.toggleManuscriptContents()
+			: this.host.openContents();
+		void work.catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
+	/**
+	 * The door's face from what it would do: lit while the wheel stands in
+	 * the margin, and its tooltip telling the state it holds and what a
+	 * press brings, as the writing modes' buttons do.
+	 */
+	private paintContentsToggle(force = false): void {
+		const toggle = this.contentsToggle;
+		if (toggle === null) return;
+		const on = this.host.manuscriptWindowSettings().contents;
+		const roomy = this.contentsRoomy;
+		const face = `${String(roomy)} ${String(on)}`;
+		if (!force && face === this.contentsPainted) return;
+		this.contentsPainted = face;
+		toggle.toggleClass('is-active', roomy && on);
+		// A switch only where a press turns something on or off.
+		if (roomy) toggle.setAttribute('aria-pressed', String(on));
+		else toggle.removeAttribute('aria-pressed');
+		const state = this.t(
+			roomy
+				? on
+					? 'manuscript.contentsShown'
+					: 'manuscript.contentsHidden'
+				: 'manuscript.contentsTight',
+		);
+		const then = this.t(
+			roomy
+				? on
+					? 'manuscript.contentsHide'
+					: 'manuscript.contentsShow'
+				: 'manuscript.contentsOpen',
+		);
+		setTooltip(toggle, `${state}\n${then}`);
+	}
+
+	/**
+	 * The wheel shown or put away as the setting now says, in a stream that
+	 * may be hidden: the margin is measured again where there is one to
+	 * measure, and the door is painted either way.
+	 */
+	applyContents(): void {
+		this.syncMarginRoom();
+		this.paintContentsToggle();
 	}
 
 	/**
@@ -3619,6 +4312,10 @@ export class SnowflakeManuscriptView extends ItemView {
 	private milestonesFit(stream: HTMLElement): boolean {
 		const win = this.contentEl.win;
 		const edge = stream.getBoundingClientRect().left + stream.clientLeft;
+		let fit = true;
+		// Every label is looked at, a misfit found or not: where the
+		// outermost stands is what the wheel of chapters keeps clear of.
+		let outermost: number | null = null;
 		for (const label of Array.from(
 			stream.querySelectorAll<HTMLElement>('.snowflake-method-milestone'),
 		)) {
@@ -3632,9 +4329,11 @@ export class SnowflakeManuscriptView extends ItemView {
 			);
 			if (!Number.isFinite(left)) continue;
 			const stands = block.getBoundingClientRect().left + block.clientLeft + left;
-			if (stands - edge < 8) return false;
+			if (stands - edge < 8) fit = false;
+			if (outermost === null || stands < outermost) outermost = stands;
 		}
-		return true;
+		this.milestoneEdge = outermost;
+		return fit;
 	}
 
 	/**
@@ -4653,6 +5352,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		clicked?: ClickedWords,
 		arriving?: 'start' | 'end',
 		crossing?: CrossingHold,
+		caret?: { from: number; to: number },
 	): Promise<void> {
 		// One at a time. The swap awaits a save and then a re-render of the note
 		// being left, and for most of that stretch `editingPath` is already null
@@ -4664,7 +5364,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		// means it.
 		const run = this.editing
 			.catch(() => undefined)
-			.then(() => this.activateSegmentNow(path, clicked, arriving, crossing));
+			.then(() =>
+				this.activateSegmentNow(path, clicked, arriving, crossing, caret),
+			);
 		this.editing = run.catch(() => undefined);
 		return run;
 	}
@@ -4674,6 +5376,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		clicked?: ClickedWords,
 		arriving?: 'start' | 'end',
 		crossing?: CrossingHold,
+		caret?: { from: number; to: number },
 	): Promise<void> {
 		if (this.editingPath === path) {
 			this.backend.focus(path);
@@ -4783,9 +5486,12 @@ export class SnowflakeManuscriptView extends ItemView {
 		// Focus fades only while something is being written, and only around the
 		// note it is written in. Classes, so that starting to write moves nothing.
 		this.streamEl?.addClass('is-writing');
+		this.contentsMargin?.addClass('is-writing');
 		entry.el.addClass('is-writing');
 		this.remember(path);
 		restore();
+		// The wheel goes with the author into the chapter they write in.
+		this.syncContents();
 		// The words the author clicked go back under the pointer, and the caret
 		// goes into them. Holding the note still is not enough: the source of a
 		// line is not the height of the line, so everything after the first
@@ -4794,6 +5500,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		// An arrival by arrow key: the caret goes to the edge the author walked
 		// in over, before focus can scroll to anywhere else.
 		if (arriving !== undefined) entry.editor.enter(arriving);
+		// A note taken down to be renamed and put up again: the caret goes
+		// back where the author had it.
+		if (caret !== undefined) entry.editor.select(caret.from, caret.to);
 		// Focused last, because focusing an editor scrolls its caret into view and
 		// would otherwise be the final word on where the reader ends up.
 		this.puttingBack = clicked !== undefined;
@@ -5120,7 +5829,10 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.refreshWriteToggles();
 		this.refreshToolbar();
 		this.streamEl?.removeClass('is-writing');
+		this.contentsMargin?.removeClass('is-writing');
 		this.mounted.get(path)?.el.removeClass('is-writing');
+		// And back to the chapter the page is in once the writing stops.
+		this.syncContents();
 		// The note going back to prose may be anywhere, including above the reader,
 		// so its place is held across the swap — and held from before the editor
 		// goes, not after. Taking an editor down empties the note to a header and
@@ -5610,6 +6322,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.dropCaretCard();
 			this.host.manuscriptWritingChanged();
 			this.streamEl?.removeClass('is-writing');
+			this.contentsMargin?.removeClass('is-writing');
 			// The note being written in can go without anyone leaving it: renamed,
 			// merged away, or deleted from another window, it simply drops out of
 			// the sequence and the window unloads it. The bar above the page has
@@ -5619,6 +6332,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			// nothing with it.
 			this.refreshWriteToggles();
 			this.refreshToolbar();
+			this.syncContents();
 		}
 		await this.backend.unmount(path);
 		this.mounted.delete(path);
@@ -5641,6 +6355,16 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (stream === null) return;
 		this.noteScroll();
 		this.scheduleMarginViewport();
+		// The chapter being written in is the wheel's for as long as any of
+		// it is on the page, whichever hand moved the page: scrolled out of
+		// sight the wheel goes back to the chapter being read, and comes back
+		// with it.
+		if (
+			this.editingPath !== null &&
+			this.contentsActive() !== this.contentsTold
+		) {
+			this.syncContents();
+		}
 		// Only the reader moves the reading position. A page shrinking under the
 		// scroll as notes are let go of moves it too, and answering that is how
 		// the view ends up chasing itself.
@@ -5655,6 +6379,20 @@ export class SnowflakeManuscriptView extends ItemView {
 				this.scheduleSegmentRailSync(this.editingPath);
 			}
 		}
+		if (!this.readActiveFromPage()) return;
+		void this.applyWindow().catch((error: unknown) => {
+			this.showError(error);
+		});
+	};
+
+	/**
+	 * Reads the page's chapter off the page: the one the reading line stands
+	 * in. Says whether that is another chapter than before, in which case the
+	 * wheel has been told and the window is the caller's to move.
+	 */
+	private readActiveFromPage(): boolean {
+		const stream = this.streamEl;
+		if (stream === null) return false;
 		const offsets = [...this.mounted.values()].map((entry) => ({
 			path: entry.path,
 			top: entry.el.offsetTop,
@@ -5666,12 +6404,13 @@ export class SnowflakeManuscriptView extends ItemView {
 			stream.scrollTop,
 			stream.clientHeight,
 		);
-		if (active === null || active === this.activePath) return;
+		if (active === null || active === this.activePath) return false;
 		this.activePath = active;
-		void this.applyWindow().catch((error: unknown) => {
-			this.showError(error);
-		});
-	};
+		// Told at once, ahead of the window's queue: the wheel turns with the
+		// page rather than a beat behind it.
+		this.syncContents();
+		return true;
+	}
 
 	/**
 	 * Pins whatever is under the reader's eye, and gives back the way to put it
@@ -5728,26 +6467,6 @@ export class SnowflakeManuscriptView extends ItemView {
 				stream.getBoundingClientRect().top;
 			stream.scrollTop = Math.max(0, stream.scrollTop + (now - wanted));
 		};
-	}
-
-	/**
-	 * Brings a note to where it can be read, and only when it is not already
-	 * somewhere it can be read.
-	 *
-	 * Asking to go to a note means going there. A note that has just appeared
-	 * where the author was already looking is a different matter: they clicked a
-	 * rule in front of them and it became a chapter in front of them, and
-	 * hauling it to the top of the page to say so undoes that.
-	 */
-	private bringIntoView(path: string): void {
-		const stream = this.streamEl;
-		const entry = this.mounted.get(path);
-		if (stream === null || entry === undefined) return;
-		const margin = Math.min(120, stream.clientHeight / 5);
-		const fromTop =
-			entry.el.getBoundingClientRect().top - stream.getBoundingClientRect().top;
-		if (fromTop >= margin && fromTop <= stream.clientHeight - margin) return;
-		this.scrollToActive();
 	}
 
 	private scrollToActive(): void {
@@ -5989,11 +6708,15 @@ export class SnowflakeManuscriptView extends ItemView {
 			);
 			if (created === null) return;
 			await this.refresh();
-			// The one move that is asked for rather than suffered — and only when
-			// the new note is not already where the author is looking.
+			// The one move that is asked for rather than suffered: the new
+			// chapter's start goes to the top of the page every time, as a
+			// press on the wheel takes a chapter there. It used to stay put
+			// where the new note was already in comfortable sight and move
+			// only where it was not, which read as the page sometimes going
+			// to the new chapter and sometimes not.
 			this.activePath = created;
 			await this.applyWindow();
-			this.bringIntoView(created);
+			this.scrollToActive();
 			await this.activateSegment(created);
 		} catch (error) {
 			this.showError(error);
@@ -6055,6 +6778,24 @@ export class SnowflakeManuscriptView extends ItemView {
 			error instanceof Error ? error.message : this.t('errors.unknown'),
 		);
 	}
+}
+
+/** A window with the tool that reports an element's box as it changes, which every window has and the types name on none. */
+type MeasuringWindow = Window & {
+	ResizeObserver?: new (callback: () => void) => {
+		observe(target: Element): void;
+		disconnect(): void;
+	};
+};
+
+/**
+ * What a rename leaves for the window to finish: the page's own chapter
+ * under its new name, and where the reader stood in a note that was renamed
+ * under them.
+ */
+interface CarriedRenames {
+	active: string | null;
+	place: ReadingPlace | null;
 }
 
 /** The rule the author is crossing: which edge of the note being left, and where it sat. */

@@ -317,6 +317,8 @@ import {
 	MANUSCRIPT_VIEW_TYPE,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
+import { ContentsHub } from './ui/contents-hub';
+import { CONTENTS_VIEW_TYPE, SnowflakeContentsView } from './ui/contents-view';
 import { MarginCardsHub } from './ui/margin-cards-hub';
 import { MARGIN_CARDS_VIEW_TYPE, SnowflakeMarginCardsView } from './ui/margin-cards-view';
 import {
@@ -439,7 +441,9 @@ import {
 	RepairReportModal,
 	confirmBoundaryProtectionOff,
 	promptForSegmentTitle,
+	promptForSegmentRename,
 	confirmSegmentMerge,
+	confirmSegmentDelete,
 	confirmExportReplace,
 	confirmStreamImport,
 	counted,
@@ -734,6 +738,8 @@ export default class SnowflakeMethodPlugin
 	private settingTab: SnowflakeSettingTab | null = null;
 	/** The bell between the manuscript streams and the margin card sidebar. */
 	readonly marginCards = new MarginCardsHub();
+	/** The bell between the streams and the contents sidebar. */
+	readonly contents = new ContentsHub();
 	private settingsSaveTimer: number | null = null;
 	private refreshTimer: number | null = null;
 	private projectRescanTimer: number | null = null;
@@ -1509,6 +1515,23 @@ export default class SnowflakeMethodPlugin
 					stepAside: () => {
 						// On mobile the sidebar is a drawer over the page: put
 						// away before the words are flashed, so the flash is seen.
+						if (isMobileDevice()) this.app.workspace.rightSplit.collapse();
+					},
+				}),
+		);
+		this.registerView(
+			CONTENTS_VIEW_TYPE,
+			(leaf) =>
+				new SnowflakeContentsView(leaf, {
+					hub: this.contents,
+					// The wheel speaks the current project's language and is
+					// redrawn with the other sidebars when it moves.
+					t: this.t,
+					fingerprint: () => this.statisticsFingerprint(),
+					still: () => this.settings.reduceMotion,
+					stepAside: () => {
+						// On mobile the sidebar is a drawer over the page: put
+						// away before the chapter is brought up, so it is seen.
 						if (isMobileDevice()) this.app.workspace.rightSplit.collapse();
 					},
 				}),
@@ -4040,6 +4063,20 @@ export default class SnowflakeMethodPlugin
 			this.refreshParagraphLineEditors();
 			return;
 		}
+		// The wheel of chapters is a dress on a manuscript the streams already
+		// hold: showing it or putting it away is the whole change. The toolbar
+		// and the palette write it too, and the settings page shows it.
+		if (key === 'showManuscriptContents') {
+			for (const leaf of this.app.workspace.getLeavesOfType(
+				MANUSCRIPT_VIEW_TYPE,
+			)) {
+				if (leaf.view instanceof SnowflakeManuscriptView) {
+					leaf.view.applyContents();
+				}
+			}
+			this.settingTab?.refreshRows();
+			return;
+		}
 		// The bars above the notes show both, and the popover the one.
 		if (key === 'manuscriptTypewriter' || key === 'manuscriptEnterParagraph') {
 			this.noteToolbars?.sync();
@@ -5330,6 +5367,19 @@ export default class SnowflakeMethodPlugin
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (leaf === null) return;
 		await leaf.setViewState({ type: MARGIN_CARDS_VIEW_TYPE, active: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	/** The contents sidebar, opened or brought forward; on mobile, the drawer. */
+	async openContents(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(CONTENTS_VIEW_TYPE)[0];
+		if (existing !== undefined) {
+			await this.app.workspace.revealLeaf(existing);
+			return;
+		}
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf === null) return;
+		await leaf.setViewState({ type: CONTENTS_VIEW_TYPE, active: true });
 		await this.app.workspace.revealLeaf(leaf);
 	}
 
@@ -7607,6 +7657,25 @@ export default class SnowflakeMethodPlugin
 		new Notice(this.globalT(said));
 	}
 
+	/**
+	 * Shows or hides the wheel of chapters in the streams' left margin, from
+	 * the stream's toolbar or the palette. One switch for every stream, as
+	 * the writing modes are: it is how the author reads, not which book.
+	 */
+	async toggleManuscriptContents(): Promise<void> {
+		const shown = !this.settings.showManuscriptContents;
+		this.settings.showManuscriptContents = shown;
+		await this.saveSettings();
+		await this.handleSettingsChanged('showManuscriptContents');
+		new Notice(
+			this.globalT(
+				shown
+					? 'commands.manuscriptContentsShown'
+					: 'commands.manuscriptContentsHidden',
+			),
+		);
+	}
+
 	private editorLocale(content: string): 'en' | 'zh-CN' {
 		return resolveManagedSectionLocale({
 			uiLocale: this.settings.uiLocale,
@@ -7913,6 +7982,99 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * Gives one manuscript note a new name, once the author has settled on
+	 * it in the rename form: the file, and its first heading too where the
+	 * form's switch says so. `onAgreed` runs between the answer and the
+	 * rename, as it does for a merge. A name already taken is said in the
+	 * form's own notice and the form stays, so the author can change it or
+	 * step back. Resolves to where the note went, or to null when the form
+	 * was closed with nothing renamed.
+	 */
+	async renameManuscriptSegment(
+		projectPath: string,
+		path: string,
+		onAgreed?: SegmentNamed,
+	): Promise<{ from: string; to: string } | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		const naming = await this.projects.manuscript.segmentNaming(path);
+		return promptForSegmentRename(
+			this.app,
+			t,
+			naming,
+			async ({ title, heading }) => {
+				await onAgreed?.();
+				try {
+					return await this.projects.renameManuscriptSegment(
+						projectPath,
+						path,
+						title,
+						{ heading },
+					);
+				} catch (error) {
+					throw error instanceof PathConflictError
+						? new Error(
+								t('errors.renameConflict', { name: fileStem(error.path) }),
+							)
+						: error;
+				}
+			},
+		);
+	}
+
+	/**
+	 * Deletes one manuscript note, once the author has said so: its file
+	 * goes to the trash, as it does from the file explorer. With numbering
+	 * on and the note going numbered, the dialog also asks whether the
+	 * numbered notes after it close the gap, as the merge dialog asks.
+	 * Resolves false when the author declined.
+	 */
+	async deleteManuscriptSegment(
+		projectPath: string,
+		path: string,
+		onAgreed?: SegmentNamed,
+	): Promise<boolean> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return false;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		const segments = await this.projects.manuscript.listSegmentsFromFiles(project);
+		const target = normalizePath(path);
+		const at = segments.findIndex((segment) => segment.path === target);
+		const going = segments[at];
+		if (going === undefined) return false;
+		const proposal = this.chapterRemovalProposal(segments, at);
+		const choice = await confirmSegmentDelete(this.app, t, {
+			name: going.title,
+			followers: proposal?.followers.length ?? 0,
+		});
+		if (choice === null) return false;
+		await onAgreed?.();
+		const renames =
+			choice.renumber && proposal !== null ? this.followerRenames(proposal) : [];
+		let deleted: { neighbour: string | null; renumbered: SegmentRenameOutcome };
+		try {
+			deleted = await this.projects.deleteManuscriptSegment(
+				projectPath,
+				path,
+				renames,
+			);
+		} catch (error) {
+			throw this.renumberError(error, t);
+		}
+		// The way back in that step 10 offers moves to the note beside the
+		// one that went, as a merge moves it to the note that absorbed it.
+		if (deleted.neighbour !== null) {
+			this.followMergedNote(projectPath, deleted.neighbour);
+		}
+		new Notice(t('messages.entityDeleted'));
+		this.noticeRenumbered(deleted.renumbered, t);
+		return true;
+	}
+
+	/**
 	 * Moves the note step 10 offers as the way back in onto the note that
 	 * absorbed it.
 	 *
@@ -7941,6 +8103,7 @@ export default class SnowflakeMethodPlugin
 			after: this.settings.manuscriptWindow,
 			showPath: this.settings.showManuscriptPath,
 			showSequence: this.settings.showManuscriptSequence,
+			contents: this.settings.showManuscriptContents,
 			typewriter: this.settings.manuscriptTypewriter,
 			focusLevel: this.effectiveFocusLevel(),
 			autoPairBrackets: this.settings.manuscriptAutoPairBrackets,
@@ -10616,6 +10779,15 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'open-contents',
+			name: this.globalT('commands.openContents'),
+			callback: () => {
+				void this.openContents().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'new-task',
 			name: this.globalT('commands.newTask'),
 			checkCallback: (checking) => {
@@ -10924,6 +11096,15 @@ export default class SnowflakeMethodPlugin
 						this.showError(error);
 					},
 				);
+			},
+		});
+		this.addCommand({
+			id: 'toggle-manuscript-contents',
+			name: this.globalT('commands.toggleManuscriptContents'),
+			callback: () => {
+				void this.toggleManuscriptContents().catch((error: unknown) => {
+					this.showError(error);
+				});
 			},
 		});
 		// The writing modes, offered where they act: while a stream is in front,
@@ -11957,6 +12138,18 @@ export default class SnowflakeMethodPlugin
 		oldPath: string,
 	): Promise<void> {
 		this.carryExplorerChoices(oldPath, file.path);
+		// A stream standing on the note that moved stands on it still, under
+		// its new name: told now, ahead of the refresh that will read the
+		// manuscript again and find the old name gone from it.
+		if (file instanceof TFile) {
+			for (const leaf of this.app.workspace.getLeavesOfType(
+				MANUSCRIPT_VIEW_TYPE,
+			)) {
+				if (leaf.view instanceof SnowflakeManuscriptView) {
+					leaf.view.noteRenamed(oldPath, file.path);
+				}
+			}
+		}
 		// Before any guard: the parse cache lets the old path's record go. The
 		// new path caches itself on its next read. The counts go with it: a
 		// note's size and modified time both survive a rename, so a count left
@@ -12592,6 +12785,9 @@ export default class SnowflakeMethodPlugin
 			MARGIN_CARDS_VIEW_TYPE,
 		)) {
 			if (leaf.view instanceof SnowflakeMarginCardsView) leaf.view.rerender();
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(CONTENTS_VIEW_TYPE)) {
+			if (leaf.view instanceof SnowflakeContentsView) leaf.view.rerender();
 		}
 		for (const leaf of this.app.workspace.getLeavesOfType(
 			STORY_STRUCTURE_VIEW_TYPE,

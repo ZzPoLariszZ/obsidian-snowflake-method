@@ -7708,6 +7708,308 @@ body {
 	margin-inline: var(--size-4-1) 0;
 }
 
+/* --- The wheel of chapters ------------------------------------------------ */
+
+/* The manuscript's contents as a wheel in the stream's left margin: one row
+   a chapter in a column that scrolls on its own, the page's chapter in the
+   middle and the rows either side stepping back with their distance.
+
+   Its box is the left margin, as tall as the page. It is laid over the page
+   rather than set inside it, so the wheel stays put while the page scrolls
+   and adds nothing to what the page can scroll: the view measures where the
+   page stands in the leaf and how much margin lies beside the column, and
+   publishes both. The box keeps the room the rail keeps on the other side,
+   a little to the pane's edge and a gap from the column, and beside the
+   column the lane the word milestones stand in. It takes no press of its
+   own, so the margin around the wheel stays the page's. Its type is the
+   milestone labels', which the view reads the lane's floor in. */
+.snowflake-method-contents-margin {
+	position: absolute;
+	top: var(--snowflake-method-stream-top, 0);
+	left: var(--snowflake-method-stream-left, 0);
+	display: none;
+	box-sizing: border-box;
+	width: var(--snowflake-method-margin-room, 0);
+	height: var(--snowflake-method-stream-height, 0);
+	padding: var(--size-4-8) calc(var(--size-4-2) + var(--snowflake-method-contents-lane, 0px))
+		var(--size-4-8) var(--size-4-3);
+	align-items: center;
+	justify-content: flex-end;
+	font-size: var(--font-ui-smaller);
+	pointer-events: none;
+}
+
+/* Shown only where the author asked for it and the margin holds it: a pane
+   too narrow keeps the wheel in the sidebar instead, as it keeps the cards. */
+.is-contents > .snowflake-method-contents-margin {
+	display: flex;
+}
+
+/* The wheel is as wide as a margin card, by the card's own figures: the
+   full width where the margin has room, narrower down to the card's floor,
+   and the view holds it back under that. It shows as many rows as the view
+   says, the page's chapter and as many either side as the stream keeps
+   loaded there, and fewer where the pane is too short for them. A container,
+   so the list inside can read the wheel's height however it came out. */
+.snowflake-method-contents-wheel {
+	--snowflake-method-contents-row: 1.75rem;
+
+	container-type: size;
+	flex: 0 0 auto;
+	width: clamp(192px, calc(var(--snowflake-method-margin-room, 300px) - 20px - var(--snowflake-method-contents-lane, 0px)), 260px);
+	height: calc(var(--snowflake-method-contents-rows, 11) * var(--snowflake-method-contents-row));
+	max-height: 100%;
+	font-size: var(--font-ui-medium);
+	pointer-events: auto;
+}
+
+/* The column of rows. Half the wheel stands empty above the first row and
+   below the last, less half a row, so any row can come to the middle, and a
+   row at rest is always in the middle: the browser brings one there after
+   every turn. The bar is hidden, the wheel being its own measure of where
+   it stands, and a turn that reaches an end goes no further into the page.
+   The rows dissolve toward the top and the bottom rather than being cut. */
+.snowflake-method-contents-list {
+	box-sizing: border-box;
+	height: 100%;
+	margin: 0;
+	padding: calc(50cqh - var(--snowflake-method-contents-row) / 2) 0;
+	overflow: hidden auto;
+	overscroll-behavior: contain;
+	scroll-snap-type: y mandatory;
+	scrollbar-width: none;
+	list-style: none;
+	-webkit-mask-image: linear-gradient(to bottom, transparent, #000 50%, transparent);
+	mask-image: linear-gradient(to bottom, transparent, #000 50%, transparent);
+}
+
+.snowflake-method-contents-list::-webkit-scrollbar {
+	display: none;
+}
+
+/* Every row is laid out once and kept. Leaving the rows off the screen
+   undrawn was measured on a book of fifteen hundred chapters and halved the
+   frame rate of a turn, each row being drawn again as it came into sight,
+   where the whole column laid out once turns at the screen's own rate. */
+.snowflake-method-contents-row {
+	position: relative;
+	height: var(--snowflake-method-contents-row);
+	scroll-snap-align: center;
+}
+
+/* A chapter's name: a button without the app's button dress, on one line,
+   cut short with an ellipsis and set from the left, in the margin and in
+   the sidebar alike, so the names start on one edge as a contents page's
+   do. A row grows smaller about the point its words start at, the button's
+   own inset in from its left, so that edge stays straight to the pixel. */
+.snowflake-method-contents-wheel button.snowflake-method-contents-item {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0 var(--size-4-2);
+	overflow: hidden;
+	border: 0;
+	border-radius: var(--radius-s);
+	background-color: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: inherit;
+	font-weight: var(--font-normal);
+	line-height: var(--snowflake-method-contents-row);
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+	transform-origin: var(--size-4-2) 50%;
+}
+
+.snowflake-method-contents-wheel button.snowflake-method-contents-item:hover {
+	background-color: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+}
+
+/* The chapter the page stands in, in the accent's ink and a heavier face,
+   wherever on the wheel it is. */
+.snowflake-method-contents-wheel button.snowflake-method-contents-item.is-active {
+	color: var(--text-accent);
+	font-weight: var(--font-semibold);
+}
+
+/* Drawn inside the row, so the list, which scrolls, cuts none of it off. */
+.snowflake-method-contents-wheel button.snowflake-method-contents-item:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* A row's quiet sign that it offers more than the way to its chapter: the
+   dots a row of the dashboard's tables keeps, and a press on them opens
+   what a right-click on the name opens. One set for the whole wheel, stood
+   by the script in the row under the pointer and gone with it, or kept in
+   the page's row on a screen with no pointer to wait for. They sit at the
+   row's end inside the column, so the dissolve at the wheel's two ends
+   takes them with their row, and the name is cut short a little sooner to
+   leave them room. Faint until pointed at, since a hint should not be the
+   first thing read. */
+.snowflake-method-contents-wheel .snowflake-method-contents-more {
+	--icon-size: var(--icon-xs);
+
+	position: absolute;
+	top: 50%;
+	right: var(--size-2-1);
+	padding: var(--size-2-1) var(--size-2-2);
+	color: var(--text-faint);
+	translate: 0 -50%;
+	animation: snowflake-method-contents-more 150ms ease-out;
+}
+
+.snowflake-method-contents-wheel .snowflake-method-contents-more:hover {
+	color: var(--text-normal);
+}
+
+.snowflake-method-contents-wheel .has-more > button.snowflake-method-contents-item {
+	padding-right: calc(var(--size-4-2) + var(--size-4-6));
+}
+
+/* The wheel's name and the dots', for a screen reader alone: a label would
+   do the same and be shown as a tooltip besides, to a pointer resting on
+   anything inside what it labels. A pixel of each, drawn at no strength. */
+.snowflake-method-contents-unseen {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+}
+
+@keyframes snowflake-method-contents-more {
+	from {
+		opacity: 0;
+	}
+}
+
+.snowflake-method-reduce-motion .snowflake-method-contents-wheel .snowflake-method-contents-more {
+	animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.snowflake-method-contents-wheel .snowflake-method-contents-more {
+		animation: none;
+	}
+}
+
+/* Each row is drawn by where it stands in the wheel: whole in the middle, a
+   step back one row out, and fainter and smaller with every row from there
+   to six rows out, where it stays. The measure is the row's own travel
+   through the column, so the wheel turns without a line of script, and the
+   mask is then only the dissolve at the two ends. Where the browser cannot
+   draw by a row's place, the mask above fades the rows by itself. */
+@supports (animation-timeline: view()) {
+	.snowflake-method-contents-list {
+		-webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+		mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+	}
+
+	.snowflake-method-contents-wheel button.snowflake-method-contents-item {
+		animation: snowflake-method-contents-turn linear both;
+		animation-timeline: view(block);
+		animation-range: cover calc(50% - 6 * var(--snowflake-method-contents-row))
+			cover calc(50% + 6 * var(--snowflake-method-contents-row));
+	}
+}
+
+@keyframes snowflake-method-contents-turn {
+	0%,
+	100% {
+		opacity: 0.3;
+		scale: 0.86;
+	}
+
+	41.667%,
+	58.333% {
+		opacity: 0.62;
+		scale: 0.95;
+	}
+
+	50% {
+		opacity: 1;
+		scale: 1;
+	}
+}
+
+/* With animations reduced a row still fades with its distance, which is how
+   the wheel says where it stands, but keeps its size. */
+@keyframes snowflake-method-contents-fade {
+	0%,
+	100% {
+		opacity: 0.3;
+	}
+
+	41.667%,
+	58.333% {
+		opacity: 0.62;
+	}
+
+	50% {
+		opacity: 1;
+	}
+}
+
+.snowflake-method-reduce-motion .snowflake-method-contents-wheel button.snowflake-method-contents-item {
+	animation-name: snowflake-method-contents-fade;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.snowflake-method-contents-wheel button.snowflake-method-contents-item {
+		animation-name: snowflake-method-contents-fade;
+	}
+}
+
+/* The bar's door to the wheel, lit while the wheel stands in the margin, as
+   a writing mode's button is while its mode is on. */
+.snowflake-method-toolbar-contents.is-active {
+	color: var(--interactive-accent);
+}
+
+/* In focus mode the wheel steps back with the neighbouring notes while a
+   note is written in, and returns under the pointer or the keys. */
+.snowflake-method-focus .snowflake-method-contents-margin.is-writing .snowflake-method-contents-wheel {
+	opacity: 0.3;
+	transition: opacity 200ms ease-in-out;
+}
+
+.snowflake-method-focus .snowflake-method-contents-margin.is-writing .snowflake-method-contents-wheel:hover,
+.snowflake-method-focus .snowflake-method-contents-margin.is-writing .snowflake-method-contents-wheel:focus-within {
+	opacity: 1;
+}
+
+.snowflake-method-reduce-motion
+	.snowflake-method-focus
+	.snowflake-method-contents-margin.is-writing
+	.snowflake-method-contents-wheel {
+	transition: none;
+}
+
+/* The same wheel in a sidebar of its own, for a pane whose margin cannot
+   hold it: in the middle of the column, at a width between the margin's own
+   floor and a reading measure. The app styles the view's content through
+   two classes, so the overflow is asked for with the same weight. */
+.workspace-leaf-content .view-content.snowflake-method-contents-view {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: var(--size-4-3);
+	overflow: hidden;
+}
+
+.snowflake-method-contents-view .snowflake-method-contents-wheel {
+	width: clamp(192px, 100%, 20rem);
+}
+
 /* --- The margin cards in a sidebar ---------------------------------------- */
 
 /* The same cards in a column of their own, for a pane whose margin cannot
@@ -20532,6 +20834,30 @@ body.is-mobile .snowflake-method-manuscript-toolbar .clickable-icon.snowflake-me
    a balanced row still divides the card between them. */
 body.is-mobile .snowflake-method-rail-action {
 	padding-inline: var(--size-4-2);
+}
+
+/* The wheel of chapters turns under a finger: each row the app's finger
+   tall, in the margin where a tablet has one and in the drawer. */
+body.is-mobile .snowflake-method-contents-wheel {
+	--snowflake-method-contents-row: var(--touch-size-m, 2.75rem);
+}
+
+/* And its dots are a finger's mark: as tall as their row and as wide, with
+   the name giving them that much room. */
+body.is-mobile .snowflake-method-contents-wheel .snowflake-method-contents-more {
+	top: 0;
+	right: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--touch-size-m, 2.75rem);
+	height: 100%;
+	padding: 0;
+	translate: none;
+}
+
+body.is-mobile .snowflake-method-contents-wheel .has-more > button.snowflake-method-contents-item {
+	padding-right: var(--touch-size-m, 2.75rem);
 }
 
 /* The door to the margin card sidebar carries its count beside the icon,

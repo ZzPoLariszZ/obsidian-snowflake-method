@@ -752,6 +752,47 @@ describe('translation resources', () => {
 	});
 
 	/**
+	 * The wheel of chapters reads its words through translators the type
+	 * checker cannot follow: the stream's per-project one, the sidebar's, and
+	 * the global accessor the commands and their notices go through. A key
+	 * dropped from both locales would show as itself and pass every other
+	 * check here.
+	 */
+	it('names the wheel of chapters, its sidebar, its switch and its commands in both languages', () => {
+		expect(en['contents.viewTitle']).toBe('Contents');
+		expect(zhCN['contents.viewTitle']).toBe('目录');
+		expect(en['contents.noStream']).toBe('Open a manuscript stream to see its contents here.');
+		expect(zhCN['contents.noStream']).toBe('打开正文流后，这里会列出它的目录。');
+		expect(en['commands.openContents']).toBe('Open contents sidebar');
+		expect(zhCN['commands.openContents']).toBe('打开目录侧边栏');
+		expect(en['commands.toggleManuscriptContents']).toBe('Toggle contents in the manuscript');
+		expect(zhCN['commands.toggleManuscriptContents']).toBe('切换正文中的目录');
+		expect(en['commands.manuscriptContentsShown']).toBe('Manuscript contents are shown.');
+		expect(zhCN['commands.manuscriptContentsShown']).toBe('已显示正文目录。');
+		expect(en['commands.manuscriptContentsHidden']).toBe('Manuscript contents are hidden.');
+		expect(zhCN['commands.manuscriptContentsHidden']).toBe('已隐藏正文目录。');
+		expect(en['settings.manuscriptContents.name']).toBe('Show contents in the margin');
+		expect(zhCN['settings.manuscriptContents.name']).toBe('在页边显示目录');
+		// The setting says where the wheel goes when the margin cannot hold it.
+		expect(en['settings.manuscriptContents.desc']).toContain('sidebar');
+		expect(zhCN['settings.manuscriptContents.desc']).toContain('侧边栏');
+		// The button says the state it holds and what a press brings, on two
+		// lines the view joins, in each of its three states.
+		expect(en['manuscript.contentsShown']).toBe('Contents: shown');
+		expect(zhCN['manuscript.contentsShown']).toBe('目录：显示');
+		expect(en['manuscript.contentsHidden']).toBe('Contents: hidden');
+		expect(zhCN['manuscript.contentsHidden']).toBe('目录：隐藏');
+		expect(en['manuscript.contentsTight']).toBe('Contents: no room in the margin');
+		expect(zhCN['manuscript.contentsTight']).toBe('目录：页边放不下');
+		expect(en['manuscript.contentsHide']).toBe('Click to hide');
+		expect(zhCN['manuscript.contentsHide']).toBe('点击以隐藏');
+		expect(en['manuscript.contentsShow']).toBe('Click to show');
+		expect(zhCN['manuscript.contentsShow']).toBe('点击以显示');
+		expect(en['manuscript.contentsOpen']).toBe('Click to open in the sidebar');
+		expect(zhCN['manuscript.contentsOpen']).toBe('点击以在侧边栏中打开');
+	});
+
+	/**
 	 * The hover-preview feeds register through the untyped global accessor
 	 * and their names surface in Obsidian's own Page preview settings, where
 	 * a raw key would look like a broken plugin.

@@ -340,6 +340,195 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The wheel of chapters stands in the other margin by the rail's own
+	 * figures, so the two cannot drift apart: as wide as a card, narrower
+	 * down to the card's floor, with the rail's room to the pane's edge and
+	 * to the column, and the lane the word milestones keep counted out of
+	 * its width. Its box is placed by what the view measures of the page,
+	 * shown only under the view's class. The wheel itself turns without
+	 * script: the browser brings a row to rest in the middle, each row is
+	 * drawn by its own place in the column, and the list reads the wheel's
+	 * height from the wheel, however short the pane cut it.
+	 */
+	it('stands the wheel of chapters in the left margin by the rail\u2019s figures, and turns it without script', () => {
+		const box = declarations('.snowflake-method-contents-margin');
+		expect(box).toContain('position: absolute');
+		expect(box).toContain('display: none');
+		expect(box).toContain('top: var(--snowflake-method-stream-top, 0)');
+		expect(box).toContain('left: var(--snowflake-method-stream-left, 0)');
+		expect(box).toContain('width: var(--snowflake-method-margin-room, 0)');
+		expect(box).toContain('height: var(--snowflake-method-stream-height, 0)');
+		expect(box).toContain('justify-content: flex-end');
+		expect(box).toContain('pointer-events: none');
+		// The room the rail keeps: its gap from the column, with the lane
+		// beside it, and its room to the pane's edge.
+		expect(box).toMatch(
+			/padding: var\(--size-4-8\) calc\(var\(--size-4-2\) \+ var\(--snowflake-method-contents-lane, 0px\)\)\s+var\(--size-4-8\) var\(--size-4-3\)/u,
+		);
+		// The lane's floor is read in the labels' own type, so the box wears it.
+		expect(box).toContain('font-size: var(--font-ui-smaller)');
+		expect(declarations('.snowflake-method-milestone::before')).toContain(
+			'font-size: var(--font-ui-smaller)',
+		);
+		expect(declarations('.is-contents > .snowflake-method-contents-margin')).toContain('display: flex');
+		const wheel = declarations('.snowflake-method-contents-wheel');
+		expect(wheel).toContain(
+			`width: clamp(${String(RAIL_FLOOR)}px, calc(var(--snowflake-method-margin-room, 300px) - ${String(RAIL_ROOM)}px - var(--snowflake-method-contents-lane, 0px)), ${String(RAIL_WIDTH)}px)`,
+		);
+		expect(wheel).toContain(
+			'height: calc(var(--snowflake-method-contents-rows, 11) * var(--snowflake-method-contents-row))',
+		);
+		expect(wheel).toContain('max-height: 100%');
+		expect(wheel).toContain('container-type: size');
+		expect(wheel).toContain('pointer-events: auto');
+		const list = declarations('.snowflake-method-contents-list');
+		expect(list).toContain('padding: calc(50cqh - var(--snowflake-method-contents-row) / 2) 0');
+		expect(list).toContain('scroll-snap-type: y mandatory');
+		expect(list).toContain('overscroll-behavior: contain');
+		expect(list).toContain('scrollbar-width: none');
+		expect(list).toContain('mask-image: linear-gradient(to bottom, transparent, #000 50%, transparent)');
+		const row = declarations('.snowflake-method-contents-row');
+		expect(row).toContain('height: var(--snowflake-method-contents-row)');
+		expect(row).toContain('scroll-snap-align: center');
+		// Every row is laid out once: undrawn rows drawn again as they came
+		// into sight halved the frame rate of a turn through a long book.
+		expect(row).not.toContain('content-visibility');
+		const name = declarations('.snowflake-method-contents-wheel button.snowflake-method-contents-item');
+		expect(name).toContain('text-overflow: ellipsis');
+		expect(name).toContain('white-space: nowrap');
+		// The names start on one edge, the left, in the margin and the sidebar
+		// alike, and a row grows smaller about the point its words start at,
+		// the button's own inset, which keeps that edge straight. No rule of
+		// the sidebar's sets them otherwise.
+		expect(name).toContain('text-align: left');
+		expect(name).toContain('padding: 0 var(--size-4-2)');
+		expect(name).toContain('transform-origin: var(--size-4-2) 50%');
+		expect(styles).not.toMatch(
+			/\.snowflake-method-contents-view[^{]*\.snowflake-method-contents-item[^{]*\{/u,
+		);
+		expect(name).toContain('background-color: transparent');
+		expect(name).toContain('box-shadow: none');
+		expect(
+			declarations('.snowflake-method-contents-wheel button.snowflake-method-contents-item.is-active'),
+		).toContain('color: var(--text-accent)');
+		// The focus ring is drawn inside the row, where the list cuts none of it off.
+		expect(
+			declarations('.snowflake-method-contents-wheel button.snowflake-method-contents-item:focus-visible'),
+		).toContain('box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus)');
+		// Everything between the wheel's heading and the next keeps to what the
+		// review allows: no named colour in a mask, no override, no question
+		// about what an element holds.
+		const from = styles.indexOf('/* --- The wheel of chapters ');
+		const to = styles.indexOf('/* --- The margin cards in a sidebar ');
+		expect(from).toBeGreaterThan(-1);
+		expect(to).toBeGreaterThan(from);
+		const rules = styles.slice(from, to).replace(/\/\*[\s\S]*?\*\//gu, ' ');
+		expect(rules).not.toMatch(/[\s(,](?:black|white)[\s,;)]|!important|:has\(/u);
+		// A row is drawn by its own travel through the column where the
+		// browser can, six rows either side of the middle, and the mask is
+		// then only the dissolve at the ends.
+		expect(rules).toContain('@supports (animation-timeline: view())');
+		expect(rules).toContain('animation: snowflake-method-contents-turn linear both');
+		expect(rules).toContain('animation-timeline: view(block)');
+		expect(rules).toMatch(
+			/animation-range: cover calc\(50% - 6 \* var\(--snowflake-method-contents-row\)\)\s+cover calc\(50% \+ 6 \* var\(--snowflake-method-contents-row\)\)/u,
+		);
+		expect(rules).toContain('@keyframes snowflake-method-contents-turn');
+		expect(rules).toContain(
+			'mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent)',
+		);
+		// With animations reduced, by the plugin or by the system, a row keeps
+		// its size and only fades.
+		expect(
+			declarations(
+				'.snowflake-method-reduce-motion .snowflake-method-contents-wheel button.snowflake-method-contents-item',
+			),
+		).toContain('animation-name: snowflake-method-contents-fade');
+		expect(rules).toMatch(
+			/@media \(prefers-reduced-motion: reduce\) \{\s*\.snowflake-method-contents-wheel button\.snowflake-method-contents-item \{\s*animation-name: snowflake-method-contents-fade;/u,
+		);
+		const fade = /@keyframes snowflake-method-contents-fade \{([\s\S]*?)\n\}/u.exec(rules)?.[1] ?? '';
+		expect(fade).toContain('opacity');
+		expect(fade).not.toContain('scale');
+		// The bar's door is lit while the wheel stands in the margin.
+		expect(declarations('.snowflake-method-toolbar-contents.is-active')).toContain(
+			'color: var(--interactive-accent)',
+		);
+		// In focus mode the wheel steps back while a note is written in, and
+		// returns under the pointer or the keys.
+		expect(
+			declarations(
+				'.snowflake-method-focus .snowflake-method-contents-margin.is-writing .snowflake-method-contents-wheel',
+			),
+		).toContain('opacity: 0.3');
+		expect(
+			declarations(
+				'.snowflake-method-focus .snowflake-method-contents-margin.is-writing .snowflake-method-contents-wheel:focus-within',
+			),
+		).toContain('opacity: 1');
+		// The dots that say a row has a menu: at the row's end, inside the
+		// column so the dissolve takes them with their row, faint until
+		// pointed at, with the name cut short a little sooner beside them.
+		expect(row).toContain('position: relative');
+		const dots = declarations('.snowflake-method-contents-wheel .snowflake-method-contents-more');
+		expect(dots).toContain('position: absolute');
+		expect(dots).toContain('right: var(--size-2-1)');
+		expect(dots).toContain('color: var(--text-faint)');
+		expect(dots).toContain('--icon-size: var(--icon-xs)');
+		expect(
+			declarations('.snowflake-method-contents-wheel .snowflake-method-contents-more:hover'),
+		).toContain('color: var(--text-normal)');
+		expect(
+			declarations(
+				'.snowflake-method-contents-wheel .has-more > button.snowflake-method-contents-item',
+			),
+		).toContain('padding-right: calc(var(--size-4-2) + var(--size-4-6))');
+		// Named for a screen reader in words out of sight: a label would be
+		// shown as a tooltip, and the dots are the whole of the hint.
+		const dotsName = declarations('.snowflake-method-contents-unseen');
+		expect(dotsName).toContain('width: 1px');
+		expect(dotsName).toContain('overflow: hidden');
+		expect(dotsName).toContain('opacity: 0');
+		// Not clipped: the review's scanner counts a clip path against the sheet.
+		expect(dotsName).not.toContain('clip-path');
+		// They come in softly, and at once with animations reduced.
+		expect(dots).toContain('animation: snowflake-method-contents-more 150ms ease-out');
+		expect(
+			declarations(
+				'.snowflake-method-reduce-motion .snowflake-method-contents-wheel .snowflake-method-contents-more',
+			),
+		).toContain('animation: none');
+		expect(rules).toMatch(
+			/@media \(prefers-reduced-motion: reduce\) \{\s*\.snowflake-method-contents-wheel \.snowflake-method-contents-more \{\s*animation: none;/u,
+		);
+		// A finger's rows are the app's finger tall, in the margin and the drawer.
+		expect(declarations('body.is-mobile .snowflake-method-contents-wheel')).toContain(
+			'--snowflake-method-contents-row: var(--touch-size-m, 2.75rem)',
+		);
+		// And a finger's dots are as tall as their row and as wide.
+		const fingerDots = declarations(
+			'body.is-mobile .snowflake-method-contents-wheel .snowflake-method-contents-more',
+		);
+		expect(fingerDots).toContain('width: var(--touch-size-m, 2.75rem)');
+		expect(fingerDots).toContain('height: 100%');
+		expect(
+			declarations(
+				'body.is-mobile .snowflake-method-contents-wheel .has-more > button.snowflake-method-contents-item',
+			),
+		).toContain('padding-right: var(--touch-size-m, 2.75rem)');
+		// The sidebar holds the same wheel in the middle of its column, at the
+		// width the margin cards' blocks take there.
+		const view = declarations('.workspace-leaf-content .view-content.snowflake-method-contents-view');
+		expect(view).toContain('flex-direction: column');
+		expect(view).toContain('align-items: center');
+		expect(view).toContain('justify-content: center');
+		expect(view).toContain('overflow: hidden');
+		expect(declarations('.snowflake-method-contents-view .snowflake-method-contents-wheel')).toContain(
+			`width: clamp(${String(RAIL_FLOOR)}px, 100%, 20rem)`,
+		);
+	});
+
+	/**
 	 * The sidebar lists the same cards in the flow: no top, no glide, the
 	 * stripe lit on a card whose words are on the screen, and the stream's
 	 * door to it wearing the count of cards on the page.

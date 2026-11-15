@@ -1235,6 +1235,130 @@ export function promptForSegmentTitle(
 	});
 }
 
+/**
+ * What the rename form opens with: the note's name, and its first heading
+ * where it has one, with whether that heading still says the name.
+ */
+export interface SegmentRenamePrompt {
+	name: string;
+	heading: string | null;
+	matches: boolean;
+}
+
+/** What the author settled on: the new name, and whether the heading takes it too. */
+export interface SegmentRenameChoice {
+	title: string;
+	heading: boolean;
+}
+
+/**
+ * A new name for a manuscript note, in the naming form's own dress.
+ *
+ * One field, opened on the name the note has, whatever numbering is set to:
+ * a rename moves no other note, so there is no number to offer and nothing
+ * after it to move along. Under it, where the note has a first heading, the
+ * switch that says whether the heading takes the new name too. It starts on
+ * where the heading still says the old name, which is the heading the note
+ * was made with, and off where the author wrote another, which is theirs
+ * until they say otherwise.
+ */
+class SegmentRenameModal extends SnowflakeFormModal<SegmentRenameChoice> {
+	private title: string;
+	private heading: boolean;
+	private nameEl: HTMLInputElement | null = null;
+
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly prompt: SegmentRenamePrompt,
+		onSubmit: SubmitHandler<SegmentRenameChoice>,
+		private readonly settle: () => void,
+	) {
+		super(app, t, t('modal.renameSegment.title'), onSubmit, 'common.rename');
+		this.title = prompt.name;
+		this.heading = prompt.heading !== null && prompt.matches;
+		this.modalEl.addClass('snowflake-method-project-modal');
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+	}
+
+	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form');
+		new Setting(this.contentEl)
+			.setName(this.t('manuscript.segmentTitle'))
+			.addText((text) => {
+				text.setValue(this.title).onChange((value) => {
+					this.title = value;
+				});
+				this.nameEl = text.inputEl;
+			});
+		const heading = this.prompt.heading;
+		if (heading === null) return;
+		toggleRow(
+			this.contentEl,
+			this.prompt.matches
+				? this.t('manuscript.renameHeading')
+				: this.t('manuscript.replaceHeading', { heading }),
+			this.heading,
+			(value) => {
+				this.heading = value;
+			},
+		);
+	}
+
+	protected collectValue(): SegmentRenameChoice | null {
+		const title = this.title.trim();
+		if (title.length === 0) {
+			new Notice(this.t('manuscript.segmentTitleRequired'));
+			return null;
+		}
+		return { title, heading: this.heading && this.prompt.heading !== null };
+	}
+
+	onOpen(): void {
+		super.onOpen();
+		// The name is what the author came to change: it takes the caret with
+		// the whole of it selected, so typing replaces it. Asked for behind
+		// the form's own opening, which leaves nothing focused a moment after
+		// it has drawn, and then by the window the form is in.
+		window.setTimeout(() => {
+			this.contentEl.win.setTimeout(() => {
+				this.nameEl?.focus();
+				this.nameEl?.select();
+			}, 0);
+		}, 0);
+	}
+
+	onClose(): void {
+		super.onClose();
+		this.nameEl = null;
+		this.settle();
+	}
+}
+
+/**
+ * Asks for a note's new name, resolving to whatever the rename answered
+ * with, or to null when the author closed the form without renaming.
+ */
+export function promptForSegmentRename<T>(
+	app: App,
+	t: Translate,
+	prompt: SegmentRenamePrompt,
+	rename: (choice: SegmentRenameChoice) => Promise<T>,
+): Promise<T | null> {
+	return new Promise((resolve) => {
+		const outcome: { done: T | null } = { done: null };
+		new SegmentRenameModal(
+			app,
+			t,
+			prompt,
+			async (choice) => {
+				outcome.done = await rename(choice);
+			},
+			() => resolve(outcome.done),
+		).open();
+	});
+}
+
 export class ManageProjectsModal extends SnowflakeModal {
 	private t: Translate;
 	private locale: ProjectLocale;
@@ -5394,8 +5518,67 @@ export function confirmSegmentMerge(
 	prompt: SegmentMergePrompt,
 ): Promise<SegmentMergeChoice | null> {
 	return new Promise((resolve) => {
-		new ConfirmSegmentMergeModal(app, t, prompt, resolve).open();
+		new ConfirmSegmentRemovalModal(
+			app,
+			t,
+			{
+				title: t('modal.mergeSegments.title'),
+				question: t('modal.mergeSegments.question', {
+					removed: prompt.removed,
+					kept: prompt.kept,
+				}),
+				consequence: t('modal.mergeSegments.consequence'),
+				confirm: t('actions.merge'),
+				followers: prompt.followers,
+			},
+			resolve,
+		).open();
 	});
+}
+
+/**
+ * What the delete dialog opens with: the note's name, and how many later
+ * notes carry a number the note going would leave a gap in.
+ */
+export interface SegmentDeletePrompt {
+	name: string;
+	followers: number;
+}
+
+/**
+ * Asks whether a manuscript note should be deleted, resolving to the
+ * author's answer, or to null when they declined. The same dialog the
+ * merge asks with, since both take a note out of the book and both leave
+ * the numbers after it a gap to close.
+ */
+export function confirmSegmentDelete(
+	app: App,
+	t: Translate,
+	prompt: SegmentDeletePrompt,
+): Promise<SegmentMergeChoice | null> {
+	return new Promise((resolve) => {
+		new ConfirmSegmentRemovalModal(
+			app,
+			t,
+			{
+				title: t('modal.deleteSegment.title'),
+				question: t('modal.deleteSegment.question', { name: prompt.name }),
+				consequence: t('modal.deleteSegment.consequence'),
+				confirm: t('actions.delete'),
+				followers: prompt.followers,
+			},
+			resolve,
+		).open();
+	});
+}
+
+/** The words one of the two dialogs asks with, and the notes its switch would move. */
+interface SegmentRemovalWords {
+	title: string;
+	question: string;
+	consequence: string;
+	confirm: string;
+	followers: number;
 }
 
 /**
@@ -5405,7 +5588,7 @@ export function confirmSegmentMerge(
  * red. An author being asked whether to throw a note away should be looking at
  * the dialog they already know, not at this plugin's idea of one.
  */
-class ConfirmSegmentMergeModal extends SnowflakeModal {
+class ConfirmSegmentRemovalModal extends SnowflakeModal {
 	private confirmed = false;
 	private renumber = true;
 	private buttons: HTMLElement | null = null;
@@ -5413,12 +5596,12 @@ class ConfirmSegmentMergeModal extends SnowflakeModal {
 	constructor(
 		app: App,
 		private readonly t: Translate,
-		private readonly prompt: SegmentMergePrompt,
+		private readonly prompt: SegmentRemovalWords,
 		private readonly onResolve: (choice: SegmentMergeChoice | null) => void,
 	) {
 		super(app);
 		this.modalEl.addClass(DIALOG_CLASS);
-		this.setTitle(t('modal.mergeSegments.title'));
+		this.setTitle(prompt.title);
 		this.modalEl.addClass('snowflake-method-merge-segments-modal');
 	}
 
@@ -5428,13 +5611,10 @@ class ConfirmSegmentMergeModal extends SnowflakeModal {
 			// A note is named after a file and can be as long as one, so it wraps
 			// the way Obsidian wraps a filename rather than widening the dialog.
 			cls: 'u-break-word',
-			text: this.t('modal.mergeSegments.question', {
-				removed: this.prompt.removed,
-				kept: this.prompt.kept,
-			}),
+			text: this.prompt.question,
 		});
 		this.contentEl.createEl('p', {
-			text: this.t('modal.mergeSegments.consequence'),
+			text: this.prompt.consequence,
 		});
 		// The mirror of the naming form's toggle: a numbered note going leaves
 		// a gap in the count, and the notes after it can close it. Shown only
@@ -5464,7 +5644,7 @@ class ConfirmSegmentMergeModal extends SnowflakeModal {
 		});
 		const merge = buttons.createEl('button', {
 			cls: 'mod-cta mod-destructive',
-			text: this.t('actions.merge'),
+			text: this.prompt.confirm,
 			attr: { type: 'button' },
 		});
 		merge.addEventListener('click', () => {

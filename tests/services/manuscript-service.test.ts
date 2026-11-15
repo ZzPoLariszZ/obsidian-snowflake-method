@@ -1174,6 +1174,226 @@ describe("renaming manuscript notes in a batch", () => {
   });
 });
 
+describe("renaming and deleting one manuscript note", () => {
+  let fakeVault: FakeVault;
+  let renameCalls: Array<{ from: string; to: string }>;
+  let trashCalls: string[];
+  let service: SnowflakeProjectService;
+  let project: ProjectSnapshot;
+  const folder = "Snowflake Projects/Novel/50_Manuscript";
+
+  const titles = async (): Promise<string[]> =>
+    (await service.manuscript.listSegments(project)).map(({ title }) => title);
+  const bodyOf = (path: string): string =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").body;
+  const sequenceOf = (path: string): unknown =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter[
+      FRONTMATTER_KEYS.manuscriptSequence
+    ];
+
+  beforeEach(async () => {
+    const environment = createFakeEnvironment();
+    fakeVault = environment.fakeVault;
+    renameCalls = environment.fakeFileManager.renameCalls;
+    trashCalls = environment.fakeFileManager.trashCalls;
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+    project = await service.createProject({ title: "Novel", locale: "en" });
+    for (const title of ["Chapter 3", "Chapter 4", "Chapter 5"]) {
+      await service.manuscript.appendSegment(project, title);
+    }
+  });
+
+  it("says what the rename form opens on: the name, the heading, and whether they agree", async () => {
+    expect(await service.manuscript.segmentNaming(`${folder}/Chapter 3.md`)).toEqual({
+      name: "Chapter 3",
+      heading: "Chapter 3",
+      matches: true,
+    });
+    // A heading the author wrote is another heading.
+    await service.manuscript.writeSegment(
+      `${folder}/Chapter 4.md`,
+      "# The Long Road\n\nProse.\n",
+    );
+    expect(await service.manuscript.segmentNaming(`${folder}/Chapter 4.md`)).toEqual({
+      name: "Chapter 4",
+      heading: "The Long Road",
+      matches: false,
+    });
+    // And a note may have none at all.
+    await service.manuscript.writeSegment(`${folder}/Chapter 5.md`, "Prose alone.\n");
+    expect(await service.manuscript.segmentNaming(`${folder}/Chapter 5.md`)).toEqual({
+      name: "Chapter 5",
+      heading: null,
+      matches: false,
+    });
+  });
+
+  it("renames the file and, asked to, the heading with it, the note keeping its place", async () => {
+    const sequence = sequenceOf(`${folder}/Chapter 4.md`);
+
+    expect(
+      await service.manuscript.renameSegment(project, `${folder}/Chapter 4.md`, "Chapter 4: Dawn", {
+        heading: true,
+      }),
+    ).toEqual({ from: `${folder}/Chapter 4.md`, to: `${folder}/Chapter 4- Dawn.md` });
+
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4- Dawn", "Chapter 5"]);
+    // The heading holds the name as typed; the file what a file name can carry.
+    expect(bodyOf(`${folder}/Chapter 4- Dawn.md`)).toContain("# Chapter 4: Dawn\n");
+    expect(sequenceOf(`${folder}/Chapter 4- Dawn.md`)).toBe(sequence);
+    expect(fakeVault.getFileByPath(`${folder}/Chapter 4.md`)).toBeNull();
+  });
+
+  it("leaves the heading alone when the author says so, whatever it reads", async () => {
+    await service.manuscript.renameSegment(project, `${folder}/Chapter 3.md`, "Opening", {
+      heading: false,
+    });
+
+    expect(bodyOf(`${folder}/Opening.md`)).toContain("# Chapter 3\n");
+  });
+
+  it("replaces a heading the author wrote when they ask for that, which the batch never does", async () => {
+    await service.manuscript.writeSegment(
+      `${folder}/Chapter 4.md`,
+      "# The Long Road\n\nProse.\n",
+    );
+
+    await service.manuscript.renameSegment(project, `${folder}/Chapter 4.md`, "Dusk", {
+      heading: true,
+    });
+
+    expect(bodyOf(`${folder}/Dusk.md`)).toBe("# Dusk\n\nProse.\n");
+  });
+
+  it("brings a heading level with a name the note already has, renaming nothing", async () => {
+    await service.manuscript.writeSegment(`${folder}/Chapter 5.md`, "# Old Words\n\nProse.\n");
+    const before = renameCalls.length;
+
+    expect(
+      await service.manuscript.renameSegment(project, `${folder}/Chapter 5.md`, "Chapter 5", {
+        heading: true,
+      }),
+    ).toEqual({ from: `${folder}/Chapter 5.md`, to: `${folder}/Chapter 5.md` });
+
+    expect(renameCalls.length).toBe(before);
+    expect(bodyOf(`${folder}/Chapter 5.md`)).toBe("# Chapter 5\n\nProse.\n");
+  });
+
+  it("gives a note with no heading none for having been renamed", async () => {
+    await service.manuscript.writeSegment(`${folder}/Chapter 5.md`, "Prose alone.\n");
+
+    await service.manuscript.renameSegment(project, `${folder}/Chapter 5.md`, "Coda", {
+      heading: true,
+    });
+
+    expect(bodyOf(`${folder}/Coda.md`)).toBe("Prose alone.\n");
+  });
+
+  it("refuses a name another note has, a name of nothing, and a note that is not there", async () => {
+    const before = renameCalls.length;
+
+    await expect(
+      service.manuscript.renameSegment(project, `${folder}/Chapter 3.md`, "Chapter 4", {
+        heading: true,
+      }),
+    ).rejects.toThrow(/Chapter 4\.md/u);
+    await expect(
+      service.manuscript.renameSegment(project, `${folder}/Chapter 3.md`, "   ", {
+        heading: true,
+      }),
+    ).rejects.toThrow(/title is required/u);
+    await expect(
+      service.manuscript.renameSegment(project, `${folder}/Nowhere.md`, "Somewhere", {
+        heading: true,
+      }),
+    ).rejects.toThrow();
+
+    expect(renameCalls.length).toBe(before);
+    expect(bodyOf(`${folder}/Chapter 3.md`)).toContain("# Chapter 3\n");
+  });
+
+  it("puts a deleted note in the trash and names the note that stood before it", async () => {
+    const gone = await service.manuscript.removeSegment(project, `${folder}/Chapter 4.md`);
+
+    expect(gone).toEqual({
+      removed: `${folder}/Chapter 4.md`,
+      neighbour: `${folder}/Chapter 3.md`,
+      renumbered: { renamed: [], skipped: [] },
+    });
+    expect(trashCalls).toEqual([`${folder}/Chapter 4.md`]);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 5"]);
+  });
+
+  it("closes the numbers up behind a deleted note, the name it left counted as free", async () => {
+    const gone = await service.manuscript.removeSegment(project, `${folder}/Chapter 3.md`, [
+      { path: `${folder}/Chapter 4.md`, title: "Chapter 3" },
+      { path: `${folder}/Chapter 5.md`, title: "Chapter 4" },
+    ]);
+
+    expect(gone.renumbered.renamed).toEqual([
+      { from: `${folder}/Chapter 4.md`, to: `${folder}/Chapter 3.md` },
+      { from: `${folder}/Chapter 5.md`, to: `${folder}/Chapter 4.md` },
+    ]);
+    expect(gone.neighbour).toBe(`${folder}/Draft.md`);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4"]);
+    expect(bodyOf(`${folder}/Chapter 3.md`)).toContain("# Chapter 3\n");
+  });
+
+  it("names the note after the first one when that is the one deleted, by where the numbers left it", async () => {
+    const gone = await service.manuscript.removeSegment(project, `${folder}/Draft.md`, [
+      { path: `${folder}/Chapter 3.md`, title: "Chapter 2" },
+    ]);
+
+    expect(gone.neighbour).toBe(`${folder}/Chapter 2.md`);
+    // And a manuscript of one, deleted, has no note beside it.
+    await service.manuscript.removeSegment(project, `${folder}/Chapter 4.md`);
+    await service.manuscript.removeSegment(project, `${folder}/Chapter 5.md`);
+    expect(
+      (await service.manuscript.removeSegment(project, `${folder}/Chapter 2.md`)).neighbour,
+    ).toBeNull();
+    expect(await titles()).toEqual([]);
+  });
+
+  it("refuses a renumbering it cannot make before anything is thrown away", async () => {
+    await expect(
+      service.manuscript.removeSegment(project, `${folder}/Chapter 5.md`, [
+        { path: `${folder}/Chapter 4.md`, title: "Chapter 3" },
+      ]),
+    ).rejects.toThrow(/Chapter 3\.md/u);
+
+    expect(trashCalls).toEqual([]);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4", "Chapter 5"]);
+  });
+
+  it("moves the project's own link off a note it deletes, onto the note beside it", async () => {
+    const draft = `${folder}/Draft.md`;
+    expect((await service.loadProject(project.projectFile)).links.draft).toBe(draft);
+
+    const { neighbour } = await service.deleteManuscriptSegment(project.projectFile, draft);
+
+    expect(neighbour).toBe(`${folder}/Chapter 3.md`);
+    expect((await service.loadProject(project.projectFile)).links.draft).toBe(
+      `${folder}/Chapter 3.md`,
+    );
+  });
+
+  it("renames through the project, in a project that may be written to", async () => {
+    expect(
+      await service.renameManuscriptSegment(
+        project.projectFile,
+        `${folder}/Chapter 5.md`,
+        "Finale",
+        { heading: true },
+      ),
+    ).toEqual({ from: `${folder}/Chapter 5.md`, to: `${folder}/Finale.md` });
+    expect(bodyOf(`${folder}/Finale.md`)).toContain("# Finale\n");
+  });
+});
+
 describe("appending manuscript notes in a batch", () => {
   let fakeVault: FakeVault;
   let service: SnowflakeProjectService;

@@ -200,6 +200,8 @@ export interface SnowflakeSettings {
 	manuscriptWindow: number;
 	showManuscriptPath: boolean;
 	showManuscriptSequence: boolean;
+	/** The wheel of chapters stood in the stream's left margin, where the margin holds it. */
+	showManuscriptContents: boolean;
 	/** Word milestones drawn in the margin beside the rows the count reaches. */
 	manuscriptMilestones: boolean;
 	/** Whether the count runs on through the manuscript or restarts per note. */
@@ -406,6 +408,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptWindow: 5,
 	showManuscriptPath: true,
 	showManuscriptSequence: false,
+	showManuscriptContents: true,
 	manuscriptMilestones: false,
 	manuscriptMilestoneMode: 'chapter',
 	manuscriptMilestoneInterval: 500,
@@ -515,6 +518,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptWindow',
 	'showManuscriptPath',
 	'showManuscriptSequence',
+	'showManuscriptContents',
 	'manuscriptMilestones',
 	'manuscriptMilestoneMode',
 	'manuscriptMilestoneInterval',
@@ -753,6 +757,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.showManuscriptSequence === 'boolean'
 				? raw.showManuscriptSequence
 				: DEFAULT_SETTINGS.showManuscriptSequence,
+		showManuscriptContents:
+			typeof raw.showManuscriptContents === 'boolean'
+				? raw.showManuscriptContents
+				: DEFAULT_SETTINGS.showManuscriptContents,
 		manuscriptMilestones:
 			typeof raw.manuscriptMilestones === 'boolean'
 				? raw.manuscriptMilestones
@@ -1940,6 +1948,15 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							type: 'toggle',
 							key: 'showManuscriptSequence',
 							defaultValue: DEFAULT_SETTINGS.showManuscriptSequence,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptContents.name'),
+						desc: this.lines('settings.manuscriptContents.desc'),
+						control: {
+							type: 'toggle',
+							key: 'showManuscriptContents',
+							defaultValue: DEFAULT_SETTINGS.showManuscriptContents,
 						},
 					},
 					// The word milestones, under a heading of their own: a reading
@@ -3312,6 +3329,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'showManuscriptSequence':
 				if (typeof value === 'boolean') {
 					this.owner.settings.showManuscriptSequence = value;
+				}
+				break;
+			case 'showManuscriptContents':
+				if (typeof value === 'boolean') {
+					this.owner.settings.showManuscriptContents = value;
 				}
 				break;
 			case 'manuscriptMilestones':

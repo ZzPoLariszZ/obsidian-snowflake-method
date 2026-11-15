@@ -77,6 +77,7 @@ import type {
 	EntityFormRequest,
 	Translate,
 } from './modals';
+import type { ContentsHub } from './contents-hub';
 import type { MarginCardsHub } from './margin-cards-hub';
 
 /**
@@ -400,6 +401,8 @@ export interface ManuscriptWindowSettings {
 	after: number;
 	showPath: boolean;
 	showSequence: boolean;
+	/** The wheel of chapters stood in the left margin, where the margin holds it. */
+	contents: boolean;
 	/** The line being written held at the middle of the page. */
 	typewriter: boolean;
 	/** How far the fading reaches; 'off' fades nothing. */
@@ -476,6 +479,17 @@ export interface ManuscriptHost {
 	marginCards: MarginCardsHub;
 	/** Opens the margin card sidebar, or brings it forward. */
 	openMarginCards(): Promise<void>;
+	/** The bell the contents sidebar listens to; the stream rings it. */
+	contents: ContentsHub;
+	/** Opens the contents sidebar, or brings it forward. */
+	openContents(): Promise<void>;
+	/**
+	 * Shows or hides the wheel of chapters in every stream's margin at once:
+	 * like the writing modes, it is the author's, not one stream's.
+	 */
+	toggleManuscriptContents(): Promise<void>;
+	/** Whether the plugin holds its animations still. */
+	isReduceMotionEnabled(): boolean;
 	loadManuscript(projectPath: string | null): Promise<ManuscriptModel | null>;
 	/**
 	 * The entities the wikilink popup may offer for one project, each name
@@ -532,6 +546,26 @@ export interface ManuscriptHost {
 	 * join, as `onNamed` does above. Resolves false when nothing was joined.
 	 */
 	mergeManuscriptSegments(
+		projectPath: string,
+		path: string,
+		onAgreed?: SegmentNamed,
+	): Promise<boolean>;
+	/**
+	 * Gives one note a new name, asked of the author in a form that also
+	 * says whether the note's first heading takes it. `onAgreed` runs
+	 * between the answer and the rename. Resolves to where the note went,
+	 * or to null when nothing was renamed.
+	 */
+	renameManuscriptSegment(
+		projectPath: string,
+		path: string,
+		onAgreed?: SegmentNamed,
+	): Promise<{ from: string; to: string } | null>;
+	/**
+	 * Deletes one note, its file going to the trash, once the author has
+	 * agreed to it. Resolves false when nothing was deleted.
+	 */
+	deleteManuscriptSegment(
 		projectPath: string,
 		path: string,
 		onAgreed?: SegmentNamed,

@@ -11,6 +11,16 @@ vi.mock('obsidian', async (importOriginal) => {
 	return { ...runtime, ItemView: class {} };
 });
 
+/** A stream that stands no wheel of chapters and draws no milestone: the rail's room alone is asked about here. */
+const withoutWheel = {
+	host: {
+		manuscriptWindowSettings: () => ({ contents: false, milestones: { enabled: false } }),
+	},
+	contents: null,
+	contentsMargin: null,
+	contentsToggle: null,
+};
+
 /**
  * The view's margin measuring over its prototype: a stream this wide around
  * a column that wide, the milestones always fitting.
@@ -27,6 +37,7 @@ const measure = (streamWidth: number, columnWidth: number): HTMLElement => {
 		streamEl,
 		mounted: new Map([['50/one.md', { el: column }]]),
 		milestonesFit: () => true,
+		...withoutWheel,
 	});
 	(view as unknown as { syncMarginRoom(): void }).syncMarginRoom();
 	return contentEl;
@@ -65,6 +76,7 @@ describe('the margin\'s room', () => {
 			streamEl: contentEl.createDiv(),
 			mounted: new Map(),
 			milestonesFit: () => true,
+			...withoutWheel,
 		});
 		(view as unknown as { syncMarginRoom(): void }).syncMarginRoom();
 		expect(contentEl.style.getPropertyValue('--snowflake-method-margin-room')).toBe('0px');
