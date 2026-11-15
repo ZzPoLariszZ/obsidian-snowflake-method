@@ -200,6 +200,17 @@ const stream = (options: { reads?: boolean } = {}): Stream => {
 		shape: 'five chapters',
 		mounted,
 		t: (key: string) => key,
+		leaf: {},
+		app: {
+			workspace: {
+				// Brought forward, the tab is in sight and has a layout again.
+				revealLeaf: () => {
+					said.push('reveal');
+					contentEl.hidden = false;
+					return Promise.resolve();
+				},
+			},
+		},
 		showError: (error: unknown) => {
 			said.push(`error ${error instanceof Error ? error.message : String(error)}`);
 		},
@@ -371,6 +382,19 @@ describe('the stream’s chapters: followed, added, renamed and deleted', () => 
 		// A chapter the manuscript has lost is gone to by nobody.
 		await view.goToChapter('Novel/50_Manuscript/Gone.md');
 		expect(said).toEqual([`goTo ${chapter(5).path}`]);
+	});
+
+	it('brings its tab forward before going to a chapter asked for while it stood behind another', async () => {
+		const { view, said, contentEl } = stream();
+		// The sidebar's wheel can be pressed while the stream is out of sight,
+		// where a page has no layout to move in and the press was lost.
+		contentEl.hidden = true;
+		await view.goToChapter(chapter(5).path);
+		expect(said).toEqual(['reveal', `goTo ${chapter(5).path}`]);
+		// In sight already, it is asked for nothing.
+		said.length = 0;
+		await view.goToChapter(chapter(3).path);
+		expect(said).toEqual([`goTo ${chapter(3).path}`]);
 	});
 
 	it('reads the page’s chapter off the reading line, and says so only when it moved', () => {

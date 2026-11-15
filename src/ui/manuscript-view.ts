@@ -3935,10 +3935,22 @@ export class SnowflakeManuscriptView extends ItemView {
 			: this.activePath;
 	}
 
-	/** A chapter's start brought to the top of the page, from a press on the wheel. */
+	/**
+	 * A chapter's start brought to the top of the page, from a press on the
+	 * wheel.
+	 *
+	 * The sidebar's wheel can be pressed while this stream's tab stands
+	 * behind another, where the page has no layout to move in: the window
+	 * was moved and the page scrolled by nothing, and the press was lost.
+	 * The tab is brought forward first, as the app's outline brings up the
+	 * note a heading of it was pressed for.
+	 */
 	private async goToChapter(path: string): Promise<void> {
 		if (this.model?.segments.some((segment) => segment.path === path) !== true) {
 			return;
+		}
+		if (!this.containerEl.isShown()) {
+			await this.app.workspace.revealLeaf(this.leaf);
 		}
 		// The wheel says where it was sent until the page has arrived.
 		// Putting the editor away on the road tells the wheel of the chapter
