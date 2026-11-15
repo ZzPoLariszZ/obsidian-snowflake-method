@@ -35,6 +35,14 @@ export interface GraphScene {
 	readonly display: EntityGraphDisplay;
 	readonly forces: EntityGraphForces;
 	readonly colors: GraphColors;
+	/**
+	 * Whether what this picture adds and takes away is eased rather than
+	 * set: a node new to it comes up from nothing and a line from the dim,
+	 * what has left it fades out where it stood, and the layout is warmed for
+	 * any line that came or went. A picture of one time on the timeline asks
+	 * for it; a change of the filters, the search or the theme does not.
+	 */
+	readonly fade?: boolean;
 }
 
 /** The keys held when a node was clicked. */

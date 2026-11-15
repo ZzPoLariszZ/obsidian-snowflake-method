@@ -13,6 +13,14 @@
  * It never writes a file: the view's moves go out through the port, and
  * the shell keeps them.
  *
+ * A picture that asks to fade, one time on the timeline after another, is
+ * eased in the native time-lapse's manner: a node new to it comes up from
+ * nothing and a line from the dim, a tenth of the way a frame, and the
+ * layout is warmed to alpha 0.3 whenever a line comes or goes. What the
+ * native time-lapse never does, since it only ever adds, is done the same
+ * way: a node or a line that has left is kept as a ghost where it stood,
+ * outside the layout and the pointer's reach, until it has faded.
+ *
  * Loaded on its own, after the shell: this is the only module that imports
  * d3, and nothing imports this module but the loader the shell is given.
  */
@@ -177,6 +185,10 @@ class RelationshipGraphEngine implements GraphHandle {
 	private links: SimLink[] = [];
 	/** Where nodes not in the picture last stood. */
 	private readonly parked = new Map<string, GraphNodePlace>();
+	/** The nodes that left a fading picture, each drawn where it stood, in the colour it wore, until it has faded. */
+	private readonly ghostNodes = new Map<string, { sim: SimNode; fill: string }>();
+	/** The lines that left a fading picture, drawn between the ends they had until they have faded. */
+	private readonly ghostLinks = new Map<string, SimLink>();
 	private view: GraphViewport = { x: 0, y: 0, k: 1 };
 	/** Where the zoom is headed: the view's zoom glides to it a frame at a time, as the native graph's does. */
 	private targetK = 1;
@@ -344,16 +356,29 @@ class RelationshipGraphEngine implements GraphHandle {
 
 	setScene(scene: GraphScene): void {
 		if (this.disposed) return;
-		const first = this.scene === null;
+		const before = this.scene;
+		const first = before === null;
+		// The first picture is set, not eased: there is nothing for it to come out of.
+		const fade = scene.fade === true && !first;
 		this.scene = scene;
 		const { picture, display } = scene;
+		if (!fade) {
+			this.ghostNodes.clear();
+			this.ghostLinks.clear();
+		}
 		const wanted = new Set(picture.nodes.map((node) => node.id));
+		let nodesMoved = false;
 		for (const sim of this.nodes) {
 			if (wanted.has(sim.id)) continue;
+			nodesMoved = true;
 			if (placed(sim)) this.parked.set(sim.id, { x: sim.x, y: sim.y, pinned: sim.pinned });
 			this.byId.delete(sim.id);
+			// Gone from the layout at once, and from the eye a frame at a time, in the colour it wore.
+			if (fade && before !== null && placed(sim)) {
+				this.ghostNodes.set(sim.id, { sim, fill: this.colorOf(sim.node, before.picture.colors.get(sim.id), before.colors) });
+			}
 		}
-		this.nodes = this.nodes.filter((sim) => wanted.has(sim.id));
+		if (nodesMoved) this.nodes = this.nodes.filter((sim) => wanted.has(sim.id));
 		const entering: SimNode[] = [];
 		for (const node of picture.nodes) {
 			const standing = this.byId.get(node.id);
@@ -362,19 +387,25 @@ class RelationshipGraphEngine implements GraphHandle {
 				standing.radius = nodeRadius(node.weight, display.nodeSize);
 				continue;
 			}
+			nodesMoved = true;
+			// A node back before it had faded is the same disc, going the other way.
+			const ghost = this.ghostNodes.get(node.id)?.sim;
+			this.ghostNodes.delete(node.id);
 			const parked = this.parked.get(node.id);
-			const sim: SimNode = {
+			const sim: SimNode = ghost ?? {
 				id: node.id,
 				node,
-				radius: nodeRadius(node.weight, display.nodeSize),
+				radius: 0,
 				pinned: parked?.pinned ?? false,
 				x: parked?.x ?? Number.NaN,
 				y: parked?.y ?? Number.NaN,
 				vx: 0,
 				vy: 0,
-				alpha: 1,
+				alpha: fade ? 0 : 1,
 			};
-			if (parked !== undefined) {
+			sim.node = node;
+			sim.radius = nodeRadius(node.weight, display.nodeSize);
+			if (parked !== undefined || ghost !== undefined) {
 				this.parked.delete(node.id);
 				if (sim.pinned) {
 					sim.fx = sim.x;
@@ -387,11 +418,40 @@ class RelationshipGraphEngine implements GraphHandle {
 			this.byId.set(node.id, sim);
 		}
 		this.place(entering, picture.edges);
-		this.links = picture.edges
-			.filter((edge) => this.byId.has(edge.source) && this.byId.has(edge.target))
-			.map((edge) => ({ source: edge.source, target: edge.target, edge, alpha: 1 }));
-		this.simulation.nodes(this.nodes);
-		this.linkForce.links(this.links);
+
+		// A line that stays keeps its object, and with it the alpha the eye
+		// last saw: remade at full, a dimmed line would flash on every picture.
+		const held = new Map<string, SimLink>();
+		for (const link of this.links) held.set(link.edge.id, link);
+		const links: SimLink[] = [];
+		let linksMoved = false;
+		for (const edge of picture.edges) {
+			if (!this.byId.has(edge.source) || !this.byId.has(edge.target)) continue;
+			const standing = held.get(edge.id);
+			if (standing !== undefined) {
+				held.delete(edge.id);
+				// The same line may run in another lane now.
+				standing.edge = edge;
+				links.push(standing);
+				continue;
+			}
+			linksMoved = true;
+			// One back before it had faded carries on from where its alpha stood;
+			// its ends are found again, since a node may have been remade meanwhile.
+			const ghost = this.ghostLinks.get(edge.id);
+			this.ghostLinks.delete(edge.id);
+			links.push({ source: edge.source, target: edge.target, edge, alpha: ghost?.alpha ?? (fade ? GRAPH_DIM_ALPHA : 1) });
+		}
+		for (const [id, link] of held) {
+			linksMoved = true;
+			const [source, target] = endsOf(link);
+			if (fade && placed(source) && placed(target)) this.ghostLinks.set(id, link);
+		}
+		// The layout is handed its nodes and its lines only when they moved: a
+		// picture that changes neither, a search or a theme, starts nothing over.
+		if (linksMoved || first) this.links = links;
+		if (nodesMoved || first) this.simulation.nodes(this.nodes);
+		if (linksMoved || nodesMoved || first) this.linkForce.links(this.links);
 		let reheat = first ? 1 : 0;
 		if (!sameForces(this.forces, scene.forces)) {
 			this.forces = scene.forces;
@@ -399,8 +459,21 @@ class RelationshipGraphEngine implements GraphHandle {
 			reheat = Math.max(reheat, 0.3);
 		}
 		if (entering.length > 0) reheat = Math.max(reheat, 0.3);
-		if (reheat > 0) this.simulation.alpha(reheat).restart();
+		// The native time-lapse warms the layout for every line it adds.
+		if (fade && (linksMoved || nodesMoved)) reheat = Math.max(reheat, 0.3);
+		if (reheat > 0) this.simulation.alpha(Math.max(this.simulation.alpha(), reheat)).restart();
 		if (this.hovered !== null && !this.byId.has(this.hovered)) this.hover(null);
+		// The line under a resting pointer is held by what it was: found again by its id, or let go.
+		if (this.hoveredEdge !== null) {
+			const id = this.hoveredEdge.id;
+			const still = this.links.find((link) => link.edge.id === id);
+			if (still === undefined) {
+				this.hoveredEdge = null;
+				this.canvas.removeClass('is-over-line');
+			} else {
+				this.hoveredEdge = still.edge;
+			}
+		}
 		if (this.focused !== null && !this.byId.has(this.focused)) this.focusNode(null);
 		this.refreshHighlight();
 		this.quad = null;
@@ -587,6 +660,8 @@ class RelationshipGraphEngine implements GraphHandle {
 		this.stopWatching();
 		for (const stop of this.listeners.splice(0)) stop();
 		select(this.canvas).on('.zoom', null).on('.drag', null);
+		this.ghostNodes.clear();
+		this.ghostLinks.clear();
 		this.canvas.remove();
 	}
 
@@ -614,11 +689,22 @@ class RelationshipGraphEngine implements GraphHandle {
 		}
 		const centre = count === 0 ? { x: 0, y: 0 } : { x: sumX / count, y: sumY / count };
 		const spread = Math.sqrt(entering.length) * 30;
+		// Each new node's neighbours, read off the lines once for all of them.
+		const fresh = new Set(entering.map((sim) => sim.id));
+		const beside = new Map<string, string[]>();
+		const note = (id: string, other: string): void => {
+			if (!fresh.has(id)) return;
+			const known = beside.get(id);
+			if (known === undefined) beside.set(id, [other]);
+			else known.push(other);
+		};
+		for (const edge of edges) {
+			note(edge.source, edge.target);
+			note(edge.target, edge.source);
+		}
 		entering.forEach((sim, index) => {
 			let anchor: Point | null = null;
-			for (const edge of edges) {
-				const otherId = edge.source === sim.id ? edge.target : edge.target === sim.id ? edge.source : null;
-				if (otherId === null) continue;
+			for (const otherId of beside.get(sim.id) ?? []) {
 				const other = this.byId.get(otherId);
 				if (other !== undefined && other !== sim && placed(other)) {
 					anchor = other;
@@ -814,10 +900,24 @@ class RelationshipGraphEngine implements GraphHandle {
 		return colors.fill;
 	}
 
-	/** Every alpha eased one step towards where the highlight wants it; true while any is still on its way. */
+	/**
+	 * Every alpha eased one step towards where the highlight wants it, and a
+	 * ghost's towards nothing, where it is let go; true while any is still
+	 * on its way.
+	 */
 	private easeAlphas(): boolean {
 		const { highlight } = this;
 		let easing = false;
+		for (const [id, ghost] of this.ghostNodes) {
+			ghost.sim.alpha = easeAlpha(ghost.sim.alpha, 0);
+			if (ghost.sim.alpha <= 0.01) this.ghostNodes.delete(id);
+			else easing = true;
+		}
+		for (const [id, link] of this.ghostLinks) {
+			link.alpha = easeAlpha(link.alpha, 0);
+			if (link.alpha <= 0.01) this.ghostLinks.delete(id);
+			else easing = true;
+		}
 		for (const sim of this.nodes) {
 			const target = highlight === null || highlight.nodes.has(sim.id) ? 1 : GRAPH_DIM_ALPHA;
 			const next = easeAlpha(sim.alpha, target);
@@ -858,18 +958,19 @@ class RelationshipGraphEngine implements GraphHandle {
 		const smallFont = smallerFont(colors.font);
 		context.lineWidth = stroke;
 		context.lineCap = 'round';
-		for (const link of this.links) {
+		/** One line with its arrowhead and its word; a ghost is drawn the same way, plain, on its way out. */
+		const drawLine = (link: SimLink, live: boolean): void => {
 			const [source, target] = endsOf(link);
-			if (!placed(source) || !placed(target)) continue;
+			if (!placed(source) || !placed(target)) return;
 			const s = toScreen(source, view);
 			const t = toScreen(target, view);
 			if (!inBox(s, width, height, DRAW_MARGIN) && !inBox(t, width, height, DRAW_MARGIN)) {
 				const midpoint = { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
-				if (!inBox(midpoint, width, height, DRAW_MARGIN)) continue;
+				if (!inBox(midpoint, width, height, DRAW_MARGIN)) return;
 			}
 			const alpha = link.alpha;
-			if (alpha <= 0.01) continue;
-			const lit = highlight !== null && highlight.edges.has(link.edge.id);
+			if (alpha <= 0.01) return;
+			const lit = live && highlight !== null && highlight.edges.has(link.edge.id);
 			const control = toScreen(edgeControl(source, target, link.edge.lane, source.id < target.id), view);
 			context.globalAlpha = alpha;
 			context.strokeStyle = lit ? colors.lineHighlight : colors.line;
@@ -905,24 +1006,26 @@ class RelationshipGraphEngine implements GraphHandle {
 				context.fillText(words, anchor.x, anchor.y);
 				context.lineWidth = stroke;
 			}
-		}
+		};
+		// What has left goes under what stands.
+		for (const link of this.ghostLinks.values()) drawLine(link, false);
+		for (const link of this.links) drawLine(link, true);
 
 		// Discs, then their labels.
-		context.font = colors.font;
-		context.textAlign = 'center';
-		context.textBaseline = 'top';
-		for (const sim of this.nodes) {
-			if (!placed(sim)) continue;
+		/** One disc and its name; a ghost keeps the colour it wore, with no ring and no pin. */
+		const drawDisc = (sim: SimNode, fill: string | null): void => {
+			if (!placed(sim)) return;
 			const p = toScreen(sim, view);
 			const r = drawnRadius(sim.radius, k, dpr);
-			if (!inBox(p, width, height, r + DRAW_MARGIN)) continue;
-			const hovered = sim.id === this.hovered;
+			if (!inBox(p, width, height, r + DRAW_MARGIN)) return;
+			const live = fill === null;
+			const hovered = live && sim.id === this.hovered;
 			context.globalAlpha = sim.alpha;
-			context.fillStyle = hovered ? colors.fillHighlight : this.colorOf(sim.node, picture.colors.get(sim.id), colors);
+			context.fillStyle = fill ?? (hovered ? colors.fillHighlight : this.colorOf(sim.node, picture.colors.get(sim.id), colors));
 			context.beginPath();
 			context.arc(p.x, p.y, r, 0, Math.PI * 2);
 			context.fill();
-			if (sim.id === this.focused) {
+			if (live && sim.id === this.focused) {
 				context.lineWidth = 2;
 				context.strokeStyle = colors.fillFocused;
 				context.beginPath();
@@ -930,18 +1033,23 @@ class RelationshipGraphEngine implements GraphHandle {
 				context.stroke();
 				context.lineWidth = stroke;
 			}
-			if (sim.pinned) {
+			if (live && sim.pinned) {
 				context.fillStyle = colors.background;
 				context.beginPath();
 				context.arc(p.x, p.y, Math.max(1.5, r / 4), 0, Math.PI * 2);
 				context.fill();
 			}
-			const labelAlpha = hovered || sim.id === this.focused ? sim.alpha : textA * sim.alpha;
-			if (labelAlpha <= 0.01) continue;
+			const labelAlpha = hovered || (live && sim.id === this.focused) ? sim.alpha : textA * sim.alpha;
+			if (labelAlpha <= 0.01) return;
 			context.globalAlpha = labelAlpha;
 			context.fillStyle = colors.text;
 			context.fillText(sim.node.name, p.x, p.y + r + GRAPH_LABEL_GAP);
-		}
+		};
+		context.font = colors.font;
+		context.textAlign = 'center';
+		context.textBaseline = 'top';
+		for (const ghost of this.ghostNodes.values()) drawDisc(ghost.sim, ghost.fill);
+		for (const sim of this.nodes) drawDisc(sim, null);
 		context.globalAlpha = 1;
 		if (easing || gliding) this.requestFrame();
 	}
