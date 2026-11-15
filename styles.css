@@ -19503,6 +19503,19 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	display: flex;
 }
 
+/* The strip's name, for a screen reader alone, and out of the row. A label
+   would say the same and be shown as a tooltip besides, to a pointer
+   resting on the strip's own ground. A pixel, drawn at no strength. */
+.snowflake-method-relationship-graph-timeline-name {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+}
+
 .snowflake-method-relationship-graph-timeline-transport {
 	display: flex;
 	flex: 0 0 auto;

@@ -74,6 +74,9 @@ export interface TimelineStrip {
 
 const share = (index: number, count: number): string => String(count < 2 ? 0 : index / (count - 1));
 
+/** How many strips have been drawn, so each one's name has an id of its own. */
+let drawn = 0;
+
 export function renderGraphTimeline(host: HTMLElement, deps: TimelineStripDeps): TimelineStrip {
 	const { t } = deps;
 	// On a tablet the app reads a sideways drag anywhere in the workspace as a
@@ -82,8 +85,16 @@ export function renderGraphTimeline(host: HTMLElement, deps: TimelineStripDeps):
 	// strip, whole: a finger that lands beside the thumb is still after the axis.
 	const el = host.createDiv({
 		cls: BASE,
-		attr: { role: 'group', 'aria-label': t('relationshipGraph.timeline'), 'data-ignore-swipe': 'true' },
+		attr: { role: 'group', 'data-ignore-swipe': 'true' },
 	});
+	// Named by words of its own, out of sight, and not by a label. The app
+	// shows a label as a tooltip to a pointer resting on the element that
+	// carries it, so a labelled strip said "Timeline" over its own ground,
+	// around its buttons and its axis.
+	drawn += 1;
+	const nameId = `${BASE}-name-${String(drawn)}`;
+	el.createSpan({ cls: `${BASE}-name`, text: t('relationshipGraph.timeline'), attr: { id: nameId } });
+	el.setAttribute('aria-labelledby', nameId);
 
 	// -- The transport ---------------------------------------------------------
 

@@ -1817,6 +1817,13 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-relationship-graph-timeline')).toContain('display: none');
 		expect(declarations('.snowflake-method-relationship-graph.is-timeline-open .snowflake-method-relationship-graph-timeline')).toContain('display: flex');
 		expect(declarations('.snowflake-method-relationship-graph.is-scene-manuscript .snowflake-method-relationship-graph-timeline-toggle')).toContain('display: none');
+		// Its name is a screen reader's alone, out of the row and out of sight: a label would be shown as a tooltip.
+		const stripName = declarations('.snowflake-method-relationship-graph-timeline-name');
+		expect(stripName).toContain('position: absolute');
+		expect(stripName).toContain('width: 1px');
+		expect(stripName).toContain('overflow: hidden');
+		expect(stripName).toContain('opacity: 0');
+		expect(stripName).not.toContain('clip-path');
 		// The points stand in a box set in by half the app's own thumb either side, each by its share of the travel.
 		const rail = declarations('.snowflake-method-relationship-graph-timeline-rail');
 		expect(rail).toContain('margin-inline: calc(var(--slider-thumb-width, 18px) / 2)');

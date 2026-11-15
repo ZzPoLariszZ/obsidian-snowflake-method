@@ -66,7 +66,12 @@ describe('the timeline strip', () => {
 	it('is a named group: three buttons that step and play, the app\'s own slider named for what it sets, and the time it is on', () => {
 		const view = strip();
 		expect(view.el.getAttribute('role')).toBe('group');
-		expect(view.el.getAttribute('aria-label')).toBe('relationshipGraph.timeline');
+		// Named by words of its own, out of sight: a label would be shown as a
+		// tooltip to a pointer resting on the strip's own ground.
+		expect(view.el.getAttribute('aria-label')).toBeNull();
+		expect(view.part('name').textContent).toBe('relationshipGraph.timeline');
+		expect(view.el.getAttribute('aria-labelledby')).toBe(view.part('name').getAttribute('id'));
+		expect(view.part('name').getAttribute('id')).toMatch(new RegExp(`^${STRIP}-name-\\d+$`));
 		// A tablet's sidebar swipe would take a finger's drag from under the thumb: the strip is marked as the app marks its own sliders.
 		expect(view.el.getAttribute('data-ignore-swipe')).toBe('true');
 		expect(view.part('transport').children.map((button) => button.getAttribute('aria-label'))).toEqual([
@@ -84,9 +89,9 @@ describe('the timeline strip', () => {
 		// Under the rail stands the one name, the current time's, where that time stands along it.
 		expect(view.part('caption-name').textContent).toBe('Mon');
 		expect(view.part('caption').styles[AT]).toBe('0');
-		// Nothing stands at the strip's end: no name there and no count of the times.
+		// Nothing stands at the strip's end: no time's name there and no count of the times.
 		expect(view.el.children.map((child) => [...child.classes].find((cls) => cls.startsWith(`${STRIP}-`)))).toEqual([
-			`${STRIP}-transport`, `${STRIP}-scrub`,
+			`${STRIP}-name`, `${STRIP}-transport`, `${STRIP}-scrub`,
 		]);
 		expect(view.el.querySelector(`.${STRIP}-readout`)).toBeNull();
 		// The points and the name under them are decoration: the control says the same in its own words.
