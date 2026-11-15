@@ -89,7 +89,7 @@ Thank you for your support!
 | Gallery | Keep pictures on any character, scene or worldbuilding note, and choose the one its cards show. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
 | Import and series | Bring any part of a story's design in from another project, and keep the books of a series in step with each other. |
-| Story structure | See every scene as a card in narrative order, or switch to your characters or a worldbuilding kind, and reorder and edit them right on the cards. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. The relationship graph draws the relationships you recorded as labeled lines between your characters and worldbuilding notes, and opens Obsidian's own graph on the scenes and their chapters. |
+| Story structure | See every scene as a card in narrative order, or switch to your characters or a worldbuilding kind, and reorder and edit them right on the cards. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. The relationship graph draws the relationships you recorded as labeled lines between your characters and worldbuilding notes. Its timeline shows how they change from one of your story's times to the next. It also opens Obsidian's own graph on the scenes and their chapters. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. Bring notes from anywhere in the vault in as chapters. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. Keep the look to the manuscript stream, or apply it to your Snowflake projects or the whole vault. |
 | Typewriter scrolling | Keep the line you are writing in the middle of the page. |
@@ -206,9 +206,9 @@ Scenes are easier to judge when you can see them all at once. The **Visualizatio
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab, with Scene view chosen in the field above and a search in the middle. The twenty-four scene cards of the Clocktower Snow project run in narrative order across three rows, each numbered, tinted and marked with its status at the top right, its summary in the middle and its point of view at the foot. Three are complete, three are in revision, four are in progress and the rest are not started. Display, sort, filter, refresh and Add scene are in the bar above." /></a></p>
 
-The corkboard lays out every scene as a numbered card in narrative order, and you work right on the card. Edit the name in place, and pick the point of view and the progress status from dropdowns. Type the conflict into its text box, and use the swatch to tint the card in one of eight colors. From the card you can also open the manuscript chapters its scene links to. While the board is in plain order, drag a card to move its scene. A **+** between two cards inserts a scene at exactly that point, and **Add scene** puts one at the end. The search box and the funnel filter the board. **Display** sets the size of the cards and groups them by any of eight fields. Its **Gallery** option shows the scene's main picture in place of the conflict and links. The direction button shows the whole board in reverse.
+The corkboard lays out every scene as a numbered card in narrative order, and you work right on the card. Edit the name in place, and pick the point of view and the progress status from dropdowns. Type the conflict into its text box, and use the swatch to tint the card in one of eight colors. From the card you can also open the manuscript chapters its scene links to. While the board is in plain order, drag a card to move its scene. A **+** between two cards inserts a scene at exactly that point, and **Add scene** puts one at the end. The search box and the funnel filter the board. **Display** picks the cards' style and groups them by any of eight fields. Its **Gallery** style shows the scene's main picture in place of the conflict and links. Three sliders there set the cards' width, their height and the font size of their text, a pixel at a time. The height and the font size change the card's text box and nothing else. The board follows each slider as you drag. **Confirm** keeps the new sizes, and Escape puts the old ones back. The direction button shows the whole board in reverse.
 
-The field at the start of the bar chooses what the board shows. Besides **Scene view**, there's **Character view** and a view for each worldbuilding kind, including the ones you add. Their cards work like scene cards. You edit the name, status, text and tint in place, drag to reorder, and add a note with **+** or the add button. The text is a character's one-sentence storyline or a note's description. The foot names a character's role, a time's point or period, or another note's categories. Under **Display**, **Gallery** shows the main picture in place of the text, and **Extended** shows both. A note without pictures shows its kind's icon instead. On any card, hover over the picture to page through the gallery, star the main picture or take one off. Search, the funnel and **Display** follow the kind, so you can also group and filter characters by role, and times by point or period. The tab stays on the view you chose, and each view keeps its own card size, grouping and direction.
+The field at the start of the bar chooses what the board shows. Besides **Scene view**, there's **Character view** and a view for each worldbuilding kind, including the ones you add. Their cards work like scene cards. You edit the name, status, text and tint in place, drag to reorder, and add a note with **+** or the add button. The text is a character's one-sentence storyline or a note's description. The foot names a character's role, a time's point or period, or another note's categories. Under **Display**, **Gallery** shows the main picture in place of the text, and **Extended** shows both. A note without pictures shows its kind's icon instead. On any card, hover over the picture to page through the gallery, star the main picture or take one off. Search, the funnel and **Display** follow the kind, so you can also group and filter characters by role, and times by point or period. The tab stays on the view you chose, and each view keeps its own card style and sizes, grouping and direction.
 
 <p align="center"><a href="assets/screenshots/workspace_freeform_en.png"><img src="assets/screenshots/workspace_freeform_en.png" width="100%" alt="The Visualization workspace on its Freeform tab, with the view Main chosen in the field above, a search in the middle and Add node and Add view at the end. A frame titled Worldbuilding holds cards for the character Nora Linden, the scene First Snow, Stopped Clock, the time First Snow Night, the location Clock Tower and the item Pocket Watch. Lines run from them to a frame titled Task management, which holds a task, a foreshadowing, a revision and a sticky note, and among those lines a dashed one is labeled Rewrite and a dotted one Reminder. From the task a line leads on to an extended card for the character Silas Penn, then to a text card of working notes and down to a link card for the Snowflake Method article. A column of canvas controls is on the right, a strip of quick adds runs along the bottom, and the minimap is in the corner." /></a></p>
 
@@ -216,11 +216,11 @@ The field at the start of the bar chooses what the board shows. Besides **Scene 
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_en.png"><img src="assets/screenshots/workspace_timeline_en.png" width="100%" alt="The Visualization workspace on its Timeline tab, with Main view chosen in the field above. A shared Time column on the left holds four times with their descriptions, from First Snow, Ten Years Ago to New Year's Eve. Three timelines stand beside it: Main, which is pinned and tinted as the active one, and one bound to the character Nora Linden and one to Silas Penn. Each cell carries a short description against an axis with a node at every time, scene cards are placed on the rows, and two stacks read 1 / 2 and 1 / 3. The scene pool on the right holds the eighteen scenes this timeline has not placed." /></a></p>
 
-**Timeline** asks the other question: not what order the scenes are read in, but when they happen. Each timeline is a column of its own. When it follows a character or a worldbuilding note, it's bound to that note. They all line up with the shared time column on the left, whose rows are your Time notes. Inside a cell you write **sub-descriptions** for what that timeline does at that time. The scenes come from the **scene pool** on the right, which holds whatever the active timeline hasn't placed yet. Drag a card onto a sub-description and it leaves the pool. Drag it back and it returns. Every move is also a menu item, so nothing here needs a mouse. A **view** sets which timelines appear side by side. The toolbar can hide the sub-descriptions and stack the scenes behind one card. It can also show the latest times first and fold the time column and the pool away. The canvas button at the end of the toolbar writes the view as an Obsidian Canvas file.
+**Timeline** asks the other question: not what order the scenes are read in, but when they happen. Each timeline is a column of its own. When it follows a character or a worldbuilding note, it's bound to that note. They all line up with the shared time column on the left, whose rows are your Time notes. Inside a cell you write **sub-descriptions** for what that timeline does at that time. The scenes come from the **scene pool** on the right, which holds whatever the active timeline hasn't placed yet. Drag a card onto a sub-description and it leaves the pool. Drag it back and it returns. Every move is also a menu item, so nothing here needs a mouse. A **view** sets which timelines appear side by side. The toolbar can hide the sub-descriptions and stack the scenes behind one card. It can also show the latest times first and fold the time column and the pool away. Its **Display** button sets the card style and the corkboard's three sizes for the cards on the lanes. The pool has a **Display** of its own, so a scene can look one way there and another once placed. Here the font size also sets the descriptions and the sub-descriptions. The canvas button at the end of the toolbar writes the view as an Obsidian Canvas file.
 
 <p align="center"><a href="assets/screenshots/workspace_beat_sheet_en.png"><img src="assets/screenshots/workspace_beat_sheet_en.png" width="100%" alt="The Visualization workspace on its Beat sheet tab, with the sheet Three Act chosen in the field above. Act 1 - Setup, Act 2 - Confrontation and Act 3 - Resolution each have a header with a handle, a + and a menu. The beats of each act run down the left with their names and descriptions, from Setup to Pre-Climax, against an axis with a node at every beat. One or two scene cards are placed beside every beat but Second Turning Point, which is still empty. Add act and Add beat sheet are at the end of the toolbar, and the scene pool on the right holds the fourteen scenes not yet placed." /></a></p>
 
-**Beat sheet** asks a third question: what each scene is for in the shape of the story. You can have as many sheets in a project as you like, and you see one at a time. A new sheet starts blank or from a template. Three Act, Kishōtenketsu, Story Circle, Save the Cat, Hero's Journey and Romancing the Beat are built in. Each comes with its acts, its beats and a line on what every beat is there to do. Acts are numbered by their order, and you can give any of them a label. A beat has no note behind it, so its name and description are kept in the sheet itself. Under a beat you write sub-descriptions and place scenes from the pool, just as on a timeline. Acts, beats, rows and scenes all move by drag or by menu. The toolbar can hide the sub-descriptions, stack the scenes, and show the last act first. It can also save the sheet you're viewing as a template of your own. The canvas button writes the sheet as an Obsidian Canvas file.
+**Beat sheet** asks a third question: what each scene is for in the shape of the story. You can have as many sheets in a project as you like, and you see one at a time. A new sheet starts blank or from a template. Three Act, Kishōtenketsu, Story Circle, Save the Cat, Hero's Journey and Romancing the Beat are built in. Each comes with its acts, its beats and a line on what every beat is there to do. Acts are numbered by their order, and you can give any of them a label. A beat has no note behind it, so its name and description are kept in the sheet itself. Under a beat you write sub-descriptions and place scenes from the pool, just as on a timeline. Acts, beats, rows and scenes all move by drag or by menu. The toolbar can hide the sub-descriptions, stack the scenes, and show the last act first. Its **Display** button sets the cards and the words as the timeline's does. It can also save the sheet you're viewing as a template of your own. The canvas button writes the sheet as an Obsidian Canvas file.
 
 **Export as Obsidian Canvas** writes the view you're looking at as a `.canvas` file that Obsidian's own Canvas opens. The file goes next to the workspace's own file: `732_Freeform/<view name>.canvas`, `733_Timeline/<view name>.canvas` or `734_Beat_Sheet/<sheet name>.canvas`. Notes become file cards and keep their colors. Frames, timelines and acts become groups. The text you typed, the sub-descriptions and the beats become text cards. The toolbar's display switches, which hide the words, stack the scenes or reverse the order, change only the screen. The canvas always writes the words, puts the scenes beside them and keeps the stored order. Tasks, foreshadowing and revisions are not notes, so each becomes a text card that names it, and every line between cards is kept with its arrows and label. The canvas opens as soon as it's written. If a file of that name is already there and differs, you're asked before it's replaced. If it says the same, nothing is written and the canvas just opens. The file is a copy that the plugin never reads back, so you can rearrange it in Canvas or delete it without changing the workspace.
 
@@ -228,15 +228,21 @@ The field at the start of the bar chooses what the board shows. Besides **Scene 
 
 **Relationship graph** asks who is tied to whom, and has two views. **Entity ↔ Entity** draws every character and worldbuilding note as a disc colored by kind. Every relationship you recorded in a note's form becomes a line from that note to its target. The relationship's word is written on the line, with an arrow for its direction. The vocabulary notes themselves never appear. Scenes stay out of the picture until you turn them on under Filters, and a target no note answers to shows as a faint disc of its own. Hover over a disc to light up its lines and dim the rest. Drag a disc to move it, drag the background to pan, and roll the wheel to zoom. Click a disc to open the note's form, and click a line to open the form at that relationship's card. The panel in the corner has filters, color groups, display options and forces, as Obsidian's own graph does, and every gesture has a menu item or a key. **Scene ↔ Manuscript** is the other view. It opens Obsidian's own graph in a tab of its own, set to the project. Only its scenes and chapters are shown, in orange and blue. An arrow runs from each scene to the chapters it links to. Your own graph settings come back when that tab closes.
 
+**Show timeline** on the toolbar opens a strip under the **Entity ↔ Entity** graph. It has a point for every Time note, in the order of the dashboard's Time table, and the name of the time you're on under the thumb. A relationship whose **When** names one of those times is drawn only while it stands. Drag the thumb, press a point, or use the step buttons or the arrow keys to move from time to time. **Play** runs on from the time you're on. It brings each time's lines in one at a time and fades out the ones that end, like the time-lapse of Obsidian's own graph. A relationship dated by a period lasts from the period's start to its end. For one dated by a point, **Dated lines** under **Timeline** in the panel decides. **Latest** ends it when the same note records a later relationship with the same target, and **From then on** keeps it to the end. **Undated lines** decides where the relationships with no time stand, along with the notes that have no dated relationship. **At the start** draws them at every time, and **At the end** holds them back until the last one. Where no relationship in sight names a time, the strip says so and its buttons and thumb are disabled.
+
 ### Manuscript stream
 
 A novel is easier to write in chapters and easier to read as a book. The manuscript stream gives you both at once. Every chapter stays its own Markdown note on disk, and the whole draft reads as one continuous page. If you have used Scrivener, this is its Scrivenings mode, now in Obsidian.
 
 <p align="center"><img src="assets/screenshots/manuscript-stream-en.gif" width="100%" alt="The manuscript stream opened beside the dashboard, scrolled from the first chapter into the second, and a sentence typed at the end of the first chapter" /></p>
 
-In the manuscript stream, click any chapter and it switches to an editing view. It goes back to reading view when you move to another chapter. You can *(i) insert a chapter between two others, (ii) cut one in two at the cursor, or (iii) merge the next one into it.*
+In the manuscript stream, click any chapter and it switches to an editing view. It goes back to reading view when you move to another chapter. You can *(i) insert a chapter between two others, (ii) cut one in two at the cursor, or (iii) merge the next one into it.* A chapter you insert opens at the top of the page, ready to write in.
 
 **Typewriter scrolling** keeps the line you're writing in the middle of the page. **Focus mode** fades everything except the paragraph you're writing. Its deepest level, solo, shows only the manuscript, in full screen. Each has a button in the toolbar. The arrow keys move the cursor from one chapter into the next.
+
+**Contents** is a wheel of chapter names in the stream's left margin. The chapter you're reading sits in the middle, highlighted, and the names above and below fade with distance. It shows as many chapters on each side as **Notes to keep loaded** keeps. The wheel follows you as you read. While you write, it marks the chapter you're writing in for as long as that chapter is on the page. Scroll it to browse without moving the page, and it glides back when the pointer leaves. Click a name to jump to the start of that chapter, even one the stream hasn't loaded. From the keyboard, Tab reaches the wheel, the arrow keys walk it and Enter jumps. The **Contents** button in the toolbar shows or hides it. In a pane too narrow for the margin, the button opens the same wheel in the **Contents** sidebar.
+
+You can rename or delete a chapter from the wheel. Right-click its name and choose **Rename…** or **Delete**. Dots appear beside the name under the pointer, and a click on them opens the same menu. With the keys on a name, F2 renames and Delete deletes. The rename dialog asks for the new name and has a switch to rename the note's first heading too. The switch starts on when the heading still says the old name, and off when you wrote a different heading. Deleting asks first, then moves the note to the trash. With chapter numbering on, the dialog can also move the later numbers down by one.
 
 **Search and replace** reaches the whole manuscript. Press Ctrl+F, or Cmd+F on a Mac, and a bar like Obsidian's own opens above the page. The search button in the toolbar opens the same bar. It finds every match in every chapter, even the ones the stream hasn't loaded yet, and Enter takes you to the next one. Buttons in the box match case, match whole words or read the query as a regular expression. The arrow at the left, or Ctrl+Alt+F, opens the replace row. In the note you're writing in, Undo takes a replacement back. Replace all asks before it changes other notes, because those are saved straight away. Replacing text a revision or foreshadowing marks asks first too, since the mark would lose its place.
 
@@ -347,7 +353,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 
 The plugin runs on Obsidian for iOS and Android. A tablet shows the desktop layout, with controls sized for a finger. On a phone, the dashboard's steps sit behind a **Steps** button, and every dialog opens at full width. Obsidian has no status bar on a phone, so the writing count and the writing session appear on the toolbars instead. The dashboard scrolls as one page, so a long cast or scene list runs down the screen under its search box.
 
-A long press opens the menus a right-click opens on the desktop, and anything you can drag can also be arranged from a menu. In the stream, a long press selects text as usual, and the **Selection actions** button on the toolbar opens the plugin's menu for the selected words. On a phone, you read and answer the revision and foreshadowing cards in the **Margin cards** sidebar, since the margin beside the stream is too narrow.
+A long press opens the menus a right-click opens on the desktop, and anything you can drag can also be arranged from a menu. In the stream, a long press selects text as usual, and the **Selection actions** button on the toolbar opens the plugin's menu for the selected words. On a phone, you read and answer the revision and foreshadowing cards in the **Margin cards** sidebar, since the margin beside the stream is too narrow. The **Contents** wheel is in a sidebar there for the same reason, with rows a finger high. A long press on a name opens its rename and delete menu, and so do the dots beside the current chapter.
 
 The visualization workspace, with its corkboard, freeform canvas, timeline, beat sheet and relationship graph, is for tablets and the desktop. A phone's screen leaves it no useful room, and the dashboard's tables still hold the scenes and characters. On a phone, floating sticky notes open in the sticky notes sidebar. The right-click menu in text boxes, notes beside the dashboard, hidden scrollbars and hidden tooltips stay desktop features. **Show mobile diagnostics** in the Command palette shows what your device reports to the plugin, with a button that copies the report for a bug report.
 
@@ -392,6 +398,7 @@ The visualization workspace, with its corkboard, freeform canvas, timeline, beat
 | New task | Add a task to the current project's board. |
 | Open beat sheet workspace | Open the visualization workspace to its beat sheet, with the scenes placed under its acts and beats. |
 | Open character base | Open the Bases view of the current project's characters. |
+| Open contents sidebar | Open the manuscript's wheel of chapter names in its own sidebar. |
 | Open corkboard workspace | Open the visualization workspace to its corkboard, with scenes, characters or a worldbuilding kind shown as cards. |
 | Open freeform workspace | Open the visualization workspace to its freeform canvas, where notes, records, files and text become cards you can connect and frame. |
 | Open dashboard | Open the current project's dashboard, or bring it into view. |
@@ -422,6 +429,7 @@ The visualization workspace, with its corkboard, freeform canvas, timeline, beat
 | Stop the writing session | End the running session and save its record. |
 | Switch statistics scope | Switch the statistics between the whole project and the manuscript alone. |
 | Toggle arrange mode in the file explorer | Start or stop dragging files and folders into your own order. |
+| Toggle contents in the manuscript | Show or hide the wheel of chapter names in the stream's left margin. |
 | Toggle custom highlights | Turn your own highlight rules on or off in the manuscript. |
 | Toggle derived tasks on the task board | Show or hide the cards the plugin derives from your writing. |
 | Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
@@ -489,6 +497,7 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Notes to keep loaded | 5 | Keep this many manuscript notes loaded on each side of the one you are reading. |
 | Show note paths | On | Show where each manuscript note is stored, just above the note. |
 | Show order numbers | Off | Show the stored position that decides where a note comes in the reading order. |
+| Show contents in the margin | On | Show a wheel of chapter names in the stream's left margin, where there's room. |
 | Typewriter scrolling | On | Keep the line you are writing at the middle of the page. |
 | Focus mode | Off | Fade everything except the paragraph you are writing. The solo level shows only the manuscript, in full screen. |
 | Highlight mentions | Entities and dialogue off, the rest on | Mark entity names and aliases, sensitive words, dialogue, and text that matches your own rules. Each of the four has its own switch. Entities can be marked at their first mention, only where they are not yet links, or everywhere. |
@@ -690,6 +699,9 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Modification history (0.29.0)
 - [x] Better display on tablets and phones (0.31.0)
 - [x] Margin cards sidebar (0.31.0)
+- [x] Card sizes on the corkboard, timeline and beat sheet (0.32.0)
+- [x] Timeline in the relationship graph (0.32.0)
+- [x] Contents wheel in the manuscript stream (0.32.0)
 
 <a id="development"></a>
 
@@ -842,7 +854,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 图库 | 给角色、场景和世界观笔记配上图片，并选出卡片上显示的那一张。 |
 | 项目归档 | 把暂时写完的项目收起来，需要时再取回。 |
 | 导入与系列 | 从另一个项目导入故事设计的任何部分，同一系列的几册书也能保持一致。 |
-| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。看板也可以换成角色或任一类世界观。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。关系图把你记下的关系画成角色与世界观笔记之间带标签的连线，场景与正文章节的联系则交给 Obsidian 自带的关系图谱来显示。 |
+| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。看板也可以换成角色或任一类世界观。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。关系图把你记下的关系画成角色与世界观笔记之间带标签的连线，它的时间轴让你看到这些关系怎样随故事里的时间变化。场景与正文章节的联系则交给 Obsidian 自带的关系图谱来显示。 |
 | 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。仓库里任何位置的笔记都能作为章节导入。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。这套版面可以只用在正文流，也可以用到雪花项目或整个仓库的笔记上。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
@@ -959,9 +971,9 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的卡片看板标签页。上方的选择框里选着场景视图，中间是搜索。钟楼雪项目的二十四张场景卡片按叙事顺序排成三行，每张都带有编号和底色，右上角是状态，中间是概要，底部是视点人物。三张已完成，三张修订中，四张进行中，其余未开始。右上方一栏是显示、排序、筛选、刷新与添加场景。" /></a></p>
 
-卡片看板把每个场景摆成一张卡片，按叙事顺序编号。卡片本身就是编辑的地方：名称直接在卡片上修改，视点人物和进度用下拉框选择，冲突写在文本框里。色板可以给卡片涂上八种颜色之一，场景关联的正文章节也能从卡片上打开。看板按普通顺序排列时，拖动卡片就能移动场景。两张卡片之间的 **+** 会恰好在那个位置插入新场景，**添加场景**则把新场景加在末尾。搜索框和漏斗用来筛选看板。**显示**可以调整卡片大小，也可以按八个字段中的任意一个分组。选**图库**时，卡片用场景的主图代替冲突和关联正文。方向按钮则把整块看板按倒序显示。
+卡片看板把每个场景摆成一张卡片，按叙事顺序编号。卡片本身就是编辑的地方：名称直接在卡片上修改，视点人物和进度用下拉框选择，冲突写在文本框里。色板可以给卡片涂上八种颜色之一，场景关联的正文章节也能从卡片上打开。看板按普通顺序排列时，拖动卡片就能移动场景。两张卡片之间的 **+** 会恰好在那个位置插入新场景，**添加场景**则把新场景加在末尾。搜索框和漏斗用来筛选看板。**显示**可以选择卡片样式，也可以按八个字段中的任意一个分组。选**图库**时，卡片用场景的主图代替冲突和关联正文。那里还有三个滑块，分别调整卡片的宽度、高度和文字的字号，每次一个像素。高度和字号只改变卡片上的文本框。拖动滑块时，看板会跟着变化。点**确定**保留新的大小，按 Escape 则恢复原样。方向按钮则把整块看板按倒序显示。
 
-工具栏开头的选择框决定看板上摆的是什么。除了**场景视图**，还有**角色视图**，每类世界观也各有一个视图，你自建的种类也不例外。这些卡片的用法和场景卡片一样：名称、进度、文字和颜色都直接在卡片上编辑，拖动可以调整次序，**+** 和添加按钮用来新建笔记。卡片上的文字，角色是一句话故事概述，其他笔记是描述。底部写着角色类型、时间点或时间段，其他笔记则写类别。在**显示**里选**图库**，主图会代替文字，选**扩展**则两者都有。没有图片的笔记显示这一类的图标。在任何卡片上，把鼠标停在图片上，就能翻看图库、设定主图或者拿掉一张。搜索、漏斗和**显示**都按种类调整，角色还能按角色类型分组和筛选，时间还能按时间点或时间段。标签页会停在你选的视图上，每个视图各自记住卡片大小、分组和方向。
+工具栏开头的选择框决定看板上摆的是什么。除了**场景视图**，还有**角色视图**，每类世界观也各有一个视图，你自建的种类也不例外。这些卡片的用法和场景卡片一样：名称、进度、文字和颜色都直接在卡片上编辑，拖动可以调整次序，**+** 和添加按钮用来新建笔记。卡片上的文字，角色是一句话故事概述，其他笔记是描述。底部写着角色类型、时间点或时间段，其他笔记则写类别。在**显示**里选**图库**，主图会代替文字，选**扩展**则两者都有。没有图片的笔记显示这一类的图标。在任何卡片上，把鼠标停在图片上，就能翻看图库、设定主图或者拿掉一张。搜索、漏斗和**显示**都按种类调整，角色还能按角色类型分组和筛选，时间还能按时间点或时间段。标签页会停在你选的视图上，每个视图各自记住卡片的样式和大小、分组和方向。
 
 <p align="center"><a href="assets/screenshots/workspace_freeform_cn.png"><img src="assets/screenshots/workspace_freeform_cn.png" width="100%" alt="可视化工作区的自由画布标签页。上方的选择框里选着主视图，中间是搜索，末尾是添加节点与添加视图。名为世界观的分组里，放着角色林晚、场景初雪停摆、时间初雪夜、地点钟楼与物品怀表的卡片。几条连线从它们引向另一个名为任务管理的分组，里面放着一个任务、一个伏笔、一条修订和一张便签，其中一条虚线标着改写，一条点线标着提醒。从任务出发的连线接着引向角色沈砚的扩展卡片，再到一张工作笔记文本卡片，向下到一张雪花写作法原文的链接卡片。右侧一列是画布控制，底部一条是快捷添加，右下角是小地图。" /></a></p>
 
@@ -969,11 +981,11 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_cn.png"><img src="assets/screenshots/workspace_timeline_cn.png" width="100%" alt="可视化工作区的时间线标签页。上方的选择框里选着主视图。左侧共用的时间列里是四个时间，以及各自的描述，从十年前的初雪夜到除夕夜。旁边并列着三条时间线：已置顶并带有底色的当前时间线主线，以及分别绑定了角色林晚和沈砚的两条。各单元格里写着一句描述，旁边的轴线在每个时间上点出一个节点。场景卡片落在这些行上，两处堆叠分别显示 1 / 2 和 1 / 3。右侧的场景池里，是这条时间线尚未放置的十八个场景。" /></a></p>
 
-**时间线**问的是另一个问题：不是场景按什么顺序读，而是它们在什么时候发生。每条时间线单独占一列。它跟随某个角色或世界观笔记时，就会绑定到那篇笔记上。左侧的时间列由所有时间线共用，它的每一行就是你写好的一篇时间笔记。在单元格里写下**子描述**，记下这条时间线在那个时间做了什么。场景则来自右侧的**场景池**，池里是当前时间线还没放置的场景。把卡片拖到某条子描述上，它就离开场景池，拖回去又会回到池中。每一次移动也都能用菜单完成，这里没有哪件事非用鼠标不可。**视图**决定哪些时间线并排显示。工具栏可以隐藏子描述、把场景堆叠成一张卡片、让最晚的时间排在最前，还能把时间列和场景池收进角落。工具栏末尾的白板按钮，会把当前视图导出为 Obsidian 白板文件。
+**时间线**问的是另一个问题：不是场景按什么顺序读，而是它们在什么时候发生。每条时间线单独占一列。它跟随某个角色或世界观笔记时，就会绑定到那篇笔记上。左侧的时间列由所有时间线共用，它的每一行就是你写好的一篇时间笔记。在单元格里写下**子描述**，记下这条时间线在那个时间做了什么。场景则来自右侧的**场景池**，池里是当前时间线还没放置的场景。把卡片拖到某条子描述上，它就离开场景池，拖回去又会回到池中。每一次移动也都能用菜单完成，这里没有哪件事非用鼠标不可。**视图**决定哪些时间线并排显示。工具栏可以隐藏子描述、把场景堆叠成一张卡片、让最晚的时间排在最前，还能把时间列和场景池收进角落。工具栏上的**显示**按钮可以选择时间线上卡片的样式，并调整和卡片看板一样的三个大小。场景池有自己的**显示**，所以同一个场景在池里和放上时间线之后可以是两种样子。在这里，字号还会改变描述和子描述。工具栏末尾的白板按钮，会把当前视图导出为 Obsidian 白板文件。
 
 <p align="center"><a href="assets/screenshots/workspace_beat_sheet_cn.png"><img src="assets/screenshots/workspace_beat_sheet_cn.png" width="100%" alt="可视化工作区的节拍表标签页。上方的选择框里选着名为三幕式的节拍表。第 1 幕「建立」、第 2 幕「对抗」与第 3 幕「解决」各有一行幕标题，带有拖动手柄、加号和菜单。左侧依次列出每一幕的节拍，以及它们的名称与描述，从开局铺垫到高潮前奏。旁边的轴线在每个节拍处有一个节点。除了还空着的第二转折，每个节拍旁都放着一到两张场景卡片。工具栏末尾是添加幕与添加节拍表。右侧的场景池里，是尚未放置的十四个场景。" /></a></p>
 
-**节拍表**问的是第三个问题：每个场景在故事的整体结构里起什么作用。一个项目可以保存任意多张节拍表，每次显示一张。新的节拍表可以从空白开始，也可以从模板开始。内置的模板有三幕式、起承转合、故事圈、救猫咪、英雄之旅和言情节拍。每个模板都带着幕和节拍，还有一句话说明每个节拍是做什么用的。幕按次序自动编号，你愿意的话，还可以再给它一个标签。节拍背后没有笔记，所以它的名称与描述就保存在节拍表里。在节拍下面，同样可以写子描述，并从场景池里放入场景，和时间线上完全一样。幕、节拍、子描述和场景都可以拖动，也都可以用菜单移动。工具栏可以隐藏子描述、堆叠场景、让最后一幕排在最前，还能把当前的节拍表存为你自己的模板。白板按钮会把当前节拍表导出为 Obsidian 白板文件。
+**节拍表**问的是第三个问题：每个场景在故事的整体结构里起什么作用。一个项目可以保存任意多张节拍表，每次显示一张。新的节拍表可以从空白开始，也可以从模板开始。内置的模板有三幕式、起承转合、故事圈、救猫咪、英雄之旅和言情节拍。每个模板都带着幕和节拍，还有一句话说明每个节拍是做什么用的。幕按次序自动编号，你愿意的话，还可以再给它一个标签。节拍背后没有笔记，所以它的名称与描述就保存在节拍表里。在节拍下面，同样可以写子描述，并从场景池里放入场景，和时间线上完全一样。幕、节拍、子描述和场景都可以拖动，也都可以用菜单移动。工具栏可以隐藏子描述、堆叠场景、让最后一幕排在最前，还能把当前的节拍表存为你自己的模板。**显示**按钮和时间线上的一样，调整卡片和文字。白板按钮会把当前节拍表导出为 Obsidian 白板文件。
 
 **导出为 Obsidian 白板**会把你正在看的视图写成一个 `.canvas` 文件，用 Obsidian 自带的白板打开。文件放在工作区自己的文件旁边：`732_自由画布/<视图名称>.canvas`、`733_时间线/<视图名称>.canvas` 或 `734_节拍表/<节拍表名称>.canvas`。笔记会变成文件卡片，并保留各自的颜色。分组、时间线与幕会变成白板的分组。画布上输入的文字、子描述与节拍则变成文本卡片。工具栏上隐藏子描述、堆叠场景与倒序这几个开关只改变屏幕上的显示。白板里始终写出子描述，把场景放在它们旁边，并保持原本的顺序。任务、伏笔与修订不是笔记，所以各自变成一张写着名称的文本卡片，卡片之间的连线连同箭头与标签都会保留。写入后白板会立即打开。如果同名文件已经存在且内容不同，会先征求你的同意再替换。内容相同时不会重复写入，只会直接打开白板。这个文件是一份副本，插件不会读取它。你可以在白板里随意调整或删除它，工作区不受影响。
 
@@ -981,15 +993,21 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 **关系图**问的是谁和谁有牵连，它有两个视图。**实体 ↔ 实体**视图把每篇角色和世界观笔记画成一个圆点，按种类着色。你在笔记表单里记下的每条关系，都成为从这篇笔记指向对象的一条连线，关系的名称写在线上，箭头标出方向。关系词表里的笔记本身不会出现在图里。场景也不会出现，除非你在筛选里把它们打开。找不到对应笔记的对象，会显示成一个浅色的圆点。把鼠标停在圆点上，它的连线会亮起来，其余的则变暗。拖动圆点可以移动它，拖动背景可以平移，滚轮用来缩放。点一下圆点，就打开这篇笔记的表单。点一下连线，表单会直接翻到那条关系的卡片。角落里的面板和 Obsidian 自带的关系图谱一样，有筛选、颜色组、外观和力度，每个手势都有对应的菜单项或按键。**场景 ↔ 正文**是另一个视图。它会在单独的标签页里打开 Obsidian 自带的关系图谱，只显示本项目的场景和正文章节，场景是橙色，章节是蓝色，每个场景都有一条带箭头的线指向它关联的章节。关闭那个标签页后，你自己的关系图谱设置会恢复。
 
+工具栏上的**显示时间轴**会在**实体 ↔ 实体**关系图下方打开一条时间轴。每篇时间笔记在轴上占一个点，顺序和工作台的时间表格一致，滑块下方写着当前时间的名称。关系的**时间**一栏填了其中某个时间时，这条连线只在关系成立的那段时间里出现。拖动滑块、点轴上的某个点，或者用步进按钮和方向键，都能从一个时间走到另一个时间。**播放**会从当前时间一路播到最后。每个时间的连线逐条出现，结束的连线渐渐淡出，就像 Obsidian 自带关系图谱的生长动画。以时间段标注的关系，从时间段的开始持续到结束。以时间点标注的关系，由面板**时间轴**一节里的**带时间的连线**决定。选**仅最新**时，同一篇笔记对同一个对象记下更晚的关系后，旧的那条就结束。选**此后保留**时，它会一直留到最后。**无时间的连线**决定没有填时间的关系放在哪里，没有任何带时间关系的笔记也跟着它走。选**从开始起**时，它们在每个时间都显示。选**结束之后**时，它们要到最后一个时间才出现。看到的关系都没有填时间时，时间轴会写明这一点，按钮和滑块也都不可用。
+
 ### 正文流
 
 长篇小说按章节写更顺手，连起来读才像一本书。正文流让你两者兼得：每一章仍是本地一篇独立的 Markdown 笔记，整部正文读起来却像连续的一页。如果你用过 Scrivener，这就是它的 Scrivenings 模式，如今在 Obsidian 里也能用了。
 
 <p align="center"><img src="assets/screenshots/manuscript-stream-cn.gif" width="100%" alt="正文流在工作台旁打开，从第一章滑到第二章，再在第一章末尾打上一句话" /></p>
 
-在正文流里点击任意一章，它就会变成编辑视图。转到另一章时，它又回到阅读视图。你可以<em>（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把下一章并入这一章。</em>
+在正文流里点击任意一章，它就会变成编辑视图。转到另一章时，它又回到阅读视图。你可以<em>（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把下一章并入这一章。</em>新插入的一章会出现在页面顶部，可以直接开始写。
 
 **打字机滚动**让正在写的那一行保持在页面中部。**专注模式**会淡化正在写的段落以外的一切，最深的一档「仅正文」会全屏只显示正文。两者在工具栏里各有一个按钮。用方向键也能让光标从一章移到下一章。
+
+**目录**是正文流左侧页边的一列章节名，像滚轮一样转动。正在读的那一章停在中间并高亮，上下的章节名离得越远越淡。上下各显示多少章，跟**保持载入的笔记数**一致。阅读时滚轮会跟着你走。写作时，只要正在写的那一章还在页面上，滚轮就标出这一章。滚动它可以翻看全书而不移动正文，指针移开后它会滑回当前章节。点击章节名会跳到那一章的开头，还没载入的章节也一样。用键盘时，按 Tab 进入滚轮，方向键上下移动，回车跳转。工具栏上的**目录**按钮可以显示或隐藏它。窗格太窄、页边放不下时，这个按钮改为在**目录**侧边栏里打开同一个滚轮。
+
+在滚轮上也可以重命名或删除章节。右键点击章节名，选择**重命名…** 或**删除**。指针停在章节名上时，旁边会出现三个点，点击它也能打开同一个菜单。键盘焦点在某个章节名上时，按 F2 重命名，按 Delete 删除。重命名对话框里填写新名称，并有一个开关，可以同时重命名笔记的首个一级标题。标题仍与旧名称一致时，开关默认打开。标题是你另写的，开关默认关闭。删除前会先询问，确认后笔记移入回收站。开启章节编号时，对话框还可以把其后各章的编号减一。
 
 **查找和替换**覆盖整部正文。按 Ctrl+F（Mac 上是 Cmd+F），页面上方就会打开一个和 Obsidian 自带的一样的查找栏。工具栏上的查找按钮也能打开它。它会找出每一章里的每一处匹配，正文流还没有载入的章节也不例外，按 Enter 就能跳到下一处。输入框里的按钮可以区分大小写、全字匹配，或者把查询当作正则表达式。点左侧的箭头或按 Ctrl+Alt+F，可以打开替换栏。在正在写的笔记里，替换可以撤销。全部替换要改动其他笔记时，会先请你确认，因为那些笔记会立即保存。替换修订或伏笔标记的文字时，也会先请你确认，因为标记会因此失效。
 
@@ -1098,7 +1116,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 插件可以在 iOS 和 Android 版的 Obsidian 上使用。平板显示与桌面端相同的版面，控件放大到适合手指的尺寸。手机上，工作台的各步收在**步骤**按钮后面，每个对话框都占满屏幕宽度。Obsidian 在手机上没有状态栏，所以字数和写作时段改为显示在工具栏上。工作台作为一整页滚动，长长的角色表和场景表在搜索框下面一路排开。
 
-长按可以打开桌面端用右键打开的菜单，凡是能拖动排列的，也都能在菜单里排列。在正文流里长按照常选择文字，工具栏上的**选中文字操作**按钮会为选中的文字打开插件的菜单。手机上正文流旁的页边太窄，修订和伏笔卡片改在**页边卡片**侧边栏里阅读和处理。
+长按可以打开桌面端用右键打开的菜单，凡是能拖动排列的，也都能在菜单里排列。在正文流里长按照常选择文字，工具栏上的**选中文字操作**按钮会为选中的文字打开插件的菜单。手机上正文流旁的页边太窄，修订和伏笔卡片改在**页边卡片**侧边栏里阅读和处理。**目录**滚轮也因此放在侧边栏里，每一行都够手指点按。长按章节名可以打开重命名和删除的菜单，点击当前章节旁边的三个点也可以。
 
 可视化工作区，包括卡片看板、自由画布、时间线、节拍表和关系图，只在平板和桌面端提供。手机屏幕留不出值得探索的空间，场景和角色仍在工作台的表格里。浮动便签在手机上改为在便签侧边栏中打开。文本框里的右键菜单、在工作台旁打开笔记、隐藏滚动条和隐藏工具提示仍是桌面端的功能。命令面板中的**显示移动端诊断**会显示设备向插件报告的信息，并提供复制报告的按钮，方便提交问题。
 
@@ -1154,6 +1172,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 在正文中查找 | 打开正文流上方的查找栏，在整部正文里查找。 |
 | 在正文中查找并替换 | 打开带替换栏的查找栏，在整部正文里替换。 |
 | 打开页边卡片侧边栏 | 在独立的侧栏中打开正文流的修订与伏笔卡片。 |
+| 打开目录侧边栏 | 在独立的侧栏中打开正文的章节名滚轮。 |
 | 按选项开始写作时段 | 先选好计时方式、时长和写作阶段，再开始。 |
 | 开始正计时写作时段 | 开始一个时段，直到你停止才结束。 |
 | 开始倒计时写作时段 | 开始一个时段，倒计时走完就结束。 |
@@ -1172,6 +1191,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 切换打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 切换自定义高亮 | 让你自己的高亮规则在正文中生效，或者暂时收起来。 |
 | 切换正文中的笔记路径 | 显示或隐藏每篇正文笔记的存放位置。 |
+| 切换正文中的目录 | 显示或隐藏正文流左侧页边的章节名滚轮。 |
 | 切换正文中的顺序编号 | 显示或隐藏每篇正文笔记为自己记下的位置。 |
 | 切换托管区段边界保护 | 在所有笔记里开启或关闭区段标记的编辑保护。 |
 | 切换在工作台旁打开笔记 | 在固定分栏和普通标签页之间选择。 |
@@ -1234,6 +1254,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 保持载入的笔记数 | 5 | 在你正在读的笔记前后，各保持载入这么多篇正文笔记。 |
 | 显示笔记路径 | 开启 | 在正文笔记上方显示它的存放位置。 |
 | 显示顺序编号 | 关闭 | 显示笔记记下的编号，这个编号决定它在正文中的阅读位置。 |
+| 在页边显示目录 | 开启 | 正文流左侧页边有空间时，在那里显示章节名滚轮。 |
 | 打字机滚动 | 开启 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 关 | 淡化正在写的段落以外的一切。选「仅正文」这一档时，全屏只显示正文。 |
 | 高亮提及 | 实体与对话关闭，其余开启 | 标出实体的名称和别名、敏感词、对话，以及你自己的规则。四者各有一个开关。实体还可以只标首次提及，或只标还没写成链接的提及，也可以全部标出。 |
@@ -1429,6 +1450,9 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 修改历史 (0.29.0)
 - [x] 改进平板和手机上的显示 (0.31.0)
 - [x] 页边卡片侧边栏 (0.31.0)
+- [x] 卡片看板、时间线和节拍表的卡片大小 (0.32.0)
+- [x] 关系图的时间轴 (0.32.0)
+- [x] 正文流的目录滚轮 (0.32.0)
 
 ## 开发
 
