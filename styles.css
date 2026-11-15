@@ -19123,10 +19123,27 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	border-bottom: none;
 }
 
-/* A dropdown stands taller than a toggle, so its row centres the name on
-   it; Obsidian's rows sit at the top, which is right for a toggle. */
+/* A dropdown's row is laid out as Obsidian lays a slider's out in its own
+   graph controls: the name above, the box under it across the row. Beside
+   its name each box was as wide as the answer it held, so no two rows' boxes
+   were one width, and the panel has not the room to hold the widest answer
+   beside the longest name: across the row, every box is the same width
+   whatever it says, in every language and every type. */
 .snowflake-method-graph-controls .setting-item.mod-dropdown {
-	align-items: center;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--size-2-3);
+}
+
+.snowflake-method-graph-controls .setting-item.mod-dropdown > .setting-item-info {
+	margin-inline-end: 0;
+}
+
+/* The app fits a dropdown to its answer through a width of its own, which
+   this one outranks; while the app measures the answer its own rule still
+   wins, being marked important. */
+.snowflake-method-graph-controls .setting-item.mod-dropdown > .setting-item-control select.dropdown {
+	width: 100%;
 }
 
 /* A section's header is folded from the keyboard too, and shows that it

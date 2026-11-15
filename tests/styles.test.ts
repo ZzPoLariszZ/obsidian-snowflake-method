@@ -1573,6 +1573,22 @@ describe('styles.css', () => {
 		expect(timeline).not.toContain('!important');
 	});
 
+	it("lays a dropdown's row in the graph's controls out as a slider's, the name above and the box across the row, so every box is one width", () => {
+		// Beside its name a box is as wide as the answer it holds, which the app fits it to: Latest stood 80 px wide over
+		// At the start at 110. The panel has not the room for the widest answer beside the longest name, so the two could
+		// not be made one width there without a name breaking in two.
+		const row = declarations('.snowflake-method-graph-controls .setting-item.mod-dropdown');
+		expect(row).toContain('flex-direction: column');
+		expect(row).toContain('align-items: stretch');
+		expect(row).not.toContain('align-items: center');
+		expect(declarations('.snowflake-method-graph-controls .setting-item.mod-dropdown > .setting-item-info')).toContain('margin-inline-end: 0');
+		// The app's own width for a dropdown is the answer's: `.setting-item-control select.dropdown`, two classes and a
+		// tag, which this rule outranks without being marked important, so the app's measuring pass still sees the answer.
+		const box = declarations('.snowflake-method-graph-controls .setting-item.mod-dropdown > .setting-item-control select.dropdown');
+		expect(box).toContain('width: 100%');
+		expect(box).not.toContain('!important');
+	});
+
 	it("stands the relationship graph's timeline under the ground, its points where the app's thumb stops", () => {
 		// The stage is a column: the ground the graph and its panel stand on, then the strip.
 		const stage = declarations('.snowflake-method-relationship-graph-stage');
