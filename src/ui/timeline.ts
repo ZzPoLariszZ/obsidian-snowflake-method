@@ -250,6 +250,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// writing one value twice and leaving the view where the first put it. The
 	// view, though, is the one the press was made on: another opened while the
 	// press waits its turn in the queue is not the one it was aimed at.
+	// The look of the lanes' cards and words, as the corkboard's Display sets
+	// its own: the card style and the three sizes, which the pool keeps and
+	// the lanes wear. It stands here as well as on the pool's band, since the
+	// pool folds away and a narrow workspace folds it by itself.
+	const displayButton = iconButton('snowflake-method-timeline-display', 'sliders-horizontal', t('corkboard.display'));
+	displayButton.setAttribute('aria-haspopup', 'dialog');
+	displayButton.addEventListener('click', () => {
+		pool.openDisplay(gathered?.button ?? displayButton);
+	});
 	const wordsButton = iconButton('snowflake-method-timeline-words', 'eye', t('timeline.view.subDescriptionsHide'));
 	wordsButton.setAttribute('aria-pressed', 'true');
 	wordsButton.addEventListener('click', () => {
@@ -314,7 +323,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// them on, a lane takes a plus and a view the grid the freeform gives one.
 	nameToolbarSymbol(addTimelineButton, 'plus');
 	nameToolbarSymbol(addViewButton, 'layout-grid');
-	gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) });
+	const gathered = gatherToolbarActions(end, { t, keep: toolbarKept(fullScreenButton, refreshButton) });
 	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 
 	// -- The folds, the empty states, the body and the pool --------------------
@@ -728,7 +737,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const kind = layoutKind(lanes);
 		root.dataset.layout = kind;
 		laneAxis = kind === 'multi' ? 'down' : 'across';
-		pool.paintCardMode();
+		pool.paintCardLook();
 		root.setCssProps({ '--snowflake-method-timeline-lanes': String(lanes.length) });
 		const hold = focus.hold();
 		paintHeads(held);

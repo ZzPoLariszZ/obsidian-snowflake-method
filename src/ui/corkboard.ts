@@ -21,7 +21,7 @@
 
 import { Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
-import type { CorkboardControls, CorkboardFilters, CorkboardHandle, CorkboardVariant } from './corkboard-bridge';
+import type { CorkboardControls, CorkboardFilters, CorkboardHandle, CorkboardLook, CorkboardVariant } from './corkboard-bridge';
 import type { CorkboardDeal, MemberMoveTarget } from './corkboard-deal';
 import {
 	adjacencyAllowed,
@@ -29,6 +29,8 @@ import {
 	cardHeightOf,
 	cardWidthOf,
 	cardPosition,
+	columnGapOf,
+	CORKBOARD_TEXT_MODES,
 	corkboardMetrics,
 	displayOrderOf,
 	dropTargetAt,
@@ -40,13 +42,14 @@ import {
 	visibleCards,
 	visibleHeads,
 	visibleLines,
+	withCardSizes,
 	type CorkboardLayout,
 	type CorkboardMetrics,
 	type DisplayOrder,
 } from './corkboard-layout';
 import { entityDeal } from './entity-deal';
 import type { EntityFilters } from './entity-filters';
-import type { FilterRow } from './filter-rows';
+import type { FilterOptionRow, FilterRow, FilterSliderRow } from './filter-rows';
 import { watchDragPress } from './drag-press';
 import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { kindWord } from './kind-word';
@@ -64,7 +67,14 @@ import { renderEmptyLine } from './pane-parts';
 import { sceneDeal } from './scene-deal';
 import type { SceneFilters } from './scene-filters';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
-import { CORKBOARD_MODES, isCorkboardMode } from './story-structure-state';
+import {
+	CORKBOARD_MODES,
+	CORKBOARD_SIZE_KEYS,
+	CORKBOARD_SIZE_STOPS,
+	isCorkboardMode,
+	type CorkboardPreferences,
+	type CorkboardSizeKey,
+} from './story-structure-state';
 import type { ProjectDashboardModel } from './view-model';
 import { balanceToolbar, gatherToolbarActions, nameToolbarSymbol, toolbarEnd } from './workspace-frame';
 
@@ -78,9 +88,19 @@ interface CorkboardCardExtras {
 	x: number;
 	y: number;
 	width: number;
+	/** The room to the card's either side as last written on it, where the cards stand further apart than the board's own gap; '' for the gap. */
+	spreadStart: string;
+	spreadEnd: string;
 	insertBefore: HTMLButtonElement;
 	insertAfter: HTMLButtonElement;
 }
+
+/** The words each size is named by. */
+const SIZE_LABELS: Readonly<Record<CorkboardSizeKey, string>> = {
+	cardWidth: 'corkboard.cardWidth',
+	cardHeight: 'corkboard.cardHeight',
+	textSize: 'corkboard.textSize',
+};
 
 interface ViewportMeasure {
 	top: number;
@@ -140,6 +160,33 @@ export function renderBoard<
 	];
 
 	const { app, t, memory } = controls;
+	/**
+	 * Whether the board offers its three sizes: a board on its own tab, and a
+	 * pool whose look the lanes beside it wear. On its own tab the board lays
+	 * its cards out at the width set. A pool is one card wide whatever is
+	 * set: its width is the workspace's to give, which is told the look and
+	 * gives the pool and the lanes the same card.
+	 */
+	const sizable = variant.columns === undefined || variant.wear !== undefined;
+	/**
+	 * What the open Display panel has drafted and the board shows meanwhile:
+	 * a style or a size that has to be seen to be chosen. None of it is the
+	 * memory's until the panel is confirmed, and a panel closed any other
+	 * way hands the standing ones back.
+	 */
+	const trial: { [Key in keyof CorkboardLook]: CorkboardLook[Key] | null } = {
+		mode: null,
+		cardWidth: null,
+		cardHeight: null,
+		textSize: null,
+	};
+	/** How the board is drawn now: the memory's settings under whatever the panel is trying. */
+	const look = (): CorkboardLook => ({
+		mode: trial.mode ?? memory.mode,
+		cardWidth: sizable ? (trial.cardWidth ?? memory.cardWidth) : 0,
+		cardHeight: sizable ? (trial.cardHeight ?? memory.cardHeight) : 0,
+		textSize: sizable ? (trial.textSize ?? memory.textSize) : 0,
+	});
 	const root = container.createDiv({
 		cls: 'snowflake-method-prose-panel snowflake-method-corkboard snowflake-method-scene-cards',
 	});
@@ -330,6 +377,8 @@ export function renderBoard<
 	let disposed = false;
 	let popoverRequest = 0;
 	let popoverKind: 'funnel' | 'display' | null = null;
+	/** The button the Display panel hangs from, while it is open: the band's own, or another surface's. */
+	let displayAnchor: HTMLElement | null = null;
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
@@ -371,7 +420,7 @@ export function renderBoard<
 		projectPath: () => projectPath,
 		readOnly: () => readOnly,
 		unloading: () => controls.unloading?.() === true,
-		paneShown: () => deal.paned.includes(memory.mode),
+		paneShown: () => deal.paned.includes(look().mode),
 		dragAllowed: (card) => mayDrag(card),
 		menu: (card, event) => {
 			openMenu(card, event);
@@ -383,6 +432,8 @@ export function renderBoard<
 			x: Number.NaN,
 			y: Number.NaN,
 			width: Number.NaN,
+			spreadStart: '',
+			spreadEnd: '',
 			...buildInsertButtons(card.el),
 		}),
 	});
@@ -428,7 +479,8 @@ export function renderBoard<
 	};
 
 	const compactHeight = (): number | undefined => {
-		if (memory.mode !== 'compact' && memory.mode !== 'gallery') return undefined;
+		const { mode } = look();
+		if (mode !== 'compact' && mode !== 'gallery') return undefined;
 		for (const { el } of cards.values()) {
 			if (!el.isConnected) continue;
 			const head = el.querySelector<HTMLElement>('.snowflake-method-corkboard-head');
@@ -443,6 +495,38 @@ export function renderBoard<
 				(Number.parseFloat(style.borderBottomWidth) || 0);
 		}
 		return undefined;
+	};
+
+	/**
+	 * The style's measures at a width, as the board draws it now: the one
+	 * place they are worked out, so the paint, the measure taken after it and
+	 * every resize agree on what a card's height holds.
+	 */
+	const ownMetrics = (width: number, rem: number, measured: number | undefined): CorkboardMetrics =>
+		corkboardMetrics(width, look().mode, rem, measured, variant.columns, variant.gap, deal.cardHeight, deal.paned, cardSides());
+	const metricsFor = (width: number, rem: number, measured: number | undefined): CorkboardMetrics => {
+		const own = ownMetrics(width, rem, measured);
+		if (!sizable) return own;
+		const seen = look();
+		return withCardSizes(own, seen, seen.mode, rem, deal.cardHeight);
+	};
+
+	/** The type in the cards' text boxes as last written on the board; nothing while it is the theme's own. */
+	let shownTextSize = 0;
+	/** The look as last told to the surface that wears it too. */
+	let toldLook = '';
+	/** The type size written on the board, and the look told on wherever it moved. */
+	const paintLook = (): void => {
+		const seen = look();
+		if (seen.textSize !== shownTextSize) {
+			shownTextSize = seen.textSize;
+			root.setCssProps({ '--snowflake-method-corkboard-text-size': seen.textSize > 0 ? px(seen.textSize) : '' });
+		}
+		if (variant.wear === undefined) return;
+		const told = `${seen.mode}|${String(seen.cardWidth)}|${String(seen.cardHeight)}|${String(seen.textSize)}`;
+		if (told === toldLook) return;
+		toldLook = told;
+		variant.wear(seen);
 	};
 
 	const keyOf = (groupKey: string, memberId: string): string =>
@@ -471,7 +555,7 @@ export function renderBoard<
 			previous.gap === metrics.gap && previous.cardHeight === cardHeight &&
 			previous.headHeight === metrics.headHeight;
 		if (sameRows) {
-			layout = { ...previous, cardWidth };
+			layout = { ...previous, cardWidth, columnGap: columnGapOf(metrics) };
 		} else {
 			layout = buildLayout(order, metrics);
 			headLines = new Map();
@@ -561,11 +645,12 @@ export function renderBoard<
 			readOnly,
 			anySceneReadOnly: members.some((member) => member.readOnly),
 		});
-		root.dataset.mode = memory.mode;
+		root.dataset.mode = look().mode;
+		paintLook();
 		const rem = remPx();
 		// The scroller extends past the frame for its scrollbar; the canvas
 		// keeps the same content edges as the toolbar above it.
-		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight(), variant.columns, variant.gap, deal.cardHeight, deal.paned, cardSides());
+		const metrics = metricsFor(canvas.clientWidth, rem, compactHeight());
 		arrange(metrics);
 		displayKeys = [];
 		for (const group of order.groups) {
@@ -610,7 +695,7 @@ export function renderBoard<
 		const measuredHeight = compactHeight();
 		const drawn = layout;
 		if (measuredHeight !== undefined && drawn !== null) {
-			const remeasured = corkboardMetrics(canvas.clientWidth, memory.mode, rem, measuredHeight, variant.columns, variant.gap, deal.cardHeight, deal.paned, cardSides());
+			const remeasured = metricsFor(canvas.clientWidth, rem, measuredHeight);
 			if (Math.abs(cardHeightOf(remeasured, drawn.cardWidth) - drawn.cardHeight) > 0.5) paintAll({ keepFirst: true });
 		}
 	};
@@ -796,11 +881,25 @@ export function renderBoard<
 			entry.width = layout.cardWidth;
 			entry.el.setCssStyles({ width: px(entry.width) });
 		}
-		entry.insertBefore.toggleClass('is-row-start', layout.places[display]?.column === 0);
-		entry.insertAfter.toggleClass(
-			'is-row-end',
-			layout.places[display]?.column === layout.columns - 1,
-		);
+		const column = layout.places[display]?.column;
+		entry.insertBefore.toggleClass('is-row-start', column === 0);
+		entry.insertAfter.toggleClass('is-row-end', column === layout.columns - 1);
+		// Cards of a set width stand further apart than the board's own gap, and
+		// the room between two of them is each one's to half: its insertion
+		// button stands midway and its hover reaches that far. Written on the
+		// card, as its width is, and only while it differs from the gap; a
+		// row's two ends keep the frame's own inset.
+		const spread = layout.columnGap === layout.gap ? '' : px(layout.columnGap);
+		const spreadStart = column === 0 ? '' : spread;
+		const spreadEnd = column === layout.columns - 1 ? '' : spread;
+		if (entry.spreadStart !== spreadStart || entry.spreadEnd !== spreadEnd) {
+			entry.spreadStart = spreadStart;
+			entry.spreadEnd = spreadEnd;
+			entry.el.setCssProps({
+				'--snowflake-method-corkboard-spread-start': spreadStart,
+				'--snowflake-method-corkboard-spread-end': spreadEnd,
+			});
+		}
 		const { x, y } = cardPosition(layout, display);
 		if (x === entry.x && y === entry.y) return;
 		entry.x = x;
@@ -1194,8 +1293,72 @@ export function renderBoard<
 		);
 	};
 
-	const displayRows = (): FilterRow[] => [
-		{
+	/**
+	 * Where the board stood when the panel's first draft was shown, to stand
+	 * there again once every draft is let go; null while nothing is tried.
+	 */
+	let trialTop: number | null = null;
+	/** The author scrolled while a draft was shown: the board stays where they left it. */
+	let trialScrolled = false;
+	const trying = (): boolean =>
+		trial.mode !== null || trial.cardWidth !== null || trial.cardHeight !== null || trial.textSize !== null;
+	const endTrial = (): void => {
+		trial.mode = null;
+		trial.cardWidth = null;
+		trial.cardHeight = null;
+		trial.textSize = null;
+		trialTop = null;
+		trialScrolled = false;
+	};
+	/**
+	 * A drafted style or size shown on the board while the panel stands open.
+	 * Another style is another card, its parts and its measured height, so it
+	 * is painted whole; a size moves the geometry alone and goes through the
+	 * resize's own path, once a frame, the first card in view kept in place.
+	 * A draft that says what the memory already holds is no draft, and once
+	 * none is left the board stands where it stood before the first.
+	 */
+	const tryLook = (change: Partial<CorkboardLook>): void => {
+		if (disposed) return;
+		const before = look();
+		const tried = trying();
+		const top = scroller.scrollTop;
+		if (change.mode !== undefined) trial.mode = change.mode === memory.mode ? null : change.mode;
+		for (const key of CORKBOARD_SIZE_KEYS) {
+			const size = change[key];
+			if (size !== undefined) trial[key] = size === memory[key] ? null : size;
+		}
+		// The standing answers handed back to a board that tried nothing move nothing.
+		if (!tried && !trying()) return;
+		if (!tried) {
+			trialTop = top;
+			trialScrolled = false;
+		}
+		const after = look();
+		if (!trying()) {
+			// Back on what the memory holds: where the author was reading,
+			// unless they have moved on since.
+			if (trialTop !== null && !trialScrolled) memory.scrollTop = trialTop;
+			const kept = !trialScrolled;
+			endTrial();
+			paintAll(kept ? {} : { keepFirst: true });
+			return;
+		}
+		if (after.mode !== before.mode) {
+			paintAll({ keepFirst: true });
+			return;
+		}
+		paintLook();
+		if (after.cardWidth !== before.cardWidth || after.cardHeight !== before.cardHeight) remeasure();
+	};
+
+	/** A size in words: its pixels, or that it is the board's own. */
+	const sizeWords = (value: number): string =>
+		value === 0 ? t('corkboard.size.auto') : t('settings.manuscriptAppearance.pixels', { value });
+
+	/** The Display panel's rows: the look, and, on the board's own band, what its cards are gathered by. */
+	const displayRows = (withGroup = true): FilterRow[] => {
+		const cards: FilterOptionRow = {
 			label: t('corkboard.cards'),
 			placeholder: t('corkboard.cards.standard'),
 			empty: 'standard',
@@ -1208,8 +1371,8 @@ export function renderBoard<
 			apply: (value) => {
 				memory.mode = isCorkboardMode(value) ? value : 'standard';
 			},
-		},
-		{
+		};
+		const group: FilterOptionRow = {
 			label: t('corkboard.groupBy'),
 			placeholder: t('common.none'),
 			empty: '',
@@ -1222,23 +1385,93 @@ export function renderBoard<
 			apply: (value) => {
 				memory.group = deal.groupFields.includes(value) ? value : '';
 			},
-		},
-	];
+		};
+		if (!sizable) return withGroup ? [cards, group] : [cards];
+		// The sizes act on what is in sight, so the style drafted is drawn too:
+		// a height or a type size is offered only for a style that shows a text
+		// box, and that style has to be the one the handle is seen to move.
+		cards.preview = (value) => {
+			tryLook({ mode: isCorkboardMode(value) ? value : 'standard' });
+		};
+		const boxless = (): boolean => !CORKBOARD_TEXT_MODES.includes(look().mode);
+		// A board whose look another surface wears sets that surface's words
+		// too, the descriptions beside its lanes, which stand whatever the card
+		// shows: its type size is always there to set.
+		const wordless = (): boolean => variant.wear === undefined && boxless();
+		const size = (
+			key: CorkboardSizeKey,
+			extra: Pick<FilterSliderRow, 'rest' | 'themeVar' | 'hidden'>,
+		): FilterSliderRow => ({
+			presentation: 'stop-slider',
+			label: t(SIZE_LABELS[key]),
+			stops: CORKBOARD_SIZE_STOPS[key],
+			value: memory[key],
+			empty: 0,
+			resetLabel: t('settings.manuscriptAppearance.reset'),
+			format: sizeWords,
+			preview: (value) => {
+				tryLook({ [key]: value });
+			},
+			apply: (value) => {
+				memory[key] = value;
+			},
+			...extra,
+		});
+		/**
+		 * The width a card has while none is set. On its own tab the board
+		 * shares the row out, so it is whatever that comes to now. A pool is as
+		 * wide as the workspace makes it, a card at its least width, which it
+		 * is whether the pool stands open or is folded to nothing.
+		 */
+		const ownWidth = (): number => {
+			const own = ownMetrics(canvas.clientWidth, remPx(), compactHeight());
+			return variant.wear === undefined ? cardWidthOf(own) : own.minCardWidth;
+		};
+		return [
+			cards,
+			// While each is the board's own, its handle waits at what the board
+			// draws: the width the row shares out, the standard card's height,
+			// the theme's small type.
+			size('cardWidth', { rest: ownWidth }),
+			size('cardHeight', { rest: () => deal.cardHeight.standard * remPx(), hidden: boxless }),
+			size('textSize', { themeVar: '--font-ui-small', hidden: wordless }),
+			...(withGroup ? [group] : []),
+		];
+	};
 
-	const openDisplay = (): void => {
+	/**
+	 * The Display panel under the band's own button, or under the button of
+	 * the surface that wears this board's look, where it shows the look alone.
+	 * A press on the button it hangs from closes it; a press on the other
+	 * moves it there.
+	 */
+	const openDisplay = (anchor?: HTMLElement): void => {
 		popoverRequest++;
-		if (controls.popover.filterOpen() && popoverKind === 'display') {
+		const from = anchor ?? gathered?.button ?? displayButton;
+		const standing = controls.popover.filterOpen() && popoverKind === 'display';
+		if (standing) {
 			controls.popover.closeFilter();
 			popoverKind = null;
-			return;
+			const same = displayAnchor === from;
+			displayAnchor = null;
+			if (same) return;
 		}
 		popoverKind = 'display';
-		const before = { mode: memory.mode, group: memory.group };
+		displayAnchor = from;
+		const before = { mode: memory.mode, group: memory.group, cardWidth: memory.cardWidth, cardHeight: memory.cardHeight, textSize: memory.textSize };
 		controls.popover.openFilter(
-			gathered?.button ?? displayButton,
-			displayRows(),
+			from,
+			displayRows(anchor === undefined),
 			() => {
-				controls.remember(memory.mode !== before.mode ? { mode: memory.mode } : undefined);
+				// Confirmed: what was tried is the memory's now, and the tab's
+				// layout and the project's defaults for the view follow.
+				endTrial();
+				const changes: Partial<CorkboardPreferences> = {};
+				if (memory.mode !== before.mode) changes.mode = memory.mode;
+				for (const key of CORKBOARD_SIZE_KEYS) {
+					if (memory[key] !== before[key]) changes[key] = memory[key];
+				}
+				controls.remember(Object.keys(changes).length > 0 ? changes : undefined);
 				paintAll(
 					memory.group === before.group ? { keepFirst: true } : { resetScroll: true },
 				);
@@ -1278,6 +1511,11 @@ export function renderBoard<
 		windowOwed = true;
 		scheduleFrame();
 	});
+	// A wheel turned over the board while the panel shows a draft is the
+	// author moving on: a press would have closed the panel first.
+	scroller.addEventListener('wheel', () => {
+		if (trialTop !== null) trialScrolled = true;
+	}, { passive: true });
 
 	const reveal = (id: string): void => {
 		if (disposed || layout === null) return;
@@ -1298,7 +1536,7 @@ export function renderBoard<
 		// Hidden workspace tabs have no useful geometry; their next reveal measures again.
 		if (width <= 0) return null;
 		const viewport: ViewportMeasure = { top: scroller.scrollTop, height: scroller.clientHeight };
-		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight(), variant.columns, variant.gap, deal.cardHeight, deal.paned, cardSides());
+		const metrics = metricsFor(width, remPx(), compactHeight());
 		let cardHeight = cardHeightOf(metrics, cardWidthOf(metrics));
 		if (Math.abs(cardHeight - layout.cardHeight) <= 0.5) {
 			// A hair of measurement moves no row: the layout keeps its height.
@@ -1307,7 +1545,8 @@ export function renderBoard<
 			cardHeight = layout.cardHeight;
 		}
 		const unchanged = width === lastWidth && cardHeight === layout.cardHeight &&
-			metrics.gap === layout.gap && metrics.headHeight === layout.headHeight;
+			metrics.gap === layout.gap && metrics.headHeight === layout.headHeight &&
+			cardWidthOf(metrics) === layout.cardWidth && columnGapOf(metrics) === layout.columnGap;
 		if (unchanged) return repaint || viewport.height !== lastViewportHeight ? viewport : null;
 		if (drag !== null) {
 			paintOwed = true;
@@ -1316,7 +1555,10 @@ export function renderBoard<
 		const previous = layout;
 		const first = firstCardInView(previous, viewport.top);
 		const key = first === null ? undefined : displayKeys[first];
-		const offset = first === null ? 0 : viewport.top - cardPosition(previous, first).y;
+		// How far into its row the board stood, as a share of the row: a card
+		// made taller keeps the same part of itself at the top.
+		const rowBefore = previous.cardHeight + previous.gap;
+		const within = first === null || !(rowBefore > 0) ? 0 : (viewport.top - cardPosition(previous, first).y) / rowBefore;
 		// Capture the scroller's padding before the CSS writes so clamping the new
 		// anchor does not need a scrollHeight read in the middle of card placement.
 		const scrollInset = scroller.scrollHeight - previous.height;
@@ -1325,6 +1567,7 @@ export function renderBoard<
 			const display = displayOf(key);
 			if (display !== -1) {
 				const maximum = Math.max(0, layout.height + scrollInset - viewport.height);
+				const offset = within * (layout.cardHeight + layout.gap);
 				const top = Math.max(0, Math.min(cardPosition(layout, display).y + offset, maximum));
 				if (top !== viewport.top) viewport.scrollTo = top;
 				viewport.top = top;
@@ -1333,7 +1576,7 @@ export function renderBoard<
 		memory.scrollTop = viewport.top;
 		// A theme may wrap compact controls at the new width. Measure their settled
 		// height next frame instead of forcing another layout after these writes.
-		if (memory.mode === 'compact') remeasure();
+		if (look().mode === 'compact') remeasure();
 		return viewport;
 	};
 
@@ -1353,6 +1596,9 @@ export function renderBoard<
 		bindWindow(eventWindow);
 		deck.closeColorPanel();
 		deck.releasePress();
+		// A panel hung in the window the board has left would stand there alone.
+		if (popoverKind !== null && controls.popover.filterOpen()) controls.popover.closeFilter();
+		popoverKind = null;
 		dragRect = null;
 		if (frame !== null) {
 			animationWindow.cancelAnimationFrame(frame);
@@ -1374,6 +1620,9 @@ export function renderBoard<
 		},
 		reveal,
 		remeasure,
+		openDisplay: (anchor) => {
+			openDisplay(anchor);
+		},
 		saveFocusedBody: () => {
 			const active = root.doc.activeElement;
 			for (const entry of cards.values()) {

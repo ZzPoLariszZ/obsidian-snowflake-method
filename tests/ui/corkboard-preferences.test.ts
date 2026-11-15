@@ -116,6 +116,7 @@ describe('corkboard preferences across closed tabs', () => {
 
 		expect(reopened.controls.memory).toEqual({
 			mode: 'extended', reversed: true, group: '', view: 'scene', query: '',
+			cardWidth: 0, cardHeight: 0, textSize: 0,
 			filters: sceneFilters(), scrollTop: 0,
 		});
 		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'extended', reversed: true });
@@ -231,6 +232,46 @@ describe('corkboard preferences across closed tabs', () => {
 		const fresh = await openView(store);
 		(fresh.view as unknown as { showCorkboardView(view: CorkboardView): void }).showCorkboardView('character');
 		expect((fresh.view as unknown as { controls(): CorkboardControls }).controls().memory).toMatchObject({ mode: 'gallery', reversed: false, group: '' });
+	});
+
+	it('keeps the three sizes with the card style: in the tab, in the project, and for each view its own', async () => {
+		const store = preferenceStore();
+		const first = await openView(store);
+		// Nothing is seeded for a size never set: the board's own is no entry at all.
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'standard', reversed: false });
+		first.controls.memory.cardWidth = 320;
+		first.controls.memory.textSize = 16;
+		first.controls.remember({ cardWidth: 320, textSize: 16 });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'standard', reversed: false, cardWidth: 320, textSize: 16 });
+		const tab = first.view as unknown as { showCorkboardView(view: CorkboardView): void; controls(): CorkboardControls; getState(): { corkboard: Record<string, unknown> } };
+		expect(tab.getState().corkboard).toMatchObject({ cardWidth: 320, cardHeight: 0, textSize: 16 });
+		// Another view starts from the board's own, and keeps what it is given apart.
+		tab.showCorkboardView('character');
+		const characters = tab.controls().memory;
+		expect(characters).toMatchObject({ cardWidth: 0, cardHeight: 0, textSize: 0 });
+		characters.cardHeight = 352;
+		tab.controls().remember({ cardHeight: 352 });
+		expect(store.stored.get(preferenceKey(firstProjectId, 'character'))).toEqual({ mode: 'standard', reversed: false, cardHeight: 352 });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'standard', reversed: false, cardWidth: 320, textSize: 16 });
+		expect(tab.getState().corkboard).toMatchObject({
+			cardWidth: 320, textSize: 16,
+			views: { character: { cardWidth: 0, cardHeight: 352, textSize: 0 } },
+		});
+		await first.view.onClose();
+		// A tab opened fresh takes the project's sizes, for the scenes and for the view.
+		const fresh = await openView(store);
+		expect(fresh.controls.memory).toMatchObject({ cardWidth: 320, cardHeight: 0, textSize: 16 });
+		(fresh.view as unknown as { showCorkboardView(view: CorkboardView): void }).showCorkboardView('character');
+		expect((fresh.view as unknown as { controls(): CorkboardControls }).controls().memory).toMatchObject({ cardWidth: 0, cardHeight: 352, textSize: 0 });
+		// A layout saved before the sliders names no size, and takes the project's too.
+		const older = await openView(store, firstProject, { mode: 'compact', group: '', reversed: false });
+		expect(older.controls.memory).toMatchObject({ mode: 'compact', cardWidth: 320, textSize: 16 });
+		// A layout that names the board's own keeps it, whatever the project has since been given.
+		const kept = await openView(store, firstProject, { mode: 'compact', group: '', reversed: false, cardWidth: 0, cardHeight: 0, textSize: 0 });
+		expect(kept.controls.memory).toMatchObject({ cardWidth: 0, cardHeight: 0, textSize: 0 });
+		// A size put back to the board's own is the project's from then on.
+		kept.controls.remember({ cardWidth: 0 });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'standard', reversed: false, cardWidth: 0, textSize: 16 });
 	});
 
 	it('applies the project defaults when a view receives a different project', async () => {

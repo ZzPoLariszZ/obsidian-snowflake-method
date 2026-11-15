@@ -103,7 +103,7 @@ const sceneOfKey = (key: string): string => splitKey(key)[1] ?? '';
 const rowOfKey = (key: string): string => splitKey(key)[0] ?? '';
 
 /** Grows the words' box to what it holds, so a long sub-description is edited whole, as it is shown. */
-const fitWords = (area: HTMLTextAreaElement): void => {
+export const fitWords = (area: HTMLTextAreaElement): void => {
 	area.setCssStyles({ height: '' });
 	const inner = area.scrollHeight;
 	if (!Number.isFinite(inner) || inner <= 0) return;

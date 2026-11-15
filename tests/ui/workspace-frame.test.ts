@@ -107,7 +107,7 @@ const modelOf = (ids: string[]): ProjectDashboardModel => ({
 function controlsOf() {
 	const state = { projectPath: 'P' as string | null, unloading: false };
 	const resolved = vi.fn((target: string, _source: string) => ({ path: `Draft/${target}.md` }));
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => true), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: vi.fn(() => true), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const memory: FrameMemory = { pool: corkboardMemory({ mode: 'compact', group: '', reversed: false }), poolCollapsed: false, scroll: { left: 0, top: 0 } };
 	const controls = {
@@ -1003,13 +1003,88 @@ describe('the scene pool', () => {
 		expect(fixture.controls.refresh).toHaveBeenCalledOnce();
 	});
 
+	it('writes the sizes the pool keeps on the workspace\'s root, for the lanes\' cards and words to read, and takes each off when it is the workspace\'s own again', () => {
+		const fixture = poolOf();
+		Object.assign(fixture.controls.memory.pool, { mode: 'standard', cardWidth: 400, cardHeight: 320, textSize: 18 });
+		fixture.mount();
+		fixture.pool.paintCardLook();
+		expect(fixture.root.dataset.mode).toBe('standard');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('400px');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('320px');
+		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('18px');
+		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
+		// The same look again writes nothing and drops nothing measured.
+		fixture.pool.paintCardLook();
+		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
+		// A size put back is taken off the root, so the stylesheet's own measure stands again.
+		Object.assign(fixture.controls.memory.pool, { cardWidth: 0, textSize: 0 });
+		fixture.pool.paintCardLook();
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('320px');
+		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('');
+		expect(fixture.invalidateRects).toHaveBeenCalledTimes(2);
+	});
+
+	it('opens the look\'s panel under a button of the workspace\'s own, through the pool\'s board, and does nothing before the pool is dealt', () => {
+		const fixture = poolOf();
+		const button = fixture.root.createEl('button');
+		fixture.pool.openDisplay(el(button));
+		expect(fixture.poolHandle.openDisplay).not.toHaveBeenCalled();
+		fixture.mount();
+		fixture.pool.openDisplay(el(button));
+		expect(fixture.poolHandle.openDisplay).toHaveBeenCalledOnce();
+		expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(button);
+	});
+
+	it('wears the look the pool\'s board is drawn in, a draft of its panel while one is shown, over the one the memory keeps', () => {
+		const fixture = poolOf();
+		fixture.mount();
+		fixture.pool.paintCardLook();
+		const [, , variant] = fixture.dealt();
+		expect(fixture.root.dataset.mode).toBe('compact');
+		// The board tries a look: the lanes wear it at once, though the memory holds none of it.
+		variant.wear?.({ mode: 'extended', cardWidth: 480, cardHeight: 0, textSize: 20 });
+		expect(fixture.root.dataset.mode).toBe('extended');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('480px');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('20px');
+		expect(fixture.controls.memory.pool).toMatchObject({ mode: 'compact', cardWidth: 0, textSize: 0 });
+		// A paint of the workspace meanwhile keeps the draft on: the board's word is the later one.
+		fixture.pool.paintCardLook();
+		expect(fixture.root.dataset.mode).toBe('extended');
+		// The panel closes unconfirmed, and the board says the standing look again.
+		variant.wear?.({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
+		expect(fixture.root.dataset.mode).toBe('compact');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('');
+	});
+
+	it('grows a box of words standing open to its words again when the type moves', () => {
+		const fixture = poolOf();
+		fixture.mount();
+		const open = fixture.root.createEl('textarea', { cls: 'snowflake-method-timeline-subrow-input' });
+		const away = fixture.root.createEl('textarea', { cls: 'snowflake-method-timeline-subrow-input is-hidden' });
+		open.offsetHeight = 62;
+		Object.defineProperty(open, 'scrollHeight', { value: 60, configurable: true });
+		Object.defineProperty(open, 'clientHeight', { value: 60, configurable: true });
+		const [, , variant] = fixture.dealt();
+		variant.wear?.({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 24 });
+		// The box in sight is as tall as its words and its frame; the one put away is left alone.
+		expect(open.styles.height).toBe('62px');
+		expect(away.styles.height).toBeUndefined();
+		// A look that leaves the type where it was grows nothing again.
+		open.styles.height = 'kept';
+		variant.wear?.({ mode: 'standard', cardWidth: 300, cardHeight: 0, textSize: 24 });
+		expect(open.styles.height).toBe('kept');
+	});
+
 	it('dresses the workspace\'s cards in the style the pool chose, dropping what was measured only when the style moved', () => {
 		const fixture = poolOf();
 		fixture.mount();
-		fixture.pool.paintCardMode();
+		fixture.pool.paintCardLook();
 		expect(fixture.root.dataset.mode).toBe('compact');
 		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
-		fixture.pool.paintCardMode();
+		fixture.pool.paintCardLook();
 		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
 		// The pool's display control saves the tab and dresses the lanes at once.
 		fixture.controls.memory.pool.mode = 'extended';

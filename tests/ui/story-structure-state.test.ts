@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	CORKBOARD_GROUP_FIELDS,
 	CORKBOARD_MODES,
+	CORKBOARD_SIZE_LIMITS,
+	CORKBOARD_SIZE_STOPS,
 	STORY_STRUCTURE_FAMILIES,
 	STORY_STRUCTURE_VISUALIZATIONS,
 	beatSheetMemory,
@@ -19,19 +21,25 @@ import {
 	isStoryStructureVisualization,
 	mergeStoryStructureViewState,
 	relationshipGraphMemory,
+	timelineMemory,
 	visualizationFamily,
 	corkboardViewAvailable,
 	entityCorkboardMemory,
 	isCorkboardView,
+	readCorkboardPreferences,
+	readCorkboardSize,
 	type StoryStructureViewStateSnapshot,
 } from '../../src/ui/story-structure-state';
+
+/** The three sizes at the board's own, as a layout that never moved a slider keeps them. */
+const own = { cardWidth: 0, cardHeight: 0, textSize: 0 };
 
 const current: StoryStructureViewStateSnapshot = {
 	projectPath: 'Novel/Novel.md',
 	visualization: 'timeline',
-	corkboard: { mode: 'compact', group: 'pov', reversed: true, view: 'scene', views: {} },
-	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
-	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false }, poolCollapsed: false, beatsCollapsed: true },
+	corkboard: { mode: 'compact', group: 'pov', reversed: true, ...own, view: 'scene', views: {} },
+	timeline: { pool: { mode: 'extended', group: 'time', reversed: false, ...own }, poolCollapsed: true, timeCollapsed: false },
+	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false, ...own }, poolCollapsed: false, beatsCollapsed: true },
 	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false, snapObjects: false, readOnly: false },
 	relationshipGraph: { view: 'entities', controlsOpen: true },
 };
@@ -47,7 +55,7 @@ describe('story structure restored state', () => {
 			state: {
 				projectPath: null,
 				visualization: 'beat-sheet',
-				corkboard: { mode: 'extended', group: 'color', reversed: true, view: 'scene', views: {} },
+				corkboard: { mode: 'extended', group: 'color', reversed: true, ...own, view: 'scene', views: {} },
 				timeline: defaultTimelineSettings(),
 				beatSheet: defaultBeatSheetSettings(),
 				freeform: defaultFreeformSettings(),
@@ -71,7 +79,7 @@ describe('story structure restored state', () => {
 		expect(update.state).toEqual({
 			projectPath: current.projectPath,
 			visualization: 'timeline',
-			corkboard: { mode: 'compact', group: '', reversed: true, view: 'scene', views: {} },
+			corkboard: { mode: 'compact', group: '', reversed: true, ...own, view: 'scene', views: {} },
 			timeline: current.timeline,
 			beatSheet: current.beatSheet,
 			freeform: current.freeform,
@@ -120,17 +128,17 @@ describe('story structure restored state', () => {
 			...current.corkboard,
 			view: 'character',
 			views: {
-				character: { mode: 'gallery', group: 'role', reversed: true },
-				location: { mode: 'standard', group: '', reversed: false },
+				character: { mode: 'gallery', group: 'role', reversed: true, ...own },
+				location: { mode: 'standard', group: '', reversed: false, ...own },
 			},
 		});
 		expect(restored.changed).toBe(true);
 		// The views the tab holds stay under the ones a restored state names; the same settings move nothing.
-		const held: StoryStructureViewStateSnapshot = { ...current, corkboard: { ...current.corkboard, views: { time: { mode: 'compact', group: 'timeKind', reversed: false } } } };
+		const held: StoryStructureViewStateSnapshot = { ...current, corkboard: { ...current.corkboard, views: { time: { mode: 'compact', group: 'timeKind', reversed: false, ...own } } } };
 		const again = mergeStoryStructureViewState(held, { corkboard: { views: { item: { reversed: true } } } });
 		expect(again.state.corkboard.views).toEqual({
-			time: { mode: 'compact', group: 'timeKind', reversed: false },
-			item: { mode: 'standard', group: '', reversed: true },
+			time: { mode: 'compact', group: 'timeKind', reversed: false, ...own },
+			item: { mode: 'standard', group: '', reversed: true, ...own },
 		});
 		expect(mergeStoryStructureViewState(held, { corkboard: { views: { time: { group: 'timeKind' } } } }).changed).toBe(false);
 	});
@@ -138,9 +146,110 @@ describe('story structure restored state', () => {
 	it('makes an entity view its memory from its own settings, at rest otherwise', () => {
 		const memory = entityCorkboardMemory('character', { mode: 'extended', group: 'role', reversed: true });
 		expect(memory).toEqual({
-			mode: 'extended', group: 'role', reversed: true, view: 'character', query: '', scrollTop: 0,
+			mode: 'extended', group: 'role', reversed: true, ...own, view: 'character', query: '', scrollTop: 0,
 			filters: { status: 'all', category: '', color: '', role: '', timeKind: '' },
 		});
+		// A view's own sizes come with it.
+		expect(entityCorkboardMemory('character', { mode: 'standard', group: '', reversed: false, cardWidth: 320, cardHeight: 0, textSize: 16 }))
+			.toMatchObject({ cardWidth: 320, cardHeight: 0, textSize: 16 });
+	});
+
+	it("restores the scene view's three sizes and every other view's, one by one", () => {
+		const restored = mergeStoryStructureViewState(current, {
+			corkboard: {
+				cardWidth: 320,
+				cardHeight: 'tall',
+				textSize: 16,
+				views: { character: { cardWidth: 480, cardHeight: 320 } },
+			},
+		});
+		expect(restored.state.corkboard).toEqual({
+			...current.corkboard,
+			cardWidth: 320,
+			textSize: 16,
+			views: { character: { mode: 'standard', group: '', reversed: false, cardWidth: 480, cardHeight: 320, textSize: 0 } },
+		});
+		expect(restored.changed).toBe(true);
+		// The same sizes move nothing, and one put back to the board's own does.
+		expect(mergeStoryStructureViewState(restored.state, { corkboard: { cardWidth: 320 } }).changed).toBe(false);
+		const back = mergeStoryStructureViewState(restored.state, { corkboard: { cardWidth: 0 } });
+		expect(back.state.corkboard.cardWidth).toBe(0);
+		expect(back.changed).toBe(true);
+		expect(mergeStoryStructureViewState(restored.state, { corkboard: { views: { character: { textSize: 14 } } } }).changed).toBe(true);
+		// A layout saved before the sliders names none, and keeps what is held.
+		expect(mergeStoryStructureViewState(restored.state, { corkboard: { mode: 'compact' } }).state.corkboard).toMatchObject({ cardWidth: 320, textSize: 16 });
+	});
+
+	it("restores a pool's three sizes with its settings, the timeline's and the beat sheet's each its own", () => {
+		const sized = mergeStoryStructureViewState(current, {
+			timeline: { pool: { cardWidth: 320, cardHeight: 'tall', textSize: 18 } },
+			beatSheet: { pool: { cardHeight: 400 } },
+		});
+		expect(sized.state.timeline.pool).toEqual({ ...current.timeline.pool, cardWidth: 320, textSize: 18 });
+		expect(sized.state.beatSheet.pool).toEqual({ ...current.beatSheet.pool, cardHeight: 400 });
+		expect(sized.changed).toBe(true);
+		// The corkboard's own sizes are another board's, and are not moved by a pool's.
+		expect(sized.state.corkboard).toEqual(current.corkboard);
+		// The same sizes move nothing; one put back to the workspace's own does, and so does one of the other workspace's.
+		expect(mergeStoryStructureViewState(sized.state, { timeline: { pool: { cardWidth: 320 } } }).changed).toBe(false);
+		expect(mergeStoryStructureViewState(sized.state, { timeline: { pool: { cardWidth: 0 } } })).toMatchObject({
+			state: { timeline: { pool: { cardWidth: 0, textSize: 18 } } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(sized.state, { beatSheet: { pool: { textSize: 14 } } }).changed).toBe(true);
+		// A layout saved before the sliders names none, and keeps what is held; a size past a slider's end is its end.
+		expect(mergeStoryStructureViewState(sized.state, { timeline: { pool: { mode: 'compact' } } }).state.timeline.pool).toMatchObject({ cardWidth: 320, textSize: 18 });
+		expect(mergeStoryStructureViewState(current, { timeline: { pool: { cardWidth: 9000, textSize: 4 } } }).state.timeline.pool).toMatchObject({
+			cardWidth: CORKBOARD_SIZE_LIMITS.cardWidth.max,
+			textSize: CORKBOARD_SIZE_LIMITS.textSize.min,
+		});
+		// The memory a workspace mounts with carries the sizes the layout kept.
+		expect(timelineMemory(sized.state.timeline).pool).toMatchObject({ cardWidth: 320, cardHeight: 0, textSize: 18 });
+		expect(beatSheetMemory(sized.state.beatSheet).pool).toMatchObject({ cardWidth: 0, cardHeight: 400, textSize: 0 });
+	});
+
+	it('offers a card from 240 to 720 px either way and type from 12 to 36, a pixel at a time', () => {
+		expect(CORKBOARD_SIZE_LIMITS).toEqual({
+			cardWidth: { min: 240, max: 720 },
+			cardHeight: { min: 240, max: 720 },
+			textSize: { min: 12, max: 36 },
+		});
+		// Every whole pixel between a slider's two ends is a place its handle may stand: no size is skipped.
+		for (const key of ['cardWidth', 'cardHeight', 'textSize'] as const) {
+			const { min, max } = CORKBOARD_SIZE_LIMITS[key];
+			const stops = CORKBOARD_SIZE_STOPS[key];
+			expect(stops).toHaveLength(max - min + 1);
+			expect(stops[0]).toBe(min);
+			expect(stops[stops.length - 1]).toBe(max);
+			expect(stops.every((stop, at) => stop === min + at)).toBe(true);
+		}
+		expect(CORKBOARD_SIZE_STOPS.cardWidth).toHaveLength(481);
+		expect(CORKBOARD_SIZE_STOPS.textSize).toHaveLength(25);
+	});
+
+	it('reads a size as a whole pixel between its slider\'s ends, the board\'s own for nothing or less, and no size for anything else', () => {
+		expect(readCorkboardSize('cardWidth', 256)).toBe(256);
+		// Any pixel is kept as it is: 250 is a width of its own, where it used to be drawn to the nearest of a few.
+		expect(readCorkboardSize('cardWidth', 250)).toBe(250);
+		expect(readCorkboardSize('cardWidth', 333)).toBe(333);
+		expect(readCorkboardSize('cardWidth', 250.6)).toBe(251);
+		// A size past either end is the end: a card set narrower or shorter than the standard one is the standard one.
+		expect(readCorkboardSize('cardWidth', 100)).toBe(240);
+		expect(readCorkboardSize('cardWidth', 9000)).toBe(720);
+		expect(readCorkboardSize('cardHeight', 160)).toBe(240);
+		expect(readCorkboardSize('cardHeight', 721)).toBe(720);
+		expect(readCorkboardSize('cardHeight', 0)).toBe(0);
+		expect(readCorkboardSize('cardHeight', -40)).toBe(0);
+		expect(readCorkboardSize('textSize', 21)).toBe(21);
+		expect(readCorkboardSize('textSize', 36)).toBe(36);
+		expect(readCorkboardSize('textSize', 40)).toBe(36);
+		expect(readCorkboardSize('textSize', 8)).toBe(12);
+		for (const value of ['16', null, undefined, Number.NaN, Number.POSITIVE_INFINITY, {}]) {
+			expect(readCorkboardSize('textSize', value)).toBeUndefined();
+		}
+		// The project's defaults carry a size only where one was set.
+		expect(readCorkboardPreferences({ mode: 'compact', cardWidth: 330, textSize: 'big' })).toEqual({ mode: 'compact', cardWidth: 330 });
+		expect(readCorkboardPreferences({ reversed: true })).toEqual({ reversed: true });
 	});
 
 	it('restores project ownership independently of visualization settings', () => {
@@ -194,7 +303,7 @@ describe('story structure restored state', () => {
 				timeline: { pool: { mode: 'compact', group: 'mood', reversed: true } },
 			}),
 		).toEqual({
-			state: { ...current, timeline: { pool: { mode: 'compact', group: 'time', reversed: true }, poolCollapsed: true, timeCollapsed: false } },
+			state: { ...current, timeline: { pool: { mode: 'compact', group: 'time', reversed: true, ...own }, poolCollapsed: true, timeCollapsed: false } },
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { timeline: 7 })).toEqual({ state: current, changed: false });
@@ -210,7 +319,7 @@ describe('story structure restored state', () => {
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { timeline: { timeCollapsed: 1 } })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().timeline).toEqual({ pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false });
+		expect(defaultStoryStructureState().timeline).toEqual({ pool: { mode: 'compact', group: '', reversed: false, ...own }, poolCollapsed: false, timeCollapsed: false });
 	});
 
 	it("restores the beat sheet pool's settings and its two folds one by one, apart from the timeline's", () => {
@@ -219,7 +328,7 @@ describe('story structure restored state', () => {
 				beatSheet: { pool: { mode: 'compact', group: 'mood', reversed: true } },
 			}),
 		).toEqual({
-			state: { ...current, beatSheet: { pool: { mode: 'compact', group: 'status', reversed: true }, poolCollapsed: false, beatsCollapsed: true } },
+			state: { ...current, beatSheet: { pool: { mode: 'compact', group: 'status', reversed: true, ...own }, poolCollapsed: false, beatsCollapsed: true } },
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { beatSheet: 7 })).toEqual({ state: current, changed: false });
@@ -235,7 +344,7 @@ describe('story structure restored state', () => {
 		expect(mergeStoryStructureViewState(current, { beatSheet: { beatsCollapsed: 0 } })).toEqual({ state: current, changed: false });
 		// The timeline's fold is the timeline's: naming it under the beat sheet moves nothing.
 		expect(mergeStoryStructureViewState(current, { beatSheet: { timeCollapsed: true } })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().beatSheet).toEqual({ pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false });
+		expect(defaultStoryStructureState().beatSheet).toEqual({ pool: { mode: 'compact', group: '', reversed: false, ...own }, poolCollapsed: false, beatsCollapsed: false });
 	});
 
 	it("restores the freeform canvas's view and its switches one by one, ignoring what is not one of its own", () => {
@@ -366,6 +475,7 @@ describe('story structure restored state', () => {
 			mode: 'standard',
 			group: '',
 			reversed: false,
+			...own,
 			view: 'scene',
 			query: '',
 			filters: {
@@ -383,5 +493,8 @@ describe('story structure restored state', () => {
 			scrollTop: 0,
 		});
 		expect(corkboardMemory(current.corkboard)).toMatchObject({ mode: 'compact', group: 'pov', reversed: true, view: 'scene' });
+		expect(corkboardMemory({ ...current.corkboard, cardHeight: 320 })).toMatchObject({ cardWidth: 0, cardHeight: 320, textSize: 0 });
+		// A pool's memory, made from the three settings alone, holds the board's own sizes.
+		expect(corkboardMemory({ mode: 'compact', group: '', reversed: false })).toMatchObject(own);
 	});
 });

@@ -13,7 +13,7 @@ import type { FullScreenControl } from './full-screen';
 import type { Translate } from './modals';
 import type { EntityFilters } from './entity-filters';
 import type { SceneFilters } from './scene-filters';
-import type { CorkboardMemory, CorkboardPreferences, CorkboardView } from './story-structure-state';
+import type { CorkboardCardSizes, CorkboardMemory, CorkboardMode, CorkboardPreferences, CorkboardView } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from './view-model';
 
 /** The host's own methods the board calls, and no others. */
@@ -41,6 +41,9 @@ export type CorkboardHost = Pick<
 
 /** The funnel's answers a board may be handed: the scene view's, or an entity view's. */
 export type CorkboardFilters = SceneFilters | EntityFilters;
+
+/** How a board is drawn: its card style and its three sizes, each size 0 while it is the board's own. */
+export type CorkboardLook = CorkboardCardSizes & { mode: CorkboardMode };
 
 export interface CorkboardControls<Filters = CorkboardFilters> {
 	app: App;
@@ -77,6 +80,14 @@ export interface CorkboardHandle {
 	reveal(id: string): void;
 	/** Lays the cards out again for the width the board has now. */
 	remeasure(): void;
+	/**
+	 * Opens the board's Display panel under another surface's button, with the
+	 * look alone, the card style and the sizes, and none of what is the board's
+	 * own to gather by: the way in for a workspace whose cards wear this
+	 * board's look and whose pool may be folded out of sight. A second press
+	 * closes it.
+	 */
+	openDisplay(anchor: HTMLElement): void;
 	/**
 	 * Saves the body box holding the focus, a scene's conflict or an
 	 * entity's one sentence, for the view's own key scope: the app's keymap
@@ -121,6 +132,13 @@ export interface CorkboardVariant<Member = SceneViewModel> {
 	 * as well, so the display control stays while the board shows nothing.
 	 */
 	modeShared?: boolean;
+	/**
+	 * Told how the board is drawn whenever that moves: the look its Display
+	 * panel is trying while it tries one, and the kept one after. The surface
+	 * whose cards wear this board's style and sizes dresses them by it, so a
+	 * draft is seen on both at once.
+	 */
+	wear?: (look: CorkboardLook) => void;
 	/** Items the hosting surface adds to a card's menu beside its own drag actions. */
 	menuItems?: (sceneId: string, menu: Menu) => void;
 	/**

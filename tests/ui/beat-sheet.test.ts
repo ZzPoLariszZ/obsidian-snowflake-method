@@ -316,7 +316,7 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 	};
 	let handle: ReturnType<typeof renderBeatSheet>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
 	let projectPath: string | null = 'P';
@@ -446,7 +446,7 @@ describe('the beat sheet workspace', () => {
 		expect(fixture.root.querySelector('.snowflake-method-timeline-head')).toBeNull();
 	});
 
-	it('lays the toolbar out balanced: the sheet field at its start, the search in its middle, and at its end the state, export, edit, the words, the presentation, the order, refresh, add act, add beat sheet', async () => {
+	it('lays the toolbar out balanced: the sheet field at its start, the search in its middle, and at its end the state, export, edit, the display, the words, the presentation, the order, refresh, add act, add beat sheet', async () => {
 		const fixture = laid();
 		await settle();
 		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
@@ -458,7 +458,8 @@ describe('the beat sheet workspace', () => {
 		expect(toolbar.children[1]!.querySelector('input')!.getAttribute('placeholder')).toBe('beatSheet.search');
 		const order = [
 			'snowflake-method-prose-state', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-export-canvas',
-			'snowflake-method-beat-sheet-edit', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
+			'snowflake-method-beat-sheet-edit', 'snowflake-method-timeline-display',
+			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
 			'snowflake-method-timeline-order', 'snowflake-method-timeline-refresh',
 			'snowflake-method-beat-sheet-add-act', 'snowflake-method-beat-sheet-add',
 		];
@@ -466,6 +467,11 @@ describe('the beat sheet workspace', () => {
 		expect(end.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
 		expect(end.children).toHaveLength(order.length);
 		expect(toolbar.getAttribute('aria-label')).toBe('beatSheet.toolbar');
+		// The look's panel opens from the sheet's own toolbar, as the timeline's does from its own.
+		const display = fixture.button('snowflake-method-timeline-display');
+		expect(display.getAttribute('aria-label')).toBe('corkboard.display');
+		display.dispatch('click');
+		expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(display);
 		// The sheet's pencil is its own, not the timeline view's.
 		expect(fixture.button('snowflake-method-beat-sheet-edit').classes.has('snowflake-method-timeline-view-edit')).toBe(false);
 		for (const [cls, words] of [['snowflake-method-beat-sheet-add-act', 'beatSheet.act.add'], ['snowflake-method-beat-sheet-add', 'beatSheet.sheet.add']] as const) {

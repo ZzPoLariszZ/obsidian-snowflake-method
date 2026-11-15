@@ -22,10 +22,10 @@
 
 import { Menu, SearchComponent, getIcon, setIcon, setTooltip, type App, type Modal } from 'obsidian';
 
-import type { CorkboardControls, CorkboardHandle, CorkboardHost, CorkboardVariant, RenderCorkboard } from './corkboard-bridge';
+import type { CorkboardControls, CorkboardHandle, CorkboardHost, CorkboardLook, CorkboardVariant, RenderCorkboard } from './corkboard-bridge';
 import { isMobileDevice } from './device';
 import type { LentFilterPopover } from './filter-rows';
-import type { LaneCells } from './lane-cells';
+import { fitWords, type LaneCells } from './lane-cells';
 import type { Translate } from './modals';
 import { paintCount, renderEmptyLine } from './pane-parts';
 import {
@@ -942,12 +942,22 @@ export interface ScenePool {
 	 * offer, and what the cells hand over.
 	 */
 	mount: (variant: Pick<CorkboardVariant, 'emptyText' | 'menuItems' | 'dragOut' | 'dropIn'>) => void;
-	/** The workspace's cards wear the style the pool's display control chose; the CSS reads it off the root. */
-	paintCardMode: () => void;
+	/**
+	 * The workspace wears the look the pool's display control chose, or is
+	 * trying: the card style and the three sizes, which the CSS reads off the
+	 * root for the cards on the lanes and for the lanes' words.
+	 */
+	paintCardLook: () => void;
 	/** The pool follows what is on show: the scenes placed there leave it, and the count says what is left. */
 	paint: (assigned: Set<string>) => void;
 	reveal: (id: string) => void;
 	remeasure: () => void;
+	/**
+	 * The look's panel under one of the workspace's own buttons: the card
+	 * style and the three sizes the lanes wear, reached whether the pool
+	 * stands open or is folded away.
+	 */
+	openDisplay: (anchor: HTMLElement) => void;
 	saveFocusedBody: () => boolean;
 	dispose: () => void;
 }
@@ -980,9 +990,45 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 	let assigned = new Set<string>();
 	let handle: CorkboardHandle | null = null;
 
-	const paintCardMode = (): void => {
-		if (root.dataset.mode === memory.pool.mode) return;
-		root.dataset.mode = memory.pool.mode;
+	/**
+	 * The look the pool's board last said it is drawn in, a draft of its
+	 * Display panel among them; null until a board has said, when the memory
+	 * is all there is to go by.
+	 */
+	let told: CorkboardLook | null = null;
+	/** What the root wears now, written down so a paint that changes nothing writes nothing. */
+	let worn = '';
+	/** The type size the root wears; none before the first paint. */
+	let wornTextSize = -1;
+	const paintCardLook = (): void => {
+		const look: CorkboardLook = told ?? {
+			mode: memory.pool.mode,
+			cardWidth: memory.pool.cardWidth,
+			cardHeight: memory.pool.cardHeight,
+			textSize: memory.pool.textSize,
+		};
+		const next = `${look.mode}|${String(look.cardWidth)}|${String(look.cardHeight)}|${String(look.textSize)}`;
+		if (next === worn && root.dataset.mode === look.mode) return;
+		const retyped = look.textSize !== wornTextSize;
+		worn = next;
+		wornTextSize = look.textSize;
+		root.dataset.mode = look.mode;
+		// Each measure is the stylesheet's own until one is set: a card as wide
+		// as the board's, the style's own height, the theme's small type. The
+		// width is the scene cards' on the lanes and in the pool alike, the
+		// height the standard card's, and the type the cards' text, the
+		// descriptions' and the sub-descriptions'.
+		root.setCssProps({
+			'--snowflake-method-timeline-scene-width': look.cardWidth > 0 ? `${String(look.cardWidth)}px` : '',
+			'--snowflake-method-timeline-card-height': look.cardHeight > 0 ? `${String(look.cardHeight)}px` : '',
+			'--snowflake-method-corkboard-text-size': look.textSize > 0 ? `${String(look.textSize)}px` : '',
+		});
+		// A box of words standing open was grown to its words at the old type.
+		if (retyped) {
+			for (const area of Array.from(root.querySelectorAll<HTMLTextAreaElement>('.snowflake-method-timeline-subrow-input'))) {
+				if (!area.classList.contains('is-hidden')) fitWords(area);
+			}
+		}
 		deps.invalidateRects();
 	};
 
@@ -1001,9 +1047,11 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 			memory: memory.pool,
 			remember: () => {
 				controls.remember();
-				paintCardMode();
+				paintCardLook();
 			},
 		};
+		// A board made anew says its look afresh.
+		told = null;
 		handle = controls.corkboard(poolHost, poolControls, {
 			include: (scene) => !assigned.has(scene.id),
 			addButton: 'icon',
@@ -1014,6 +1062,12 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 			// One column has no insertion buttons to leave room for between cards.
 			gap: 0.75,
 			modeShared: true,
+			// The lanes' cards and words wear what the pool's are drawn in, a
+			// draft of its Display panel while one is shown.
+			wear: (look) => {
+				told = look;
+				paintCardLook();
+			},
 			...variant,
 		});
 	};
@@ -1021,7 +1075,7 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 	return {
 		el,
 		mount,
-		paintCardMode,
+		paintCardLook,
 		paint: (next) => {
 			assigned = next;
 			const model = deps.model();
@@ -1033,6 +1087,9 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 		},
 		remeasure: () => {
 			handle?.remeasure();
+		},
+		openDisplay: (anchor) => {
+			handle?.openDisplay(anchor);
 		},
 		saveFocusedBody: () => handle?.saveFocusedBody() ?? false,
 		dispose: () => {

@@ -1480,6 +1480,88 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-corkboard-word')).toContain('text-overflow: ellipsis');
 	});
 
+	it("keeps a board's own sizes to the board: the type on its canvas's cards, the room between cards on each card", () => {
+		// The type a board sets is read by its own canvas's cards alone, over the theme's small type every other card keeps.
+		const shared = declarations('.snowflake-method-scene-cards .snowflake-method-prose-box.snowflake-method-corkboard-body-text');
+		expect(shared).toContain('font-size: var(--font-ui-small)');
+		expect(
+			declarations('.snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text'),
+		).toContain('font-size: var(--snowflake-method-corkboard-text-size, var(--font-ui-small))');
+		// Cards of a set width stand further apart than the gap: each card halves the room on either side, and a row's ends keep the gap.
+		const bridge = declarations('.snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card::before');
+		expect(bridge).toMatch(/inset-inline-start: calc\(\s*-1 \* var\(--snowflake-method-corkboard-spread-start, var\(--snowflake-method-corkboard-gap\)\) \/ 2 - 1px\s*\)/u);
+		expect(bridge).toMatch(/inset-inline-end: calc\(\s*-1 \* var\(--snowflake-method-corkboard-spread-end, var\(--snowflake-method-corkboard-gap\)\) \/ 2 - 1px\s*\)/u);
+		expect(declarations('.snowflake-method-corkboard .snowflake-method-corkboard-insert-before')).toMatch(/--snowflake-method-corkboard-insert-gap: var\(\s*--snowflake-method-corkboard-spread-start,/u);
+		expect(declarations('.snowflake-method-corkboard .snowflake-method-corkboard-insert-after')).toMatch(/--snowflake-method-corkboard-insert-gap: var\(\s*--snowflake-method-corkboard-spread-end,/u);
+		// The button stands midway, but its unseen reach stays the gap's: the room between two cards is not one wide button.
+		expect(declarations('.snowflake-method-corkboard .clickable-icon.snowflake-method-corkboard-insert')).toContain('--snowflake-method-corkboard-insert-reach: var(--snowflake-method-corkboard-gap)');
+		expect(declarations('.snowflake-method-corkboard-insert::before')).toContain('var(--snowflake-method-corkboard-insert-reach)');
+		expect(declarations('.snowflake-method-corkboard-insert::before')).not.toContain('insert-gap');
+		// The canvas and the graph read none of a board's sizes, and no other workspace the room a board's cards stand apart by.
+		for (const name of ['Freeform engine', 'Freeform workspace', 'Relationship graph']) {
+			expect(section(name), name).not.toContain('--snowflake-method-corkboard-text-size');
+		}
+		for (const name of ['Timeline', 'Beat sheet', 'Freeform engine', 'Freeform workspace', 'Relationship graph']) {
+			expect(section(name), name).not.toContain('--snowflake-method-corkboard-spread');
+		}
+		// The panel's rail: its words end the name's line, the rail has the row's width, and a measure with nothing to act on is put away.
+		// The row wears none of the ground the app lays under a setting, which stood in the panel as a grey band about the rail.
+		const row = declarations('.snowflake-method-filter-slider > .setting-item');
+		expect(row).toContain('background: none');
+		expect(row).toContain('border-radius: 0');
+		expect(row).toContain('box-shadow: none');
+		expect(declarations('.snowflake-method-filter-slider > .snowflake-method-filter-label')).toContain('justify-content: space-between');
+		expect(declarations('.snowflake-method-filter-slider > .setting-item > .setting-item-info')).toContain('display: none');
+		expect(declarations('.snowflake-method-filter-slider > .setting-item > .setting-item-control > input.slider')).toContain('flex: 1 1 auto');
+		expect(declarations('.snowflake-method-filter-row.is-hidden')).toContain('display: none');
+		expect(declarations('body.is-mobile .snowflake-method-filter-slider .snowflake-method-presentation-reset')).toContain('min-width: var(--touch-size-s, 2.5rem)');
+	});
+
+	it("dresses the lanes in what the pool's Display panel sets: a card's width and height, and the type of the lanes' words", () => {
+		const timeline = section('Timeline');
+		// The lanes' type is the size the pool's board writes on the workspace's root, and the theme's small type until it does.
+		expect(timeline).toContain(
+			'--snowflake-method-timeline-text-size: var(--snowflake-method-corkboard-text-size, var(--font-ui-small));',
+		);
+		// The axis's node stands on the first line of the words beside it, whatever their size.
+		expect(timeline).toMatch(
+			/--snowflake-method-timeline-node-offset: calc\(\s*var\(--size-4-2\) \+ var\(--size-2-1\) \+ var\(--line-height-normal\) \* var\(--snowflake-method-timeline-text-size\) \/ 2\s*\);/u,
+		);
+		// The descriptions, the sub-descriptions shown and entered, and the text on a lane's card are set in it.
+		expect(timeline).toMatch(
+			/button\.snowflake-method-timeline-time-description \{\s*color: var\(--text-muted\);\s*font-family: var\(--font-text\);\s*font-size: var\(--snowflake-method-timeline-text-size\);/u,
+		);
+		expect(declarations('.snowflake-method-timeline button.snowflake-method-timeline-subrow-label')).toContain(
+			'font-size: var(--snowflake-method-timeline-text-size)',
+		);
+		const entered = declarations('.snowflake-method-timeline textarea.snowflake-method-timeline-subrow-input');
+		expect(entered).toContain('font-size: var(--snowflake-method-timeline-text-size)');
+		expect(entered).toContain(
+			'min-height: calc(2 * var(--line-height-normal) * var(--snowflake-method-timeline-text-size) + 2 * var(--size-2-1) + 2px)',
+		);
+		expect(
+			declarations('.snowflake-method-timeline-scenes > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text'),
+		).toContain('font-size: var(--snowflake-method-timeline-text-size)');
+		// A time's or a beat's name keeps the theme's type: the first rule that names it sets the small size, and no later one another.
+		expect(declarations('.snowflake-method-timeline button.snowflake-method-timeline-time-label')).toContain('font-size: var(--font-ui-small)');
+		expect(timeline).not.toMatch(/time-label \{[^}]*font-size: var\(--snowflake-method-timeline-text-size\)/u);
+		// A lane's card is one width in every layout, the one the pool is as wide as, so a set width moves both.
+		expect(declarations('.snowflake-method-timeline-scenes > .snowflake-method-corkboard-card')).toContain(
+			'width: var(--snowflake-method-timeline-scene-width)',
+		);
+		expect(timeline).not.toContain("[data-layout='single'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card");
+		expect(timeline).toMatch(/--snowflake-method-timeline-pool-width: calc\(\s*var\(--snowflake-method-timeline-scene-width\)/u);
+		// A set height is the standard card's: the extended card stands its links' row taller, and the styles with no text box keep theirs.
+		expect(declarations(".snowflake-method-timeline[data-mode='standard']")).toContain(
+			'--snowflake-method-corkboard-card-height: var(--snowflake-method-timeline-card-height, 15rem)',
+		);
+		expect(declarations(".snowflake-method-timeline[data-mode='extended']")).toContain(
+			'--snowflake-method-corkboard-card-height: calc(var(--snowflake-method-timeline-card-height, 15rem) + 4rem)',
+		);
+		expect(timeline).not.toContain("[data-mode='gallery'] {\n\t--snowflake-method-corkboard-card-height");
+		expect(timeline).not.toContain('!important');
+	});
+
 	it('scopes a sheet without touching what its rules say', () => {
 		const scoped = scopeCss(
 			[

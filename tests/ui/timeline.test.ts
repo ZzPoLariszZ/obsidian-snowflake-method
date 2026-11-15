@@ -292,7 +292,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	};
 	let handle: ReturnType<typeof renderTimeline>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
 	const translate = vi.fn((key: string, _vars?: Record<string, string | number>): string => key);
@@ -361,7 +361,7 @@ describe('the timeline workspace', () => {
 		expect(fixture.emptyLine().classes.has('is-hidden')).toBe(true);
 	});
 
-	it('lays the toolbar out balanced: the view field at its start, the search in its middle, and at its end the state, edit, the words, the presentation, the order, refresh, add timeline, add view', async () => {
+	it('lays the toolbar out balanced: the view field at its start, the search in its middle, and at its end the state, edit, the display, the words, the presentation, the order, refresh, add timeline, add view', async () => {
 		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
 		await settle();
 		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
@@ -374,6 +374,7 @@ describe('the timeline workspace', () => {
 		expect(toolbar.children[1]!.querySelector('.snowflake-method-toolbar-count')).not.toBeNull();
 		const order = [
 			'snowflake-method-prose-state', 'snowflake-method-timeline-export-canvas', 'snowflake-method-timeline-view-edit',
+			'snowflake-method-timeline-display',
 			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order',
 			'snowflake-method-timeline-refresh', 'snowflake-method-timeline-add-timeline', 'snowflake-method-timeline-view-add',
 		];
@@ -383,6 +384,23 @@ describe('the timeline workspace', () => {
 		const addView = fixture.button('snowflake-method-timeline-view-add');
 		expect(addView.classes.has('mod-cta')).toBe(true);
 		expect(addView.textContent).toBe('timeline.view.add');
+	});
+
+	it('opens the look\'s panel from its own toolbar, under its own button, whether the pool stands open or is folded away', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const display = fixture.button('snowflake-method-timeline-display');
+		// The corkboard's own word and symbol: one Display on every board that has cards to dress.
+		expect(display.getAttribute('aria-label')).toBe('corkboard.display');
+		expect(display.getAttribute('aria-haspopup')).toBe('dialog');
+		display.dispatch('click');
+		expect(fixture.poolHandle.openDisplay).toHaveBeenCalledOnce();
+		expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(display);
+		// The pool folded out of sight takes its band with it, and the toolbar's button still opens the panel.
+		fixture.button('snowflake-method-timeline-pool-toggle').dispatch('click');
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(true);
+		display.dispatch('click');
+		expect(fixture.poolHandle.openDisplay).toHaveBeenCalledTimes(2);
 	});
 
 	it('gathers every action but refresh under one More actions button on a tablet, each with its symbol, and presses the button from its item', async () => {
@@ -396,7 +414,8 @@ describe('the timeline workspace', () => {
 			]);
 			const gathered = end.children[1]!;
 			expect(gathered.children.map((child) => [...child.classes].pop())).toEqual([
-				'snowflake-method-timeline-export-canvas', 'snowflake-method-timeline-view-edit', 'snowflake-method-timeline-words',
+				'snowflake-method-timeline-export-canvas', 'snowflake-method-timeline-view-edit', 'snowflake-method-timeline-display',
+				'snowflake-method-timeline-words',
 				'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order', 'snowflake-method-timeline-add-timeline',
 				'snowflake-method-timeline-view-add',
 			]);
@@ -407,13 +426,16 @@ describe('the timeline workspace', () => {
 			const listed = menus[menus.length - 1]!;
 			expect(listed.map((item) => item.title)).toEqual(gathered.children.map((child) => child.getAttribute('aria-label') ?? child.textContent));
 			expect(listed.map((item) => item.icon)).toEqual([
-				'layout-dashboard', 'pencil', 'eye', 'gallery-horizontal', 'arrow-down-narrow-wide', 'plus', 'layout-grid',
+				'layout-dashboard', 'pencil', 'sliders-horizontal', 'eye', 'gallery-horizontal', 'arrow-down-narrow-wide', 'plus', 'layout-grid',
 			]);
 			expect(listed.map((item) => item.disabled)).toEqual(listed.map(() => false));
 			const opened: AddTimelineModal[] = [];
 			vi.spyOn(AddTimelineModal.prototype, 'open').mockImplementation(function (this: AddTimelineModal) { opened.push(this); });
-			listed[5]!.click();
+			listed[6]!.click();
 			expect(opened).toHaveLength(1);
+			// The display's item opens the look's panel under the button that listed it, the display's own being put away.
+			listed[2]!.click();
+			expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(more);
 		} finally {
 			Platform.isMobile = false;
 			vi.restoreAllMocks();

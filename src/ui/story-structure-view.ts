@@ -52,11 +52,13 @@ import { clearSceneFilters, type SceneFilters } from './scene-filters';
 import {
 	STORY_STRUCTURE_FAMILIES,
 	beatSheetMemory,
+	corkboardCardSizesOf,
 	corkboardMemory,
 	defaultStoryStructureState,
 	familyVisualization,
 	CORKBOARD_SCENE_VIEW,
 	corkboardViewAvailable,
+	defaultCorkboardCardSizes,
 	defaultCorkboardViewSettings,
 	entityCorkboardMemory,
 	freeformMemory,
@@ -239,6 +241,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.memory.mode = update.state.corkboard.mode;
 		this.memory.group = update.state.corkboard.group;
 		this.memory.reversed = update.state.corkboard.reversed;
+		Object.assign(this.memory, corkboardCardSizesOf(update.state.corkboard));
 		this.corkboardView = update.state.corkboard.view;
 		for (const [view, settings] of Object.entries(update.state.corkboard.views)) {
 			const held = this.entityMemories.get(view);
@@ -246,15 +249,18 @@ export class SnowflakeStoryStructureView extends ItemView {
 			held.mode = settings.mode;
 			held.group = settings.group;
 			held.reversed = settings.reversed;
+			Object.assign(held, corkboardCardSizesOf(settings));
 		}
 		this.timelineMemory.pool.mode = update.state.timeline.pool.mode;
 		this.timelineMemory.pool.group = update.state.timeline.pool.group;
 		this.timelineMemory.pool.reversed = update.state.timeline.pool.reversed;
+		Object.assign(this.timelineMemory.pool, corkboardCardSizesOf(update.state.timeline.pool));
 		this.timelineMemory.poolCollapsed = update.state.timeline.poolCollapsed;
 		this.timelineMemory.timeCollapsed = update.state.timeline.timeCollapsed;
 		this.beatSheetMemory.pool.mode = update.state.beatSheet.pool.mode;
 		this.beatSheetMemory.pool.group = update.state.beatSheet.pool.group;
 		this.beatSheetMemory.pool.reversed = update.state.beatSheet.pool.reversed;
+		Object.assign(this.beatSheetMemory.pool, corkboardCardSizesOf(update.state.beatSheet.pool));
 		this.beatSheetMemory.poolCollapsed = update.state.beatSheet.poolCollapsed;
 		this.beatSheetMemory.beatsCollapsed = update.state.beatSheet.beatsCollapsed;
 		// Every switch the layout keeps, as one, so none is left behind.
@@ -284,6 +290,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 				mode: memory.mode,
 				group: isEntityGroupField(memory.group) ? memory.group : '',
 				reversed: memory.reversed,
+				...corkboardCardSizesOf(memory),
 			};
 		}
 		return {
@@ -293,6 +300,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 				mode: this.memory.mode,
 				group: groupSetting(this.memory.group),
 				reversed: this.memory.reversed,
+				...corkboardCardSizesOf(this.memory),
 				view: this.corkboardView,
 				views,
 			},
@@ -301,6 +309,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 					mode: this.timelineMemory.pool.mode,
 					group: groupSetting(this.timelineMemory.pool.group),
 					reversed: this.timelineMemory.pool.reversed,
+					...corkboardCardSizesOf(this.timelineMemory.pool),
 				},
 				poolCollapsed: this.timelineMemory.poolCollapsed,
 				timeCollapsed: this.timelineMemory.timeCollapsed,
@@ -310,6 +319,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 					mode: this.beatSheetMemory.pool.mode,
 					group: groupSetting(this.beatSheetMemory.pool.group),
 					reversed: this.beatSheetMemory.pool.reversed,
+					...corkboardCardSizesOf(this.beatSheetMemory.pool),
 				},
 				poolCollapsed: this.beatSheetMemory.poolCollapsed,
 				beatsCollapsed: this.beatSheetMemory.beatsCollapsed,
@@ -510,14 +520,19 @@ export class SnowflakeStoryStructureView extends ItemView {
 		const preferences = {
 			mode: 'standard' as const,
 			reversed: false,
+			...defaultCorkboardCardSizes(),
 			...saved,
 			...this.restoredPreferences,
 		};
 		this.memory.mode = preferences.mode;
 		this.memory.reversed = preferences.reversed;
+		// The sizes follow the same order: the tab's own where its layout
+		// names them, else the project's, else the board's.
+		Object.assign(this.memory, corkboardCardSizesOf(preferences));
 		this.preferencesProjectId = projectId;
 		// Existing tabs may predate project preferences. Seed only missing
 		// defaults; restoring an older tab must not overwrite a newer choice.
+		// The sizes are not seeded: one never set is the board's own.
 		const missing = {
 			...(saved.mode === undefined ? { mode: preferences.mode } : {}),
 			...(saved.reversed === undefined ? { reversed: preferences.reversed } : {}),

@@ -14665,13 +14665,21 @@ body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
 }
 
 /* Each half of the gap belongs to its nearest card, so entering the gap
-   directly also reveals the insertion controls. */
+   directly also reveals the insertion controls. Cards of a set width stand
+   further apart than the gap, and the board writes that room on each card,
+   side by side: a row's two ends keep the gap, so nothing reaches past the
+   canvas. */
 .snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card::before {
 	content: '';
 	position: absolute;
 	z-index: -1;
 	inset-block: 0;
-	inset-inline: calc(-1 * var(--snowflake-method-corkboard-gap) / 2 - 1px);
+	inset-inline-start: calc(
+		-1 * var(--snowflake-method-corkboard-spread-start, var(--snowflake-method-corkboard-gap)) / 2 - 1px
+	);
+	inset-inline-end: calc(
+		-1 * var(--snowflake-method-corkboard-spread-end, var(--snowflake-method-corkboard-gap)) / 2 - 1px
+	);
 }
 
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
@@ -15049,6 +15057,14 @@ body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
 	line-height: var(--line-height-normal);
 }
 
+/* A board may set the type of its cards' text boxes; it writes the size on
+   its own root, and only its own canvas's cards read it here. A lane's card
+   reads its workspace's (see "Timeline"), which the pool's board sets, and
+   the freeform canvas's keep the theme's small type. */
+.snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text {
+	font-size: var(--snowflake-method-corkboard-text-size, var(--font-ui-small));
+}
+
 .snowflake-method-scene-cards .snowflake-method-prose-box.snowflake-method-corkboard-body-text:hover,
 .snowflake-method-scene-cards .snowflake-method-prose-box.snowflake-method-corkboard-body-text:focus {
 	background-color: transparent;
@@ -15298,10 +15314,13 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 /* Plain plus icons sit midway through the spacing on both sides of a card.
-   Edge cards use the frame's inset instead of the gap between cards. */
+   Edge cards use the frame's inset instead of the gap between cards. Where
+   the cards stand further apart than the gap, the icon still stands midway,
+   but its unseen reach stays the gap's: the room between two cards is not
+   one wide button. */
 .snowflake-method-corkboard .clickable-icon.snowflake-method-corkboard-insert {
 	--icon-size: var(--icon-s);
-	--snowflake-method-corkboard-insert-gap: var(--snowflake-method-corkboard-gap);
+	--snowflake-method-corkboard-insert-reach: var(--snowflake-method-corkboard-gap);
 	position: absolute;
 	inset-block-start: 50%;
 	display: inline-grid;
@@ -15323,12 +15342,20 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 .snowflake-method-corkboard .snowflake-method-corkboard-insert-before {
+	--snowflake-method-corkboard-insert-gap: var(
+		--snowflake-method-corkboard-spread-start,
+		var(--snowflake-method-corkboard-gap)
+	);
 	inset-inline-start: calc(
 		(-1 * var(--snowflake-method-corkboard-insert-gap) - var(--snowflake-method-corkboard-insert-size)) / 2 - 1px
 	);
 }
 
 .snowflake-method-corkboard .snowflake-method-corkboard-insert-after {
+	--snowflake-method-corkboard-insert-gap: var(
+		--snowflake-method-corkboard-spread-end,
+		var(--snowflake-method-corkboard-gap)
+	);
 	inset-inline-end: calc(
 		(-1 * var(--snowflake-method-corkboard-insert-gap) - var(--snowflake-method-corkboard-insert-size)) / 2 - 1px
 	);
@@ -15337,6 +15364,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 .snowflake-method-corkboard .snowflake-method-corkboard-insert.is-row-start,
 .snowflake-method-corkboard .snowflake-method-corkboard-insert.is-row-end {
 	--snowflake-method-corkboard-insert-gap: var(--snowflake-method-corkboard-edge-gap);
+	--snowflake-method-corkboard-insert-reach: var(--snowflake-method-corkboard-edge-gap);
 }
 
 .snowflake-method-corkboard .snowflake-method-corkboard-insert:hover,
@@ -15352,7 +15380,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	content: '';
 	position: absolute;
 	inset: calc(
-		(var(--snowflake-method-corkboard-insert-size) - var(--snowflake-method-corkboard-insert-gap)) / 2
+		(var(--snowflake-method-corkboard-insert-size) - var(--snowflake-method-corkboard-insert-reach)) / 2
 	);
 }
 
@@ -15412,6 +15440,11 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 		var(--snowflake-method-corkboard-card-width) + var(--snowflake-method-corkboard-action-size)
 	);
 	--snowflake-method-timeline-scene-width: var(--snowflake-method-corkboard-card-width);
+	/* The type the lanes' words are set in: the descriptions of the column
+	   beside them, the sub-descriptions, and the text on the lanes' cards. The
+	   pool's Display panel sets it with its own cards', on the workspace's
+	   root. Until it does, it is the theme's small type. */
+	--snowflake-method-timeline-text-size: var(--snowflake-method-corkboard-text-size, var(--font-ui-small));
 	/* How far the layers behind a stacked card show, to its right and below. */
 	--snowflake-method-timeline-stack-depth: 0.5rem;
 	--snowflake-method-timeline-lane-gap: var(--size-4-3);
@@ -15420,7 +15453,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	   and the first row's, the words' own padding, then half a line. The time
 	   cell pads its words by the same, so its first line is level too. */
 	--snowflake-method-timeline-node-offset: calc(
-		var(--size-4-2) + var(--size-2-1) + var(--line-height-normal) * var(--font-ui-small) / 2
+		var(--size-4-2) + var(--size-2-1) + var(--line-height-normal) * var(--snowflake-method-timeline-text-size) / 2
 	);
 	--snowflake-method-timeline-scrollbar-size: var(--snowflake-method-timeline-lane-gap);
 	/* The head row's height: a lane head's icon with its padding and its
@@ -16011,10 +16044,12 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	font-weight: var(--font-semibold);
 }
 
-/* A description reads in the face a card's conflict wears. */
+/* A description reads in the face a card's conflict wears, at the size the
+   lanes' words are set in. The name above it keeps the theme's. */
 .snowflake-method-timeline button.snowflake-method-timeline-time-description {
 	color: var(--text-muted);
 	font-family: var(--font-text);
+	font-size: var(--snowflake-method-timeline-text-size);
 }
 
 .snowflake-method-timeline button.snowflake-method-timeline-time-description.is-empty {
@@ -16266,7 +16301,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	box-shadow: none;
 	color: var(--text-normal);
 	font-family: var(--font-text);
-	font-size: var(--font-ui-small);
+	font-size: var(--snowflake-method-timeline-text-size);
 	line-height: var(--line-height-normal);
 	text-align: start;
 	white-space: pre-wrap;
@@ -16302,9 +16337,22 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	height: var(--snowflake-method-corkboard-card-height);
 }
 
-.snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card,
-.snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card {
-	width: var(--snowflake-method-corkboard-card-width);
+/* A height the pool's Display panel set is the standard card's, as it is on
+   the corkboard: the extended card stands its links' row taller, and a card
+   with no text box, compact or gallery, keeps its own. The pool's cards take
+   theirs from its own board, which lays them out. */
+.snowflake-method-timeline[data-mode='standard'] {
+	--snowflake-method-corkboard-card-height: var(--snowflake-method-timeline-card-height, 15rem);
+}
+
+.snowflake-method-timeline[data-mode='extended'] {
+	--snowflake-method-corkboard-card-height: calc(var(--snowflake-method-timeline-card-height, 15rem) + 4rem);
+}
+
+/* The text on a lane's card is set in the lanes' type, as the pool's is. */
+.snowflake-method-timeline-scenes > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text,
+.snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text {
+	font-size: var(--snowflake-method-timeline-text-size);
 }
 
 .snowflake-method-timeline[data-mode='compact'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card,
@@ -16423,7 +16471,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	flex: 1 1 auto;
 	min-width: 0;
 	width: 0;
-	min-height: calc(2 * var(--line-height-normal) * var(--font-ui-small) + 2 * var(--size-2-1) + 2px);
+	min-height: calc(2 * var(--line-height-normal) * var(--snowflake-method-timeline-text-size) + 2 * var(--size-2-1) + 2px);
 	margin: 0;
 	padding: var(--size-2-1) var(--size-2-2);
 	border: 1px solid transparent;
@@ -16432,7 +16480,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	box-shadow: none;
 	color: var(--text-normal);
 	font-family: var(--font-text);
-	font-size: var(--font-ui-small);
+	font-size: var(--snowflake-method-timeline-text-size);
 	line-height: var(--line-height-normal);
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;

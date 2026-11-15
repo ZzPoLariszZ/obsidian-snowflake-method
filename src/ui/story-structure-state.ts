@@ -95,6 +95,84 @@ export interface CorkboardSettings {
 }
 
 /**
+ * A board view's three sizes in px: how wide a card is, how tall the
+ * standard card is, and how large the type in its text box. Each is 0 while
+ * it is the board's own, which is the look every build before the sliders
+ * drew: cards stretched from their least width, a card as tall as its style,
+ * the theme's small type.
+ */
+export interface CorkboardCardSizes {
+	cardWidth: number;
+	cardHeight: number;
+	textSize: number;
+}
+
+export const CORKBOARD_SIZE_KEYS = ['cardWidth', 'cardHeight', 'textSize'] as const;
+export type CorkboardSizeKey = (typeof CORKBOARD_SIZE_KEYS)[number];
+
+/**
+ * The least and the most each slider offers, in px. A card runs from the
+ * standard card's own measures, 240 px either way, to three times that; the
+ * type from the card's smallest to three times it. Between the two ends a
+ * slider moves a pixel at a time, so a card is any size the author likes
+ * and not one of a few.
+ */
+export const CORKBOARD_SIZE_LIMITS: Readonly<Record<CorkboardSizeKey, { readonly min: number; readonly max: number }>> = {
+	cardWidth: { min: 240, max: 720 },
+	cardHeight: { min: 240, max: 720 },
+	textSize: { min: 12, max: 36 },
+};
+
+/** Every whole pixel from one size to another, both counted. */
+const everyPixel = ({ min, max }: { min: number; max: number }): readonly number[] =>
+	Array.from({ length: max - min + 1 }, (_, at) => min + at);
+
+/** The places each slider's handle may stand: every whole pixel between its two ends. */
+export const CORKBOARD_SIZE_STOPS: Readonly<Record<CorkboardSizeKey, readonly number[]>> = {
+	cardWidth: everyPixel(CORKBOARD_SIZE_LIMITS.cardWidth),
+	cardHeight: everyPixel(CORKBOARD_SIZE_LIMITS.cardHeight),
+	textSize: everyPixel(CORKBOARD_SIZE_LIMITS.textSize),
+};
+
+export function defaultCorkboardCardSizes(): CorkboardCardSizes {
+	return { cardWidth: 0, cardHeight: 0, textSize: 0 };
+}
+
+/**
+ * A stored size as the board may hold it: nothing or less is the board's
+ * own, a number above it the nearest whole pixel between the slider's two
+ * ends, and anything that is no number is not a size at all, which leaves
+ * the one already held.
+ */
+export function readCorkboardSize(key: CorkboardSizeKey, value: unknown): number | undefined {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+	if (value <= 0) return 0;
+	const { min, max } = CORKBOARD_SIZE_LIMITS[key];
+	return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/** The sizes a stored shape names, each only when it reads as one. */
+export function readCorkboardSizes(value: unknown): Partial<CorkboardCardSizes> {
+	if (typeof value !== 'object' || value === null) return {};
+	const candidate = value as Record<string, unknown>;
+	const sizes: Partial<CorkboardCardSizes> = {};
+	for (const key of CORKBOARD_SIZE_KEYS) {
+		const size = readCorkboardSize(key, candidate[key]);
+		if (size !== undefined) sizes[key] = size;
+	}
+	return sizes;
+}
+
+const sizesOf = (held: CorkboardCardSizes): CorkboardCardSizes => ({
+	cardWidth: held.cardWidth,
+	cardHeight: held.cardHeight,
+	textSize: held.textSize,
+});
+
+export const sameCorkboardCardSizes = (left: CorkboardCardSizes, right: CorkboardCardSizes): boolean =>
+	CORKBOARD_SIZE_KEYS.every((key) => left[key] === right[key]);
+
+/**
  * The view a corkboard tab shows: `scene` for the scenes, `character` for the
  * characters, or a worldbuilding kind's id for that kind's notes. A kind id
  * never spells either built-in name: the registry refuses those names in
@@ -117,29 +195,29 @@ export function corkboardViewAvailable(
 	return view === CORKBOARD_SCENE_VIEW || view === CORKBOARD_CHARACTER_VIEW || kinds.some((kind) => kind.id === view);
 }
 
-/** How a character or worldbuilding view of the board is set: as the scene view is, gathered by any field of its own. */
-export interface CorkboardViewSettings {
+/** How a character or worldbuilding view of the board is set: as the scene view is, gathered by any field of its own, at sizes of its own. */
+export interface CorkboardViewSettings extends CorkboardCardSizes {
 	mode: CorkboardMode;
 	group: string;
 	reversed: boolean;
 }
 
 /**
- * The corkboard tab's own settings: the scene view's three, flat as every
- * build has kept them, which view the tab shows, and every other view's
- * three by view, each kept since the tab first showed it.
+ * The corkboard tab's own settings: the scene view's three and its sizes,
+ * flat as every build has kept them, which view the tab shows, and every
+ * other view's by view, each kept since the tab first showed it.
  */
-export interface CorkboardTabSettings extends CorkboardSettings {
+export interface CorkboardTabSettings extends CorkboardSettings, CorkboardCardSizes {
 	view: CorkboardView;
 	views: Record<string, CorkboardViewSettings>;
 }
 
 export function defaultCorkboardViewSettings(): CorkboardViewSettings {
-	return { mode: 'standard', group: '', reversed: false };
+	return { mode: 'standard', group: '', reversed: false, ...defaultCorkboardCardSizes() };
 }
 
 /** Project defaults for newly opened tabs; grouping and filters stay in the tab. */
-export type CorkboardPreferences = Pick<CorkboardSettings, 'mode' | 'reversed'>;
+export type CorkboardPreferences = Pick<CorkboardSettings, 'mode' | 'reversed'> & CorkboardCardSizes;
 
 /** Read only the preferences we persist, ignoring malformed or transient fields. */
 export function readCorkboardPreferences(value: unknown): Partial<CorkboardPreferences> {
@@ -148,12 +226,21 @@ export function readCorkboardPreferences(value: unknown): Partial<CorkboardPrefe
 	return {
 		...(isCorkboardMode(candidate.mode) ? { mode: candidate.mode } : {}),
 		...(typeof candidate.reversed === 'boolean' ? { reversed: candidate.reversed } : {}),
+		...readCorkboardSizes(candidate),
 	};
 }
 
-/** How the timeline is set: the pool's three the corkboard keeps, its card style dressing the lanes too, and the two folds. */
+/**
+ * How a scene pool is set: the three the corkboard keeps, and the three
+ * sizes. A pool's card style and sizes are the workspace's too: the cards on
+ * the lanes beside it wear them, and the type size is the lanes' words' as
+ * well, the descriptions' and the sub-descriptions'.
+ */
+export type PoolSettings = CorkboardSettings & CorkboardCardSizes;
+
+/** How the timeline is set: the pool's settings, which dress the lanes too, and the two folds. */
 export interface TimelineSettings {
-	pool: CorkboardSettings;
+	pool: PoolSettings;
 	/** The pool folded out of sight, the lanes taking its room. */
 	poolCollapsed: boolean;
 	/** The time column folded to its names alone. */
@@ -162,12 +249,16 @@ export interface TimelineSettings {
 
 /** A one-column pool reads best compact, and the lanes follow it; the tab keeps what the author chose after. */
 export function defaultTimelineSettings(): TimelineSettings {
-	return { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false };
+	return {
+		pool: { mode: 'compact', group: '', reversed: false, ...defaultCorkboardCardSizes() },
+		poolCollapsed: false,
+		timeCollapsed: false,
+	};
 }
 
-/** How the beat sheet is set: the pool's three as the timeline keeps them, and the two folds. */
+/** How the beat sheet is set: the pool's settings as the timeline keeps them, and the two folds. */
 export interface BeatSheetSettings {
-	pool: CorkboardSettings;
+	pool: PoolSettings;
 	/** The pool folded out of sight, the sheet taking its room. */
 	poolCollapsed: boolean;
 	/** The beat column folded to its names alone. */
@@ -176,7 +267,11 @@ export interface BeatSheetSettings {
 
 /** A one-column pool reads best compact here too, and the sheet's cards follow it. */
 export function defaultBeatSheetSettings(): BeatSheetSettings {
-	return { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false };
+	return {
+		pool: { mode: 'compact', group: '', reversed: false, ...defaultCorkboardCardSizes() },
+		poolCollapsed: false,
+		beatsCollapsed: false,
+	};
 }
 
 /**
@@ -237,7 +332,14 @@ export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 	return {
 		projectPath: null,
 		visualization: DEFAULT_STORY_STRUCTURE_VISUALIZATION,
-		corkboard: { mode: 'standard', group: '', reversed: false, view: CORKBOARD_SCENE_VIEW, views: {} },
+		corkboard: {
+			mode: 'standard',
+			group: '',
+			reversed: false,
+			...defaultCorkboardCardSizes(),
+			view: CORKBOARD_SCENE_VIEW,
+			views: {},
+		},
 		timeline: defaultTimelineSettings(),
 		beatSheet: defaultBeatSheetSettings(),
 		freeform: defaultFreeformSettings(),
@@ -264,6 +366,21 @@ function mergeCorkboardSettings(current: CorkboardSettings, value: unknown): Cor
 const sameCorkboardSettings = (left: CorkboardSettings | CorkboardViewSettings, right: CorkboardSettings | CorkboardViewSettings): boolean =>
 	left.mode === right.mode && left.group === right.group && left.reversed === right.reversed;
 
+/** The sizes a stored shape names, each over the one held. */
+const mergeCorkboardCardSizes = (current: CorkboardCardSizes, value: unknown): CorkboardCardSizes => ({
+	...sizesOf(current),
+	...readCorkboardSizes(value),
+});
+
+/** A pool's settings taken one by one over the current ones: the three, and each size that reads as one. */
+const mergePoolSettings = (current: PoolSettings, value: unknown): PoolSettings => ({
+	...mergeCorkboardSettings(current, value),
+	...mergeCorkboardCardSizes(current, value),
+});
+
+const samePoolSettings = (left: PoolSettings, right: PoolSettings): boolean =>
+	sameCorkboardSettings(left, right) && sameCorkboardCardSizes(left, right);
+
 const sameCorkboardViews = (
 	left: Record<string, CorkboardViewSettings>,
 	right: Record<string, CorkboardViewSettings>,
@@ -273,7 +390,7 @@ const sameCorkboardViews = (
 	return names.every((name) => {
 		const other = right[name];
 		const own = left[name];
-		return other !== undefined && own !== undefined && sameCorkboardSettings(own, other);
+		return other !== undefined && own !== undefined && sameCorkboardSettings(own, other) && sameCorkboardCardSizes(own, other);
 	});
 };
 
@@ -285,6 +402,7 @@ function mergeCorkboardViewSettings(current: CorkboardViewSettings, value: unkno
 		mode: isCorkboardMode(board.mode) ? board.mode : current.mode,
 		group: board.group === '' || isEntityGroupField(board.group) ? board.group : current.group,
 		reversed: typeof board.reversed === 'boolean' ? board.reversed : current.reversed,
+		...mergeCorkboardCardSizes(current, value),
 	};
 }
 
@@ -306,6 +424,7 @@ function mergeCorkboardTabSettings(current: CorkboardTabSettings, value: unknown
 	}
 	return {
 		...mergeCorkboardSettings(current, value),
+		...mergeCorkboardCardSizes(current, value),
 		view: isCorkboardView(board.view) ? board.view : current.view,
 		views,
 	};
@@ -350,7 +469,7 @@ export function mergeStoryStructureViewState(
 			? (candidate.timeline as Record<string, unknown>)
 			: {};
 	const timeline: TimelineSettings = {
-		pool: mergeCorkboardSettings(current.timeline.pool, timelineCandidate.pool),
+		pool: mergePoolSettings(current.timeline.pool, timelineCandidate.pool),
 		poolCollapsed:
 			typeof timelineCandidate.poolCollapsed === 'boolean'
 				? timelineCandidate.poolCollapsed
@@ -365,7 +484,7 @@ export function mergeStoryStructureViewState(
 			? (candidate.beatSheet as Record<string, unknown>)
 			: {};
 	const beatSheet: BeatSheetSettings = {
-		pool: mergeCorkboardSettings(current.beatSheet.pool, beatSheetCandidate.pool),
+		pool: mergePoolSettings(current.beatSheet.pool, beatSheetCandidate.pool),
 		poolCollapsed:
 			typeof beatSheetCandidate.poolCollapsed === 'boolean'
 				? beatSheetCandidate.poolCollapsed
@@ -422,12 +541,13 @@ export function mergeStoryStructureViewState(
 			state.projectPath !== current.projectPath ||
 			state.visualization !== current.visualization ||
 			!sameCorkboardSettings(state.corkboard, current.corkboard) ||
+			!sameCorkboardCardSizes(state.corkboard, current.corkboard) ||
 			state.corkboard.view !== current.corkboard.view ||
 			!sameCorkboardViews(state.corkboard.views, current.corkboard.views) ||
-			!sameCorkboardSettings(state.timeline.pool, current.timeline.pool) ||
+			!samePoolSettings(state.timeline.pool, current.timeline.pool) ||
 			state.timeline.poolCollapsed !== current.timeline.poolCollapsed ||
 			state.timeline.timeCollapsed !== current.timeline.timeCollapsed ||
-			!sameCorkboardSettings(state.beatSheet.pool, current.beatSheet.pool) ||
+			!samePoolSettings(state.beatSheet.pool, current.beatSheet.pool) ||
 			state.beatSheet.poolCollapsed !== current.beatSheet.poolCollapsed ||
 			state.beatSheet.beatsCollapsed !== current.beatSheet.beatsCollapsed ||
 			state.freeform.viewId !== current.freeform.viewId ||
@@ -440,6 +560,9 @@ export function mergeStoryStructureViewState(
 	};
 }
 
+/** A memory's three sizes alone, as the layout and the project's defaults keep them. */
+export const corkboardCardSizesOf = sizesOf;
+
 /**
  * What outlives a mount of the board: the settings the view persists, and
  * the search, the funnel's answers and the scroll, which last the session.
@@ -447,7 +570,7 @@ export function mergeStoryStructureViewState(
  * the scene view's are the layout's to keep, so the view narrows it as it
  * saves.
  */
-export interface CorkboardMemory<Filters = SceneFilters> {
+export interface CorkboardMemory<Filters = SceneFilters> extends CorkboardCardSizes {
 	mode: CorkboardMode;
 	/** The field the cards are gathered by, one of the view's own, or '' for none. */
 	group: string;
@@ -460,12 +583,14 @@ export interface CorkboardMemory<Filters = SceneFilters> {
 }
 
 /** The scene view's memory: what a tab remembers for the board the pools deal too. */
-export function corkboardMemory(settings?: CorkboardSettings): CorkboardMemory {
+export function corkboardMemory(settings?: CorkboardSettings & Partial<CorkboardCardSizes>): CorkboardMemory {
 	const { mode, group, reversed } = settings ?? defaultStoryStructureState().corkboard;
 	return {
 		mode,
 		group,
 		reversed,
+		...defaultCorkboardCardSizes(),
+		...readCorkboardSizes(settings),
 		view: CORKBOARD_SCENE_VIEW,
 		query: '',
 		filters: sceneFilters(),
@@ -480,12 +605,14 @@ export function corkboardMemory(settings?: CorkboardSettings): CorkboardMemory {
  */
 export function entityCorkboardMemory(
 	view: CorkboardView,
-	settings: CorkboardViewSettings,
+	settings: Pick<CorkboardViewSettings, 'mode' | 'group' | 'reversed'> & Partial<CorkboardCardSizes>,
 ): CorkboardMemory<EntityFilters> {
 	return {
 		mode: settings.mode,
 		group: settings.group,
 		reversed: settings.reversed,
+		...defaultCorkboardCardSizes(),
+		...readCorkboardSizes(settings),
 		view,
 		query: '',
 		filters: entityFilters(),
