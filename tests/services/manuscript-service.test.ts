@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FRONTMATTER_KEYS, findSequenceIssues } from "../../src/domain";
 import { parseMarkdownFrontmatter } from "../../src/repository";
@@ -655,6 +655,38 @@ describe("what a manuscript costs to read", () => {
     expect(new Set(reads())).toEqual(
       new Set(["Snowflake Projects/Novel/50_Manuscript/Draft.md"]),
     );
+  });
+
+  it("opens a note being deleted and the one either side of it, not the whole book", async () => {
+    const folder = "Snowflake Projects/Novel/50_Manuscript";
+    await service.manuscript.appendSegment(project, "Five");
+    project = await service.loadProject(project.projectFile);
+    ageManuscript();
+    fakeVault.readCalls.length = 0;
+
+    const gone = await service.manuscript.removeSegment(project, `${folder}/Three.md`);
+
+    expect(gone.neighbour).toBe(`${folder}/Two.md`);
+    // The index is taken at its word for the rest, as a merge takes it.
+    expect(new Set(reads())).toEqual(
+      new Set([`${folder}/Two.md`, `${folder}/Three.md`, `${folder}/Four.md`]),
+    );
+  });
+
+  it("goes over the whole book once for a deletion that closes the numbers up, and not at all for one that does not", async () => {
+    const folder = "Snowflake Projects/Novel/50_Manuscript";
+    const goneOver = vi.spyOn(service.manuscript, "listSegmentsFromFiles");
+
+    await service.manuscript.removeSegment(project, `${folder}/Four.md`);
+    expect(goneOver).not.toHaveBeenCalled();
+
+    await service.manuscript.removeSegment(project, `${folder}/Two.md`, [
+      { path: `${folder}/Three.md`, title: "Two" },
+    ]);
+    // Every name a renumbering moves has to be right, so the notes are gone
+    // over for it. It used to be twice: once more for the deletion itself.
+    expect(goneOver).toHaveBeenCalledTimes(1);
+    goneOver.mockRestore();
   });
 
   it("finds a note the index has not caught up with", async () => {

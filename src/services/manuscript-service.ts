@@ -113,6 +113,16 @@ function pairAt(target: string): Interest {
   };
 }
 
+/** A note and the one either side of it, which is what taking it out of the book answers with. */
+function besideAt(target: string): Interest {
+  return (ordered) => {
+    const index = ordered.findIndex((segment) => segment.path === target);
+    return index === -1
+      ? []
+      : [ordered[index - 1]?.path, ordered[index]?.path, ordered[index + 1]?.path];
+  };
+}
+
 /**
  * A project's manuscript: the notes it is written in, and the order they are
  * read in.
@@ -689,7 +699,12 @@ export class ManuscriptService {
     renumbered: SegmentRenameOutcome;
   }> {
     const target = normalizePath(path);
-    const ordered = await this.listSegmentsFromFiles(project);
+    // The note and its two neighbours are read, and the index is taken at
+    // its word for the rest, as a merge takes it. Going over every note
+    // here was the book gone over a second time behind the dialog that
+    // had just done so, and a third time by a renumbering, which still
+    // goes over them all, once, since every name it moves has to be right.
+    const ordered = await this.orderAround(project, besideAt(target));
     const index = ordered.findIndex((segment) => segment.path === target);
     const segment = ordered[index];
     if (segment === undefined) throw new ManagedFileNotFoundError(target);
