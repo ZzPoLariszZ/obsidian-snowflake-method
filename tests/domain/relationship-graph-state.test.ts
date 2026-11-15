@@ -22,7 +22,39 @@ describe('the entity graph state', () => {
 		expect(state.forces.center).toBeCloseTo(0.5187, 3);
 		expect(state.forces).toMatchObject({ repel: 10, link: 1, linkDistance: 250 });
 		expect(state.local).toEqual({ depth: 1, incoming: true, outgoing: true, neighbours: false });
+		// A dated line stands until the same note dates another toward the same target, and the undated stand from the start.
+		expect(state.timeline).toEqual({ rule: 'latest', undated: 'before' });
 		expect(state.viewport).toBeNull();
+	});
+
+	it('keeps the rule a dated line stands by, one of its two, and the default for anything else', () => {
+		expect(readEntityGraphState({ timeline: { rule: 'since' } }).timeline).toEqual({ rule: 'since', undated: 'before' });
+		for (const timeline of [{ rule: 'exact' }, { rule: 7 }, {}, 'since', null]) {
+			expect(readEntityGraphState({ timeline }).timeline).toEqual({ rule: 'latest', undated: 'before' });
+		}
+		// A file written before the timeline names none, and reads as the default.
+		expect(readEntityGraphState({ display: { arrows: false } }).timeline).toEqual({ rule: 'latest', undated: 'before' });
+		const since = patchEntityGraphState(defaultEntityGraphState(), { timeline: { rule: 'since', undated: 'before' } });
+		expect(since.timeline.rule).toBe('since');
+		expect(patchEntityGraphState(since, { viewport: null }).timeline.rule).toBe('since');
+		expect(serializeEntityGraphState(since).timeline).toEqual({ rule: 'since', undated: 'before' });
+		expect(readEntityGraphState(serializeEntityGraphState(since))).toEqual(since);
+		expect(sameEntityGraphState(since, defaultEntityGraphState())).toBe(false);
+	});
+
+	it('keeps where the undated lines stand, one of its two, each rule read apart from the other', () => {
+		expect(readEntityGraphState({ timeline: { undated: 'after' } }).timeline).toEqual({ rule: 'latest', undated: 'after' });
+		expect(readEntityGraphState({ timeline: { rule: 'since', undated: 'after' } }).timeline).toEqual({ rule: 'since', undated: 'after' });
+		// A word that is neither is the default, and takes nothing from the rule beside it.
+		for (const undated of ['end', 'always', 1, null, undefined]) {
+			expect(readEntityGraphState({ timeline: { rule: 'since', undated } }).timeline).toEqual({ rule: 'since', undated: 'before' });
+		}
+		// A file written before the rule keeps the picture it drew: the undated at every time.
+		expect(readEntityGraphState({ timeline: { rule: 'latest' } }).timeline.undated).toBe('before');
+		const after = patchEntityGraphState(defaultEntityGraphState(), { timeline: { rule: 'latest', undated: 'after' } });
+		expect(serializeEntityGraphState(after).timeline).toEqual({ rule: 'latest', undated: 'after' });
+		expect(readEntityGraphState(serializeEntityGraphState(after))).toEqual(after);
+		expect(sameEntityGraphState(after, defaultEntityGraphState())).toBe(false);
 	});
 
 	it('maps a strength to the native slider and back', () => {

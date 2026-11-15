@@ -41,6 +41,7 @@ export * from './task';
 export * from './relationship-graph';
 export * from './relationship-graph-document';
 export * from './relationship-graph-state';
+export * from './relationship-graph-timeline';
 export * from './timeline';
 export * from './text-length';
 export * from './text-search';

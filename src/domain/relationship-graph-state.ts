@@ -9,6 +9,15 @@
  * by hand or by another build still opens.
  */
 
+import {
+	DEFAULT_GRAPH_TIME_RULE,
+	DEFAULT_GRAPH_UNDATED_RULE,
+	isGraphTimeRule,
+	isGraphUndatedRule,
+	type GraphTimeRule,
+	type GraphUndatedRule,
+} from './relationship-graph-timeline';
+
 /** How a line is captioned: by the relationship word, the record's own text, both or neither. */
 export const GRAPH_LABEL_MODES = ['none', 'relationship', 'text', 'both'] as const;
 export type GraphLabelMode = (typeof GRAPH_LABEL_MODES)[number];
@@ -66,6 +75,14 @@ export interface EntityGraphLocal {
 	readonly neighbours: boolean;
 }
 
+/** How the timeline under the graph reads the lines that name a time, and the ones that name none. */
+export interface EntityGraphTimeline {
+	/** How long a line dated by a point stands: until the next one toward the same target, or from then on. */
+	readonly rule: GraphTimeRule;
+	/** Where the undated lines and notes stand: there before the axis starts, or held back until it ends. */
+	readonly undated: GraphUndatedRule;
+}
+
 /** Where the view stands, in the native graph's units: a world unit is one device pixel at zoom 1. */
 export interface GraphViewport {
 	readonly x: number;
@@ -81,6 +98,7 @@ export interface EntityGraphState {
 	readonly display: EntityGraphDisplay;
 	readonly forces: EntityGraphForces;
 	readonly local: EntityGraphLocal;
+	readonly timeline: EntityGraphTimeline;
 	/** Where the view was left, or null for a view not yet moved, which fits the graph to the screen. */
 	readonly viewport: GraphViewport | null;
 }
@@ -131,6 +149,7 @@ export function defaultEntityGraphState(): EntityGraphState {
 		display: { arrows: true, labels: 'relationship', textFade: 0, nodeSize: 1, lineSize: 1 },
 		forces: DEFAULT_GRAPH_FORCES,
 		local: { depth: 1, incoming: true, outgoing: true, neighbours: false },
+		timeline: { rule: DEFAULT_GRAPH_TIME_RULE, undated: DEFAULT_GRAPH_UNDATED_RULE },
 		viewport: null,
 	};
 }
@@ -225,6 +244,7 @@ export function readEntityGraphState(value: unknown): EntityGraphState {
 	const display = isRecord(value.display) ? value.display : {};
 	const forces = isRecord(value.forces) ? value.forces : {};
 	const local = isRecord(value.local) ? value.local : {};
+	const timeline = isRecord(value.timeline) ? value.timeline : {};
 	return {
 		filters: {
 			kindsOff: stringList(filters.kindsOff, base.filters.kindsOff),
@@ -256,6 +276,10 @@ export function readEntityGraphState(value: unknown): EntityGraphState {
 			outgoing: boolOr(local.outgoing, base.local.outgoing),
 			neighbours: boolOr(local.neighbours, base.local.neighbours),
 		},
+		timeline: {
+			rule: isGraphTimeRule(timeline.rule) ? timeline.rule : base.timeline.rule,
+			undated: isGraphUndatedRule(timeline.undated) ? timeline.undated : base.timeline.undated,
+		},
 		viewport: readViewport(value.viewport),
 	};
 }
@@ -273,6 +297,7 @@ export function serializeEntityGraphState(state: EntityGraphState): Record<strin
 		display: { ...state.display },
 		forces: { ...state.forces },
 		local: { ...state.local },
+		timeline: { ...state.timeline },
 		viewport: state.viewport === null ? null : { ...state.viewport },
 	};
 }
@@ -292,6 +317,7 @@ export function patchEntityGraphState(
 		display: patch.display ?? state.display,
 		forces: patch.forces ?? state.forces,
 		local: patch.local ?? state.local,
+		timeline: patch.timeline ?? state.timeline,
 		viewport: patch.viewport === undefined ? state.viewport : patch.viewport,
 	};
 }

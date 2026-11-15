@@ -125,10 +125,9 @@ export function buildEntityGraph(
 		}
 		return id;
 	};
-	const edges: { edge: GraphEdge; lane: number }[] = [];
+	const edges: GraphEdge[] = [];
 	const ids = new Set<string>();
 	const labels: string[] = [];
-	const pairs = new Map<string, number[]>();
 	for (const member of members) {
 		member.relationships.forEach((line, record) => {
 			const labelPath = line.label.display.trim().length > 0 ? line.label.display.trim() : labelLeaf(line.label.path);
@@ -151,7 +150,7 @@ export function buildEntityGraph(
 				let id = `${member.id}|${record}|${targetId}|${labelPath}`;
 				for (let n = 2; ids.has(id); n += 1) id = `${member.id}|${record}|${targetId}|${labelPath}|${n}`;
 				ids.add(id);
-				const edge: GraphEdge = {
+				edges.push({
 					id,
 					source: member.id,
 					target: targetId,
@@ -160,28 +159,46 @@ export function buildEntityGraph(
 					text: line.value,
 					record,
 					lane: 0,
-				};
-				const at = edges.push({ edge, lane: 0 }) - 1;
-				const key = pairKey(member.id, targetId);
-				const group = pairs.get(key);
-				if (group === undefined) pairs.set(key, [at]);
-				else group.push(at);
+				});
 				nodes.get(member.id)!.weight += 1;
 				nodes.get(targetId)!.weight += 1;
 			}
 		});
 	}
+	return {
+		nodes: [...nodes.values()],
+		edges: assignLanes(edges),
+		labels,
+	};
+}
+
+/**
+ * The lines given their lanes: where each runs among the lines between its
+ * two nodes, 0 alone, else spread either side of the straight line in the
+ * order the lines come. The graph lanes every line it has; a picture that
+ * draws only some of them, the ones standing at a time, lanes those again,
+ * so a line left alone between its two nodes runs straight. A line whose
+ * lane holds is handed back as it came.
+ */
+export function assignLanes(edges: readonly GraphEdge[]): GraphEdge[] {
+	const pairs = new Map<string, number[]>();
+	edges.forEach((edge, at) => {
+		const key = pairKey(edge.source, edge.target);
+		const group = pairs.get(key);
+		if (group === undefined) pairs.set(key, [at]);
+		else group.push(at);
+	});
+	const lanes = new Array<number>(edges.length).fill(0);
 	for (const group of pairs.values()) {
 		if (group.length < 2) continue;
 		group.forEach((at, index) => {
-			edges[at]!.lane = index - (group.length - 1) / 2;
+			lanes[at] = index - (group.length - 1) / 2;
 		});
 	}
-	return {
-		nodes: [...nodes.values()],
-		edges: edges.map(({ edge, lane }) => (lane === 0 ? edge : { ...edge, lane })),
-		labels,
-	};
+	return edges.map((edge, at) => {
+		const lane = lanes[at] ?? 0;
+		return edge.lane === lane ? edge : { ...edge, lane };
+	});
 }
 
 // --- the query grammar ------------------------------------------------------------

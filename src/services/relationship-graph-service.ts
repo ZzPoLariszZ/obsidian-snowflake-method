@@ -5,10 +5,13 @@ import {
 	sameEntityGraphState,
 	type EntityGraphState,
 	type GraphMember,
+	type GraphTime,
 	type NativeGraphOptions,
 	type RelationshipGraphDocument,
+	type ResolveGraphTarget,
 } from "../domain";
 import type { VaultRepository } from "../repository";
+import { parseTerm } from "../templates";
 import { RelationshipGraphStore } from "./relationship-graph-store";
 import type { ProjectRef, ProjectSnapshot } from "./types";
 
@@ -146,4 +149,36 @@ export function graphMembersOf(project: ProjectSnapshot): GraphMember[] {
 			),
 		),
 	];
+}
+
+/**
+ * A project's time notes as the graph's timeline reads them, in the order
+ * the notes keep, which is the Time table's. A period's two ends are stored
+ * as the links the form wrote; each is resolved here to the time note it
+ * leads to, and an end in plain words, or one whose note has gone, is no
+ * end the axis can place.
+ */
+export function graphTimesOf(
+	project: ProjectSnapshot,
+	resolve: ResolveGraphTarget,
+): GraphTime[] {
+	const times = project.worldbuilding.time ?? [];
+	const byPath = new Map(times.map((time) => [time.path, time.id]));
+	const endOf = (stored: string, sourcePath: string): string | null => {
+		const term = parseTerm(stored);
+		if (term.kind !== "link") return null;
+		const path = resolve(term.path, sourcePath);
+		return path === null ? null : (byPath.get(path) ?? null);
+	};
+	return times.map((time): GraphTime => {
+		const period = time.timeKind === "period";
+		return {
+			id: time.id,
+			name: time.name,
+			path: time.path,
+			kind: period ? "period" : "point",
+			start: period ? endOf(time.timeStart, time.path) : null,
+			end: period ? endOf(time.timeEnd, time.path) : null,
+		};
+	});
 }
