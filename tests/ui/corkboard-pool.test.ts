@@ -248,13 +248,8 @@ describe('the corkboard as a pool', () => {
 		const spans = fixture.empty.querySelectorAll('span');
 		expect(spans[spans.length - 1]?.textContent).toBe('Every scene is placed');
 		expect(fixture.scroller.classes.has('is-hidden')).toBe(true);
+		// Its look is its own cards' alone, so with none to dress the display control goes with the rest.
 		expect(fixture.display.classes.has('is-hidden')).toBe(true);
-	});
-
-	it('keeps the display control on an empty board whose card style dresses another surface', () => {
-		const fixture = pool({ include: () => false, emptyText: 'Every scene is placed', modeShared: true });
-		expect(fixture.scroller.classes.has('is-hidden')).toBe(true);
-		expect(fixture.display.classes.has('is-hidden')).toBe(false);
 		expect(fixture.dom.container.querySelector('.snowflake-method-filter-button')!.classes.has('is-hidden')).toBe(true);
 		expect(fixture.dom.container.querySelector('.snowflake-method-corkboard-direction')!.classes.has('is-hidden')).toBe(true);
 	});

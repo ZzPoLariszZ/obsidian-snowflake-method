@@ -21,6 +21,7 @@
 
 import { Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
+import { cardSizeRows, cardStyleRow } from './card-look-rows';
 import type { CorkboardControls, CorkboardFilters, CorkboardHandle, CorkboardLook, CorkboardVariant } from './corkboard-bridge';
 import type { CorkboardDeal, MemberMoveTarget } from './corkboard-deal';
 import {
@@ -30,7 +31,6 @@ import {
 	cardWidthOf,
 	cardPosition,
 	columnGapOf,
-	CORKBOARD_TEXT_MODES,
 	corkboardMetrics,
 	displayOrderOf,
 	dropTargetAt,
@@ -49,7 +49,7 @@ import {
 } from './corkboard-layout';
 import { entityDeal } from './entity-deal';
 import type { EntityFilters } from './entity-filters';
-import type { FilterOptionRow, FilterRow, FilterSliderRow } from './filter-rows';
+import type { FilterOptionRow, FilterRow } from './filter-rows';
 import { watchDragPress } from './drag-press';
 import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { kindWord } from './kind-word';
@@ -67,14 +67,7 @@ import { renderEmptyLine } from './pane-parts';
 import { sceneDeal } from './scene-deal';
 import type { SceneFilters } from './scene-filters';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
-import {
-	CORKBOARD_MODES,
-	CORKBOARD_SIZE_KEYS,
-	CORKBOARD_SIZE_STOPS,
-	isCorkboardMode,
-	type CorkboardPreferences,
-	type CorkboardSizeKey,
-} from './story-structure-state';
+import { CORKBOARD_SIZE_KEYS, type CorkboardPreferences } from './story-structure-state';
 import type { ProjectDashboardModel } from './view-model';
 import { balanceToolbar, gatherToolbarActions, nameToolbarSymbol, toolbarEnd } from './workspace-frame';
 
@@ -94,13 +87,6 @@ interface CorkboardCardExtras {
 	insertBefore: HTMLButtonElement;
 	insertAfter: HTMLButtonElement;
 }
-
-/** The words each size is named by. */
-const SIZE_LABELS: Readonly<Record<CorkboardSizeKey, string>> = {
-	cardWidth: 'corkboard.cardWidth',
-	cardHeight: 'corkboard.cardHeight',
-	textSize: 'corkboard.textSize',
-};
 
 interface ViewportMeasure {
 	top: number;
@@ -162,10 +148,10 @@ export function renderBoard<
 	const { app, t, memory } = controls;
 	/**
 	 * Whether the board offers its three sizes: a board on its own tab, and a
-	 * pool whose look the lanes beside it wear. On its own tab the board lays
-	 * its cards out at the width set. A pool is one card wide whatever is
-	 * set: its width is the workspace's to give, which is told the look and
-	 * gives the pool and the lanes the same card.
+	 * pool that tells its look on. On its own tab the board lays its cards out
+	 * at the width set. A pool is one card wide whatever is set: its width is
+	 * the workspace's to give, which is told the look and makes the pool as
+	 * wide as the card asked for.
 	 */
 	const sizable = variant.columns === undefined || variant.wear !== undefined;
 	/**
@@ -377,8 +363,6 @@ export function renderBoard<
 	let disposed = false;
 	let popoverRequest = 0;
 	let popoverKind: 'funnel' | 'display' | null = null;
-	/** The button the Display panel hangs from, while it is open: the band's own, or another surface's. */
-	let displayAnchor: HTMLElement | null = null;
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
@@ -513,7 +497,7 @@ export function renderBoard<
 
 	/** The type in the cards' text boxes as last written on the board; nothing while it is the theme's own. */
 	let shownTextSize = 0;
-	/** The look as last told to the surface that wears it too. */
+	/** The look as last told to the surface the board stands in, which gives a pool its width. */
 	let toldLook = '';
 	/** The type size written on the board, and the look told on wherever it moved. */
 	const paintLook = (): void => {
@@ -674,8 +658,7 @@ export function renderBoard<
 		scroller.toggleClass('is-hidden', none);
 		searchHost.toggleClass('is-hidden', none);
 		filterButton.toggleClass('is-hidden', none);
-		// A style shared with another surface is still someone's to choose.
-		displayButton.toggleClass('is-hidden', none && variant.modeShared !== true);
+		displayButton.toggleClass('is-hidden', none);
 		directionButton.toggleClass('is-hidden', none);
 		addButton.disabled = readOnly;
 		if (options.resetScroll === true) {
@@ -1352,26 +1335,18 @@ export function renderBoard<
 		if (after.cardWidth !== before.cardWidth || after.cardHeight !== before.cardHeight) remeasure();
 	};
 
-	/** A size in words: its pixels, or that it is the board's own. */
-	const sizeWords = (value: number): string =>
-		value === 0 ? t('corkboard.size.auto') : t('settings.manuscriptAppearance.pixels', { value });
+	/**
+	 * The width a card has while none is set. On its own tab the board shares
+	 * the row out, so it is whatever that comes to now. A pool is as wide as
+	 * the workspace makes it, a card at its least width, which it is whether
+	 * the pool stands open or is folded to nothing.
+	 */
+	const ownWidth = (): number => {
+		const own = ownMetrics(canvas.clientWidth, remPx(), compactHeight());
+		return variant.wear === undefined ? cardWidthOf(own) : own.minCardWidth;
+	};
 
-	/** The Display panel's rows: the look, and, on the board's own band, what its cards are gathered by. */
-	const displayRows = (withGroup = true): FilterRow[] => {
-		const cards: FilterOptionRow = {
-			label: t('corkboard.cards'),
-			placeholder: t('corkboard.cards.standard'),
-			empty: 'standard',
-			options: () =>
-				CORKBOARD_MODES.filter((mode) => mode !== 'standard').map((mode) => ({
-					value: mode,
-					label: t(`corkboard.cards.${mode}`),
-				})),
-			value: memory.mode,
-			apply: (value) => {
-				memory.mode = isCorkboardMode(value) ? value : 'standard';
-			},
-		};
+	const displayRows = (): FilterRow[] => {
 		const group: FilterOptionRow = {
 			label: t('corkboard.groupBy'),
 			placeholder: t('common.none'),
@@ -1386,82 +1361,39 @@ export function renderBoard<
 				memory.group = deal.groupFields.includes(value) ? value : '';
 			},
 		};
-		if (!sizable) return withGroup ? [cards, group] : [cards];
+		if (!sizable) return [cardStyleRow(t, memory), group];
 		// The sizes act on what is in sight, so the style drafted is drawn too:
 		// a height or a type size is offered only for a style that shows a text
 		// box, and that style has to be the one the handle is seen to move.
-		cards.preview = (value) => {
-			tryLook({ mode: isCorkboardMode(value) ? value : 'standard' });
-		};
-		const boxless = (): boolean => !CORKBOARD_TEXT_MODES.includes(look().mode);
-		// A board whose look another surface wears sets that surface's words
-		// too, the descriptions beside its lanes, which stand whatever the card
-		// shows: its type size is always there to set.
-		const wordless = (): boolean => variant.wear === undefined && boxless();
-		const size = (
-			key: CorkboardSizeKey,
-			extra: Pick<FilterSliderRow, 'rest' | 'themeVar' | 'hidden'>,
-		): FilterSliderRow => ({
-			presentation: 'stop-slider',
-			label: t(SIZE_LABELS[key]),
-			stops: CORKBOARD_SIZE_STOPS[key],
-			value: memory[key],
-			empty: 0,
-			resetLabel: t('settings.manuscriptAppearance.reset'),
-			format: sizeWords,
-			preview: (value) => {
-				tryLook({ [key]: value });
-			},
-			apply: (value) => {
-				memory[key] = value;
-			},
-			...extra,
-		});
-		/**
-		 * The width a card has while none is set. On its own tab the board
-		 * shares the row out, so it is whatever that comes to now. A pool is as
-		 * wide as the workspace makes it, a card at its least width, which it
-		 * is whether the pool stands open or is folded to nothing.
-		 */
-		const ownWidth = (): number => {
-			const own = ownMetrics(canvas.clientWidth, remPx(), compactHeight());
-			return variant.wear === undefined ? cardWidthOf(own) : own.minCardWidth;
-		};
 		return [
-			cards,
-			// While each is the board's own, its handle waits at what the board
-			// draws: the width the row shares out, the standard card's height,
-			// the theme's small type.
-			size('cardWidth', { rest: ownWidth }),
-			size('cardHeight', { rest: () => deal.cardHeight.standard * remPx(), hidden: boxless }),
-			size('textSize', { themeVar: '--font-ui-small', hidden: wordless }),
-			...(withGroup ? [group] : []),
+			cardStyleRow(t, memory, (mode) => {
+				tryLook({ mode });
+			}),
+			...cardSizeRows({
+				t,
+				held: memory,
+				shown: look,
+				tryLook,
+				ownWidth,
+				ownHeight: () => deal.cardHeight.standard * remPx(),
+				wordsBesideCards: false,
+			}),
+			group,
 		];
 	};
 
-	/**
-	 * The Display panel under the band's own button, or under the button of
-	 * the surface that wears this board's look, where it shows the look alone.
-	 * A press on the button it hangs from closes it; a press on the other
-	 * moves it there.
-	 */
-	const openDisplay = (anchor?: HTMLElement): void => {
+	const openDisplay = (): void => {
 		popoverRequest++;
-		const from = anchor ?? gathered?.button ?? displayButton;
-		const standing = controls.popover.filterOpen() && popoverKind === 'display';
-		if (standing) {
+		if (controls.popover.filterOpen() && popoverKind === 'display') {
 			controls.popover.closeFilter();
 			popoverKind = null;
-			const same = displayAnchor === from;
-			displayAnchor = null;
-			if (same) return;
+			return;
 		}
 		popoverKind = 'display';
-		displayAnchor = from;
 		const before = { mode: memory.mode, group: memory.group, cardWidth: memory.cardWidth, cardHeight: memory.cardHeight, textSize: memory.textSize };
 		controls.popover.openFilter(
-			from,
-			displayRows(anchor === undefined),
+			gathered?.button ?? displayButton,
+			displayRows(),
 			() => {
 				// Confirmed: what was tried is the memory's now, and the tab's
 				// layout and the project's defaults for the view follow.
@@ -1620,9 +1552,6 @@ export function renderBoard<
 		},
 		reveal,
 		remeasure,
-		openDisplay: (anchor) => {
-			openDisplay(anchor);
-		},
 		saveFocusedBody: () => {
 			const active = root.doc.activeElement;
 			for (const entry of cards.values()) {

@@ -251,13 +251,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// view, though, is the one the press was made on: another opened while the
 	// press waits its turn in the queue is not the one it was aimed at.
 	// The look of the lanes' cards and words, as the corkboard's Display sets
-	// its own: the card style and the three sizes, which the pool keeps and
-	// the lanes wear. It stands here as well as on the pool's band, since the
-	// pool folds away and a narrow workspace folds it by itself.
+	// its own: the card style and the three sizes, the lanes' own. The pool
+	// keeps a look apart, set from the Display on its own band, so a card may
+	// be one thing where it is picked and another where it is placed.
 	const displayButton = iconButton('snowflake-method-timeline-display', 'sliders-horizontal', t('corkboard.display'));
 	displayButton.setAttribute('aria-haspopup', 'dialog');
 	displayButton.addEventListener('click', () => {
-		pool.openDisplay(gathered?.button ?? displayButton);
+		frame.look.openDisplay(gathered?.button ?? displayButton);
 	});
 	const wordsButton = iconButton('snowflake-method-timeline-words', 'eye', t('timeline.view.subDescriptionsHide'));
 	wordsButton.setAttribute('aria-pressed', 'true');
@@ -737,7 +737,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const kind = layoutKind(lanes);
 		root.dataset.layout = kind;
 		laneAxis = kind === 'multi' ? 'down' : 'across';
-		pool.paintCardLook();
+		frame.look.paint();
 		root.setCssProps({ '--snowflake-method-timeline-lanes': String(lanes.length) });
 		const hold = focus.hold();
 		paintHeads(held);

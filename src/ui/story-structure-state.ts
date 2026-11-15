@@ -163,6 +163,9 @@ export function readCorkboardSizes(value: unknown): Partial<CorkboardCardSizes> 
 	return sizes;
 }
 
+/** How a surface's cards are drawn: their style and their three sizes, each size 0 while it is the surface's own. */
+export type CorkboardLook = CorkboardCardSizes & { mode: CorkboardMode };
+
 const sizesOf = (held: CorkboardCardSizes): CorkboardCardSizes => ({
 	cardWidth: held.cardWidth,
 	cardHeight: held.cardHeight,
@@ -232,43 +235,57 @@ export function readCorkboardPreferences(value: unknown): Partial<CorkboardPrefe
 
 /**
  * How a scene pool is set: the three the corkboard keeps, and the three
- * sizes. A pool's card style and sizes are the workspace's too: the cards on
- * the lanes beside it wear them, and the type size is the lanes' words' as
- * well, the descriptions' and the sub-descriptions'.
+ * sizes of its own cards. The pool is one card wide, so its card width is
+ * its own width too.
  */
 export type PoolSettings = CorkboardSettings & CorkboardCardSizes;
 
-/** How the timeline is set: the pool's settings, which dress the lanes too, and the two folds. */
+/** The look a workspace's lanes start in: compact cards at the workspace's own sizes. */
+export function defaultLaneLook(): CorkboardLook {
+	return { mode: 'compact', ...defaultCorkboardCardSizes() };
+}
+
+/**
+ * How the timeline is set: the pool's settings, the look of the cards on
+ * its lanes, and the two folds. The lanes' look is their own, set apart
+ * from the pool's: a card may be one thing in the pool it is picked from
+ * and another on the lane it is placed on. The lanes' type size is their
+ * words' as well, the descriptions' and the sub-descriptions'.
+ */
 export interface TimelineSettings {
 	pool: PoolSettings;
+	lanes: CorkboardLook;
 	/** The pool folded out of sight, the lanes taking its room. */
 	poolCollapsed: boolean;
 	/** The time column folded to its names alone. */
 	timeCollapsed: boolean;
 }
 
-/** A one-column pool reads best compact, and the lanes follow it; the tab keeps what the author chose after. */
+/** A one-column pool reads best compact, and the lanes start the same; the tab keeps what the author chose after. */
 export function defaultTimelineSettings(): TimelineSettings {
 	return {
 		pool: { mode: 'compact', group: '', reversed: false, ...defaultCorkboardCardSizes() },
+		lanes: defaultLaneLook(),
 		poolCollapsed: false,
 		timeCollapsed: false,
 	};
 }
 
-/** How the beat sheet is set: the pool's settings as the timeline keeps them, and the two folds. */
+/** How the beat sheet is set: the pool's settings and the sheet's own look, as the timeline keeps them, and the two folds. */
 export interface BeatSheetSettings {
 	pool: PoolSettings;
+	lanes: CorkboardLook;
 	/** The pool folded out of sight, the sheet taking its room. */
 	poolCollapsed: boolean;
 	/** The beat column folded to its names alone. */
 	beatsCollapsed: boolean;
 }
 
-/** A one-column pool reads best compact here too, and the sheet's cards follow it. */
+/** A one-column pool reads best compact here too, and the sheet's cards start the same. */
 export function defaultBeatSheetSettings(): BeatSheetSettings {
 	return {
 		pool: { mode: 'compact', group: '', reversed: false, ...defaultCorkboardCardSizes() },
+		lanes: defaultLaneLook(),
 		poolCollapsed: false,
 		beatsCollapsed: false,
 	};
@@ -383,6 +400,25 @@ const mergePoolSettings = (current: PoolSettings, value: unknown): PoolSettings 
 const samePoolSettings = (left: PoolSettings, right: PoolSettings): boolean =>
 	sameCorkboardSettings(left, right) && sameCorkboardCardSizes(left, right);
 
+/**
+ * The lanes' look taken over the one held: the style and each size the
+ * stored shape names. A layout saved before the lanes had a look of their
+ * own names none, and its pool's is taken instead, since until then the
+ * pool's card style dressed the lanes too: a workspace opens looking as it
+ * was left.
+ */
+const mergeLaneLook = (current: CorkboardLook, lanes: unknown, pool: unknown): CorkboardLook => {
+	const named = typeof lanes === 'object' && lanes !== null ? lanes : pool;
+	const stored = typeof named === 'object' && named !== null ? (named as Record<string, unknown>) : {};
+	return {
+		mode: isCorkboardMode(stored.mode) ? stored.mode : current.mode,
+		...mergeCorkboardCardSizes(current, stored),
+	};
+};
+
+const sameCorkboardLook = (left: CorkboardLook, right: CorkboardLook): boolean =>
+	left.mode === right.mode && sameCorkboardCardSizes(left, right);
+
 const sameCorkboardViews = (
 	left: Record<string, CorkboardViewSettings>,
 	right: Record<string, CorkboardViewSettings>,
@@ -472,6 +508,7 @@ export function mergeStoryStructureViewState(
 			: {};
 	const timeline: TimelineSettings = {
 		pool: mergePoolSettings(current.timeline.pool, timelineCandidate.pool),
+		lanes: mergeLaneLook(current.timeline.lanes, timelineCandidate.lanes, timelineCandidate.pool),
 		poolCollapsed:
 			typeof timelineCandidate.poolCollapsed === 'boolean'
 				? timelineCandidate.poolCollapsed
@@ -487,6 +524,7 @@ export function mergeStoryStructureViewState(
 			: {};
 	const beatSheet: BeatSheetSettings = {
 		pool: mergePoolSettings(current.beatSheet.pool, beatSheetCandidate.pool),
+		lanes: mergeLaneLook(current.beatSheet.lanes, beatSheetCandidate.lanes, beatSheetCandidate.pool),
 		poolCollapsed:
 			typeof beatSheetCandidate.poolCollapsed === 'boolean'
 				? beatSheetCandidate.poolCollapsed
@@ -551,9 +589,11 @@ export function mergeStoryStructureViewState(
 			state.corkboard.view !== current.corkboard.view ||
 			!sameCorkboardViews(state.corkboard.views, current.corkboard.views) ||
 			!samePoolSettings(state.timeline.pool, current.timeline.pool) ||
+			!sameCorkboardLook(state.timeline.lanes, current.timeline.lanes) ||
 			state.timeline.poolCollapsed !== current.timeline.poolCollapsed ||
 			state.timeline.timeCollapsed !== current.timeline.timeCollapsed ||
 			!samePoolSettings(state.beatSheet.pool, current.beatSheet.pool) ||
+			!sameCorkboardLook(state.beatSheet.lanes, current.beatSheet.lanes) ||
 			state.beatSheet.poolCollapsed !== current.beatSheet.poolCollapsed ||
 			state.beatSheet.beatsCollapsed !== current.beatSheet.beatsCollapsed ||
 			state.freeform.viewId !== current.freeform.viewId ||
@@ -639,6 +679,8 @@ export interface TimelineMemory {
 	/** Where each stack was browsed to, by view, timeline and row. */
 	stackPositions: Map<string, number>;
 	pool: CorkboardMemory;
+	/** How the cards on the lanes are drawn, and the lanes' words set, which the view persists. */
+	lanes: CorkboardLook;
 	/** The pool folded away, which the view persists with the pool's settings. */
 	poolCollapsed: boolean;
 	/** The time column folded to its names, persisted the same way. */
@@ -652,6 +694,7 @@ export function timelineMemory(settings?: TimelineSettings): TimelineMemory {
 		activeTimeline: new Map(),
 		stackPositions: new Map(),
 		pool: corkboardMemory(held.pool),
+		lanes: { ...held.lanes },
 		poolCollapsed: held.poolCollapsed,
 		timeCollapsed: held.timeCollapsed,
 		scroll: { left: 0, top: 0 },
@@ -668,6 +711,8 @@ export interface BeatSheetMemory {
 	/** Where each stack was browsed to, by sheet and row. */
 	stackPositions: Map<string, number>;
 	pool: CorkboardMemory;
+	/** How the cards on the sheet are drawn, and its words set. */
+	lanes: CorkboardLook;
 	poolCollapsed: boolean;
 	beatsCollapsed: boolean;
 	scroll: { left: number; top: number };
@@ -678,6 +723,7 @@ export function beatSheetMemory(settings?: BeatSheetSettings): BeatSheetMemory {
 	return {
 		stackPositions: new Map(),
 		pool: corkboardMemory(held.pool),
+		lanes: { ...held.lanes },
 		poolCollapsed: held.poolCollapsed,
 		beatsCollapsed: held.beatsCollapsed,
 		scroll: { left: 0, top: 0 },

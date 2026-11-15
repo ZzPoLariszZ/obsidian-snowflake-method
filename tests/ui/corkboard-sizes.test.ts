@@ -348,9 +348,9 @@ describe('the corkboard\'s display sizes', () => {
 });
 
 describe('a pool\'s display panel', () => {
-	const POOL = { columns: 1, gap: 0.75, modeShared: true, searchLabel: 'quiet', addButton: 'icon' } as const;
+	const POOL = { columns: 1, gap: 0.75, searchLabel: 'quiet', addButton: 'icon' } as const;
 
-	it('offers the three sizes where the lanes beside it wear its look, the type size whatever its cards show', () => {
+	it('offers the three sizes of its own cards where a workspace gives it its width, the height and the type only for a style that shows a text box', () => {
 		const wear = vi.fn();
 		const fixture = board({ mode: 'compact' }, { ...POOL, wear });
 		// The board said how it is drawn as it was first painted.
@@ -361,15 +361,18 @@ describe('a pool\'s display panel', () => {
 			'corkboard.cards', 'corkboard.cardWidth', 'corkboard.cardHeight', 'corkboard.textSize', 'corkboard.groupBy',
 		]);
 		expect(fixture.slider('corkboard.cardWidth').stops).toBe(CORKBOARD_SIZE_STOPS.cardWidth);
-		// A compact card shows no text box, so its height has nothing to act on. The type is the lanes' words' too, which
-		// stand whatever the card shows, so it is always there to set.
+		// A compact card shows no text box, so its height and its type have nothing to act on: the pool's look is its
+		// own cards' alone, and the lanes' words are set from the workspace's own panel.
 		expect(fixture.slider('corkboard.cardWidth').hidden).toBeUndefined();
 		expect(fixture.slider('corkboard.cardHeight').hidden?.()).toBe(true);
-		expect(fixture.slider('corkboard.textSize').hidden?.()).toBe(false);
-		// The style drafted is shown, here and on the lanes, so the height's row comes with a style that has a text box.
+		expect(fixture.slider('corkboard.textSize').hidden?.()).toBe(true);
+		// A card of the pool is the board's least width while none is set, whether the pool stands open or is folded to nothing.
+		expect(fixture.slider('corkboard.cardWidth').rest?.()).toBe(256);
+		// The style drafted is shown, so the height's and the type's rows come with a style that has a text box.
 		fixture.pick('corkboard.cards', 'standard');
 		expect(wear).toHaveBeenLastCalledWith({ mode: 'standard', cardWidth: 0, cardHeight: 0, textSize: 0 });
 		expect(fixture.slider('corkboard.cardHeight').hidden?.()).toBe(false);
+		expect(fixture.slider('corkboard.textSize').hidden?.()).toBe(false);
 		expect(fixture.memory.mode).toBe('compact');
 		fixture.dismiss();
 		expect(wear).toHaveBeenLastCalledWith({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
@@ -404,7 +407,7 @@ describe('a pool\'s display panel', () => {
 		fixture.handle.dispose();
 	});
 
-	it('hands the standing look back to the lanes when the panel closes unconfirmed', () => {
+	it('tells the standing look again when the panel closes unconfirmed', () => {
 		const wear = vi.fn();
 		const fixture = board({ mode: 'standard', cardWidth: 300, textSize: 14 }, { ...POOL, wear });
 		expect(wear).toHaveBeenLastCalledWith({ mode: 'standard', cardWidth: 300, cardHeight: 0, textSize: 14 });
@@ -420,44 +423,8 @@ describe('a pool\'s display panel', () => {
 		fixture.handle.dispose();
 	});
 
-	it('opens the look alone under the workspace\'s own button, and moves between that button and its own', () => {
-		const wear = vi.fn();
-		const fixture = board({ mode: 'standard' }, { ...POOL, wear });
-		const toolbarButton = fixture.dom.container.createEl('button');
-		fixture.handle.openDisplay(toolbarButton as unknown as HTMLElement);
-		// Under the workspace's button: the card style and the three sizes, and nothing of what the pool is gathered by.
-		expect(fixture.popover.openFilter).toHaveBeenCalledOnce();
-		expect(fixture.popover.openFilter.mock.calls[0]![0]).toBe(toolbarButton);
-		expect(fixture.rows().map((row) => row.label)).toEqual([
-			'corkboard.cards', 'corkboard.cardWidth', 'corkboard.cardHeight', 'corkboard.textSize',
-		]);
-		// A card of the pool is the board's least width whether the pool stands open or is folded to nothing.
-		expect(fixture.slider('corkboard.cardWidth').rest?.()).toBe(256);
-		// It previews and keeps as the pool's own panel does.
-		fixture.drag('corkboard.textSize', 22);
-		expect(wear).toHaveBeenLastCalledWith({ mode: 'standard', cardWidth: 0, cardHeight: 0, textSize: 22 });
-		// A second press on the same button closes it, and the draft is handed back.
-		fixture.handle.openDisplay(toolbarButton as unknown as HTMLElement);
-		expect(fixture.popover.filterOpen()).toBe(false);
-		expect(wear).toHaveBeenLastCalledWith({ mode: 'standard', cardWidth: 0, cardHeight: 0, textSize: 0 });
-		// Open from the toolbar, a press on the pool's own button moves it there, with the grouping too.
-		fixture.handle.openDisplay(toolbarButton as unknown as HTMLElement);
-		fixture.openDisplay();
-		expect(fixture.popover.filterOpen()).toBe(true);
-		expect(fixture.rows().map((row) => row.label)).toEqual([
-			'corkboard.cards', 'corkboard.cardWidth', 'corkboard.cardHeight', 'corkboard.textSize', 'corkboard.groupBy',
-		]);
-		// And kept from the toolbar's panel, the sizes are the memory's.
-		fixture.handle.openDisplay(toolbarButton as unknown as HTMLElement);
-		fixture.drag('corkboard.cardWidth', 500);
-		fixture.confirm();
-		expect(fixture.memory.cardWidth).toBe(500);
-		expect(fixture.remember).toHaveBeenLastCalledWith({ cardWidth: 500 });
-		fixture.handle.dispose();
-	});
-
-	it('keeps its two rows, shows no draft, and keeps the board\'s own sizes where no other surface wears its look', () => {
-		const fixture = board({ cardWidth: 480, cardHeight: 320, textSize: 20 }, { columns: 1, gap: 0.75, modeShared: true, searchLabel: 'quiet', addButton: 'icon' });
+	it('keeps its two rows, shows no draft, and keeps the board\'s own sizes where no surface gives it its width', () => {
+		const fixture = board({ cardWidth: 480, cardHeight: 320, textSize: 20 }, POOL);
 		fixture.openDisplay();
 		expect(fixture.rows().map((row) => row.label)).toEqual(['corkboard.cards', 'corkboard.groupBy']);
 		expect(fixture.choice('corkboard.cards').preview).toBeUndefined();

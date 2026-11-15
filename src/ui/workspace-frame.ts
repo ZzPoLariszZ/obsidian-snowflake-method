@@ -4,7 +4,8 @@
  * the two folds and the width that folds them by itself, the bars that stand
  * in for the scroller's own, the window the frame listens to, the focus kept
  * across a paint, the dialogs the workspace owns, the deck its cards are
- * dealt from, and the scene pool beside the lanes. What stands in a cell is
+ * dealt from, the look those cards are drawn in on the lanes, and the scene
+ * pool beside the lanes, which keeps a look of its own. What stands in a cell is
  * the lanes' cells' (`lane-cells.ts`), and the read, the queue and the
  * paint's gate are the loop's (`document-loop.ts`); this is what was left
  * around them, told twice, once the table itself is taken away.
@@ -22,7 +23,9 @@
 
 import { Menu, SearchComponent, getIcon, setIcon, setTooltip, type App, type Modal } from 'obsidian';
 
-import type { CorkboardControls, CorkboardHandle, CorkboardHost, CorkboardLook, CorkboardVariant, RenderCorkboard } from './corkboard-bridge';
+import { cardSizeRows, cardStyleRow } from './card-look-rows';
+import type { CorkboardControls, CorkboardHandle, CorkboardHost, CorkboardVariant, RenderCorkboard } from './corkboard-bridge';
+import { CORKBOARD_REM } from './corkboard-layout';
 import { isMobileDevice } from './device';
 import type { LentFilterPopover } from './filter-rows';
 import { fitWords, type LaneCells } from './lane-cells';
@@ -37,7 +40,7 @@ import {
 	type SceneCardHost,
 	type SceneCardPart,
 } from './scene-card';
-import type { CorkboardMemory } from './story-structure-state';
+import { CORKBOARD_SIZE_KEYS, type CorkboardLook, type CorkboardMemory } from './story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from './view-model';
 
 /**
@@ -48,6 +51,8 @@ import type { ProjectDashboardModel, SceneViewModel } from './view-model';
  */
 export interface FrameMemory {
 	pool: CorkboardMemory;
+	/** How the cards on the lanes are drawn and the lanes' words set, apart from the pool's. */
+	lanes: CorkboardLook;
 	poolCollapsed: boolean;
 	scroll: { left: number; top: number };
 }
@@ -925,7 +930,7 @@ export function createLaneDeck(deps: LaneDeckDeps): LaneDeck {
 
 export interface ScenePoolDeps {
 	controls: FrameControls;
-	/** Wears the card style the pool's display control chose. */
+	/** Wears the width the pool's card asks for, which the stylesheet makes the pool as wide as. */
 	root: HTMLElement;
 	/** Where the pool stands, after the field. */
 	body: HTMLElement;
@@ -942,22 +947,10 @@ export interface ScenePool {
 	 * offer, and what the cells hand over.
 	 */
 	mount: (variant: Pick<CorkboardVariant, 'emptyText' | 'menuItems' | 'dragOut' | 'dropIn'>) => void;
-	/**
-	 * The workspace wears the look the pool's display control chose, or is
-	 * trying: the card style and the three sizes, which the CSS reads off the
-	 * root for the cards on the lanes and for the lanes' words.
-	 */
-	paintCardLook: () => void;
 	/** The pool follows what is on show: the scenes placed there leave it, and the count says what is left. */
 	paint: (assigned: Set<string>) => void;
 	reveal: (id: string) => void;
 	remeasure: () => void;
-	/**
-	 * The look's panel under one of the workspace's own buttons: the card
-	 * style and the three sizes the lanes wear, reached whether the pool
-	 * stands open or is folded away.
-	 */
-	openDisplay: (anchor: HTMLElement) => void;
 	saveFocusedBody: () => boolean;
 	dispose: () => void;
 }
@@ -965,9 +958,10 @@ export interface ScenePool {
 /**
  * The pool is the corkboard in one column, showing what the lane or the
  * sheet on show has not placed; its search, funnel, grouping and order are
- * its own, and the card style it chooses dresses the workspace's cards as
- * well. Its head stands level with the lane heads: the name, and how many
- * scenes it holds.
+ * its own, and so are its card style and its sizes, set apart from the
+ * lanes'. It is one card wide, so the card width its Display panel sets is
+ * the pool's own width, which the workspace gives it. Its head stands level
+ * with the lane heads: the name, and how many scenes it holds.
  */
 export function createScenePool(deps: ScenePoolDeps): ScenePool {
 	const { controls, root } = deps;
@@ -990,45 +984,24 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 	let assigned = new Set<string>();
 	let handle: CorkboardHandle | null = null;
 
+	/** The pool's card width as the root's stylesheet variable; nothing while it is the workspace's own. */
+	const widthProps = (cardWidth: number): Record<string, string> => ({
+		'--snowflake-method-timeline-pool-scene-width': cardWidth > 0 ? `${String(cardWidth)}px` : '',
+	});
+	// The width the tab keeps stands before the board is dealt, so the lanes
+	// are laid out once. Nothing is measured yet, and so nothing is let go.
+	let widthWorn = memory.pool.cardWidth;
+	root.setCssProps(widthProps(widthWorn));
 	/**
-	 * The look the pool's board last said it is drawn in, a draft of its
-	 * Display panel among them; null until a board has said, when the memory
-	 * is all there is to go by.
+	 * The pool made as wide as the card its board asks for, a draft of its
+	 * Display panel while one is shown: the board lays one column out to
+	 * whatever width it is handed, so the width is the workspace's to give.
 	 */
-	let told: CorkboardLook | null = null;
-	/** What the root wears now, written down so a paint that changes nothing writes nothing. */
-	let worn = '';
-	/** The type size the root wears; none before the first paint. */
-	let wornTextSize = -1;
-	const paintCardLook = (): void => {
-		const look: CorkboardLook = told ?? {
-			mode: memory.pool.mode,
-			cardWidth: memory.pool.cardWidth,
-			cardHeight: memory.pool.cardHeight,
-			textSize: memory.pool.textSize,
-		};
-		const next = `${look.mode}|${String(look.cardWidth)}|${String(look.cardHeight)}|${String(look.textSize)}`;
-		if (next === worn && root.dataset.mode === look.mode) return;
-		const retyped = look.textSize !== wornTextSize;
-		worn = next;
-		wornTextSize = look.textSize;
-		root.dataset.mode = look.mode;
-		// Each measure is the stylesheet's own until one is set: a card as wide
-		// as the board's, the style's own height, the theme's small type. The
-		// width is the scene cards' on the lanes and in the pool alike, the
-		// height the standard card's, and the type the cards' text, the
-		// descriptions' and the sub-descriptions'.
-		root.setCssProps({
-			'--snowflake-method-timeline-scene-width': look.cardWidth > 0 ? `${String(look.cardWidth)}px` : '',
-			'--snowflake-method-timeline-card-height': look.cardHeight > 0 ? `${String(look.cardHeight)}px` : '',
-			'--snowflake-method-corkboard-text-size': look.textSize > 0 ? `${String(look.textSize)}px` : '',
-		});
-		// A box of words standing open was grown to its words at the old type.
-		if (retyped) {
-			for (const area of Array.from(root.querySelectorAll<HTMLTextAreaElement>('.snowflake-method-timeline-subrow-input'))) {
-				if (!area.classList.contains('is-hidden')) fitWords(area);
-			}
-		}
+	const wearWidth = (cardWidth: number): void => {
+		if (cardWidth === widthWorn) return;
+		widthWorn = cardWidth;
+		root.setCssProps(widthProps(cardWidth));
+		// The lanes' field gave or took the room, and what was measured there moved.
 		deps.invalidateRects();
 	};
 
@@ -1047,11 +1020,8 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 			memory: memory.pool,
 			remember: () => {
 				controls.remember();
-				paintCardLook();
 			},
 		};
-		// A board made anew says its look afresh.
-		told = null;
 		handle = controls.corkboard(poolHost, poolControls, {
 			include: (scene) => !assigned.has(scene.id),
 			addButton: 'icon',
@@ -1061,12 +1031,8 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 			columns: 1,
 			// One column has no insertion buttons to leave room for between cards.
 			gap: 0.75,
-			modeShared: true,
-			// The lanes' cards and words wear what the pool's are drawn in, a
-			// draft of its Display panel while one is shown.
 			wear: (look) => {
-				told = look;
-				paintCardLook();
+				wearWidth(look.cardWidth);
 			},
 			...variant,
 		});
@@ -1075,7 +1041,6 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 	return {
 		el,
 		mount,
-		paintCardLook,
 		paint: (next) => {
 			assigned = next;
 			const model = deps.model();
@@ -1088,15 +1053,152 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 		remeasure: () => {
 			handle?.remeasure();
 		},
-		openDisplay: (anchor) => {
-			handle?.openDisplay(anchor);
-		},
 		saveFocusedBody: () => handle?.saveFocusedBody() ?? false,
 		dispose: () => {
 			handle?.dispose();
 			handle = null;
 		},
 	};
+}
+
+// -- The lanes' look -------------------------------------------------------------
+
+export interface LaneLookDeps {
+	controls: FrameControls;
+	/** Wears the sizes, which the stylesheet reads for the cards on the lanes and for the lanes' words. */
+	root: HTMLElement;
+	/** Wears the card style: what holds the lanes and not the pool, whose cards wear their own. */
+	field: HTMLElement;
+	invalidateRects: () => void;
+}
+
+export interface LaneLook {
+	/** Brings the workspace level with the look the tab keeps, or the one its panel is trying. */
+	paint: () => void;
+	/**
+	 * The look's panel under one of the workspace's own buttons: the card
+	 * style and the three sizes of the cards on the lanes. A second press
+	 * closes it.
+	 */
+	openDisplay: (anchor: HTMLElement) => void;
+}
+
+/**
+ * How the cards on a workspace's lanes are drawn, and its Display panel:
+ * the card style and the three sizes, kept with the tab apart from the
+ * pool's, so a card may be one thing in the pool and another once placed.
+ * The type size is the lanes' words' as well, the descriptions' and the
+ * sub-descriptions', which stand whatever the card shows. The panel shows a
+ * draft on the lanes while it stands open, keeps it on Confirm and takes it
+ * back when it closes any other way, as the corkboard's does.
+ */
+export function createLaneLook(deps: LaneLookDeps): LaneLook {
+	const { controls, root, field } = deps;
+	const { t, memory } = controls;
+	const held = memory.lanes;
+	/** What the open panel has drafted and the lanes show meanwhile; none of it is the memory's until it is confirmed. */
+	const trial: { [Key in keyof CorkboardLook]: CorkboardLook[Key] | null } = {
+		mode: null,
+		cardWidth: null,
+		cardHeight: null,
+		textSize: null,
+	};
+	const shown = (): CorkboardLook => ({
+		mode: trial.mode ?? held.mode,
+		cardWidth: trial.cardWidth ?? held.cardWidth,
+		cardHeight: trial.cardHeight ?? held.cardHeight,
+		textSize: trial.textSize ?? held.textSize,
+	});
+	const endTrial = (): void => {
+		trial.mode = null;
+		trial.cardWidth = null;
+		trial.cardHeight = null;
+		trial.textSize = null;
+	};
+
+	/** What the workspace wears now, written down so a paint that changes nothing writes nothing. */
+	let worn = '';
+	/** The type size it wears; none before the first paint. */
+	let wornTextSize = -1;
+	const paint = (): void => {
+		const look = shown();
+		const next = `${look.mode}|${String(look.cardWidth)}|${String(look.cardHeight)}|${String(look.textSize)}`;
+		if (next === worn && field.dataset.mode === look.mode) return;
+		const retyped = look.textSize !== wornTextSize;
+		worn = next;
+		wornTextSize = look.textSize;
+		// The style on the lanes' own box: the pool beside it wears its own, and
+		// a style on the box that holds them both would dress the pool's cards too.
+		field.dataset.mode = look.mode;
+		// Each measure is the stylesheet's own until one is set: a card as wide
+		// as the board's least, the standard card's height, the theme's small
+		// type, which is the cards' text, the descriptions' and the
+		// sub-descriptions'.
+		root.setCssProps({
+			'--snowflake-method-timeline-scene-width': look.cardWidth > 0 ? `${String(look.cardWidth)}px` : '',
+			'--snowflake-method-timeline-card-height': look.cardHeight > 0 ? `${String(look.cardHeight)}px` : '',
+			'--snowflake-method-timeline-text-size': look.textSize > 0 ? `${String(look.textSize)}px` : '',
+		});
+		// A box of words standing open was grown to its words at the old type.
+		if (retyped) {
+			for (const area of Array.from(root.querySelectorAll<HTMLTextAreaElement>('.snowflake-method-timeline-subrow-input'))) {
+				if (!area.classList.contains('is-hidden')) fitWords(area);
+			}
+		}
+		deps.invalidateRects();
+	};
+
+	/** A drafted style or size shown on the lanes; one that says what the memory holds is no draft. */
+	const tryLook = (change: Partial<CorkboardLook>): void => {
+		if (change.mode !== undefined) trial.mode = change.mode === held.mode ? null : change.mode;
+		for (const key of CORKBOARD_SIZE_KEYS) {
+			const size = change[key];
+			if (size !== undefined) trial[key] = size === held[key] ? null : size;
+		}
+		paint();
+	};
+
+	const remPx = (): number => {
+		const size = Number.parseFloat(root.win.getComputedStyle(root.doc.documentElement).fontSize);
+		return Number.isFinite(size) && size > 0 ? size : 16;
+	};
+
+	const openDisplay = (anchor: HTMLElement): void => {
+		// The popover is lent to the pool's panels too, and marks the button its
+		// panel hangs from: a second press on that button closes this one.
+		if (controls.popover.filterOpen() && anchor.getAttribute('aria-expanded') === 'true') {
+			controls.popover.closeFilter();
+			return;
+		}
+		controls.popover.openFilter(
+			anchor,
+			[
+				cardStyleRow(t, held, (mode) => {
+					tryLook({ mode });
+				}),
+				...cardSizeRows({
+					t,
+					held,
+					shown,
+					tryLook,
+					// A lane's card is the board's least width and the standard card's
+					// height until one is set, as the stylesheet has them.
+					ownWidth: () => CORKBOARD_REM.minCardWidth * remPx(),
+					ownHeight: () => CORKBOARD_REM.cardHeight.standard * remPx(),
+					wordsBesideCards: true,
+				}),
+			],
+			() => {
+				// Confirmed: the rows wrote the memory, and what was tried is the look kept.
+				endTrial();
+				controls.remember();
+				paint();
+			},
+			t('corkboard.display'),
+		);
+	};
+
+	return { paint, openDisplay };
 }
 
 // -- The frame, made together ----------------------------------------------------
@@ -1126,6 +1228,8 @@ export interface Frame {
 	table: HTMLElement;
 	folds: Folds;
 	pool: ScenePool;
+	/** How the cards on the lanes are drawn, and the panel that sets it. */
+	look: LaneLook;
 	/** A word in the body's place, with nothing to press: the ways in stand in the toolbar. Null brings the body back. */
 	showEmpty: (text: string | null) => void;
 	fitScrollbars: () => void;
@@ -1176,7 +1280,10 @@ export function createFrame(deps: FrameDeps): Frame {
 
 	const empty = renderEmptyLine(root, '');
 	const body = root.createDiv({ cls: 'snowflake-method-timeline-body is-hidden' });
-	const field = body.createDiv({ cls: 'snowflake-method-timeline-field' });
+	// The lanes' box wears the cards' own class, with the card style the lanes
+	// are set to: the rules that dress a card by its style read it off the
+	// nearest such box, and the pool beside it has one of its own.
+	const field = body.createDiv({ cls: 'snowflake-method-timeline-field snowflake-method-scene-cards' });
 	const scroller = field.createDiv({
 		cls: 'snowflake-method-timeline-scroll',
 		attr: { tabindex: '-1' },
@@ -1195,6 +1302,7 @@ export function createFrame(deps: FrameDeps): Frame {
 	};
 
 	const pool = createScenePool({ controls, root, body, model: deps.model, invalidateRects: deps.invalidateRects });
+	const look = createLaneLook({ controls, root, field, invalidateRects: deps.invalidateRects });
 
 	const stopWatchingSize = watchFrameSize(root, [root, scroller, table], () => {
 		folds.measureNarrow();
@@ -1209,6 +1317,7 @@ export function createFrame(deps: FrameDeps): Frame {
 		table,
 		folds,
 		pool,
+		look,
 		showEmpty: (text) => {
 			empty.line.toggleClass('is-hidden', text === null);
 			body.toggleClass('is-hidden', text !== null);

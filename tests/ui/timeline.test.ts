@@ -131,7 +131,8 @@ import {
 import { Menu, Platform } from 'obsidian';
 import { MoveAfterModal, promptForEntityReference, type EntityReferenceSource } from '../../src/ui/modals';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
-import { timelineMemory } from '../../src/ui/story-structure-state';
+import type { FilterOptionRow, FilterRow, FilterSliderRow } from '../../src/ui/filter-rows';
+import { timelineMemory, type CorkboardLook } from '../../src/ui/story-structure-state';
 import { renderTimeline } from '../../src/ui/timeline';
 import {
 	TIMELINE_ROW_DRAG_TYPE,
@@ -292,9 +293,11 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	};
 	let handle: ReturnType<typeof renderTimeline>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
+	/** What the lent popover is asked to hang, kept by its own name so a test may ask what it was handed. */
+	const openFilter = vi.fn();
 	const translate = vi.fn((key: string, _vars?: Record<string, string | number>): string => key);
 	let projectPath: string | null = 'P';
 	const controls = {
@@ -303,7 +306,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 		projectPath: () => projectPath,
 		activateProject: vi.fn(),
 		refresh,
-		popover: { closeFilter: vi.fn(), filterOpen: () => false, openFilter: vi.fn() },
+		popover: { closeFilter: vi.fn(), filterOpen: () => false, openFilter },
 		bridge: () => bridge,
 		memory,
 		remember,
@@ -312,7 +315,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	handle = renderTimeline(dom.container as unknown as HTMLElement, controls);
 	const root = dom.container.querySelector('.snowflake-method-timeline')!;
 	return {
-		dom, root, handle, bridge, memory, host, controls, refresh, corkboard, poolHandle, remember, translate,
+		dom, root, handle, bridge, memory, host, controls, refresh, corkboard, poolHandle, remember, translate, openFilter,
 		get model(): { readOnly: boolean } { return model; },
 		/** Another model object, as a project refresh hands the workspace one. */
 		remodel: (change: Partial<ProjectDashboardModel>) => { model = { ...model, ...change }; },
@@ -335,6 +338,11 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 			root.querySelectorAll('.snowflake-method-timeline-lane-head').find((head) => head.getAttribute('data-timeline-id') === id)!,
 		emptyLine: (): CorkboardElement => root.querySelector('.snowflake-method-character-empty')!,
 		body: (): CorkboardElement => root.querySelector('.snowflake-method-timeline-body')!,
+		/** The lanes' box, which wears the card style the lanes are set to. */
+		field: (): CorkboardElement => root.querySelector('.snowflake-method-timeline-field')!,
+		/** What the lent popover was last asked to hang: the button, the rows and the confirmation. */
+		hung: (): [CorkboardElement, readonly FilterRow[], () => void, string | undefined] =>
+			openFilter.mock.lastCall as unknown as [CorkboardElement, readonly FilterRow[], () => void, string | undefined],
 		button: (cls: string): CorkboardElement => root.querySelector(`.${cls}`)!,
 	};
 }
@@ -356,7 +364,9 @@ describe('the timeline workspace', () => {
 		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['a', 'b']);
 		expect(fixture.root.dataset.layout).toBe('multi');
 		expect(fixture.root.dataset.presentation).toBe('stack');
-		expect(fixture.root.dataset.mode).toBe('compact');
+		// The card style is the lanes' own box's: the pool beside it wears its board's.
+		expect(fixture.field().dataset.mode).toBe('compact');
+		expect(fixture.root.dataset.mode).toBeUndefined();
 		expect(fixture.body().classes.has('is-hidden')).toBe(false);
 		expect(fixture.emptyLine().classes.has('is-hidden')).toBe(true);
 	});
@@ -386,7 +396,7 @@ describe('the timeline workspace', () => {
 		expect(addView.textContent).toBe('timeline.view.add');
 	});
 
-	it('opens the look\'s panel from its own toolbar, under its own button, whether the pool stands open or is folded away', async () => {
+	it('opens the lanes\' own look from its toolbar, under its own button: the card style and the sizes of the cards on the lanes, apart from the pool\'s', async () => {
 		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
 		await settle();
 		const display = fixture.button('snowflake-method-timeline-display');
@@ -394,13 +404,32 @@ describe('the timeline workspace', () => {
 		expect(display.getAttribute('aria-label')).toBe('corkboard.display');
 		expect(display.getAttribute('aria-haspopup')).toBe('dialog');
 		display.dispatch('click');
-		expect(fixture.poolHandle.openDisplay).toHaveBeenCalledOnce();
-		expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(display);
-		// The pool folded out of sight takes its band with it, and the toolbar's button still opens the panel.
+		expect(fixture.openFilter).toHaveBeenCalledOnce();
+		const [anchor, rows, confirm, title] = fixture.hung();
+		expect(anchor).toBe(display);
+		expect(title).toBe('corkboard.display');
+		// The lanes have no grouping to ask: that is the pool's, under its own Display.
+		expect(rows.map((row) => row.label)).toEqual(['corkboard.cards', 'corkboard.cardWidth', 'corkboard.cardHeight', 'corkboard.textSize']);
+		// A style drafted is drawn on the lanes at once, and the pool's is left as it was.
+		const [style, width] = rows as [FilterOptionRow, FilterSliderRow];
+		style.preview?.('standard');
+		width.preview(320);
+		expect(fixture.field().dataset.mode).toBe('standard');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('320px');
+		expect(fixture.memory.lanes).toEqual({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
+		// Confirmed, it is the tab's to keep, and the pool's own look has not moved.
+		style.apply('standard');
+		width.apply(320);
+		confirm();
+		expect(fixture.memory.lanes).toEqual({ mode: 'standard', cardWidth: 320, cardHeight: 0, textSize: 0 });
+		expect(fixture.memory.pool).toMatchObject({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
+		expect(fixture.remember).toHaveBeenCalledOnce();
+		expect(fixture.field().dataset.mode).toBe('standard');
+		// The pool folded out of sight takes its band with it, and the toolbar's button still opens the lanes' panel.
 		fixture.button('snowflake-method-timeline-pool-toggle').dispatch('click');
 		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(true);
 		display.dispatch('click');
-		expect(fixture.poolHandle.openDisplay).toHaveBeenCalledTimes(2);
+		expect(fixture.openFilter).toHaveBeenCalledTimes(2);
 	});
 
 	it('gathers every action but refresh under one More actions button on a tablet, each with its symbol, and presses the button from its item', async () => {
@@ -433,9 +462,10 @@ describe('the timeline workspace', () => {
 			vi.spyOn(AddTimelineModal.prototype, 'open').mockImplementation(function (this: AddTimelineModal) { opened.push(this); });
 			listed[6]!.click();
 			expect(opened).toHaveLength(1);
-			// The display's item opens the look's panel under the button that listed it, the display's own being put away.
+			// The display's item opens the lanes' panel under the button that listed it, the display's own being put away.
 			listed[2]!.click();
-			expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(more);
+			expect(fixture.openFilter).toHaveBeenCalledOnce();
+			expect(fixture.hung()[0]).toBe(more);
 		} finally {
 			Platform.isMobile = false;
 			vi.restoreAllMocks();
@@ -471,7 +501,7 @@ describe('the timeline workspace', () => {
 		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['a']);
 		expect(fixture.root.dataset.layout).toBe('single');
 		expect(fixture.root.dataset.presentation).toBe('flat');
-		expect(fixture.root.dataset.mode).toBe('compact');
+		expect(fixture.field().dataset.mode).toBe('compact');
 		await settle();
 		expect(fixture.bridge.setLastView).toHaveBeenCalledWith('v1');
 		expect(fixture.held().lastViewId).toBe('v1');
@@ -1800,14 +1830,15 @@ describe('the scene pool', () => {
 		await settle();
 		const pool = fixture.root.querySelector('.snowflake-method-timeline-pool')!;
 		expect(fixture.corkboard).toHaveBeenCalledOnce();
-		const [host, poolControls, variant] = fixture.corkboard.mock.calls[0]! as unknown as [CorkboardElement, TimelineControls & { memory: unknown; remember: () => void }, { include: (scene: { id: string }) => boolean; addButton: string; columns: number; gap: number; emptyText: string; modeShared: boolean }];
+		const [host, poolControls, variant] = fixture.corkboard.mock.calls[0]! as unknown as [CorkboardElement, TimelineControls & { memory: unknown; remember: () => void }, { include: (scene: { id: string }) => boolean; addButton: string; columns: number; gap: number; emptyText: string; wear: (look: CorkboardLook) => void }];
 		expect(host).toBe(pool.querySelector('.snowflake-method-corkboard-host'));
 		expect(variant.addButton).toBe('icon');
 		expect(variant.columns).toBe(1);
 		expect(variant.gap).toBe(0.75);
 		expect(variant.emptyText).toBe('timeline.pool.empty');
-		// The style it chooses dresses the lanes, so the control outlives an emptied pool.
-		expect(variant.modeShared).toBe(true);
+		// Its look is its own: it tells the workspace the card it asks for, to be made as wide.
+		expect(variant.wear).toBeTypeOf('function');
+		expect(variant).not.toHaveProperty('modeShared');
 		expect(variant.include({ id: 'scene-1' })).toBe(false);
 		expect(variant.include({ id: 'scene-2' })).toBe(true);
 		// Its head names it and counts what it holds, which follows the active lane.
@@ -1821,11 +1852,16 @@ describe('the scene pool', () => {
 		poolControls.remember();
 		expect(fixture.remember).toHaveBeenCalledOnce();
 		expect(fixture.poolHandle.refresh).toHaveBeenCalled();
-		// The card style the pool's control chooses dresses the lanes as well.
-		expect(fixture.root.dataset.mode).toBe('compact');
+		// The card style the pool's control chooses is the pool's alone: the lanes keep theirs.
+		expect(fixture.field().dataset.mode).toBe('compact');
 		fixture.memory.pool.mode = 'extended';
 		poolControls.remember();
-		expect(fixture.root.dataset.mode).toBe('extended');
+		expect(fixture.field().dataset.mode).toBe('compact');
+		expect(fixture.root.dataset.mode).toBeUndefined();
+		// The pool is as wide as the card its board asks for, whatever the lanes' cards are.
+		variant.wear({ mode: 'extended', cardWidth: 400, cardHeight: 0, textSize: 0 });
+		expect(fixture.root.styles['--snowflake-method-timeline-pool-scene-width']).toBe('400px');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
 	});
 
 	it('follows the active lane, and hands the pool its reveals, measures and disposal', async () => {

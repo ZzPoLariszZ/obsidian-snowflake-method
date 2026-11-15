@@ -150,6 +150,7 @@ import {
 import { ActFormModal, AddBeatSheetModal, BeatFormModal, EditBeatSheetModal, type BeatSheetTemplateDelete } from '../../src/ui/beat-sheet-forms';
 import { beatStackKey } from '../../src/ui/beat-sheet-layout';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
+import type { FilterOptionRow, FilterRow, FilterSliderRow } from '../../src/ui/filter-rows';
 import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
 import { beatSheetMemory } from '../../src/ui/story-structure-state';
 import { TimelineDraftModal, TimelineTimePickModal, confirmTimelineAction } from '../../src/ui/timeline-forms';
@@ -316,9 +317,11 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 	};
 	let handle: ReturnType<typeof renderBeatSheet>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
+	/** What the lent popover is asked to hang, kept by its own name so a test may ask what it was handed. */
+	const openFilter = vi.fn();
 	let projectPath: string | null = 'P';
 	let unloading = false;
 	const controls = {
@@ -329,7 +332,7 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 		projectPath: () => projectPath,
 		activateProject: vi.fn(),
 		refresh,
-		popover: { closeFilter: vi.fn(), filterOpen: () => false, openFilter: vi.fn() },
+		popover: { closeFilter: vi.fn(), filterOpen: () => false, openFilter },
 		bridge: () => bridge,
 		memory,
 		remember,
@@ -340,7 +343,7 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 	const root = dom.container.querySelector('.snowflake-method-beat-sheet')!;
 	const table = root.querySelector('.snowflake-method-timeline-table')!;
 	const fixture = {
-		dom, root, table, handle, bridge, memory, host, controls, refresh, corkboard, poolHandle, remember,
+		dom, root, table, handle, bridge, memory, host, controls, refresh, corkboard, poolHandle, remember, openFilter,
 		remodel: (change: Partial<ProjectDashboardModel>) => { model = { ...model, ...change }; },
 		moveProject: (path: string | null) => { projectPath = path; },
 		unload: () => { unloading = true; },
@@ -437,7 +440,9 @@ describe('the beat sheet workspace', () => {
 		}
 		expect(fixture.root.dataset.layout).toBe('single');
 		expect(fixture.root.dataset.presentation).toBe('flat');
-		expect(fixture.root.dataset.mode).toBe('compact');
+		// The card style is the sheet's own box's: the pool beside it wears its board's.
+		expect(fixture.root.querySelector('.snowflake-method-timeline-field')!.dataset.mode).toBe('compact');
+		expect(fixture.root.dataset.mode).toBeUndefined();
 		expect(fixture.sheetField().options().map((option) => [option.value, option.label])).toEqual([['s1', 'Sheet s1'], ['s', 'Sheet s']]);
 		expect(fixture.sheetField().value()).toBe('s');
 		expect(fixture.select().value).toBe('Sheet s');
@@ -467,11 +472,25 @@ describe('the beat sheet workspace', () => {
 		expect(end.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
 		expect(end.children).toHaveLength(order.length);
 		expect(toolbar.getAttribute('aria-label')).toBe('beatSheet.toolbar');
-		// The look's panel opens from the sheet's own toolbar, as the timeline's does from its own.
+		// The sheet's own look opens from its toolbar, as the timeline's does from its own: the cards on the sheet, apart from the pool's.
 		const display = fixture.button('snowflake-method-timeline-display');
 		expect(display.getAttribute('aria-label')).toBe('corkboard.display');
 		display.dispatch('click');
-		expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(display);
+		const [anchor, rows, confirm, title] = fixture.openFilter.mock.lastCall as unknown as
+			[CorkboardElement, readonly FilterRow[], () => void, string | undefined];
+		expect(anchor).toBe(display);
+		expect(title).toBe('corkboard.display');
+		expect(rows.map((row) => row.label)).toEqual(['corkboard.cards', 'corkboard.cardWidth', 'corkboard.cardHeight', 'corkboard.textSize']);
+		const [style, , , type] = rows as [FilterOptionRow, FilterSliderRow, FilterSliderRow, FilterSliderRow];
+		style.apply('extended');
+		type.apply(18);
+		confirm();
+		expect(fixture.memory.lanes).toEqual({ mode: 'extended', cardWidth: 0, cardHeight: 0, textSize: 18 });
+		expect(fixture.memory.pool).toMatchObject({ mode: 'compact', textSize: 0 });
+		expect(fixture.root.querySelector('.snowflake-method-timeline-field')!.dataset.mode).toBe('extended');
+		// The type is the sheet's words' as well as its cards', on the root where both read it.
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBe('18px');
+		expect(fixture.remember).toHaveBeenCalledOnce();
 		// The sheet's pencil is its own, not the timeline view's.
 		expect(fixture.button('snowflake-method-beat-sheet-edit').classes.has('snowflake-method-timeline-view-edit')).toBe(false);
 		for (const [cls, words] of [['snowflake-method-beat-sheet-add-act', 'beatSheet.act.add'], ['snowflake-method-beat-sheet-add', 'beatSheet.sheet.add']] as const) {
@@ -1445,11 +1464,14 @@ describe('sub-descriptions and scenes on a beat, through the cells a timeline sh
 		const [host, poolControls, variant] = fixture.corkboard.mock.calls[0]! as unknown as [
 			CorkboardElement,
 			CorkboardControls,
-			{ include: (scene: { id: string }) => boolean; addButton: string; columns: number; emptyText: string; modeShared: boolean },
+			{ include: (scene: { id: string }) => boolean; addButton: string; columns: number; emptyText: string; wear: unknown },
 		];
 		expect(host.classes.has('snowflake-method-corkboard-host')).toBe(true);
 		expect(poolControls.memory).toBe(fixture.memory.pool);
-		expect(variant).toMatchObject({ addButton: 'icon', columns: 1, emptyText: 'beatSheet.pool.empty', modeShared: true });
+		expect(variant).toMatchObject({ addButton: 'icon', columns: 1, emptyText: 'beatSheet.pool.empty' });
+		// Its look is its own, set apart from the sheet's.
+		expect(variant.wear).toBeTypeOf('function');
+		expect(variant).not.toHaveProperty('modeShared');
 		expect(['scene-1', 'scene-2', 'scene-3'].map((id) => variant.include({ id }))).toEqual([false, true, true]);
 		expect(fixture.root.querySelector('.snowflake-method-timeline-pool-count')!.textContent).toBe('2');
 		// A scene stands once per sheet: another sheet has placed nothing, so its pool holds them all.

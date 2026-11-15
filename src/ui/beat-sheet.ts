@@ -250,12 +250,12 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	// was made on: another opened while the press waits its turn in the queue
 	// is not the one it was aimed at.
 	// The look of the sheet's cards and words, as the timeline's toolbar
-	// offers it: the card style and the three sizes, which the pool keeps and
-	// the sheet wears, reached here whether the pool stands open or not.
+	// offers it: the card style and the three sizes, the sheet's own, set
+	// apart from the pool's, which the Display on the pool's band sets.
 	const displayButton = iconButton('snowflake-method-timeline-display', 'sliders-horizontal', t('corkboard.display'));
 	displayButton.setAttribute('aria-haspopup', 'dialog');
 	displayButton.addEventListener('click', () => {
-		pool.openDisplay(gathered?.button ?? displayButton);
+		frame.look.openDisplay(gathered?.button ?? displayButton);
 	});
 	const wordsButton = iconButton('snowflake-method-timeline-words', 'eye', t('timeline.view.subDescriptionsHide'));
 	wordsButton.setAttribute('aria-pressed', 'true');
@@ -670,7 +670,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		}
 		paintedLanes = [laneOf(sheet)];
 		showEmpty(null);
-		pool.paintCardLook();
+		frame.look.paint();
 		const hold = focus.hold();
 		paintTable(sheet);
 		paintPool(sheet);

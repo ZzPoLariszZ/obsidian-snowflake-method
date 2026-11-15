@@ -15059,8 +15059,9 @@ body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
 
 /* A board may set the type of its cards' text boxes; it writes the size on
    its own root, and only its own canvas's cards read it here. A lane's card
-   reads its workspace's (see "Timeline"), which the pool's board sets, and
-   the freeform canvas's keep the theme's small type. */
+   reads the lanes' own (see "Timeline"), which the workspace's Display panel
+   sets apart from the pool's, and the freeform canvas's keep the theme's
+   small type. */
 .snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text {
 	font-size: var(--snowflake-method-corkboard-text-size, var(--font-ui-small));
 }
@@ -15440,11 +15441,16 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 		var(--snowflake-method-corkboard-card-width) + var(--snowflake-method-corkboard-action-size)
 	);
 	--snowflake-method-timeline-scene-width: var(--snowflake-method-corkboard-card-width);
+	/* A card in the pool, which keeps a look of its own: the pool's Display
+	   panel sets its width on the workspace's root, since the pool is as wide
+	   as its one card. Until it does, the pool's card is the board's own too. */
+	--snowflake-method-timeline-pool-scene-width: var(--snowflake-method-corkboard-card-width);
 	/* The type the lanes' words are set in: the descriptions of the column
 	   beside them, the sub-descriptions, and the text on the lanes' cards. The
-	   pool's Display panel sets it with its own cards', on the workspace's
-	   root. Until it does, it is the theme's small type. */
-	--snowflake-method-timeline-text-size: var(--snowflake-method-corkboard-text-size, var(--font-ui-small));
+	   workspace's Display panel sets it on the root, apart from the type of
+	   the pool's cards, which its board writes on its own. Until it does, it
+	   is the theme's small type. */
+	--snowflake-method-timeline-text-size: var(--font-ui-small);
 	/* How far the layers behind a stacked card show, to its right and below. */
 	--snowflake-method-timeline-stack-depth: 0.5rem;
 	--snowflake-method-timeline-lane-gap: var(--size-4-3);
@@ -15466,13 +15472,14 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	   its edges, and a card is laid out to the canvas, which reaches them, so
 	   without this the mark would be drawn under every card. */
 	--snowflake-method-timeline-pool-inset: 0.5rem;
-	/* One scene card, the room the mark draws in on either side of it, and the
-	   rule and the gap that set the pool apart from the lanes. A card is the
-	   width here that it is in a lane, so a scene neither grows nor shrinks as
-	   it is dragged between them. The band gives up the words in its search
-	   field to hold the pool to this. */
+	/* One of the pool's cards, the room the mark draws in on either side of
+	   it, and the rule and the gap that set the pool apart from the lanes.
+	   Until a width is set for either, a card is the width here that it is in
+	   a lane, so a scene neither grows nor shrinks as it is dragged between
+	   them. The band gives up the words in its search field to hold the pool
+	   to this. */
 	--snowflake-method-timeline-pool-width: calc(
-		var(--snowflake-method-timeline-scene-width) + 2 * var(--snowflake-method-timeline-pool-inset) +
+		var(--snowflake-method-timeline-pool-scene-width) + 2 * var(--snowflake-method-timeline-pool-inset) +
 			var(--snowflake-method-tab-height, var(--size-4-3)) + 1px
 	);
 	/* What the pool takes of the body's width, with the gap before it. */
@@ -16337,26 +16344,28 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 	height: var(--snowflake-method-corkboard-card-height);
 }
 
-/* A height the pool's Display panel set is the standard card's, as it is on
-   the corkboard: the extended card stands its links' row taller, and a card
-   with no text box, compact or gallery, keeps its own. The pool's cards take
-   theirs from its own board, which lays them out. */
-.snowflake-method-timeline[data-mode='standard'] {
+/* The lanes' box wears the card style their Display panel set, and the
+   pool's board beside it wears its own, so the two are dressed apart. A
+   height set there is the standard card's, as it is on the corkboard: the
+   extended card stands its links' row taller, and a card with no text box,
+   compact or gallery, keeps its own. The pool's cards take theirs from its
+   own board, which lays them out. */
+.snowflake-method-timeline-field[data-mode='standard'] {
 	--snowflake-method-corkboard-card-height: var(--snowflake-method-timeline-card-height, 15rem);
 }
 
-.snowflake-method-timeline[data-mode='extended'] {
+.snowflake-method-timeline-field[data-mode='extended'] {
 	--snowflake-method-corkboard-card-height: calc(var(--snowflake-method-timeline-card-height, 15rem) + 4rem);
 }
 
-/* The text on a lane's card is set in the lanes' type, as the pool's is. */
+/* The text on a lane's card is set in the lanes' type, with their words. */
 .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text,
 .snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card .snowflake-method-prose-box.snowflake-method-corkboard-body-text {
 	font-size: var(--snowflake-method-timeline-text-size);
 }
 
-.snowflake-method-timeline[data-mode='compact'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card,
-.snowflake-method-timeline[data-mode='compact'] .snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card {
+.snowflake-method-timeline-field[data-mode='compact'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card,
+.snowflake-method-timeline-field[data-mode='compact'] .snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card {
 	height: auto;
 }
 
@@ -16762,9 +16771,9 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
    drawn level with the rule above it, and the room that mark needs is taken
    from the cards alone. In one column a card is given the canvas's whole
    width, so this padding sets the card's width as much as the mark's room:
-   it brings the canvas down to a lane's scene width and shares what is left
-   between the two sides, so a card stands centred and a scene neither grows
-   nor shrinks as it is dragged between the pool and a lane. An outline is not
+   it brings the canvas down to the pool's card width and shares what is left
+   between the two sides, so a card stands centred at the width set for it,
+   which is a lane's until one is set for either. An outline is not
    enough by itself, since a card is positioned and paints over one drawn on
    the edge it stands on, which is why both of the mark's long sides were
    buried and not just one. The inset is the floor, so the mark keeps its room
@@ -16772,7 +16781,7 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 .snowflake-method-timeline-pool .snowflake-method-corkboard {
 	padding-inline: max(
 		var(--snowflake-method-timeline-pool-inset),
-		calc((100% - var(--snowflake-method-timeline-scene-width)) / 2)
+		calc((100% - var(--snowflake-method-timeline-pool-scene-width)) / 2)
 	);
 }
 

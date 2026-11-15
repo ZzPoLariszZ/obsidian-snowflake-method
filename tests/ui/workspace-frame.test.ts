@@ -56,8 +56,9 @@ vi.mock('../../src/ui/scene-card', async (importOriginal) => {
 import { Modal, Platform, type App } from 'obsidian';
 
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
+import type { FilterOptionRow, FilterRow, FilterSliderRow } from '../../src/ui/filter-rows';
 import type { SceneCard, SceneCardDeps } from '../../src/ui/scene-card';
-import { corkboardMemory } from '../../src/ui/story-structure-state';
+import { corkboardMemory, defaultLaneLook, type CorkboardLook } from '../../src/ui/story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 import {
 	NARROW_MAX_REM,
@@ -67,6 +68,7 @@ import {
 	createFolds,
 	createFrame,
 	createLaneDeck,
+	createLaneLook,
 	createModalKeeper,
 	createScenePool,
 	createStandInScrollbars,
@@ -107,9 +109,14 @@ const modelOf = (ids: string[]): ProjectDashboardModel => ({
 function controlsOf() {
 	const state = { projectPath: 'P' as string | null, unloading: false };
 	const resolved = vi.fn((target: string, _source: string) => ({ path: `Draft/${target}.md` }));
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: vi.fn(() => true), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => true), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
-	const memory: FrameMemory = { pool: corkboardMemory({ mode: 'compact', group: '', reversed: false }), poolCollapsed: false, scroll: { left: 0, top: 0 } };
+	const memory: FrameMemory = {
+		pool: corkboardMemory({ mode: 'compact', group: '', reversed: false }),
+		lanes: defaultLaneLook(),
+		poolCollapsed: false,
+		scroll: { left: 0, top: 0 },
+	};
 	const controls = {
 		app: { metadataCache: { getFirstLinkpathDest: resolved } } as unknown as App,
 		host: {} as FrameControls['host'],
@@ -921,8 +928,9 @@ describe('the deck the lanes\' cards are dealt from', () => {
 });
 
 /** The pool beside a field, over a model the workspace may change, dealt with a variant of the test's own. */
-function poolOf() {
+function poolOf(kept: Partial<CorkboardLook> = {}) {
 	const handed = controlsOf();
+	Object.assign(handed.controls.memory.pool, kept);
 	const dom = new CorkboardDom();
 	const root = dom.container.createDiv();
 	const body = root.createDiv();
@@ -962,8 +970,10 @@ describe('the scene pool', () => {
 		fixture.mount();
 		const [host, , variant] = fixture.dealt();
 		expect(host).toBe((fixture.pool.el as unknown as CorkboardElement).querySelector('.snowflake-method-corkboard-host'));
-		expect(variant).toMatchObject({ addButton: 'icon', searchLabel: 'quiet', columns: 1, gap: 0.75, modeShared: true, emptyText: 'pool.empty' });
+		expect(variant).toMatchObject({ addButton: 'icon', searchLabel: 'quiet', columns: 1, gap: 0.75, emptyText: 'pool.empty' });
 		expect(variant.menuItems).toBe(fixture.menuItems);
+		// It is told the look its cards are drawn in, to be made as wide as the card asked for.
+		expect(variant.wear).toBeTypeOf('function');
 	});
 
 	it('leaves out what is on show has placed, counts the rest, and paints the pool', () => {
@@ -1003,95 +1013,55 @@ describe('the scene pool', () => {
 		expect(fixture.controls.refresh).toHaveBeenCalledOnce();
 	});
 
-	it('writes the sizes the pool keeps on the workspace\'s root, for the lanes\' cards and words to read, and takes each off when it is the workspace\'s own again', () => {
+	it('stands as wide as the card its tab keeps before its board is dealt, with nothing measured to drop', () => {
+		const fixture = poolOf({ mode: 'standard', cardWidth: 400, cardHeight: 320, textSize: 18 });
+		expect(fixture.root.styles['--snowflake-method-timeline-pool-scene-width']).toBe('400px');
+		// The workspace has made nothing yet that a measure could be let go of.
+		expect(fixture.invalidateRects).not.toHaveBeenCalled();
+		// The rest of the pool's look is its own board's: none of it is written where the lanes read.
+		expect(fixture.root.dataset.mode).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBeUndefined();
+	});
+
+	it('is made as wide as the card its board asks for, a draft of its panel while one is shown, and leaves the lanes\' look alone', () => {
 		const fixture = poolOf();
-		Object.assign(fixture.controls.memory.pool, { mode: 'standard', cardWidth: 400, cardHeight: 320, textSize: 18 });
+		expect(fixture.root.styles['--snowflake-method-timeline-pool-scene-width']).toBe('');
 		fixture.mount();
-		fixture.pool.paintCardLook();
-		expect(fixture.root.dataset.mode).toBe('standard');
-		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('400px');
-		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('320px');
-		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('18px');
+		const [, , variant] = fixture.dealt();
+		// The board says the look it stands in: the workspace's own width is nothing new.
+		variant.wear?.({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
+		expect(fixture.invalidateRects).not.toHaveBeenCalled();
+		// The board tries a look: the pool takes the width at once, though the memory holds none of it.
+		variant.wear?.({ mode: 'extended', cardWidth: 480, cardHeight: 300, textSize: 20 });
+		expect(fixture.root.styles['--snowflake-method-timeline-pool-scene-width']).toBe('480px');
 		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
-		// The same look again writes nothing and drops nothing measured.
-		fixture.pool.paintCardLook();
+		expect(fixture.controls.memory.pool).toMatchObject({ mode: 'compact', cardWidth: 0, textSize: 0 });
+		// The style, the height and the type are the pool's cards' alone.
+		expect(fixture.root.dataset.mode).toBeUndefined();
+		expect(fixture.field.dataset.mode).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBeUndefined();
+		// The same width under another style moves nothing.
+		variant.wear?.({ mode: 'standard', cardWidth: 480, cardHeight: 0, textSize: 0 });
 		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
-		// A size put back is taken off the root, so the stylesheet's own measure stands again.
-		Object.assign(fixture.controls.memory.pool, { cardWidth: 0, textSize: 0 });
-		fixture.pool.paintCardLook();
-		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
-		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('320px');
-		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('');
+		// The panel closes unconfirmed, and the board says the standing look again.
+		variant.wear?.({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
+		expect(fixture.root.styles['--snowflake-method-timeline-pool-scene-width']).toBe('');
 		expect(fixture.invalidateRects).toHaveBeenCalledTimes(2);
 	});
 
-	it('opens the look\'s panel under a button of the workspace\'s own, through the pool\'s board, and does nothing before the pool is dealt', () => {
-		const fixture = poolOf();
-		const button = fixture.root.createEl('button');
-		fixture.pool.openDisplay(el(button));
-		expect(fixture.poolHandle.openDisplay).not.toHaveBeenCalled();
-		fixture.mount();
-		fixture.pool.openDisplay(el(button));
-		expect(fixture.poolHandle.openDisplay).toHaveBeenCalledOnce();
-		expect(fixture.poolHandle.openDisplay).toHaveBeenLastCalledWith(button);
-	});
-
-	it('wears the look the pool\'s board is drawn in, a draft of its panel while one is shown, over the one the memory keeps', () => {
+	it('saves the tab when the pool\'s panel is confirmed, and dresses nothing but its own cards', () => {
 		const fixture = poolOf();
 		fixture.mount();
-		fixture.pool.paintCardLook();
-		const [, , variant] = fixture.dealt();
-		expect(fixture.root.dataset.mode).toBe('compact');
-		// The board tries a look: the lanes wear it at once, though the memory holds none of it.
-		variant.wear?.({ mode: 'extended', cardWidth: 480, cardHeight: 0, textSize: 20 });
-		expect(fixture.root.dataset.mode).toBe('extended');
-		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('480px');
-		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('');
-		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('20px');
-		expect(fixture.controls.memory.pool).toMatchObject({ mode: 'compact', cardWidth: 0, textSize: 0 });
-		// A paint of the workspace meanwhile keeps the draft on: the board's word is the later one.
-		fixture.pool.paintCardLook();
-		expect(fixture.root.dataset.mode).toBe('extended');
-		// The panel closes unconfirmed, and the board says the standing look again.
-		variant.wear?.({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
-		expect(fixture.root.dataset.mode).toBe('compact');
-		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
-		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBe('');
-	});
-
-	it('grows a box of words standing open to its words again when the type moves', () => {
-		const fixture = poolOf();
-		fixture.mount();
-		const open = fixture.root.createEl('textarea', { cls: 'snowflake-method-timeline-subrow-input' });
-		const away = fixture.root.createEl('textarea', { cls: 'snowflake-method-timeline-subrow-input is-hidden' });
-		open.offsetHeight = 62;
-		Object.defineProperty(open, 'scrollHeight', { value: 60, configurable: true });
-		Object.defineProperty(open, 'clientHeight', { value: 60, configurable: true });
-		const [, , variant] = fixture.dealt();
-		variant.wear?.({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 24 });
-		// The box in sight is as tall as its words and its frame; the one put away is left alone.
-		expect(open.styles.height).toBe('62px');
-		expect(away.styles.height).toBeUndefined();
-		// A look that leaves the type where it was grows nothing again.
-		open.styles.height = 'kept';
-		variant.wear?.({ mode: 'standard', cardWidth: 300, cardHeight: 0, textSize: 24 });
-		expect(open.styles.height).toBe('kept');
-	});
-
-	it('dresses the workspace\'s cards in the style the pool chose, dropping what was measured only when the style moved', () => {
-		const fixture = poolOf();
-		fixture.mount();
-		fixture.pool.paintCardLook();
-		expect(fixture.root.dataset.mode).toBe('compact');
-		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
-		fixture.pool.paintCardLook();
-		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
-		// The pool's display control saves the tab and dresses the lanes at once.
 		fixture.controls.memory.pool.mode = 'extended';
 		fixture.dealt()[1].remember();
 		expect(fixture.controls.remember).toHaveBeenCalledOnce();
-		expect(fixture.root.dataset.mode).toBe('extended');
-		expect(fixture.invalidateRects).toHaveBeenCalledTimes(2);
+		expect(fixture.root.dataset.mode).toBeUndefined();
+		expect(fixture.invalidateRects).not.toHaveBeenCalled();
 	});
 
 	it('hands the pool its reveals, measures and saves, and says nothing to a pool not yet dealt or already gone', () => {
@@ -1115,6 +1085,200 @@ describe('the scene pool', () => {
 		expect(fixture.poolHandle.remeasure).toHaveBeenCalledOnce();
 		expect(fixture.poolHandle.refresh).not.toHaveBeenCalled();
 		expect(fixture.pool.saveFocusedBody()).toBe(false);
+	});
+});
+
+/** The lanes' look over a field of its own, with a popover that holds what it was handed and marks its anchor as the real one does. */
+function lookOf(kept: Partial<CorkboardLook> = {}) {
+	const handed = controlsOf();
+	Object.assign(handed.controls.memory.lanes, kept);
+	const dom = new CorkboardDom();
+	const root = dom.container.createDiv();
+	const field = root.createDiv({ cls: 'field' });
+	const anchor = root.createEl('button');
+	const invalidateRects = vi.fn();
+	const hung: { anchor: CorkboardElement; rows: readonly FilterRow[]; confirm: () => void; title: string | undefined }[] = [];
+	let open: CorkboardElement | null = null;
+	const popover = {
+		filterOpen: () => open !== null,
+		openFilter: vi.fn((to: HTMLElement, rows: readonly FilterRow[], confirm: () => void, title?: string) => {
+			open?.setAttribute('aria-expanded', 'false');
+			open = to as unknown as CorkboardElement;
+			open.setAttribute('aria-expanded', 'true');
+			hung.push({ anchor: open, rows, confirm, title });
+		}),
+		closeFilter: vi.fn(() => {
+			open?.setAttribute('aria-expanded', 'false');
+			open = null;
+		}),
+	};
+	const controls: FrameControls = { ...handed.controls, popover };
+	const look = createLaneLook({ controls, root: el(root), field: el(field), invalidateRects });
+	const panel = () => hung[hung.length - 1]!;
+	const style = (): FilterOptionRow => panel().rows[0] as FilterOptionRow;
+	const size = (at: 1 | 2 | 3): FilterSliderRow => panel().rows[at] as FilterSliderRow;
+	return { ...handed, dom, root, field, anchor, invalidateRects, popover, hung, look, panel, style, size };
+}
+
+describe('the lanes\' look', () => {
+	it('wears the look the tab keeps: the card style on the lanes\' own box, the sizes on the root, and each taken off when it is the workspace\'s own again', () => {
+		const fixture = lookOf({ mode: 'standard', cardWidth: 400, cardHeight: 320, textSize: 18 });
+		// Nothing is worn before the workspace's first paint.
+		expect(fixture.field.dataset.mode).toBeUndefined();
+		fixture.look.paint();
+		expect(fixture.field.dataset.mode).toBe('standard');
+		// The style is not the root's: the pool stands under it too, and wears its own.
+		expect(fixture.root.dataset.mode).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('400px');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('320px');
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBe('18px');
+		// The pool's cards read their own board's type, which the lanes' never names.
+		expect(fixture.root.styles['--snowflake-method-corkboard-text-size']).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-pool-scene-width']).toBeUndefined();
+		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
+		// The same look again writes nothing and drops nothing measured.
+		fixture.look.paint();
+		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
+		// A size put back is taken off the root, so the stylesheet's own measure stands again.
+		Object.assign(fixture.controls.memory.lanes, { cardWidth: 0, textSize: 0 });
+		fixture.look.paint();
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('320px');
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBe('');
+		expect(fixture.invalidateRects).toHaveBeenCalledTimes(2);
+	});
+
+	it('starts from the compact card at the workspace\'s own sizes', () => {
+		const fixture = lookOf();
+		fixture.look.paint();
+		expect(fixture.field.dataset.mode).toBe('compact');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBe('');
+	});
+
+	it('opens its panel under the button it is handed: the card style and the three sizes, and no grouping', () => {
+		const fixture = lookOf({ mode: 'standard', cardWidth: 400, cardHeight: 0, textSize: 18 });
+		fixture.look.openDisplay(el(fixture.anchor));
+		expect(fixture.popover.openFilter).toHaveBeenCalledOnce();
+		expect(fixture.panel().anchor).toBe(fixture.anchor);
+		expect(fixture.panel().title).toBe('corkboard.display');
+		expect(fixture.panel().rows.map((row) => row.label)).toEqual([
+			'corkboard.cards',
+			'corkboard.cardWidth',
+			'corkboard.cardHeight',
+			'corkboard.textSize',
+		]);
+		expect(fixture.style().value).toBe('standard');
+		expect([1, 2, 3].map((at) => fixture.size(at as 1 | 2 | 3).value)).toEqual([400, 0, 18]);
+		// While a size is the workspace's own, its handle waits at what the lanes draw: a card at the board's least width, the standard card's height.
+		expect(fixture.size(1).rest?.()).toBe(256);
+		expect(fixture.size(2).rest?.()).toBe(240);
+		expect(fixture.size(3).themeVar).toBe('--font-ui-small');
+	});
+
+	it('offers the height only for a style with a text box, and the type for every style, since the lanes\' words wear it too', () => {
+		const fixture = lookOf({ mode: 'compact' });
+		fixture.look.openDisplay(el(fixture.anchor));
+		expect(fixture.size(1).hidden?.() ?? false).toBe(false);
+		expect(fixture.size(2).hidden?.()).toBe(true);
+		expect(fixture.size(3).hidden?.()).toBe(false);
+		// The style drafted is the one the rows answer for.
+		fixture.style().preview?.('extended');
+		expect(fixture.size(2).hidden?.()).toBe(false);
+		fixture.style().preview?.('gallery');
+		expect(fixture.size(2).hidden?.()).toBe(true);
+		expect(fixture.size(3).hidden?.()).toBe(false);
+	});
+
+	it('shows a draft on the lanes while the panel stands open, keeps none of it, and puts the lanes back when the standing answers are handed in', () => {
+		const fixture = lookOf();
+		fixture.look.paint();
+		fixture.look.openDisplay(el(fixture.anchor));
+		fixture.style().preview?.('extended');
+		fixture.size(1).preview(480);
+		fixture.size(2).preview(300);
+		fixture.size(3).preview(20);
+		expect(fixture.field.dataset.mode).toBe('extended');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('480px');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('300px');
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBe('20px');
+		expect(fixture.controls.memory.lanes).toEqual({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
+		expect(fixture.controls.remember).not.toHaveBeenCalled();
+		// A paint of the workspace meanwhile keeps the draft on.
+		fixture.look.paint();
+		expect(fixture.field.dataset.mode).toBe('extended');
+		// Closed unconfirmed: the panel hands every row its standing answer.
+		fixture.style().preview?.('compact');
+		fixture.size(1).preview(0);
+		fixture.size(2).preview(0);
+		fixture.size(3).preview(0);
+		expect(fixture.field.dataset.mode).toBe('compact');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-timeline-card-height']).toBe('');
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBe('');
+		expect(fixture.controls.remember).not.toHaveBeenCalled();
+	});
+
+	it('keeps the look on Confirm with the tab, apart from the pool\'s', () => {
+		const fixture = lookOf();
+		fixture.look.paint();
+		fixture.look.openDisplay(el(fixture.anchor));
+		fixture.style().preview?.('standard');
+		fixture.size(1).preview(360);
+		// Confirmed: the panel writes each row's answer, then says so.
+		fixture.style().apply('standard');
+		fixture.size(1).apply(360);
+		fixture.size(2).apply(0);
+		fixture.size(3).apply(16);
+		fixture.panel().confirm();
+		expect(fixture.controls.memory.lanes).toEqual({ mode: 'standard', cardWidth: 360, cardHeight: 0, textSize: 16 });
+		expect(fixture.controls.memory.pool).toMatchObject({ mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 });
+		expect(fixture.controls.remember).toHaveBeenCalledOnce();
+		expect(fixture.field.dataset.mode).toBe('standard');
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('360px');
+		expect(fixture.root.styles['--snowflake-method-timeline-text-size']).toBe('16px');
+		// Nothing of the draft outlives it: the next panel opens on what was kept.
+		fixture.look.openDisplay(el(fixture.root.createEl('button')));
+		expect(fixture.style().value).toBe('standard');
+		expect(fixture.size(1).value).toBe(360);
+	});
+
+	it('closes its panel on a second press of the same button, and opens it over a panel hung from another', () => {
+		const fixture = lookOf();
+		fixture.look.openDisplay(el(fixture.anchor));
+		expect(fixture.popover.filterOpen()).toBe(true);
+		fixture.look.openDisplay(el(fixture.anchor));
+		expect(fixture.popover.closeFilter).toHaveBeenCalledOnce();
+		expect(fixture.popover.filterOpen()).toBe(false);
+		expect(fixture.popover.openFilter).toHaveBeenCalledOnce();
+		// The pool's own panel hangs from the lent popover, under a button of the pool's: a press here is no second press.
+		const other = fixture.root.createEl('button');
+		fixture.popover.openFilter(el(other), [], () => undefined);
+		fixture.look.openDisplay(el(fixture.anchor));
+		expect(fixture.popover.closeFilter).toHaveBeenCalledOnce();
+		expect(fixture.panel().anchor).toBe(fixture.anchor);
+		expect(fixture.panel().rows).toHaveLength(4);
+	});
+
+	it('grows a box of words standing open to its words again when the type moves', () => {
+		const fixture = lookOf();
+		fixture.look.paint();
+		const open = fixture.root.createEl('textarea', { cls: 'snowflake-method-timeline-subrow-input' });
+		const away = fixture.root.createEl('textarea', { cls: 'snowflake-method-timeline-subrow-input is-hidden' });
+		open.offsetHeight = 62;
+		Object.defineProperty(open, 'scrollHeight', { value: 60, configurable: true });
+		Object.defineProperty(open, 'clientHeight', { value: 60, configurable: true });
+		fixture.look.openDisplay(el(fixture.anchor));
+		fixture.size(3).preview(24);
+		// The box in sight is as tall as its words and its frame; the one put away is left alone.
+		expect(open.styles.height).toBe('62px');
+		expect(away.styles.height).toBeUndefined();
+		// A look that leaves the type where it was grows nothing again.
+		open.styles.height = 'kept';
+		fixture.size(1).preview(300);
+		fixture.style().preview?.('standard');
+		expect(open.styles.height).toBe('kept');
 	});
 });
 
@@ -1158,7 +1322,8 @@ describe('the frame, made together', () => {
 		]);
 		const body = fixture.root.children[4]!;
 		expect(body.children.map((child) => [...child.classes])).toEqual([
-			['snowflake-method-timeline-field'],
+			// The lanes' box is a card surface of its own, so the style it wears dresses its cards and not the pool's.
+			['snowflake-method-timeline-field', 'snowflake-method-scene-cards'],
 			['snowflake-method-timeline-pool'],
 		]);
 		expect(body.children[1]).toBe(fixture.frame.pool.el);
@@ -1171,6 +1336,17 @@ describe('the frame, made together', () => {
 		// The table is handed over empty, for the workspace to lay its rows in.
 		expect(fixture.scroller.children).toEqual([fixture.frame.table]);
 		expect((fixture.frame.table as unknown as CorkboardElement).children).toEqual([]);
+	});
+
+	it('hands over the lanes\' look, which dresses the field and leaves the pool to its own board', () => {
+		const fixture = frameOf();
+		Object.assign(fixture.controls.memory.lanes, { mode: 'extended', cardWidth: 320 });
+		fixture.frame.look.paint();
+		const field = fixture.root.children[4]!.children[0]!;
+		expect(field.dataset.mode).toBe('extended');
+		expect(fixture.root.dataset.mode).toBeUndefined();
+		expect(fixture.root.styles['--snowflake-method-timeline-scene-width']).toBe('320px');
+		expect(fixture.invalidateRects).toHaveBeenCalledOnce();
 	});
 
 	it('says a word in the body\'s place, and brings the body back', () => {

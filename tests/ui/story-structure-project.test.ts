@@ -83,7 +83,7 @@ function workspaceView() {
 	const relationshipGraphBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
 	const relationshipGraph = vi.fn(() => relationshipGraphBridge);
 	const freeformHandle = {
-		refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn(),
+		refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn(),
 	};
 	const freeformCanvas: MountFreeformCanvas = () => { throw new Error('The engine is stubbed in this test.'); };
 	const renderFreeform = vi.fn((_host: HTMLElement, _controls: FreeformControls) => freeformHandle);
@@ -648,7 +648,7 @@ describe('the timeline tab', () => {
 		const { view, timelineBridge } = workspaceView();
 		const dom = new CorkboardDom();
 		const handle = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		const timeline = vi.fn((_host: HTMLElement, _controls: TimelineControls) => handle);
 		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
@@ -673,14 +673,61 @@ describe('the timeline tab', () => {
 		view.showVisualization('corkboard-freeform');
 		expect(handle.dispose).toHaveBeenCalledOnce();
 		expect(dom.container.querySelector('.snowflake-method-timeline-host')).toBeNull();
-		expect(view.getState()).toMatchObject({ timeline: { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false } });
+		expect(view.getState()).toMatchObject({
+			timeline: {
+				pool: { mode: 'compact', group: '', reversed: false },
+				lanes: { mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 },
+				poolCollapsed: false,
+				timeCollapsed: false,
+			},
+		});
+	});
+
+	it('keeps the look of the cards on the lanes with the tab, apart from the pool\'s', async () => {
+		const { view } = workspaceView();
+		const dom = new CorkboardDom();
+		const handle = {
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
+		};
+		const timeline = vi.fn((_host: HTMLElement, _controls: TimelineControls) => handle);
+		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
+		Object.assign(deps, { timeline });
+		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });
+		delete (view as unknown as { renderFrame?: unknown }).renderFrame;
+		Object.assign(view, { contentEl: dom.container });
+		await view.setState({
+			projectPath: firstProject,
+			visualization: 'timeline',
+			timeline: {
+				pool: { mode: 'extended', group: 'pov', reversed: true, cardWidth: 300 },
+				lanes: { mode: 'standard', cardWidth: 480, cardHeight: 320, textSize: 18 },
+			},
+		}, { history: false });
+		await view.onOpen();
+		const memory = timeline.mock.calls[0]![1].memory;
+		expect(memory.lanes).toEqual({ mode: 'standard', cardWidth: 480, cardHeight: 320, textSize: 18 });
+		expect(memory.pool).toMatchObject({ mode: 'extended', cardWidth: 300, cardHeight: 0, textSize: 0 });
+		// What the workspace's Display panel writes in the memory is what the tab saves, and the pool's stays its own.
+		memory.lanes.mode = 'gallery';
+		memory.lanes.textSize = 0;
+		expect(view.getState()).toMatchObject({
+			timeline: {
+				lanes: { mode: 'gallery', cardWidth: 480, cardHeight: 320, textSize: 0 },
+				pool: { mode: 'extended', cardWidth: 300 },
+			},
+			beatSheet: { lanes: { mode: 'compact', cardWidth: 0, cardHeight: 0, textSize: 0 } },
+		});
+		// A layout restored over the tab moves the memory the workspace reads, in place.
+		await view.setState({ ...view.getState(), timeline: { lanes: { mode: 'compact', cardWidth: 0 } } }, { history: false });
+		expect(timeline.mock.calls[0]![1].memory.lanes).toBe(memory.lanes);
+		expect(memory.lanes).toEqual({ mode: 'compact', cardWidth: 0, cardHeight: 320, textSize: 0 });
 	});
 
 	it('names the project by the path it was handed, so a write lands while the rename is still reading', async () => {
 		const { view, loadDashboardModel } = workspaceView();
 		const dom = new CorkboardDom();
 		const handle = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		const timeline = vi.fn((_host: HTMLElement, _controls: TimelineControls) => handle);
 		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
@@ -723,7 +770,7 @@ describe('the relationship graph tab', () => {
 		const { view, relationshipGraphBridge } = workspaceView();
 		const dom = new CorkboardDom();
 		const handle = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		const relationshipGraph = vi.fn((_host: HTMLElement, _controls: RelationshipGraphControls) => handle);
 		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
@@ -767,7 +814,7 @@ describe('the beat sheet tab', () => {
 		const fixture = workspaceView();
 		const dom = new CorkboardDom();
 		const handle = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		const beatSheet = vi.fn((_host: HTMLElement, _controls: BeatSheetControls) => handle);
 		const deps = (fixture.view as unknown as { deps: { host: Record<string, unknown> } }).deps;
@@ -820,6 +867,29 @@ describe('the beat sheet tab', () => {
 		});
 	});
 
+	it('keeps the look of the cards on the sheet with the tab, apart from the pool\'s and the timeline\'s, and hands an older layout the pool\'s', async () => {
+		const { view, beatSheet } = mounted();
+		await view.setState({
+			projectPath: firstProject,
+			visualization: 'beat-sheet',
+			beatSheet: {
+				pool: { mode: 'extended', group: 'pov', reversed: true, cardWidth: 300 },
+				lanes: { mode: 'standard', cardWidth: 480, cardHeight: 320, textSize: 18 },
+			},
+			// A layout saved before the lanes had a look of their own names the pool's alone, which the lanes wore.
+			timeline: { pool: { mode: 'gallery', group: '', reversed: false, cardWidth: 260, cardHeight: 0, textSize: 14 } },
+		}, { history: false });
+		await view.onOpen();
+		const memory = beatSheet.mock.calls[0]![1].memory;
+		expect(memory.lanes).toEqual({ mode: 'standard', cardWidth: 480, cardHeight: 320, textSize: 18 });
+		expect(memory.pool).toMatchObject({ mode: 'extended', cardWidth: 300 });
+		memory.lanes.cardWidth = 0;
+		expect(view.getState()).toMatchObject({
+			beatSheet: { lanes: { mode: 'standard', cardWidth: 0, cardHeight: 320, textSize: 18 }, pool: { mode: 'extended', cardWidth: 300 } },
+			timeline: { lanes: { mode: 'gallery', cardWidth: 260, cardHeight: 0, textSize: 14 }, pool: { mode: 'gallery', cardWidth: 260, textSize: 14 } },
+		});
+	});
+
 	it('hands the workspace a bridge for the path it was handed, remade when a rename moves it', async () => {
 		const { view, beatSheet, deps, loadDashboardModel } = mounted();
 		const asked: string[] = [];
@@ -849,7 +919,7 @@ describe('the freeform tab', () => {
 		const deps = (fixture.view as unknown as { deps: { host: Record<string, unknown> } }).deps;
 		// The tab turned to after the canvas is one that stands, so the turn itself is what is read.
 		const other = {
-			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn(),
 		};
 		Object.assign(deps, { timeline: vi.fn(() => other) });
 		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });

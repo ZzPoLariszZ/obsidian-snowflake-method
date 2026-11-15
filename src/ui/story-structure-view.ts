@@ -255,12 +255,14 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.timelineMemory.pool.group = update.state.timeline.pool.group;
 		this.timelineMemory.pool.reversed = update.state.timeline.pool.reversed;
 		Object.assign(this.timelineMemory.pool, corkboardCardSizesOf(update.state.timeline.pool));
+		Object.assign(this.timelineMemory.lanes, update.state.timeline.lanes);
 		this.timelineMemory.poolCollapsed = update.state.timeline.poolCollapsed;
 		this.timelineMemory.timeCollapsed = update.state.timeline.timeCollapsed;
 		this.beatSheetMemory.pool.mode = update.state.beatSheet.pool.mode;
 		this.beatSheetMemory.pool.group = update.state.beatSheet.pool.group;
 		this.beatSheetMemory.pool.reversed = update.state.beatSheet.pool.reversed;
 		Object.assign(this.beatSheetMemory.pool, corkboardCardSizesOf(update.state.beatSheet.pool));
+		Object.assign(this.beatSheetMemory.lanes, update.state.beatSheet.lanes);
 		this.beatSheetMemory.poolCollapsed = update.state.beatSheet.poolCollapsed;
 		this.beatSheetMemory.beatsCollapsed = update.state.beatSheet.beatsCollapsed;
 		// Every switch the layout keeps, as one, so none is left behind.
@@ -312,6 +314,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 					reversed: this.timelineMemory.pool.reversed,
 					...corkboardCardSizesOf(this.timelineMemory.pool),
 				},
+				lanes: { mode: this.timelineMemory.lanes.mode, ...corkboardCardSizesOf(this.timelineMemory.lanes) },
 				poolCollapsed: this.timelineMemory.poolCollapsed,
 				timeCollapsed: this.timelineMemory.timeCollapsed,
 			},
@@ -322,6 +325,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 					reversed: this.beatSheetMemory.pool.reversed,
 					...corkboardCardSizesOf(this.beatSheetMemory.pool),
 				},
+				lanes: { mode: this.beatSheetMemory.lanes.mode, ...corkboardCardSizesOf(this.beatSheetMemory.lanes) },
 				poolCollapsed: this.beatSheetMemory.poolCollapsed,
 				beatsCollapsed: this.beatSheetMemory.beatsCollapsed,
 			},

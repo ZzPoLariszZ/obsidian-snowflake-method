@@ -1255,19 +1255,24 @@ describe('styles.css', () => {
 		const inset = 'var(--snowflake-method-timeline-pool-inset)';
 		// The padding sets the card's width as much as the mark's room: a card in
 		// one column is given the canvas's whole width, so bringing the canvas down
-		// to a lane's scene width is what makes a scene the same size in the pool as
-		// in a lane, and sharing the rest between the sides is what centres it. The
-		// inset is the floor, so the mark keeps room where a card would not fit.
+		// to the pool's card width is what holds a card to the width set for it,
+		// and sharing the rest between the sides is what centres it. The inset is
+		// the floor, so the mark keeps room where a card would not fit.
 		const board = declarations('.snowflake-method-timeline-pool .snowflake-method-corkboard');
 		expect(board).toContain(`padding-inline: max(`);
 		expect(board).toContain(inset);
-		expect(board).toContain('(100% - var(--snowflake-method-timeline-scene-width)) / 2');
-		// The pool is one scene card wide with that room on either side of it, so
-		// the padding above has nothing to share out and a card stands its lane
-		// width. Sizing the pool by its band instead cost it a further rem.
+		expect(board).toContain('(100% - var(--snowflake-method-timeline-pool-scene-width)) / 2');
+		// The pool is one of its cards wide with that room on either side of it,
+		// so the padding above has nothing to share out. Its card is the board's
+		// own width until one is set, which a lane's is too, so a scene is the same
+		// size in the pool as in a lane until either is changed. Sizing the pool by
+		// its band instead cost it a further rem.
 		const poolWidth = /--snowflake-method-timeline-pool-width:([^;]*);/.exec(styles)?.[1] ?? '';
-		expect(poolWidth).toContain('var(--snowflake-method-timeline-scene-width)');
+		expect(poolWidth).toContain('var(--snowflake-method-timeline-pool-scene-width)');
 		expect(poolWidth).toContain(`2 * ${inset}`);
+		const frame = section('Timeline');
+		expect(frame).toContain('--snowflake-method-timeline-pool-scene-width: var(--snowflake-method-corkboard-card-width);');
+		expect(frame).toContain('--snowflake-method-timeline-scene-width: var(--snowflake-method-corkboard-card-width);');
 		for (const spanning of [
 			'.snowflake-method-timeline-pool-head',
 			'.snowflake-method-timeline-pool .snowflake-method-prose-controls',
@@ -1517,12 +1522,12 @@ describe('styles.css', () => {
 		expect(declarations('body.is-mobile .snowflake-method-filter-slider .snowflake-method-presentation-reset')).toContain('min-width: var(--touch-size-s, 2.5rem)');
 	});
 
-	it("dresses the lanes in what the pool's Display panel sets: a card's width and height, and the type of the lanes' words", () => {
+	it("dresses the lanes in what the workspace's own Display panel sets, apart from the pool's: a card's style, width and height, and the type of the lanes' words", () => {
 		const timeline = section('Timeline');
-		// The lanes' type is the size the pool's board writes on the workspace's root, and the theme's small type until it does.
-		expect(timeline).toContain(
-			'--snowflake-method-timeline-text-size: var(--snowflake-method-corkboard-text-size, var(--font-ui-small));',
-		);
+		// The lanes' type is the workspace's own to write on its root, and the theme's small type until it does. It is
+		// not the size a board writes for its cards: the pool's board is one, and its type is its own cards' alone.
+		expect(timeline).toContain('--snowflake-method-timeline-text-size: var(--font-ui-small);');
+		expect(timeline).not.toContain('--snowflake-method-timeline-text-size: var(--snowflake-method-corkboard-text-size');
 		// The axis's node stands on the first line of the words beside it, whatever their size.
 		expect(timeline).toMatch(
 			/--snowflake-method-timeline-node-offset: calc\(\s*var\(--size-4-2\) \+ var\(--size-2-1\) \+ var\(--line-height-normal\) \* var\(--snowflake-method-timeline-text-size\) \/ 2\s*\);/u,
@@ -1545,19 +1550,25 @@ describe('styles.css', () => {
 		// A time's or a beat's name keeps the theme's type: the first rule that names it sets the small size, and no later one another.
 		expect(declarations('.snowflake-method-timeline button.snowflake-method-timeline-time-label')).toContain('font-size: var(--font-ui-small)');
 		expect(timeline).not.toMatch(/time-label \{[^}]*font-size: var\(--snowflake-method-timeline-text-size\)/u);
-		// A lane's card is one width in every layout, the one the pool is as wide as, so a set width moves both.
+		// A lane's card is one width in every layout, the lanes' own: the pool is as wide as its own card, set apart.
 		expect(declarations('.snowflake-method-timeline-scenes > .snowflake-method-corkboard-card')).toContain(
 			'width: var(--snowflake-method-timeline-scene-width)',
 		);
 		expect(timeline).not.toContain("[data-layout='single'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card");
-		expect(timeline).toMatch(/--snowflake-method-timeline-pool-width: calc\(\s*var\(--snowflake-method-timeline-scene-width\)/u);
+		expect(timeline).toMatch(/--snowflake-method-timeline-pool-width: calc\(\s*var\(--snowflake-method-timeline-pool-scene-width\)/u);
+		// The style is worn by the lanes' own box, never by the workspace: a rule keyed on the workspace's root would
+		// dress the pool's cards under it too, and the pool's board wears a style of its own.
+		expect(timeline).not.toContain('.snowflake-method-timeline[data-mode=');
 		// A set height is the standard card's: the extended card stands its links' row taller, and the styles with no text box keep theirs.
-		expect(declarations(".snowflake-method-timeline[data-mode='standard']")).toContain(
+		expect(declarations(".snowflake-method-timeline-field[data-mode='standard']")).toContain(
 			'--snowflake-method-corkboard-card-height: var(--snowflake-method-timeline-card-height, 15rem)',
 		);
-		expect(declarations(".snowflake-method-timeline[data-mode='extended']")).toContain(
+		expect(declarations(".snowflake-method-timeline-field[data-mode='extended']")).toContain(
 			'--snowflake-method-corkboard-card-height: calc(var(--snowflake-method-timeline-card-height, 15rem) + 4rem)',
 		);
+		expect(
+			declarations(".snowflake-method-timeline-field[data-mode='compact'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card"),
+		).toContain('height: auto');
 		expect(timeline).not.toContain("[data-mode='gallery'] {\n\t--snowflake-method-corkboard-card-height");
 		expect(timeline).not.toContain('!important');
 	});

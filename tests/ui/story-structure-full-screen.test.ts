@@ -54,7 +54,7 @@ function mount(sides: { left: boolean; right: boolean } = { left: false, right: 
 	const throwing = (): never => {
 		throw new Error('The frame is stubbed in this test.');
 	};
-	const handle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), openDisplay: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn() };
+	const handle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn() };
 	let controls: CorkboardControls | null = null;
 	const corkboard = vi.fn((_host: HTMLElement, given: CorkboardControls) => {
 		controls = given;

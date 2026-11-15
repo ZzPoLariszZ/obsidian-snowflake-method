@@ -38,8 +38,18 @@ const current: StoryStructureViewStateSnapshot = {
 	projectPath: 'Novel/Novel.md',
 	visualization: 'timeline',
 	corkboard: { mode: 'compact', group: 'pov', reversed: true, ...own, view: 'scene', views: {} },
-	timeline: { pool: { mode: 'extended', group: 'time', reversed: false, ...own }, poolCollapsed: true, timeCollapsed: false },
-	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false, ...own }, poolCollapsed: false, beatsCollapsed: true },
+	timeline: {
+		pool: { mode: 'extended', group: 'time', reversed: false, ...own },
+		lanes: { mode: 'standard', cardWidth: 300, cardHeight: 0, textSize: 16 },
+		poolCollapsed: true,
+		timeCollapsed: false,
+	},
+	beatSheet: {
+		pool: { mode: 'standard', group: 'status', reversed: false, ...own },
+		lanes: { mode: 'compact', ...own },
+		poolCollapsed: false,
+		beatsCollapsed: true,
+	},
 	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false, snapObjects: false, readOnly: false },
 	relationshipGraph: { view: 'entities', controlsOpen: true, timelineOpen: false },
 };
@@ -300,10 +310,11 @@ describe('story structure restored state', () => {
 	it("restores the timeline pool's settings one by one, ignoring what is not one of its own", () => {
 		expect(
 			mergeStoryStructureViewState(current, {
-				timeline: { pool: { mode: 'compact', group: 'mood', reversed: true } },
+				// A layout of this build names the lanes' look beside the pool's; this one has nothing new to say of it.
+				timeline: { pool: { mode: 'compact', group: 'mood', reversed: true }, lanes: {} },
 			}),
 		).toEqual({
-			state: { ...current, timeline: { pool: { mode: 'compact', group: 'time', reversed: true, ...own }, poolCollapsed: true, timeCollapsed: false } },
+			state: { ...current, timeline: { ...current.timeline, pool: { mode: 'compact', group: 'time', reversed: true, ...own } } },
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { timeline: 7 })).toEqual({ state: current, changed: false });
@@ -319,16 +330,21 @@ describe('story structure restored state', () => {
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { timeline: { timeCollapsed: 1 } })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().timeline).toEqual({ pool: { mode: 'compact', group: '', reversed: false, ...own }, poolCollapsed: false, timeCollapsed: false });
+		expect(defaultStoryStructureState().timeline).toEqual({
+			pool: { mode: 'compact', group: '', reversed: false, ...own },
+			lanes: { mode: 'compact', ...own },
+			poolCollapsed: false,
+			timeCollapsed: false,
+		});
 	});
 
 	it("restores the beat sheet pool's settings and its two folds one by one, apart from the timeline's", () => {
 		expect(
 			mergeStoryStructureViewState(current, {
-				beatSheet: { pool: { mode: 'compact', group: 'mood', reversed: true } },
+				beatSheet: { pool: { mode: 'compact', group: 'mood', reversed: true }, lanes: {} },
 			}),
 		).toEqual({
-			state: { ...current, beatSheet: { pool: { mode: 'compact', group: 'status', reversed: true, ...own }, poolCollapsed: false, beatsCollapsed: true } },
+			state: { ...current, beatSheet: { ...current.beatSheet, pool: { mode: 'compact', group: 'status', reversed: true, ...own } } },
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { beatSheet: 7 })).toEqual({ state: current, changed: false });
@@ -344,7 +360,51 @@ describe('story structure restored state', () => {
 		expect(mergeStoryStructureViewState(current, { beatSheet: { beatsCollapsed: 0 } })).toEqual({ state: current, changed: false });
 		// The timeline's fold is the timeline's: naming it under the beat sheet moves nothing.
 		expect(mergeStoryStructureViewState(current, { beatSheet: { timeCollapsed: true } })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().beatSheet).toEqual({ pool: { mode: 'compact', group: '', reversed: false, ...own }, poolCollapsed: false, beatsCollapsed: false });
+		expect(defaultStoryStructureState().beatSheet).toEqual({
+			pool: { mode: 'compact', group: '', reversed: false, ...own },
+			lanes: { mode: 'compact', ...own },
+			poolCollapsed: false,
+			beatsCollapsed: false,
+		});
+	});
+
+	it("restores the lanes' look apart from the pool's, and hands a layout that names none the pool's, which the lanes wore then", () => {
+		// A layout of this build names both, and each is restored on its own.
+		const named = mergeStoryStructureViewState(current, {
+			timeline: { pool: { mode: 'compact', cardWidth: 280 }, lanes: { mode: 'gallery', cardWidth: 480, cardHeight: 'tall', textSize: 20 } },
+			beatSheet: { lanes: { mode: 'extended', cardHeight: 400 } },
+		});
+		expect(named.state.timeline.pool).toEqual({ ...current.timeline.pool, mode: 'compact', cardWidth: 280 });
+		expect(named.state.timeline.lanes).toEqual({ mode: 'gallery', cardWidth: 480, cardHeight: 0, textSize: 20 });
+		expect(named.state.beatSheet.lanes).toEqual({ mode: 'extended', cardWidth: 0, cardHeight: 400, textSize: 0 });
+		expect(named.state.beatSheet.pool).toEqual(current.beatSheet.pool);
+		expect(named.changed).toBe(true);
+		// The same look again moves nothing; a style or a size of it does, on either workspace.
+		expect(mergeStoryStructureViewState(named.state, { timeline: { lanes: { mode: 'gallery', cardWidth: 480 } } }).changed).toBe(false);
+		expect(mergeStoryStructureViewState(named.state, { timeline: { lanes: { textSize: 21 } } }).changed).toBe(true);
+		expect(mergeStoryStructureViewState(named.state, { beatSheet: { lanes: { mode: 'compact' } } }).changed).toBe(true);
+		// What is no style keeps the one held, and a size past a slider's end is its end.
+		expect(mergeStoryStructureViewState(current, { timeline: { lanes: { mode: 'huge', cardWidth: 9000, textSize: 4 } } }).state.timeline.lanes).toEqual({
+			mode: 'standard',
+			cardWidth: CORKBOARD_SIZE_LIMITS.cardWidth.max,
+			cardHeight: 0,
+			textSize: CORKBOARD_SIZE_LIMITS.textSize.min,
+		});
+		expect(mergeStoryStructureViewState(current, { timeline: { lanes: 7 }, beatSheet: { lanes: null } })).toEqual({ state: current, changed: false });
+		// A layout saved before the lanes had a look of their own names the pool's alone, which the lanes wore: they keep it.
+		const older = mergeStoryStructureViewState(defaultStoryStructureState(), {
+			timeline: { pool: { mode: 'extended', group: 'time', reversed: false, cardWidth: 320, cardHeight: 0, textSize: 18 } },
+			beatSheet: { pool: { mode: 'standard', group: '', reversed: false } },
+		});
+		expect(older.state.timeline.lanes).toEqual({ mode: 'extended', cardWidth: 320, cardHeight: 0, textSize: 18 });
+		expect(older.state.beatSheet.lanes).toEqual({ mode: 'standard', ...own });
+		// The memory a workspace mounts with carries the look the layout kept, in an object of its own.
+		const memory = timelineMemory(named.state.timeline);
+		expect(memory.lanes).toEqual(named.state.timeline.lanes);
+		expect(memory.lanes).not.toBe(named.state.timeline.lanes);
+		expect(beatSheetMemory(named.state.beatSheet).lanes).toEqual({ mode: 'extended', cardWidth: 0, cardHeight: 400, textSize: 0 });
+		expect(timelineMemory().lanes).toEqual({ mode: 'compact', ...own });
+		expect(beatSheetMemory().lanes).toEqual({ mode: 'compact', ...own });
 	});
 
 	it("restores the freeform canvas's view and its switches one by one, ignoring what is not one of its own", () => {
