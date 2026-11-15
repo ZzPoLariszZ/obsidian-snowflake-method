@@ -837,8 +837,23 @@ export class SnowflakeManuscriptView extends ItemView {
 			// from before: a new note the page could not find, and a window
 			// thrown to the head of the book for it. A failure is the first
 			// asker's to report.
-			await this.refreshRun.catch(() => undefined);
-			return;
+			const failed = await this.refreshRun.then(
+				() => false,
+				() => true,
+			);
+			// A reading that ended well came back for everything asked of it
+			// meanwhile. One that failed did not, or failed doing so, and
+			// going on from here was going on with the old manuscript after
+			// all. Another asker left the same way may have begun the
+			// reading again already, after this one asked: that reading
+			// answers this asker, its failure included. Otherwise the
+			// reading is begun again here.
+			if (!failed) return;
+			const begun = this.refreshRun;
+			if (begun !== null) {
+				await begun;
+				return;
+			}
 		}
 		const run = (async () => {
 			try {

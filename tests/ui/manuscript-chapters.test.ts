@@ -555,24 +555,67 @@ describe('the stream’s chapters: followed, added, renamed and deleted', () => 
 		await third;
 	});
 
-	it('lets go of a reading that failed, tells the one who asked for it, and reads again when asked', async () => {
+	it('lets go of a reading that failed, tells the one who asked for it, and reads again for whoever asked meanwhile', async () => {
 		const { view } = stream({ reads: true });
-		let fail = true;
 		let reads = 0;
 		Object.assign(view, {
 			refreshOnce: () => {
 				reads += 1;
-				return fail ? Promise.reject(new Error('unreadable')) : Promise.resolve();
+				return reads === 1 ? Promise.reject(new Error('unreadable')) : Promise.resolve();
 			},
 		});
 		const first = view.refresh();
-		// The one who came while it ran is not told twice of the same failure.
-		await expect(view.refresh()).resolves.toBeUndefined();
+		// Two came while it ran. Neither is told of a failure that is not
+		// theirs, and neither goes on with the manuscript from before: the
+		// reading that failed never came back for what they asked, so one of
+		// them begins it again and the other waits on that reading.
+		const second = view.refresh();
+		const third = view.refresh();
 		await expect(first).rejects.toThrow('unreadable');
+		await expect(second).resolves.toBeUndefined();
+		await expect(third).resolves.toBeUndefined();
+		expect(reads).toBe(2);
 		expect(view.refreshRun).toBeNull();
-		fail = false;
 		await view.refresh();
-		expect(reads).toBeGreaterThanOrEqual(2);
+		expect(reads).toBe(3);
+	});
+
+	it('reads again for an asker whose own reading was the one that failed', async () => {
+		const { view } = stream({ reads: true });
+		let reads = 0;
+		Object.assign(view, {
+			refreshOnce: () => {
+				reads += 1;
+				return reads === 2 ? Promise.reject(new Error('unreadable')) : Promise.resolve();
+			},
+		});
+		// The first reading ends well and comes back for the second asker,
+		// and that reading fails: the failure is told once, to the first,
+		// and the second is still owed the manuscript as it stands.
+		const first = view.refresh();
+		const second = view.refresh();
+		await expect(first).rejects.toThrow('unreadable');
+		await expect(second).resolves.toBeUndefined();
+		expect(reads).toBe(3);
+		expect(view.refreshRun).toBeNull();
+	});
+
+	it('tells an asker left waiting of the failure of the reading begun again for it', async () => {
+		const { view } = stream({ reads: true });
+		let reads = 0;
+		Object.assign(view, {
+			refreshOnce: () => {
+				reads += 1;
+				return Promise.reject(new Error(`unreadable ${String(reads)}`));
+			},
+		});
+		const first = view.refresh();
+		const second = view.refresh();
+		await expect(first).rejects.toThrow('unreadable 1');
+		// Its own reading failed too, and that one is its to hear of.
+		await expect(second).rejects.toThrow('unreadable 2');
+		expect(reads).toBe(2);
+		expect(view.refreshRun).toBeNull();
 	});
 
 	it('brings a new chapter’s start to the top of the page every time, then opens it', async () => {
