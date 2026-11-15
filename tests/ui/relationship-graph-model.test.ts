@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildEntityGraph, defaultEntityGraphState, type GraphMember } from '../../src/domain';
 import type { RecordLine, RecordTerm } from '../../src/templates/record-lines';
-import { edgeHighlight, highlightOf, matchHighlight, pictureOf, tabOrder } from '../../src/ui/relationship-graph-model';
+import { edgeHighlight, highlightOf, matchHighlight, pictureBase, pictureFrom, pictureOf, tabOrder } from '../../src/ui/relationship-graph-model';
 
 const link = (name: string): RecordTerm => ({ kind: 'link', path: name, name });
 const line = (labelPath: string, ...targets: RecordTerm[]): RecordLine => ({
@@ -111,6 +111,93 @@ describe('the picture the filters leave', () => {
 		expect(grouped.colors.get('character-1')).toEqual({ by: 'hex', hex: '#00ff00' });
 		expect(grouped.colors.get('character-2')).toEqual({ by: 'plain' });
 		expect(grouped.colors.get('unresolved:Ghost')).toEqual({ by: 'unresolved' });
+	});
+});
+
+describe('the picture of one time', () => {
+	const both = 'character-1|0|character-2|Family';
+	const back = 'character-2|0|character-1|Family';
+	const member = 'character-1|1|entity-1|Member';
+	const rival = 'character-2|1|unresolved:Ghost|Rival';
+
+	it('leaves out the lines that do not stand at it, and counts them among the hidden', () => {
+		const shown = picture({ hidden: new Set([both, rival]) });
+		expect(shown.edges.map((edge) => edge.id)).toEqual([member, back]);
+		// With orphans shown every node stands, whatever lines it has left.
+		expect(names(shown.nodes)).toEqual(['Alice', 'Bob', 'Carol', 'Harbour', 'Guild', 'Ghost']);
+		expect(shown.hidden).toEqual({ nodes: 1, edges: 3 });
+		// No time at all is the whole graph.
+		expect(picture({ hidden: null }).edges).toHaveLength(4);
+		expect(picture({ hidden: new Set() }).edges).toHaveLength(4);
+	});
+
+	it('takes the lines away before the orphans are read, so a node with none standing goes with the toggle', () => {
+		const noOrphans = { ...state, filters: { ...state.filters, orphans: false } };
+		expect(names(picture({ state: noOrphans, hidden: new Set([member, rival]) }).nodes)).toEqual(['Alice', 'Bob']);
+		expect(names(picture({ state: noOrphans, hidden: new Set([both, back, member, rival]) }).nodes)).toEqual([]);
+	});
+
+	it('lanes the lines left among themselves: one left alone between its two nodes runs straight', () => {
+		// The two Family lines between Alice and Bob run either side of the straight line while both stand.
+		expect(picture().edges.filter((edge) => edge.label === 'Family').map((edge) => edge.lane)).toEqual([-0.5, 0.5]);
+		expect(picture({ hidden: new Set() }).edges.filter((edge) => edge.label === 'Family').map((edge) => edge.lane)).toEqual([-0.5, 0.5]);
+		const alone = picture({ hidden: new Set([both]) }).edges.find((edge) => edge.id === back);
+		expect(alone?.lane).toBe(0);
+	});
+
+	it('draws a local graph over the lines standing, and keeps the node it is drawn about when none of its lines do', () => {
+		const local = picture({ focus: 'character-1', hidden: new Set([member]) });
+		expect(names(local.nodes)).toEqual(['Alice', 'Bob']);
+		const noOrphans = { ...state, filters: { ...state.filters, orphans: false } };
+		const bare = picture({ state: noOrphans, focus: 'character-1', hidden: new Set([both, back, member]) });
+		expect(names(bare.nodes)).toEqual(['Alice']);
+		expect(bare.edges).toEqual([]);
+		expect(bare.local).toBe(true);
+	});
+
+	it('holds a node back until a line of the picture reaches it, whatever the orphans toggle says', () => {
+		// Carol, the Harbour, the Guild and the Ghost are held back: only the ones a standing line reaches are drawn.
+		const held = new Set(['character-3', 'entity-1', 'entity-2', 'unresolved:Ghost']);
+		const reached = picture({ hidden: new Set([rival]), held });
+		expect(names(reached.nodes)).toEqual(['Alice', 'Bob', 'Harbour']);
+		expect(reached.edges.map((edge) => edge.id)).toEqual([both, member, back]);
+		// With every line of theirs away, none of the held is there, though orphans are shown: they are not there yet.
+		const none = picture({ hidden: new Set([member, rival]), held });
+		expect(names(none.nodes)).toEqual(['Alice', 'Bob']);
+		expect(state.filters.orphans).toBe(true);
+		// A node not held back stands as an orphan as ever.
+		expect(names(picture({ hidden: new Set([both, back, member, rival]), held }).nodes)).toEqual(['Alice', 'Bob']);
+		// Nothing held, or an empty holding, is the picture as it was.
+		expect(names(picture({ hidden: new Set([member, rival]), held: null }).nodes)).toEqual(['Alice', 'Bob', 'Carol', 'Harbour', 'Guild', 'Ghost']);
+		expect(names(picture({ hidden: new Set([member, rival]), held: new Set() }).nodes)).toEqual(['Alice', 'Bob', 'Carol', 'Harbour', 'Guild', 'Ghost']);
+		// The count of what is left out takes the held with it.
+		expect(none.hidden).toEqual({ nodes: 5, edges: 3 });
+	});
+
+	it('keeps the node a local graph is drawn about, held back or not, and reads the orphans after the holding', () => {
+		const held = new Set(['character-3', 'entity-1']);
+		// Carol has no line at all: held back she is gone, but a local graph about her still shows her.
+		expect(names(picture({ hidden: new Set(), held }).nodes)).not.toContain('Carol');
+		const about = picture({ focus: 'character-3', hidden: new Set(), held });
+		expect(about.local).toBe(true);
+		expect(names(about.nodes)).toEqual(['Carol']);
+		// With orphans off the held and the orphans go alike, and a held node a line reaches stays.
+		const noOrphans = { ...state, filters: { ...state.filters, orphans: false } };
+		expect(names(picture({ state: noOrphans, hidden: new Set([rival]), held }).nodes)).toEqual(['Alice', 'Bob', 'Harbour']);
+	});
+
+	it('draws every time from one base, whose lines are the ones the filters leave', () => {
+		const base = pictureBase({ graph, state: { ...state, filters: { ...state.filters, labelsOff: ['Rival'] } }, search: 'alice', customKinds: ['faction'] });
+		expect(base.edges.map((edge) => edge.id)).toEqual([both, member, back]);
+		expect([...(base.matches ?? [])]).toEqual(['character-1']);
+		const first = pictureFrom(base, null, new Set([both]));
+		const second = pictureFrom(base, null, new Set([member]));
+		expect(first.edges.map((edge) => edge.id)).toEqual([member, back]);
+		expect(second.edges.map((edge) => edge.id)).toEqual([both, back]);
+		// What does not change with the time is the base's own.
+		expect(first.matches).toBe(base.matches);
+		expect(second.matches).toBe(base.matches);
+		expect(pictureFrom(base, null).edges).toBe(base.edges);
 	});
 });
 

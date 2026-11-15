@@ -8,9 +8,21 @@
  * change and hand the engine what to draw; the engine keeps positions by
  * node id, so a picture that drops a node and later brings it back finds
  * it where it stood.
+ *
+ * With the timeline open the picture is of one time: the dated lines that
+ * do not stand at it are left out before the focus and the orphans are
+ * read, so a node with no line standing goes with the Orphans toggle as any
+ * other does, and the lines left are laned among themselves. Where the
+ * undated lines are held back to the axis's end, the nodes no dated line
+ * touches are held back with them, each until a line of its own is drawn.
+ * What does not
+ * change with the time, the kinds and words shown, the search and the
+ * groups' matches, is worked out once as the picture's base, and each time
+ * drawn from it.
  */
 
 import {
+	assignLanes,
 	defaultGraphColorName,
 	indexGraphForQueries,
 	localGraph,
@@ -53,6 +65,28 @@ export interface PictureInputs {
 	readonly customKinds: readonly string[];
 	/** The grammar's index of the graph, to keep across pictures of one graph. */
 	readonly index?: GraphQueryIndex;
+	/** The dated lines that do not stand at the time the timeline is on, by edge id; null or absent for the whole graph. */
+	readonly hidden?: ReadonlySet<string> | null;
+	/** The nodes held back until a line left in the picture reaches them; null or absent where none is. */
+	readonly held?: ReadonlySet<string> | null;
+}
+
+/**
+ * What a picture is drawn from whatever the time: the nodes the kinds
+ * leave, the lines among them the words leave, what the search found and
+ * what each colour group matches. The lines here are the ones a timeline
+ * counts its changes over, since a line the filters put away changes
+ * nothing anyone sees.
+ */
+export interface PictureBase {
+	readonly graph: EntityGraph;
+	readonly state: EntityGraphState;
+	readonly customKinds: readonly string[];
+	readonly shown: ReadonlySet<string>;
+	readonly edges: readonly GraphEdge[];
+	readonly matches: ReadonlySet<string> | null;
+	/** What each colour group matches, in the groups' order; empty under the default colours. */
+	readonly groupMatches: readonly (ReadonlySet<string> | null)[];
 }
 
 export const EMPTY_PICTURE: GraphPicture = {
@@ -64,27 +98,62 @@ export const EMPTY_PICTURE: GraphPicture = {
 	hidden: { nodes: 0, edges: 0 },
 };
 
-export function pictureOf(inputs: PictureInputs): GraphPicture {
-	const { graph, state, focus, customKinds } = inputs;
+export function pictureBase(inputs: Omit<PictureInputs, 'focus' | 'hidden' | 'held'>): PictureBase {
+	const { graph, state, customKinds } = inputs;
 	const index = inputs.index ?? indexGraphForQueries(graph);
 	const kindsOff = new Set(state.filters.kindsOff);
 	const labelsOff = new Set(state.filters.labelsOff);
-
-	let shown = new Set<string>();
+	const shown = new Set<string>();
 	for (const node of graph.nodes) {
 		if (node.group === UNRESOLVED_GROUP ? !state.filters.unresolved : kindsOff.has(node.kind)) continue;
 		shown.add(node.id);
 	}
-	const matches = matchIndexedQuery(inputs.search, index);
-	const edgesAmong = (nodes: ReadonlySet<string>): GraphEdge[] =>
-		graph.edges.filter(
-			(edge) => nodes.has(edge.source) && nodes.has(edge.target) && !labelsOff.has(edge.labelPath),
-		);
-	let edges = edgesAmong(shown);
+	return {
+		graph,
+		state,
+		customKinds,
+		shown,
+		edges: graph.edges.filter(
+			(edge) => shown.has(edge.source) && shown.has(edge.target) && !labelsOff.has(edge.labelPath),
+		),
+		matches: matchIndexedQuery(inputs.search, index),
+		groupMatches: state.groups === null ? [] : state.groups.map((group) => matchIndexedQuery(group.query, index)),
+	};
+}
+
+export function pictureOf(inputs: PictureInputs): GraphPicture {
+	return pictureFrom(pictureBase(inputs), inputs.focus, inputs.hidden ?? null, inputs.held ?? null);
+}
+
+/**
+ * The picture of a base about a focus, at the time whose missing lines are
+ * given, or at none. The nodes held back are left out until a line of the
+ * picture reaches them, whatever the Orphans toggle says of a node with no
+ * line: they are not there yet, where an orphan is.
+ */
+export function pictureFrom(
+	base: PictureBase,
+	focus: string | null,
+	hidden: ReadonlySet<string> | null = null,
+	held: ReadonlySet<string> | null = null,
+): GraphPicture {
+	const { graph, state, customKinds, matches, groupMatches } = base;
+	let shown: ReadonlySet<string> = base.shown;
+	let edges = hidden === null ? base.edges : base.edges.filter((edge) => !hidden.has(edge.id));
+	if (held !== null && held.size > 0) {
+		const reached = new Set<string>();
+		for (const edge of edges) {
+			reached.add(edge.source);
+			reached.add(edge.target);
+		}
+		// The node a local graph is drawn about is the picture's reason, and stands whatever is held back.
+		shown = new Set([...shown].filter((id) => !held.has(id) || reached.has(id) || id === focus));
+	}
 
 	let local = false;
 	if (focus !== null && shown.has(focus)) {
-		const reach = localGraph({ nodes: graph.nodes.filter((node) => shown.has(node.id)), edges }, focus, state.local);
+		const within = shown;
+		const reach = localGraph({ nodes: graph.nodes.filter((node) => within.has(node.id)), edges }, focus, state.local);
 		shown = new Set(reach.nodes);
 		edges = edges.filter((edge) => reach.edges.has(edge.id));
 		local = true;
@@ -95,13 +164,16 @@ export function pictureOf(inputs: PictureInputs): GraphPicture {
 			linked.add(edge.source);
 			linked.add(edge.target);
 		}
-		shown = new Set([...shown].filter((id) => linked.has(id)));
+		// The node a local graph is drawn about is the picture's reason: it
+		// stands at a time when none of its lines do.
+		const kept = local ? focus : null;
+		shown = new Set([...shown].filter((id) => linked.has(id) || id === kept));
 	}
 	const nodes = graph.nodes.filter((node) => shown.has(node.id));
+	// At a time, the lines left are laned among themselves: one left alone between its two nodes runs straight.
+	if (hidden !== null) edges = assignLanes(edges);
 
 	const colors = new Map<string, NodeColor>();
-	const groupMatches =
-		state.groups === null ? [] : state.groups.map((group) => matchIndexedQuery(group.query, index));
 	for (const node of nodes) {
 		if (node.group === UNRESOLVED_GROUP) {
 			colors.set(node.id, { by: 'unresolved' });
