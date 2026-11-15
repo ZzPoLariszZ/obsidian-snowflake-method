@@ -449,6 +449,14 @@ export interface ManuscriptWindowSettings {
 export type SegmentNamed = () => Promise<void>;
 
 /**
+ * Run once the author has agreed to a deletion, and before anything is
+ * thrown away, with the notes the renumbering that follows is about to
+ * rename. An editor standing in one of those is bound to a name its file is
+ * about to stop having, and only the page knows where its editor stands.
+ */
+export type SegmentRemoving = (renaming: readonly string[]) => Promise<void>;
+
+/**
  * What a stream is doing with words right now, for whoever counts them: the
  * project whose manuscript it shows, the segment being edited with its
  * unsaved text, and what stands selected in that segment. All null together
@@ -563,13 +571,16 @@ export interface ManuscriptHost {
 	): Promise<{ from: string; to: string } | null>;
 	/**
 	 * Deletes one note, its file going to the trash, once the author has
-	 * agreed to it. Resolves false when nothing was deleted.
+	 * agreed to it. `onAgreed` runs between the answer and the deletion,
+	 * told which notes the renumbering is about to rename. Resolves to the
+	 * notes it did rename, each with where it went, or to null when nothing
+	 * was deleted.
 	 */
 	deleteManuscriptSegment(
 		projectPath: string,
 		path: string,
-		onAgreed?: SegmentNamed,
-	): Promise<boolean>;
+		onAgreed?: SegmentRemoving,
+	): Promise<readonly { from: string; to: string }[] | null>;
 	/**
 	 * Turns one writing mode for every stream at once: typewriter on and off,
 	 * focus around its levels. The buttons live in each segment's header, but

@@ -130,10 +130,16 @@ interface Stream {
 	hub: ContentsHub;
 	/** What the view did and what it asked of its host, in order. */
 	said: string[];
-	/** What the host answers a rename and a deletion with; a test sets them. */
+	/**
+	 * What the host answers a rename and a deletion with; a test sets them.
+	 * A deletion answers with the notes its renumbering renames, or with
+	 * null where the author declined, and `refused` has it fail after the
+	 * author agreed, with nothing renamed.
+	 */
 	answers: {
 		renamed: { from: string; to: string } | null;
-		deleted: boolean;
+		deleted: readonly { from: string; to: string }[] | null;
+		refused: string | null;
 		created: string | null;
 	};
 	/** Puts a chapter on the page: where it stands, how tall, and its editor if it is being written in. */
@@ -165,7 +171,7 @@ const stream = (options: { reads?: boolean } = {}): Stream => {
 	const hub = new ContentsHub();
 	const said: string[] = [];
 	const opened: Stream['opened'] = [];
-	const answers: Stream['answers'] = { renamed: null, deleted: false, created: null };
+	const answers: Stream['answers'] = { renamed: null, deleted: null, refused: null, created: null };
 	const mounted = new Map<string, Entry>();
 	const inside = view as unknown as Inside;
 	Object.assign(view, {
@@ -257,10 +263,12 @@ const stream = (options: { reads?: boolean } = {}): Stream => {
 			deleteManuscriptSegment: async (
 				project: string,
 				path: string,
-				onAgreed?: () => Promise<void>,
+				onAgreed?: (renaming: readonly string[]) => Promise<void>,
 			) => {
 				said.push(`host delete ${project} ${path}`);
-				if (answers.deleted) await onAgreed?.();
+				if (answers.deleted === null) return null;
+				await onAgreed?.(answers.deleted.map(({ from }) => from));
+				if (answers.refused !== null) throw new Error(answers.refused);
 				return answers.deleted;
 			},
 		},
@@ -659,7 +667,7 @@ describe('the stream’s chapters: followed, added, renamed and deleted', () => 
 		const { view, said, answers, put } = stream();
 		put(4, 300, 200);
 		view.editingPath = chapter(4).path;
-		answers.deleted = true;
+		answers.deleted = [];
 		await view.deleteChapter(chapter(4).path);
 		expect(said).toEqual([
 			`host delete Novel/Novel.md ${chapter(4).path}`,
@@ -673,11 +681,64 @@ describe('the stream’s chapters: followed, added, renamed and deleted', () => 
 		view.editingPath = chapter(2).path;
 		await view.deleteChapter(chapter(4).path);
 		expect(said).toEqual([`host delete Novel/Novel.md ${chapter(4).path}`]);
-		answers.deleted = true;
+		answers.deleted = [];
 		said.length = 0;
 		await view.deleteChapter(chapter(4).path);
 		expect(said).toEqual([`host delete Novel/Novel.md ${chapter(4).path}`, 'refresh']);
 		expect(view.editingPath).toBe(chapter(2).path);
+	});
+
+	it('puts the editor of a later chapter away while the numbers close up, and back under the name its note took', async () => {
+		const { view, said, answers, opened, put } = stream();
+		const caret = { from: 20, to: 20 };
+		put(5, 300, 400, {
+			selection: () => caret,
+			read: () => '# Chapter 5\n\nThe bell rang twice.\n',
+		});
+		view.editingPath = chapter(5).path;
+		// The fourth chapter goes, and the fifth takes its number and its name.
+		answers.deleted = [{ from: chapter(5).path, to: chapter(4).path }];
+		Object.assign(view, {
+			refresh: () => {
+				said.push('refresh');
+				view.mounted.delete(chapter(5).path);
+				view.mounted.set(chapter(4).path, {
+					path: chapter(4).path,
+					el: document.body.createDiv(),
+					editor: null,
+					pending: null,
+					text: { body: '# Chapter 4\n\nThe bell rang twice.\n' },
+				});
+				return Promise.resolve();
+			},
+		});
+		await view.deleteChapter(chapter(4).path);
+		// Left up over a file that had taken another name, the editor was
+		// taken down by the reading that followed and never put back.
+		expect(said).toEqual([
+			`host delete Novel/Novel.md ${chapter(4).path}`,
+			`down ${chapter(5).path}`,
+			'refresh',
+		]);
+		expect(opened).toEqual([{ path: chapter(4).path, caret }]);
+	});
+
+	it('puts that editor back under the old name where the deletion was refused with nothing renamed', async () => {
+		const { view, said, answers, opened, put } = stream();
+		const body = '# Chapter 5\n\nThe bell rang twice.\n';
+		const caret = { from: 14, to: 18 };
+		const entry = put(5, 300, 400, { selection: () => caret, read: () => body });
+		entry.text.body = body;
+		view.editingPath = chapter(5).path;
+		answers.deleted = [{ from: chapter(5).path, to: chapter(4).path }];
+		answers.refused = 'that name is taken';
+		await expect(view.deleteChapter(chapter(4).path)).rejects.toThrow('that name is taken');
+		expect(said).toEqual([
+			`host delete Novel/Novel.md ${chapter(4).path}`,
+			`down ${chapter(5).path}`,
+			'refresh',
+		]);
+		expect(opened).toEqual([{ path: chapter(5).path, caret }]);
 	});
 
 	it('owes a stream in a tab put away its reading at the next reveal', async () => {
@@ -689,7 +750,7 @@ describe('the stream’s chapters: followed, added, renamed and deleted', () => 
 			},
 		});
 		contentEl.hidden = true;
-		answers.deleted = true;
+		answers.deleted = [];
 		await view.deleteChapter(chapter(4).path);
 		expect(said).not.toContain('refresh');
 		expect(owed).toBe(1);

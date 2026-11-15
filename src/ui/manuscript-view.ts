@@ -4017,25 +4017,92 @@ export class SnowflakeManuscriptView extends ItemView {
 		const model = this.model;
 		if (model === null || !this.holdsWritable(path)) return;
 		if (this.editingPath === path) await this.flushPendingSave();
-		const editor =
-			this.editingPath === path ? (this.mounted.get(path)?.editor ?? null) : null;
-		const caret = editor?.selection() ?? null;
-		const body = editor?.read() ?? null;
-		let writing = false;
+		const editor: { aside: EditorAside | null } = { aside: null };
 		const renamed = await this.host.renameManuscriptSegment(
 			model.projectPath,
 			path,
 			async () => {
-				if (this.editingPath !== path) return;
-				writing = true;
-				await this.deactivateSegment();
+				if (this.editingPath === path) {
+					editor.aside = await this.setEditorAside(path);
+				}
 			},
 		);
 		if (renamed !== null) await this.refreshAfterChange();
-		if (!writing) return;
-		const at = renamed?.to ?? path;
+		if (editor.aside !== null) {
+			await this.putEditorBack(editor.aside, renamed?.to ?? path);
+		}
+	}
+
+	/**
+	 * A chapter deleted from the wheel, once the author has said so. The
+	 * words being written in it are saved into it first, so the trash holds
+	 * the note as the author left it.
+	 *
+	 * The author may be writing in another chapter, and that editor is left
+	 * alone unless the numbers closing up are about to rename its note: an
+	 * editor is bound to the name its file has, and one left up over a
+	 * renamed file was taken down by the next reading of the book and never
+	 * put back. It is put away for the renaming and put back under the name
+	 * the note took, the caret where it was. And put back under the old one
+	 * where the deletion was refused with nothing renamed.
+	 */
+	private async deleteChapter(path: string): Promise<void> {
+		const model = this.model;
+		if (model === null || !this.holdsWritable(path)) return;
+		const editor: { aside: EditorAside | null } = { aside: null };
+		let renamed: readonly { from: string; to: string }[] | null = null;
+		try {
+			renamed = await this.host.deleteManuscriptSegment(
+				model.projectPath,
+				path,
+				async (renaming) => {
+					const writing = this.editingPath;
+					if (writing === path) {
+						await this.deactivateSegment();
+					} else if (writing !== null && renaming.includes(writing)) {
+						editor.aside = await this.setEditorAside(writing);
+					}
+				},
+			);
+		} finally {
+			const aside = editor.aside;
+			// Read again before an editor goes back, a deletion that failed
+			// part of the way included: only a note still on the page under
+			// the name looked for is one an editor can be bound to.
+			if (renamed !== null || aside !== null) await this.refreshAfterChange();
+			if (aside !== null) {
+				const moved = renamed?.find(({ from }) => from === aside.path);
+				await this.putEditorBack(aside, moved?.to ?? aside.path);
+			}
+		}
+	}
+
+	/**
+	 * Puts away the editor of the note being written in, whose file is
+	 * about to take another name, and answers with what puts it back: the
+	 * caret the author had there and the words the note held.
+	 */
+	private async setEditorAside(path: string): Promise<EditorAside> {
+		const editor = this.mounted.get(path)?.editor ?? null;
+		const aside: EditorAside = {
+			path,
+			caret: editor?.selection() ?? null,
+			body: editor?.read() ?? null,
+		};
+		await this.deactivateSegment();
+		return aside;
+	}
+
+	/**
+	 * Puts an editor back in the note it was taken out of, under the name
+	 * the note goes by now, with the caret where the author had it, moved
+	 * along by whatever the note's words gained or lost meanwhile. A note
+	 * that is not on the page under that name is left as it is.
+	 */
+	private async putEditorBack(aside: EditorAside, at: string): Promise<void> {
 		const entry = this.mounted.get(at);
 		if (entry === undefined) return;
+		const { caret, body } = aside;
 		const now = entry.pending ?? entry.text.body;
 		await this.activateSegment(
 			at,
@@ -4049,24 +4116,6 @@ export class SnowflakeManuscriptView extends ItemView {
 						to: carriedOffset(body, now, caret.to),
 					},
 		);
-	}
-
-	/**
-	 * A chapter deleted from the wheel, once the author has said so. The
-	 * words being written in it are saved into it first, so the trash holds
-	 * the note as the author left it.
-	 */
-	private async deleteChapter(path: string): Promise<void> {
-		const model = this.model;
-		if (model === null || !this.holdsWritable(path)) return;
-		const deleted = await this.host.deleteManuscriptSegment(
-			model.projectPath,
-			path,
-			async () => {
-				if (this.editingPath === path) await this.deactivateSegment();
-			},
-		);
-		if (deleted) await this.refreshAfterChange();
 	}
 
 	/**
@@ -6796,6 +6845,17 @@ type MeasuringWindow = Window & {
 interface CarriedRenames {
 	active: string | null;
 	place: ReadingPlace | null;
+}
+
+/**
+ * An editor put away because its note's file was about to be renamed, with
+ * what puts it back: the note as it was called, the caret the author had in
+ * it, and the words it held, which the caret is moved along by.
+ */
+interface EditorAside {
+	path: string;
+	caret: { from: number; to: number } | null;
+	body: string | null;
 }
 
 /** The rule the author is crossing: which edge of the note being left, and where it sat. */

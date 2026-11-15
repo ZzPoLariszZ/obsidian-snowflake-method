@@ -495,6 +495,7 @@ import type {
 	EntityFormIntent,
 	SceneFormIntent,
 	SegmentNamed,
+	SegmentRemoving,
 	StepFields,
 	KindMutationOutcome,
 	ProjectBaseChoice,
@@ -8029,31 +8030,33 @@ export default class SnowflakeMethodPlugin
 	 * goes to the trash, as it does from the file explorer. With numbering
 	 * on and the note going numbered, the dialog also asks whether the
 	 * numbered notes after it close the gap, as the merge dialog asks.
-	 * Resolves false when the author declined.
+	 * `onAgreed` is told which notes that would rename before any of it is
+	 * done. Resolves to the notes renamed, or to null when the author
+	 * declined.
 	 */
 	async deleteManuscriptSegment(
 		projectPath: string,
 		path: string,
-		onAgreed?: SegmentNamed,
-	): Promise<boolean> {
+		onAgreed?: SegmentRemoving,
+	): Promise<readonly { from: string; to: string }[] | null> {
 		const project = await this.resolveProject(projectPath);
-		if (project === null) return false;
+		if (project === null) return null;
 		const t = (key: string, vars?: Record<string, string | number>): string =>
 			this.translateForProject(project.locale, key, vars);
 		const segments = await this.projects.manuscript.listSegmentsFromFiles(project);
 		const target = normalizePath(path);
 		const at = segments.findIndex((segment) => segment.path === target);
 		const going = segments[at];
-		if (going === undefined) return false;
+		if (going === undefined) return null;
 		const proposal = this.chapterRemovalProposal(segments, at);
 		const choice = await confirmSegmentDelete(this.app, t, {
 			name: going.title,
 			followers: proposal?.followers.length ?? 0,
 		});
-		if (choice === null) return false;
-		await onAgreed?.();
+		if (choice === null) return null;
 		const renames =
 			choice.renumber && proposal !== null ? this.followerRenames(proposal) : [];
+		await onAgreed?.(renames.map((rename) => rename.path));
 		let deleted: { neighbour: string | null; renumbered: SegmentRenameOutcome };
 		try {
 			deleted = await this.projects.deleteManuscriptSegment(
@@ -8071,7 +8074,7 @@ export default class SnowflakeMethodPlugin
 		}
 		new Notice(t('messages.entityDeleted'));
 		this.noticeRenumbered(deleted.renumbered, t);
-		return true;
+		return deleted.renumbered.renamed;
 	}
 
 	/**
