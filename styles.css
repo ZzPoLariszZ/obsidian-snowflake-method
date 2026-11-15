@@ -21300,6 +21300,21 @@ body.is-mobile .snowflake-method-filter-slider .snowflake-method-presentation-re
 	min-height: var(--touch-size-s, 2.5rem);
 }
 
+/* The typography panel's two dropdowns stand in the column its sliders end
+   on, at the hundred pixels the app gives a slider. On a touch screen the
+   app sets a dropdown in larger type and pads it for a finger, which left
+   the words fifty-two pixels of the hundred: Justified read Justifie, on a
+   phone and on a tablet alike. Both boxes are widened by what stands before
+   a slider's rail, its margin, the gap and the button that puts the measure
+   back, so each still ends on the column, starts where those buttons start,
+   and holds its longest answer whole. The two stay one width, whatever each
+   says. */
+body.is-mobile .snowflake-method-presentation-panel {
+	--snowflake-method-presentation-control: calc(
+		100px + 2px + var(--size-4-2) + var(--icon-s) + 2 * var(--size-2-2)
+	);
+}
+
 /* A field's list opens upward from a field near the foot of the sheet, and
    the app draws its lists in the notices' layer, under the menus' where the
    sheet stands: the list would be covered by the sheet it belongs to. It is

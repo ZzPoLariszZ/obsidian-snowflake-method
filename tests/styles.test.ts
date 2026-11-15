@@ -607,6 +607,32 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The typography panel's two dropdowns stand in the column its sliders
+	 * end on, a hundred pixels wide. A touch screen's dropdown is set in
+	 * larger type and padded for a finger, sixteen pixels before the words
+	 * and thirty-two after, which left them fifty-two: Justified, sixty wide,
+	 * read Justifie on a phone and on a tablet. Both boxes are widened there
+	 * by what stands before a slider's rail, so they stay one width, end on
+	 * the column and start where the reset buttons do.
+	 */
+	it("widens the typography panel's dropdowns on a touch screen, where a hundred pixels cut the answer short", () => {
+		const mobile = declarations('body.is-mobile .snowflake-method-presentation-panel');
+		expect(mobile).toMatch(
+			/--snowflake-method-presentation-control: calc\(\s*100px \+ 2px \+ var\(--size-4-2\) \+ var\(--icon-s\) \+ 2 \* var\(--size-2-2\)\s*\);/u,
+		);
+		// Both dropdowns read the one measure, so they cannot come out two widths.
+		expect(declarations('.snowflake-method-presentation-row select.dropdown')).toContain(
+			'width: var(--snowflake-method-presentation-control, 100px)',
+		);
+		// The desktop's panel keeps the hundred pixels: nothing sets the measure on it without a touch screen's class.
+		expect(styles).not.toMatch(/(?:^|\n)\.snowflake-method-presentation-panel \{[^}]*--snowflake-method-presentation-control/u);
+		// The reset button is the width the measure adds: its symbol and its two paddings.
+		const reset = declarations('.snowflake-method-presentation-row .snowflake-method-presentation-reset');
+		expect(reset).toContain('--icon-size: var(--icon-s)');
+		expect(reset).toContain('padding: var(--size-2-1) var(--size-2-2)');
+	});
+
+	/**
 	 * The ground past the typography, read only under the classes the plugin
 	 * puts on a window's body for a mode with a tint: over the whole app on
 	 * the body itself, over the plugin alone on what it draws. Both rebuild
