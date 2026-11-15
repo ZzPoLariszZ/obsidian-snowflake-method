@@ -254,6 +254,11 @@ export class FilterPanel {
 					}
 					this.pickers = this.pickers.filter((picker) => !own.has(picker));
 					own.clear();
+					// A measure under the answer left goes with its row. Kept
+					// on, it was shown, put away and told where to wait with
+					// the rails on show, though its row had gone, and one more
+					// was kept each time the answer was drafted again.
+					rails = rails.filter(({ field }) => !branch.contains(field));
 					branch.empty();
 					draw(branch, entry.under?.[entry.value] ?? [], [...within, own]);
 				};

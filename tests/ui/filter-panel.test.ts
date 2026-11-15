@@ -314,6 +314,59 @@ describe('a measure on a rail of stops', () => {
 		expect(view.applied).toEqual([256]);
 	});
 
+	it('lets a rail under an answer go with that answer, and keeps only the one on show', () => {
+		rails.built.length = 0;
+		const dom = new CorkboardDom();
+		Object.assign(dom.win, { activeDocument: dom.doc });
+		const anchor = dom.container.createEl('button');
+		const width: FilterSliderRow = {
+			presentation: 'stop-slider',
+			label: 'Card width',
+			stops: [208, 256, 320],
+			value: 256,
+			empty: 0,
+			resetLabel: 'Reset to default',
+			format: (value) => `${String(value)} px`,
+			preview: () => undefined,
+			apply: () => undefined,
+		};
+		const ground: FilterOptionRow = {
+			label: 'Ground',
+			presentation: 'color-swatches',
+			placeholder: 'any',
+			empty: '',
+			options: () => [],
+			value: '',
+			apply: () => undefined,
+			under: { [rose]: [width] },
+		};
+		const panel = new FilterPanel({} as App, (key) => key);
+		panel.open(anchor as unknown as HTMLElement, [ground], vi.fn(), 'Display');
+		const pickRose = (): void => {
+			const swatch = dom.container
+				.querySelectorAll('.snowflake-method-sticky-swatch')
+				.find((candidate) => candidate.getAttribute('data-color') === rose);
+			if (swatch === undefined) throw new Error('no swatch');
+			swatch.dispatch('click');
+		};
+		// The answer the measure stands under is drafted: its rail is built
+		// and told where to wait.
+		pickRose();
+		expect(rails.built).toHaveLength(1);
+		const first = rails.built[0]!;
+		const told = first.sync.mock.calls.length;
+		expect(told).toBeGreaterThan(0);
+		// The answer is taken back, and its row goes: the rail is told
+		// nothing more, now or when the answer is drafted again.
+		pickRose();
+		expect(dom.container.querySelector('.snowflake-method-filter-slider')).toBeNull();
+		pickRose();
+		expect(rails.built).toHaveLength(2);
+		expect(first.sync).toHaveBeenCalledTimes(told);
+		expect(rails.built[1]!.sync).toHaveBeenCalled();
+		panel.close();
+	});
+
 	it('shows a choice that asks to be seen, brings the rails it uncovers back, and puts both back when dismissed', () => {
 		const styles: string[] = [];
 		let shown = '';
