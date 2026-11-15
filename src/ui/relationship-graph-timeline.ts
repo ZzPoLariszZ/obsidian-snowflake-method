@@ -43,7 +43,7 @@ export interface TimelinePoint {
 }
 
 export interface TimelineStripView {
-	/** The axis. The same list handed again is taken as unchanged, and its points are not drawn afresh. */
+	/** The axis. A list that says what the last one said, handed again or made afresh, is taken as unchanged, and its points are not drawn again. */
 	readonly points: readonly TimelinePoint[];
 	/** The time the graph is drawn at. */
 	readonly current: number;
@@ -73,6 +73,19 @@ export interface TimelineStrip {
 }
 
 const share = (index: number, count: number): string => String(count < 2 ? 0 : index / (count - 1));
+
+/** Whether two lists draw the same axis: as many points, each named alike, a period or not, changing something or not. */
+const sameAxis = (a: readonly TimelinePoint[], b: readonly TimelinePoint[]): boolean =>
+	a.length === b.length &&
+	a.every((point, at) => {
+		const other = b[at];
+		return (
+			other !== undefined &&
+			point.name === other.name &&
+			point.period === other.period &&
+			point.changes === other.changes
+		);
+	});
 
 /** How many strips have been drawn, so each one's name has an id of its own. */
 let drawn = 0;
@@ -275,13 +288,20 @@ export function renderGraphTimeline(host: HTMLElement, deps: TimelineStripDeps):
 			emptyLine = null;
 		}
 		if (list !== points) {
+			// A list made afresh that says what the last one said is the same
+			// axis, and none of it is drawn again. The graph makes a new list
+			// with every picture of its stage, a search's keystroke among
+			// them, and each one used to draw every point of the axis anew.
+			const same = points !== null && sameAxis(points, list);
 			points = list;
-			drawTicks(list);
-			range.max = String(Math.max(0, count - 1));
-			current = -1;
-			captionFor = '';
-			// The same time on another axis is another place along it: the thumb and the played part are set again.
-			shownThumb = '';
+			if (!same) {
+				drawTicks(list);
+				range.max = String(Math.max(0, count - 1));
+				current = -1;
+				captionFor = '';
+				// The same time on another axis is another place along it: the thumb and the played part are set again.
+				shownThumb = '';
+			}
 		}
 		playing = view.playing;
 		el.toggleClass('is-playing', view.playing);

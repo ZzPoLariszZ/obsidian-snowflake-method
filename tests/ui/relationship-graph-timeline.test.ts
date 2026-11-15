@@ -149,6 +149,17 @@ describe('the timeline strip', () => {
 		expect(view.ticks()[0]).toBe(first);
 		expect(view.ticks()[2]!.classes.has('is-current')).toBe(true);
 		expect(view.ticks()[0]!.classes.has('is-current')).toBe(false);
+		// The same axis in a list made afresh, as the graph hands it with
+		// every picture of its stage: nothing of it is drawn again, and the
+		// thumb and the played part stand as they stood.
+		view.paint({ points: week(), current: 3, thumb: 3 });
+		expect(view.ticks()[0]).toBe(first);
+		expect(view.ticks()[3]!.classes.has('is-current')).toBe(true);
+		expect(view.ticks().map((tick) => tick.classes.has('is-passed'))).toEqual([true, true, true, true, false, false, false]);
+		// One point that now changes something is another axis to draw.
+		view.paint({ points: week().map((one, at) => (at === 0 ? { ...one, changes: true } : one)) });
+		expect(view.ticks()[0]).not.toBe(first);
+		expect(view.ticks()[0]!.classes.has('is-change')).toBe(true);
 		view.paint({ points: [point('One'), point('Two')], current: 1, thumb: 1 });
 		expect(view.ticks()).toHaveLength(2);
 		expect(view.part('range').max).toBe('1');
