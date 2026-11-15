@@ -664,11 +664,9 @@ export class ManuscriptService {
       throw new UnsupportedSchemaError(from, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     }
     const wanted = normalizePath(`${parentOf(from)}/${safeFileName(name)}.md`);
-    let to = from;
-    if (wanted !== from) {
-      if (this.repository.get(wanted) !== null) throw new PathConflictError(wanted);
-      to = await this.repository.renameFile(from, wanted);
-    }
+    // A name already taken is the repository's to refuse, before it has
+    // touched the file: the one rule for what counts as taken is kept there.
+    const to = await this.repository.renameFile(from, wanted);
     if (options.heading) {
       const record = await this.repository.readManaged(to);
       const heading = firstHeading(record.body);
