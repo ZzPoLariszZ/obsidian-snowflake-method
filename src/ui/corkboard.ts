@@ -53,6 +53,7 @@ import type { FilterOptionRow, FilterRow } from './filter-rows';
 import { watchDragPress } from './drag-press';
 import { mountFullScreenButton, toolbarKept } from './full-screen';
 import { kindWord } from './kind-word';
+import { createLookTrial } from './look-trial';
 import {
 	CARD_SELECTOR,
 	pressWithin,
@@ -67,7 +68,7 @@ import { renderEmptyLine } from './pane-parts';
 import { sceneDeal } from './scene-deal';
 import type { SceneFilters } from './scene-filters';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
-import { CORKBOARD_SIZE_KEYS, type CorkboardPreferences } from './story-structure-state';
+import { CORKBOARD_SIZE_KEYS, defaultCorkboardCardSizes, type CorkboardPreferences } from './story-structure-state';
 import type { ProjectDashboardModel } from './view-model';
 import { balanceToolbar, gatherToolbarActions, nameToolbarSymbol, toolbarEnd } from './workspace-frame';
 
@@ -160,19 +161,15 @@ export function renderBoard<
 	 * memory's until the panel is confirmed, and a panel closed any other
 	 * way hands the standing ones back.
 	 */
-	const trial: { [Key in keyof CorkboardLook]: CorkboardLook[Key] | null } = {
-		mode: null,
-		cardWidth: null,
-		cardHeight: null,
-		textSize: null,
+	const trial = createLookTrial(memory);
+	/**
+	 * How the board is drawn now: the memory's settings under whatever the
+	 * panel is trying, and no size at all on a board that offers none.
+	 */
+	const look = (): CorkboardLook => {
+		const seen = trial.shown();
+		return sizable ? seen : { mode: seen.mode, ...defaultCorkboardCardSizes() };
 	};
-	/** How the board is drawn now: the memory's settings under whatever the panel is trying. */
-	const look = (): CorkboardLook => ({
-		mode: trial.mode ?? memory.mode,
-		cardWidth: sizable ? (trial.cardWidth ?? memory.cardWidth) : 0,
-		cardHeight: sizable ? (trial.cardHeight ?? memory.cardHeight) : 0,
-		textSize: sizable ? (trial.textSize ?? memory.textSize) : 0,
-	});
 	const root = container.createDiv({
 		cls: 'snowflake-method-prose-panel snowflake-method-corkboard snowflake-method-scene-cards',
 	});
@@ -1300,13 +1297,8 @@ export function renderBoard<
 	let trialTop: number | null = null;
 	/** The author scrolled while a draft was shown: the board stays where they left it. */
 	let trialScrolled = false;
-	const trying = (): boolean =>
-		trial.mode !== null || trial.cardWidth !== null || trial.cardHeight !== null || trial.textSize !== null;
 	const endTrial = (): void => {
-		trial.mode = null;
-		trial.cardWidth = null;
-		trial.cardHeight = null;
-		trial.textSize = null;
+		trial.end();
 		trialTop = null;
 		trialScrolled = false;
 	};
@@ -1321,21 +1313,17 @@ export function renderBoard<
 	const tryLook = (change: Partial<CorkboardLook>): void => {
 		if (disposed) return;
 		const before = look();
-		const tried = trying();
+		const tried = trial.trying();
 		const top = scroller.scrollTop;
-		if (change.mode !== undefined) trial.mode = change.mode === memory.mode ? null : change.mode;
-		for (const key of CORKBOARD_SIZE_KEYS) {
-			const size = change[key];
-			if (size !== undefined) trial[key] = size === memory[key] ? null : size;
-		}
+		trial.draft(change);
 		// The standing answers handed back to a board that tried nothing move nothing.
-		if (!tried && !trying()) return;
+		if (!tried && !trial.trying()) return;
 		if (!tried) {
 			trialTop = top;
 			trialScrolled = false;
 		}
 		const after = look();
-		if (!trying()) {
+		if (!trial.trying()) {
 			// Back on what the memory holds: where the author was reading,
 			// unless they have moved on since.
 			if (trialTop !== null && !trialScrolled) memory.scrollTop = trialTop;

@@ -29,6 +29,7 @@ import { CORKBOARD_REM } from './corkboard-layout';
 import { isMobileDevice } from './device';
 import type { LentFilterPopover } from './filter-rows';
 import { fitWords, type LaneCells } from './lane-cells';
+import { createLookTrial } from './look-trial';
 import type { Translate } from './modals';
 import { paintCount, renderEmptyLine } from './pane-parts';
 import {
@@ -40,7 +41,7 @@ import {
 	type SceneCardHost,
 	type SceneCardPart,
 } from './scene-card';
-import { CORKBOARD_SIZE_KEYS, type CorkboardLook, type CorkboardMemory } from './story-structure-state';
+import type { CorkboardLook, CorkboardMemory } from './story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from './view-model';
 
 /**
@@ -1097,31 +1098,14 @@ export function createLaneLook(deps: LaneLookDeps): LaneLook {
 	const { t, memory } = controls;
 	const held = memory.lanes;
 	/** What the open panel has drafted and the lanes show meanwhile; none of it is the memory's until it is confirmed. */
-	const trial: { [Key in keyof CorkboardLook]: CorkboardLook[Key] | null } = {
-		mode: null,
-		cardWidth: null,
-		cardHeight: null,
-		textSize: null,
-	};
-	const shown = (): CorkboardLook => ({
-		mode: trial.mode ?? held.mode,
-		cardWidth: trial.cardWidth ?? held.cardWidth,
-		cardHeight: trial.cardHeight ?? held.cardHeight,
-		textSize: trial.textSize ?? held.textSize,
-	});
-	const endTrial = (): void => {
-		trial.mode = null;
-		trial.cardWidth = null;
-		trial.cardHeight = null;
-		trial.textSize = null;
-	};
+	const trial = createLookTrial(held);
 
 	/** What the workspace wears now, written down so a paint that changes nothing writes nothing. */
 	let worn = '';
 	/** The type size it wears; none before the first paint. */
 	let wornTextSize = -1;
 	const paint = (): void => {
-		const look = shown();
+		const look = trial.shown();
 		const next = `${look.mode}|${String(look.cardWidth)}|${String(look.cardHeight)}|${String(look.textSize)}`;
 		if (next === worn && field.dataset.mode === look.mode) return;
 		const retyped = look.textSize !== wornTextSize;
@@ -1150,11 +1134,7 @@ export function createLaneLook(deps: LaneLookDeps): LaneLook {
 
 	/** A drafted style or size shown on the lanes; one that says what the memory holds is no draft. */
 	const tryLook = (change: Partial<CorkboardLook>): void => {
-		if (change.mode !== undefined) trial.mode = change.mode === held.mode ? null : change.mode;
-		for (const key of CORKBOARD_SIZE_KEYS) {
-			const size = change[key];
-			if (size !== undefined) trial[key] = size === held[key] ? null : size;
-		}
+		trial.draft(change);
 		paint();
 	};
 
@@ -1179,7 +1159,7 @@ export function createLaneLook(deps: LaneLookDeps): LaneLook {
 				...cardSizeRows({
 					t,
 					held,
-					shown,
+					shown: trial.shown,
 					tryLook,
 					// A lane's card is the board's least width and the standard card's
 					// height until one is set, as the stylesheet has them.
@@ -1190,7 +1170,7 @@ export function createLaneLook(deps: LaneLookDeps): LaneLook {
 			],
 			() => {
 				// Confirmed: the rows wrote the memory, and what was tried is the look kept.
-				endTrial();
+				trial.end();
 				controls.remember();
 				paint();
 			},
