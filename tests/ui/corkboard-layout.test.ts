@@ -7,9 +7,13 @@ import {
 	cardHeightOf,
 	cardPosition,
 	cardWidthOf,
+	columnGapOf,
 	columnsFor,
 	layoutColumns,
 	corkboardMetrics,
+	withCardSizes,
+	CORKBOARD_REM,
+	CORKBOARD_TEXT_MODES,
 	displayOrder,
 	dropTargetAt,
 	firstCardInView,
@@ -412,6 +416,105 @@ describe('the layout', () => {
 		expect(empty.height).toBe(0);
 		expect(visibleLines(empty, 0, 300, 2)).toEqual({ first: 0, count: 0 });
 		expect(firstCardInView(empty, 0)).toBeNull();
+	});
+});
+
+describe('a board set to sizes of its own', () => {
+	const many: DisplayOrder = {
+		groups: [{ key: '', label: '', items: Array.from({ length: 7 }, (_, sceneIndex) => ({ sceneIndex })) }],
+		shown: 7,
+	};
+	const sized = (width: number, cardWidth: number, cardHeight = 0, mode: 'compact' | 'standard' | 'gallery' | 'extended' = 'standard') =>
+		withCardSizes(corkboardMetrics(width, mode, 16, 76), { cardWidth, cardHeight }, mode, 16);
+
+	it('leaves the measures as they are while both sizes are the board\'s own', () => {
+		expect(withCardSizes(metrics, { cardWidth: 0, cardHeight: 0 }, 'standard', 16)).toBe(metrics);
+		expect(buildLayout(many, metrics).columnGap).toBe(40);
+		expect(columnGapOf(metrics)).toBe(40);
+	});
+
+	it('holds a set width exactly, fits as many columns as it leaves room for, and shares the spare room between them', () => {
+		const board = buildLayout(many, sized(1000, 256));
+		expect(board.columns).toBe(3);
+		expect(board.cardWidth).toBe(256);
+		// 1000 less three cards is 232, shared between the two gaps.
+		expect(board.columnGap).toBe(116);
+		expect([0, 1, 2].map((at) => cardPosition(board, at).x)).toEqual([0, 372, 744]);
+		expect(cardPosition(board, 2).x + board.cardWidth).toBe(1000);
+		// The rows keep the board's own gap, whatever the columns took.
+		expect(board.gap).toBe(40);
+		expect(cardPosition(board, 3)).toEqual({ x: 0, y: 280 });
+		// A wider card leaves room for fewer, and two that fit to the pixel keep the plain gap.
+		expect(buildLayout(many, sized(1000, 320)).columns).toBe(2);
+		expect(buildLayout(many, sized(1000, 320)).columnGap).toBe(360);
+		expect(buildLayout(many, sized(1000, 480)).columns).toBe(2);
+		expect(buildLayout(many, sized(1000, 480)).columnGap).toBe(40);
+		expect(buildLayout(many, sized(1000, 560)).columns).toBe(1);
+	});
+
+	it('stands a lone column at the start with the plain gap, and never draws a card wider than the board', () => {
+		const lone = buildLayout(many, sized(600, 480));
+		expect(lone.columns).toBe(1);
+		expect(lone.cardWidth).toBe(480);
+		expect(lone.columnGap).toBe(40);
+		expect(cardPosition(lone, 0).x).toBe(0);
+		const narrow = buildLayout(many, sized(200, 480));
+		expect(narrow.columns).toBe(1);
+		expect(narrow.cardWidth).toBe(200);
+		// Before the board has a width, the card is the width it was set to.
+		expect(cardWidthOf(sized(0, 320))).toBe(320);
+		expect(columnGapOf(sized(0, 320))).toBe(40);
+	});
+
+	it('keeps a board whose columns are fixed at its own width', () => {
+		const pool = corkboardMetrics(256, 'standard', 16, 76, 1, 0.75);
+		expect(withCardSizes(pool, { cardWidth: 480, cardHeight: 0 }, 'standard', 16)).toBe(pool);
+		expect(withCardSizes(pool, { cardWidth: 480, cardHeight: 320 }, 'standard', 16).cardWidth).toBeUndefined();
+	});
+
+	it('lands a drop by the columns as they stand across the spare room', () => {
+		const board = buildLayout(many, sized(1000, 256));
+		// The middles are at 128, 500 and 872.
+		expect(dropTargetAt(board, { x: 100, y: 10 })).toEqual({ before: 0 });
+		expect(dropTargetAt(board, { x: 300, y: 10 })).toEqual({ before: 1 });
+		expect(dropTargetAt(board, { x: 600, y: 10 })).toEqual({ before: 2 });
+		expect(dropTargetAt(board, { x: 900, y: 10 })).toEqual({ before: 3 });
+	});
+
+	it('sets the standard card to the height given and gives the whole change to the text box', () => {
+		expect(CORKBOARD_REM.cardHeight.standard - CORKBOARD_REM.cardHeight.compact).toBe(10);
+		expect([...CORKBOARD_TEXT_MODES]).toEqual(['standard', 'extended']);
+		expect(sized(1000, 0, 320).cardHeight).toBe(320);
+		expect(sized(1000, 0, 160).cardHeight).toBe(160);
+		// The scene's fullest card keeps its row of links on top of it.
+		expect(sized(1000, 0, 320, 'extended').cardHeight).toBe(384);
+		// A style with no text box has no height to set.
+		expect(sized(1000, 0, 320, 'compact').cardHeight).toBe(76);
+		expect(sized(1000, 0, 320, 'gallery')).toEqual(corkboardMetrics(1000, 'gallery', 16, 76));
+		// The rows follow the card.
+		expect(buildLayout(many, sized(1000, 0, 320)).offsets.slice(0, 3)).toEqual([0, 360, 720]);
+	});
+
+	it('stands a paned style\'s picture on the card at its set width and its set height', () => {
+		const entity = { compact: 5, standard: 15, gallery: 5, extended: 15 } as const;
+		const fullest = (cardWidth: number, cardHeight: number) =>
+			withCardSizes(
+				corkboardMetrics(1000, 'extended', 16, 76, undefined, undefined, entity, ['gallery', 'extended'], 2),
+				{ cardWidth, cardHeight },
+				'extended',
+				16,
+				entity,
+			);
+		// The card's bare height less its side borders, and a pane as wide as the card.
+		expect(cardHeightOf(fullest(0, 0), 300)).toBe(538);
+		expect(cardHeightOf(fullest(0, 320), 300)).toBe(618);
+		const set = fullest(320, 320);
+		expect(cardWidthOf(set)).toBe(320);
+		expect(cardHeightOf(set, cardWidthOf(set))).toBe(638);
+		expect(buildLayout(many, set).cardHeight).toBe(638);
+		// The gallery style is the bare card and its pane: the width moves it, the height does not.
+		const gallery = withCardSizes(corkboardMetrics(1000, 'gallery', 16, 76), { cardWidth: 320, cardHeight: 320 }, 'gallery', 16);
+		expect(cardHeightOf(gallery, cardWidthOf(gallery))).toBe(396);
 	});
 });
 

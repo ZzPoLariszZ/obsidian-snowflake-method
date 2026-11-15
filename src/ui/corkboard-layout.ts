@@ -267,6 +267,9 @@ export const CORKBOARD_REM = {
 /** The styles that stand the picture pane on a scene's card: the gallery style alone, its fullest keeping the links. */
 export const CORKBOARD_PANED: readonly CorkboardMode[] = ['gallery'];
 
+/** The styles that show a card's text box, which a set card height and a set font size act on. */
+export const CORKBOARD_TEXT_MODES: readonly CorkboardMode[] = ['standard', 'extended'];
+
 export interface CorkboardMetrics {
 	/** The width the cards may take, in px. */
 	width: number;
@@ -282,6 +285,12 @@ export interface CorkboardMetrics {
 	headHeight: number;
 	/** A column count fixed by the board, whatever the width holds. */
 	columns?: number;
+	/**
+	 * A card's width as the board was set, in px: exact, as many columns as
+	 * fit standing across the width with the spare room between them. Absent
+	 * while the cards stretch from their least width to share the row.
+	 */
+	cardWidth?: number;
 }
 
 export function corkboardMetrics(
@@ -323,9 +332,41 @@ export function corkboardMetrics(
 	};
 }
 
+/**
+ * A view's own card width and card height laid over a style's measures;
+ * nothing or less for either keeps the board's own. The height is the
+ * standard card's, so a style that stands more on its card than the text
+ * box, its links or its picture, keeps that on top of it, and the box takes
+ * the whole of the change; a style with no text box has no height to set.
+ * A board whose columns are fixed, a pool, keeps its width.
+ */
+export function withCardSizes(
+	metrics: CorkboardMetrics,
+	sizes: { readonly cardWidth: number; readonly cardHeight: number },
+	mode: CorkboardMode,
+	remPx: number,
+	cardHeights: Readonly<Record<CorkboardMode, number>> = CORKBOARD_REM.cardHeight,
+): CorkboardMetrics {
+	const taller =
+		sizes.cardHeight > 0 && CORKBOARD_TEXT_MODES.includes(mode)
+			? sizes.cardHeight - cardHeights.standard * remPx
+			: 0;
+	const cardWidth = sizes.cardWidth > 0 && metrics.columns === undefined ? sizes.cardWidth : undefined;
+	if (taller === 0 && cardWidth === undefined) return metrics;
+	const paneOn = metrics.paneOn === undefined ? undefined : metrics.paneOn + taller;
+	const sized: CorkboardMetrics = {
+		...metrics,
+		...(cardWidth === undefined ? {} : { cardWidth }),
+		...(paneOn === undefined ? {} : { paneOn }),
+	};
+	// A paned card is its bare height and a pane as wide as it stands.
+	sized.cardHeight = paneOn === undefined ? metrics.cardHeight + taller : paneOn + (cardWidth ?? metrics.minCardWidth);
+	return sized;
+}
+
 /** The columns a layout takes: the board's own count when fixed, else as many as the width holds. */
 export function layoutColumns(metrics: CorkboardMetrics): number {
-	return metrics.columns ?? columnsFor(metrics.width, metrics.minCardWidth, metrics.gap);
+	return metrics.columns ?? columnsFor(metrics.width, metrics.cardWidth ?? metrics.minCardWidth, metrics.gap);
 }
 
 /** As many columns as the width holds at the least card width, never fewer than one. */
@@ -351,7 +392,10 @@ export interface CorkboardLayout {
 	columns: number;
 	cardWidth: number;
 	cardHeight: number;
+	/** The gap between two rows, and between two columns while the cards share the row. */
 	gap: number;
+	/** The gap between two columns: the board's own, or with a set card width the spare room shared out. */
+	columnGap: number;
 	headHeight: number;
 	lines: LayoutLine[];
 	/** Where each line starts, and one more: the height of the whole canvas. */
@@ -363,12 +407,31 @@ export interface CorkboardLayout {
 	height: number;
 }
 
-/** The width each card takes: the width shared out between the columns, or the least width where there is none yet. */
+/**
+ * The width each card takes: the width shared out between the columns, or
+ * the least width where there is none yet. A set width is the card's own,
+ * held to the canvas so a card is never wider than the board.
+ */
 export function cardWidthOf(metrics: CorkboardMetrics): number {
+	if (metrics.cardWidth !== undefined) {
+		return metrics.width > 0 ? Math.min(metrics.cardWidth, metrics.width) : metrics.cardWidth;
+	}
 	const columns = layoutColumns(metrics);
 	return metrics.width > 0
 		? (metrics.width - (columns - 1) * metrics.gap) / columns
 		: metrics.minCardWidth;
+}
+
+/**
+ * The gap between two columns. Cards that share the row keep the board's
+ * own; cards of a set width take the spare room between them, so the row
+ * still reaches both edges, and a lone column stands at the start.
+ */
+export function columnGapOf(metrics: CorkboardMetrics): number {
+	if (metrics.cardWidth === undefined || !(metrics.width > 0)) return metrics.gap;
+	const columns = layoutColumns(metrics);
+	if (columns < 2) return metrics.gap;
+	return Math.max(metrics.gap, (metrics.width - columns * cardWidthOf(metrics)) / (columns - 1));
 }
 
 /** The height each card takes at the width: the style's own, or its bare height and a square pane as wide as the card. */
@@ -419,6 +482,7 @@ export function buildLayout(
 		cardWidth,
 		cardHeight,
 		gap: metrics.gap,
+		columnGap: columnGapOf(metrics),
 		headHeight: metrics.headHeight,
 		lines,
 		offsets,
@@ -435,7 +499,7 @@ export function cardPosition(
 	const place = layout.places[displayIndex];
 	if (place === undefined) return { x: 0, y: 0 };
 	return {
-		x: place.column * (layout.cardWidth + layout.gap),
+		x: place.column * (layout.cardWidth + layout.columnGap),
 		y: layout.offsets[place.line] ?? 0,
 	};
 }
@@ -526,7 +590,7 @@ export function dropTargetAt(
 	}
 	for (const card of line.cards) {
 		const column = layout.places[card]?.column ?? 0;
-		const middle = column * (layout.cardWidth + layout.gap) + layout.cardWidth / 2;
+		const middle = column * (layout.cardWidth + layout.columnGap) + layout.cardWidth / 2;
 		if (middle > point.x) return { before: card };
 	}
 	return { before: (line.cards[line.cards.length - 1] ?? -1) + 1 };
