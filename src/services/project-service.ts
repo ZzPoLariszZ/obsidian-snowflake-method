@@ -39,6 +39,7 @@ import {
   isNameTaken,
   isProgressStatus,
   isProjectLanguage,
+  PROJECT_LANGUAGES,
   isScenePovMode,
   isStepStatus,
   isTimeKind,
@@ -117,6 +118,7 @@ import {
   getProjectBases,
   getStoryArtifacts,
   getSystemTemplates,
+  starterMemberNames,
   draftTemplate,
   legacySceneConflictHeadings,
   storyArtifactTemplate,
@@ -7213,10 +7215,12 @@ export class SnowflakeProjectService {
     const rawLocale = record.frontmatter[FRONTMATTER_KEYS.projectLanguage];
     const locale: ProjectLanguage = isProjectLanguage(rawLocale)
       ? rawLocale
-      : record.path.endsWith(`/${PROJECT_PATH_LAYOUTS["zh-CN"].projectFileName}`) ||
-          record.path.includes(`/${PROJECT_PATH_LAYOUTS["zh-CN"].directories.system}/`)
-        ? "zh-CN"
-        : "en";
+      : (PROJECT_LANGUAGES.find(
+          (language) =>
+            language !== "en" &&
+            (record.path.endsWith(`/${PROJECT_PATH_LAYOUTS[language].projectFileName}`) ||
+              record.path.includes(`/${PROJECT_PATH_LAYOUTS[language].directories.system}/`)),
+        ) ?? "en");
     return {
       projectFile: record.path,
       rootPath,
@@ -9063,7 +9067,7 @@ function systemTemplateFrontmatter(
     return {
       ...frontmatter,
       [FRONTMATTER_KEYS.characterId]: `${project.id}-template-character`,
-      [FRONTMATTER_KEYS.characterName]: project.locale === "zh-CN" ? "角色" : "Character",
+      [FRONTMATTER_KEYS.characterName]: starterMemberNames(project.locale).character,
       [FRONTMATTER_KEYS.rank]: RANK_GAP,
       [FRONTMATTER_KEYS.oneSentenceStoryline]: "",
       [FRONTMATTER_KEYS.motivation]: "",
@@ -9076,7 +9080,7 @@ function systemTemplateFrontmatter(
     return {
       ...frontmatter,
       [FRONTMATTER_KEYS.sceneId]: `${project.id}-template-scene`,
-      [FRONTMATTER_KEYS.sceneTitle]: project.locale === "zh-CN" ? "场景" : "Scene",
+      [FRONTMATTER_KEYS.sceneTitle]: starterMemberNames(project.locale).scene,
       [FRONTMATTER_KEYS.rank]: RANK_GAP,
       [FRONTMATTER_KEYS.pov]: SCENE_POV_OMNISCIENT,
       [FRONTMATTER_KEYS.sceneTime]: [],
@@ -9393,9 +9397,9 @@ function compareTaxonomyPaths(left: string, right: string): number {
 /** The vault path of one of an entity kind's tree root folders. */
 /**
  * The kind ids no registry entry may spell: the built-in ids and the names
- * the built-in folders answer to in either language, folded. A custom kind
+ * the built-in folders answer to in every language, folded. A custom kind
  * called Time would stand beside the built-in in one language and shadow it
- * in the other, so both spellings are off the table everywhere. Character and
+ * in another, so every spelling is off the table everywhere. Character and
  * scene are members before they are kinds, so their ids and folder names are
  * reserved the same way — a kind called character would answer for both
  * namespaces at once — and the two ids the pickers split time into go with
@@ -9407,7 +9411,7 @@ function reservedKindFolds(): Set<string> {
   for (const id of ["character", "scene", "time-point", "time-period"]) {
     folds.add(foldName(id));
   }
-  for (const language of ["en", "zh-CN"] as const) {
+  for (const language of PROJECT_LANGUAGES) {
     const layout = getProjectPathLayout(language);
     for (const kind of WORLDBUILDING_KINDS) {
       folds.add(foldName(kindIdFromFolderName(layout.worldbuildingKinds[kind])));

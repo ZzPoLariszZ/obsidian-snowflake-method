@@ -1430,7 +1430,7 @@ describe("SnowflakeProjectService", () => {
       delete frontmatter[FRONTMATTER_KEYS.schema];
       frontmatter[FRONTMATTER_KEYS.projectId] = "   ";
       frontmatter[FRONTMATTER_KEYS.projectName] = 42;
-      frontmatter[FRONTMATTER_KEYS.projectLanguage] = "fr";
+      frontmatter[FRONTMATTER_KEYS.projectLanguage] = "it";
       frontmatter[FRONTMATTER_KEYS.stepStatuses] = {
         1: "not-a-status",
         9: "skipped",

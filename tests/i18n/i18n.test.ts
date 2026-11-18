@@ -7,6 +7,7 @@ import {
 	GRAPH_TIME_RULES,
 	HEATMAP_MEASURES,
 	OCCURRENCE_ROLES,
+	PROJECT_LANGUAGES,
 	READING_MEASURES,
 	WRITING_MODES,
 	STICKY_NOTE_COLORS,
@@ -22,9 +23,17 @@ import {
 	STORY_STRUCTURE_VISUALIZATIONS,
 } from '../../src/ui/story-structure-state';
 import {
+	LOCALE_NAMES,
 	SUPPORTED_LOCALES,
+	de,
 	en,
+	es,
+	fr,
+	intlLocaleOf,
 	isSupportedLocale,
+	ja,
+	ko,
+	zhTW,
 	resolveGlobalLocale,
 	resolveLocale,
 	t,
@@ -660,7 +669,7 @@ describe('translation resources', () => {
 			'随时回到第一至七步修改也完全没问题。场景的展现往往会让你更深入地了解故事和人物。',
 		);
 		expect(en['steps.9.title']).toBe('Scene planning (optional)');
-		expect(en['step9.hints.title']).toBe('Hints for scene list');
+		expect(en['step9.hints.title']).toBe('Hints for scene planning');
 		expect(en['step9.hints.sceneTypes']).toContain(
 			'goal → conflict → setback',
 		);
@@ -1152,23 +1161,61 @@ describe('locale resolution', () => {
 		expect(resolveLocale('zh-CN', 'en-GB')).toBe('zh-CN');
 	});
 
-	it('maps Chinese system locales to Simplified Chinese', () => {
-		for (const locale of ['zh', 'zh-CN', 'zh_Hans', 'zh-TW']) {
+	it('maps simplified and mainland Chinese system locales to Simplified Chinese', () => {
+		for (const locale of ['zh', 'zh-CN', 'zh-cn', 'zh_Hans', 'zh-Hans-HK', 'zh-SG']) {
 			expect(resolveLocale('system', locale)).toBe('zh-CN');
 		}
 	});
 
+	it('maps traditional and Taiwan, Hong Kong or Macau Chinese to Traditional Chinese', () => {
+		for (const locale of ['zh-TW', 'zh-tw', 'zh_TW', 'zh-HK', 'zh-MO', 'zh-Hant', 'zh-Hant-TW']) {
+			expect(resolveLocale('system', locale)).toBe('zh-TW');
+		}
+	});
+
+	it('maps Japanese, Korean, French, German and Spanish system locales by language', () => {
+		expect(resolveLocale('system', 'ja')).toBe('ja');
+		expect(resolveLocale('system', 'ja-JP')).toBe('ja');
+		expect(resolveLocale('system', 'ko')).toBe('ko');
+		expect(resolveLocale('system', 'ko-KR')).toBe('ko');
+		expect(resolveLocale('system', 'fr')).toBe('fr');
+		expect(resolveLocale('system', 'fr-CA')).toBe('fr');
+		expect(resolveLocale('system', 'de-AT')).toBe('de');
+		expect(resolveLocale('system', 'es-419')).toBe('es');
+		expect(resolveLocale('system', 'es_MX')).toBe('es');
+	});
+
 	it('falls back to English for every other system locale', () => {
 		expect(resolveLocale('system', 'en-GB')).toBe('en');
-		expect(resolveLocale('system', 'fr-FR')).toBe('en');
+		expect(resolveLocale('system', 'it-IT')).toBe('en');
+		expect(resolveLocale('system', 'pt-BR')).toBe('en');
+		expect(resolveLocale('system', 'jam')).toBe('en');
 		expect(resolveLocale('system', '')).toBe('en');
 	});
 
 	it('recognizes only public supported locale identifiers', () => {
-		expect(isSupportedLocale('en')).toBe(true);
-		expect(isSupportedLocale('zh-CN')).toBe(true);
+		for (const locale of SUPPORTED_LOCALES) {
+			expect(isSupportedLocale(locale)).toBe(true);
+		}
 		expect(isSupportedLocale('system')).toBe(false);
-		expect(isSupportedLocale('zh-TW')).toBe(false);
+		expect(isSupportedLocale('project')).toBe(false);
+		expect(isSupportedLocale('zh')).toBe(false);
+		expect(isSupportedLocale('it')).toBe(false);
+	});
+
+	it('names every supported language in its own words and formats numbers in its own way', () => {
+		expect(Object.keys(LOCALE_NAMES)).toEqual([...SUPPORTED_LOCALES]);
+		expect(LOCALE_NAMES['zh-TW']).toBe('繁體中文');
+		expect(LOCALE_NAMES.ja).toBe('日本語');
+		expect(LOCALE_NAMES.ko).toBe('한국어');
+		expect(LOCALE_NAMES.de).toBe('Deutsch');
+		expect(intlLocaleOf('en')).toBe('en-US');
+		expect((1234567).toLocaleString(intlLocaleOf('de'))).toBe('1.234.567');
+		expect((1234567).toLocaleString(intlLocaleOf('fr'))).toMatch(/^1\s234\s567$/u);
+	});
+
+	it('speaks the languages a project can be written in, and no others', () => {
+		expect([...SUPPORTED_LOCALES]).toEqual([...PROJECT_LANGUAGES]);
 	});
 });
 
@@ -1699,5 +1746,98 @@ describe('story structure copy', () => {
 		expect(zhCN['beatSheet.sheet.templateHint'].split('\n')[0]).toBe('用模板预先搭建你的故事结构。');
 		expect(t('en', 'beatSheet.sheet.templateSummary', { acts: 3, beats: 10 })).toBe('3 acts · 10 beats');
 		expect(t('zh-CN', 'beatSheet.sheet.templateSummary', { acts: 3, beats: 10 })).toBe('3 幕 · 10 个节拍');
+	});
+});
+
+describe('every interface language', () => {
+	const locales = { en, 'zh-CN': zhCN, 'zh-TW': zhTW, ja, ko, fr, de, es } as const;
+	const placeholders = (text: string): string =>
+		(text.match(/\{[^{}\s]+\}/gu) ?? []).sort().join(' ');
+	const breaks = (text: string): number => (text.match(/\n/gu) ?? []).length;
+
+	it('covers every supported locale', () => {
+		expect(Object.keys(locales)).toEqual([...SUPPORTED_LOCALES]);
+	});
+
+	it('holds exactly the English keys, each with a non-empty value', () => {
+		const keys = Object.keys(en).sort();
+		for (const [locale, table] of Object.entries(locales)) {
+			expect(Object.keys(table).sort(), locale).toEqual(keys);
+			for (const [key, value] of Object.entries(table)) {
+				if (en[key as keyof typeof en].trim().length > 0) {
+					expect(value.trim().length, `${locale} ${key}`).toBeGreaterThan(0);
+				}
+			}
+		}
+	});
+
+	it('keeps the English placeholders and line breaks in every translation', () => {
+		for (const [locale, table] of Object.entries(locales)) {
+			if (locale === 'zh-CN') continue;
+			for (const [key, value] of Object.entries(table)) {
+				const source = en[key as keyof typeof en];
+				expect(placeholders(value), `${locale} ${key}`).toBe(placeholders(source));
+				expect(breaks(value), `${locale} ${key}`).toBe(breaks(source));
+			}
+		}
+	});
+
+	it('writes every value composed and free of control characters', () => {
+		const control = (text: string): boolean =>
+			[...text].some((char) => {
+				const code = char.codePointAt(0) ?? 0;
+				return (code < 0x20 && char !== '\n') || code === 0x7f;
+			});
+		for (const [locale, table] of Object.entries(locales)) {
+			for (const [key, value] of Object.entries(table)) {
+				expect(value, `${locale} ${key}`).toBe(value.normalize('NFC'));
+				expect(control(value), `${locale} ${key}`).toBe(false);
+			}
+		}
+	});
+
+	it('calls every way into a note Open in every language', () => {
+		const open = { 'zh-TW': '開啟', ja: '開く', ko: '열기', fr: 'Ouvrir', de: 'Öffnen', es: 'Abrir' } as const;
+		const openNote = {
+			'zh-TW': '開啟筆記',
+			ja: 'ノートを開く',
+			ko: '노트 열기',
+			fr: 'Ouvrir la note',
+			de: 'Notiz öffnen',
+			es: 'Abrir nota',
+		} as const;
+		for (const locale of ['zh-TW', 'ja', 'ko', 'fr', 'de', 'es'] as const) {
+			expect(locales[locale]['common.open']).toBe(open[locale]);
+			expect(Object.values(locales[locale])).not.toContain(openNote[locale]);
+		}
+	});
+
+	it('names the plugin in each language', () => {
+		expect(zhTW['plugin.name']).toBe('雪花寫作法');
+		expect(ja['plugin.name']).toBe('スノーフレーク・メソッド');
+		expect(ko['plugin.name']).toBe('스노우플레이크 기법');
+		expect(fr['plugin.name']).toBe('Méthode Flocon de neige');
+		expect(de['plugin.name']).toBe('Schneeflocken-Methode');
+		expect(es['plugin.name']).toBe('Método del copo de nieve');
+	});
+
+	it('writes Traditional Chinese in traditional characters and Taiwan words', () => {
+		const simplified = /[们这个来说时为会对发过还没进见现无与开关门问题设项数据库标签页实体称录载输处总选择节务笔记让试读写错误显动态应该经将运头长从业东两]/u;
+		const mainland = /文件夹|设置|設置|默認|默认|菜單|导入|導入|导出|導出|插件|鼠標|屏幕/u;
+		for (const [key, value] of Object.entries(zhTW)) {
+			expect(value, key).not.toMatch(simplified);
+			expect(value, key).not.toMatch(mainland);
+		}
+	});
+
+	it('says vault the way Obsidian does in each language', () => {
+		const vault = { 'zh-TW': '儲存庫', ja: '保管庫', ko: '보관함', fr: 'coffre', de: 'Vault', es: 'bóveda' } as const;
+		for (const locale of ['zh-TW', 'ja', 'ko', 'fr', 'de', 'es'] as const) {
+			const keys = Object.keys(en).filter((key) => /\bvault\b/iu.test(en[key as keyof typeof en]));
+			expect(keys.length).toBeGreaterThan(0);
+			for (const key of keys) {
+				expect(locales[locale][key as keyof typeof en].toLowerCase(), `${locale} ${key}`).toContain(vault[locale].toLowerCase());
+			}
+		}
 	});
 });

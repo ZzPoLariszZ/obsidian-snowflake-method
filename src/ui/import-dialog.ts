@@ -542,6 +542,12 @@ function dialogTitle(t: Translate, mode: ImportDialogMode, book: string): string
 const LANGUAGE_WORDS: Readonly<Record<ProjectLanguage, string>> = {
 	en: 'modal.importLanguage.en',
 	'zh-CN': 'modal.importLanguage.zh-CN',
+	'zh-TW': 'modal.importLanguage.zh-TW',
+	ja: 'modal.importLanguage.ja',
+	ko: 'modal.importLanguage.ko',
+	fr: 'modal.importLanguage.fr',
+	de: 'modal.importLanguage.de',
+	es: 'modal.importLanguage.es',
 };
 
 const SUMMARY_DELAY_MS = 150;

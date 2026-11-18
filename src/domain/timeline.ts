@@ -27,6 +27,7 @@ import {
 	type ScenePresentation,
 	type SceneRow,
 } from './scene-rows';
+import { MAIN_VIEW_NAMES, type ProjectLanguage } from './types';
 
 export const TIMELINE_CARD_STYLES = ['compact', 'standard', 'extended'] as const;
 export type TimelineCardStyle = (typeof TIMELINE_CARD_STYLES)[number];
@@ -116,12 +117,12 @@ export const MAIN_TIMELINE_VIEW_ID = 'timeline-view-main';
  * in the project's language, so the workspace opens onto a view rather than
  * a hint. The first change writes it with the rest.
  */
-export function freshTimelineDocument(locale: 'en' | 'zh-CN'): TimelineDocument {
+export function freshTimelineDocument(locale: ProjectLanguage): TimelineDocument {
 	return {
 		...emptyTimelineDocument(),
 		views: [{
 			id: MAIN_TIMELINE_VIEW_ID,
-			name: locale === 'zh-CN' ? '主视图' : 'Main',
+			name: MAIN_VIEW_NAMES[locale],
 			timelines: [],
 			timeOrder: [],
 			presentation: null,

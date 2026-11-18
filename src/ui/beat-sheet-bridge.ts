@@ -10,6 +10,7 @@ import type {
 	BeatSheetDocument,
 	BuiltInBeatSheetTemplateId,
 	ScenePresentation,
+	ProjectLanguage,
 } from '../domain';
 
 import type { App } from 'obsidian';
@@ -29,7 +30,7 @@ import type { ProjectDashboardModel } from './view-model';
  */
 export interface BeatSheetReading {
 	projectPath: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 	/** The document held, shared with the store's memo: treated as immutable by everyone who reads it. */
 	held: BeatSheetDocument;
 }

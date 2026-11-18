@@ -38,6 +38,7 @@ import { kindText } from './kind-word';
 import type { Translate } from './modals';
 import type { CorkboardMode } from './story-structure-state';
 import { kindEntities, type ProjectDashboardModel } from './view-model';
+import type { ProjectLanguage } from '../domain';
 
 /** An entity card's height per style in rem with no pane on it: the scene card's, its fullest the standard's. */
 export const ENTITY_CARD_REM: Readonly<Record<CorkboardMode, number>> = { compact: 5, standard: 15, gallery: 5, extended: 15 };
@@ -58,7 +59,7 @@ export type EntityDeal = CorkboardDeal<EntityMember, EntityCardExtras, EntityCar
  * every other note the last names of its categories; nothing where the note
  * has none, as a scene's foot names no point of view it lacks.
  */
-export function boardFootWord(t: Translate, locale: 'en' | 'zh-CN', member: EntityMember): string {
+export function boardFootWord(t: Translate, locale: ProjectLanguage, member: EntityMember): string {
 	if (isCharacterMember(member)) return member.type === null ? '' : characterRoleName(locale, member.type);
 	if (member.kind === 'time') return member.timeKind === null ? '' : t(`form.timeKind.${member.timeKind}`);
 	return member.categoryPaths.map((path) => path.slice(path.lastIndexOf('/') + 1)).join(', ');

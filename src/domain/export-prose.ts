@@ -17,6 +17,7 @@
 import { countablePieces } from './countable-prose';
 import type { CountableRange } from './markdown-scan';
 import { scriptSplit } from './text-length';
+import type { ProjectLanguage } from './types';
 
 export const EXPORT_FORMATS = ['md', 'txt'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
@@ -41,28 +42,57 @@ export function isExportSeparator(value: unknown): value is ExportSeparator {
 export interface ExportProseOptions {
 	/**
 	 * Begin every paragraph with the manuscript's indent -- two ideographic
-	 * spaces for a Chinese manuscript, two em spaces otherwise -- unless the
-	 * author typed one. Off strips any indent the author typed.
+	 * spaces for a Chinese manuscript, one for a Japanese or Korean one, two
+	 * em spaces otherwise -- unless the author typed one. Off strips any
+	 * indent the author typed.
 	 */
 	indent: boolean;
 	/** Keep the blank lines between paragraphs as written; off drops every one. */
 	paragraphSpacing: boolean;
-	/** Which indent a paragraph is given. */
-	script: 'cjk' | 'latin';
+	/**
+	 * Which indent a paragraph is given: `cjk` for Chinese, `kana` for
+	 * Japanese and `hangul` for Korean, each set in the way its own
+	 * typesetting sets a paragraph's first line, and `latin` for the rest.
+	 */
+	script: ExportScript;
 }
+
+export type ExportScript = 'cjk' | 'kana' | 'hangul' | 'latin';
+
+const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/gu;
+const HANGUL = /\p{Script=Hangul}/gu;
+const HAN = /\p{Script=Han}/gu;
 
 /**
  * The indent a note's own words ask for, where no project's language says
- * which: the ideographic one for writing that is mostly characters counted
- * one by one, as Chinese is, and the Latin one otherwise.
+ * which: an ideographic one for writing that is mostly characters counted
+ * one by one, as Chinese, Japanese and Korean are, told apart by their
+ * hangul and kana, and the Latin one otherwise.
  */
-export function exportScriptOf(text: string): ExportProseOptions['script'] {
+export function exportScriptOf(text: string): ExportScript {
 	const split = scriptSplit(text);
-	return split.cjk > split.words ? 'cjk' : 'latin';
+	if (split.cjk <= split.words) return 'latin';
+	const han = text.match(HAN)?.length ?? 0;
+	if ((text.match(HANGUL)?.length ?? 0) > han) return 'hangul';
+	// Japanese writes its grammar in kana, so even a page heavy with kanji
+	// carries a good share of it, where Chinese carries none.
+	return (text.match(KANA)?.length ?? 0) * 10 >= han ? 'kana' : 'cjk';
 }
 
-const CJK_INDENT = '　　';
-const LATIN_INDENT = '  ';
+/** The indent a project's language asks for. */
+export function exportScriptOfLanguage(language: ProjectLanguage): ExportScript {
+	if (language === 'zh-CN' || language === 'zh-TW') return 'cjk';
+	if (language === 'ja') return 'kana';
+	if (language === 'ko') return 'hangul';
+	return 'latin';
+}
+
+const INDENTS: Readonly<Record<ExportScript, string>> = {
+	cjk: '\u3000\u3000',
+	kana: '\u3000',
+	hangul: '\u3000',
+	latin: '\u2003\u2003',
+};
 
 /**
  * One note's body as plain text under the options, ending in one newline,
@@ -133,7 +163,7 @@ export function exportProse(
 		}
 	}
 
-	const indent = options.script === 'cjk' ? CJK_INDENT : LATIN_INDENT;
+	const indent = INDENTS[options.script];
 	const out: string[] = [];
 	let run = 0;
 	let gap = 0;

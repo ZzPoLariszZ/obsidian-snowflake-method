@@ -113,6 +113,7 @@ export default defineConfig(
 						'^Scene ↔ Manuscript$',
 						// The name of a language, which keeps its capital anywhere.
 						'^Simplified Chinese$',
+						'^Traditional Chinese$',
 						// The history says what changed as a phrase a verb is put in
 						// front of, so the phrase starts lowercase; the figures beside
 						// a row are fragments the same way.

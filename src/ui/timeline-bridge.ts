@@ -11,6 +11,7 @@ import type {
 	ScenePresentation,
 	TimelineCardStyle,
 	TimelineDocument,
+	ProjectLanguage,
 } from '../domain';
 import type { App } from 'obsidian';
 
@@ -29,7 +30,7 @@ import type { DashboardHost, ProjectDashboardModel } from './view-model';
  */
 export interface TimelineReading {
 	projectPath: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 	/** The document held, shared with the store's memo: treated as immutable by everyone who reads it. */
 	held: TimelineDocument;
 }

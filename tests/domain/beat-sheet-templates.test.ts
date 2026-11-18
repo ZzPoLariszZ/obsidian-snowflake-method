@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	BUILT_IN_BEAT_SHEET_TEMPLATE_IDS,
+	PROJECT_LANGUAGES,
 	beatSheetFromStructure,
 	builtInBeatSheetTemplate,
 	builtInBeatSheetTemplates,
@@ -169,5 +170,41 @@ describe('the beat sheets the plugin ships as presets', () => {
 			description: 'An event disrupts the existing balance and draws the protagonist into the story’s central problem.',
 			rows: [],
 		});
+	});
+});
+
+describe('the presets in every project language', () => {
+	const shape = (language: (typeof PROJECT_LANGUAGES)[number]) =>
+		builtInBeatSheetTemplates(language).map((preset) => [
+			preset.id,
+			preset.structure.acts.map((act) => act.beats.length),
+		]);
+
+	it('lays every preset out the same way in every language', () => {
+		for (const language of PROJECT_LANGUAGES) expect(shape(language), language).toEqual(shape('en'));
+	});
+
+	it('names every preset, beat and description in every language', () => {
+		for (const language of PROJECT_LANGUAGES) {
+			for (const preset of builtInBeatSheetTemplates(language)) {
+				expect(preset.name.trim().length, `${language} ${preset.id}`).toBeGreaterThan(0);
+				for (const act of preset.structure.acts) {
+					for (const beat of act.beats) {
+						expect(beat.name.trim().length, `${language} ${preset.id}`).toBeGreaterThan(0);
+						expect(beat.description.trim().length, `${language} ${preset.id} ${beat.name}`).toBeGreaterThan(0);
+						expect(beat.description, `${language} ${preset.id} ${beat.name}`).toBe(beat.description.normalize('NFC'));
+					}
+				}
+			}
+		}
+	});
+
+	it('names the presets in the languages’ own words', () => {
+		expect(builtInBeatSheetTemplate('zh-TW', 'kishotenketsu').name).toBe('起承轉合');
+		expect(builtInBeatSheetTemplate('ja', 'kishotenketsu').name).toBe('起承転結');
+		expect(builtInBeatSheetTemplate('ko', 'kishotenketsu').name).toBe('기승전결');
+		expect(drawn(builtInBeatSheetTemplate('ja', 'kishotenketsu').structure)).toEqual([
+			['起', []], ['承', []], ['転', []], ['結', []],
+		]);
 	});
 });

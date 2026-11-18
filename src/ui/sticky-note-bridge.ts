@@ -6,7 +6,7 @@
  * tests can name the contract without touching the DOM.
  */
 
-import type { StickyNoteColor, StickyNoteMode } from '../domain';
+import type { StickyNoteColor, StickyNoteMode, ProjectLanguage } from '../domain';
 import type { StickyNoteRecord } from '../services';
 import type { Translate } from './modals';
 import type { StickyNoteHub } from './sticky-note-hub';
@@ -14,7 +14,7 @@ import type { StickyNoteHub } from './sticky-note-hub';
 /** One project's notes, as a board reads them. */
 export interface StickyNoteReading {
 	projectPath: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 	/** The project may not be written to; every control that writes is disabled. */
 	readOnly: boolean;
 	notes: readonly StickyNoteRecord[];

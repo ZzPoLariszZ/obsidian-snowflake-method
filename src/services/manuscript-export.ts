@@ -4,6 +4,7 @@ import {
   exportFileName,
   exportProse,
   exportScriptOf,
+  exportScriptOfLanguage,
   fileStem,
   isDocumentType,
   joinChapters,
@@ -145,9 +146,7 @@ export class ManuscriptExportService {
         script:
           project === null
             ? exportScriptOf(scope.text)
-            : project.locale === "zh-CN"
-              ? "cjk"
-              : "latin",
+            : exportScriptOfLanguage(project.locale),
       });
       if (content.length === 0) return { targets: [] };
       // The first number no file holds yet, so one passage never writes
@@ -229,7 +228,7 @@ export class ManuscriptExportService {
     return exportProse(body, pluginWrittenRanges(body, "draft"), {
       indent: options.indent,
       paragraphSpacing: options.paragraphSpacing,
-      script: project.locale === "zh-CN" ? "cjk" : "latin",
+      script: exportScriptOfLanguage(project.locale),
     });
   }
 
@@ -255,9 +254,7 @@ export class ManuscriptExportService {
         script:
           project === null
             ? exportScriptOf(body)
-            : project.locale === "zh-CN"
-              ? "cjk"
-              : "latin",
+            : exportScriptOfLanguage(project.locale),
       }),
     };
   }

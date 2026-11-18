@@ -57,6 +57,7 @@ import {
 	type FreeformStep,
 	type FreeformView,
 	type MacaronColor,
+	type ProjectLanguage,
 } from '../domain';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
 import type { FreeformBridge, FreeformHandle, FreeformReading, RenderFreeform } from './freeform-bridge';
@@ -1467,7 +1468,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	// -- What a record opens -------------------------------------------------------
 
 	/** The project the records are read from, for the host's own tables and floats. */
-	const recordContext = (): { projectPath: string | null; locale: 'en' | 'zh-CN' | null } => ({
+	const recordContext = (): { projectPath: string | null; locale: ProjectLanguage | null } => ({
 		projectPath: controls.projectPath(),
 		locale: reading?.locale ?? null,
 	});

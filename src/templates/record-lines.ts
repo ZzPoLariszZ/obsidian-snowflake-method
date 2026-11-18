@@ -1,4 +1,4 @@
-import { foldName, type ProjectLanguage } from "../domain";
+import { foldName, PROJECT_LANGUAGES, type ProjectLanguage } from "../domain";
 
 /**
  * The record-line codec: the one grammar every compound property is written
@@ -116,6 +116,102 @@ const COPY: Record<ProjectLanguage, RecordCopy> = {
     sectionTitles: {
       "world-status": "状态",
       relationships: "关系",
+    },
+  },
+  "zh-TW": {
+    arrow: "->",
+    at: "在",
+    when: "於",
+    with: "與",
+    from: "從",
+    to: "至",
+    spanOpen: "（",
+    spanClose: "）",
+    valueSeparator: "：",
+    sectionTitles: {
+      "world-status": "狀態",
+      relationships: "關係",
+    },
+  },
+  // Japanese and Korean put their particles after the noun, and a connector
+  // here has to stand in front of its link, so a clause is labelled the way a
+  // record is filled in, place, time and who else, and a span reads as a
+  // period from one end to the other.
+  ja: {
+    arrow: "->",
+    at: "場所",
+    when: "時期",
+    with: "関連",
+    from: "期間",
+    to: "〜",
+    spanOpen: "（",
+    spanClose: "）",
+    valueSeparator: "：",
+    sectionTitles: {
+      "world-status": "状態",
+      relationships: "関係",
+    },
+  },
+  ko: {
+    arrow: "->",
+    at: "장소",
+    when: "시기",
+    with: "관련 대상",
+    from: "기간",
+    to: "~",
+    spanOpen: "(",
+    spanClose: ")",
+    valueSeparator: ": ",
+    sectionTitles: {
+      "world-status": "상태",
+      relationships: "관계",
+    },
+  },
+  // French sets a space before the colon, which the reader trims along with
+  // the one after it.
+  fr: {
+    arrow: "->",
+    at: "à",
+    when: "pendant",
+    with: "avec",
+    from: "entre",
+    to: "et",
+    spanOpen: "(",
+    spanClose: ")",
+    valueSeparator: " : ",
+    sectionTitles: {
+      "world-status": "État",
+      relationships: "Relations",
+    },
+  },
+  de: {
+    arrow: "->",
+    at: "in",
+    when: "während",
+    with: "mit",
+    from: "von",
+    to: "bis",
+    spanOpen: "(",
+    spanClose: ")",
+    valueSeparator: ": ",
+    sectionTitles: {
+      "world-status": "Status",
+      relationships: "Beziehungen",
+    },
+  },
+  es: {
+    arrow: "->",
+    at: "en",
+    when: "durante",
+    with: "con",
+    from: "desde",
+    to: "hasta",
+    spanOpen: "(",
+    spanClose: ")",
+    valueSeparator: ": ",
+    sectionTitles: {
+      "world-status": "Estado",
+      relationships: "Relaciones",
     },
   },
 };
@@ -245,31 +341,63 @@ export function parseRecordSection(
   return { records, unrecognized };
 }
 
-const LENIENT_LANGUAGES: readonly ProjectLanguage[] = ["en", "zh-CN"];
-
 /**
- * Reads a section line by line, trying the preferred language first and the
- * other after it: a project whose language was switched still reads the lines
- * written before the switch, and re-emits them in the language it has now.
+ * Reads a section line by line in any language: a project whose language was
+ * switched still reads the lines written before the switch, and re-emits them
+ * in the language it has now.
+ *
+ * Several languages share a value separator, and any of them can read a line
+ * of another as one long value with no clause, so the first language to
+ * answer is not enough. The callout title says which language wrote the
+ * section, and that language reads its own lines. A line it cannot read, or a
+ * section with no title of the plugin's, goes to the preferred language and
+ * then the rest, and the first reading that leaves no link in the value wins:
+ * the plugin writes a link only in a clause, so a link stranded in the value
+ * means the words were read in the wrong language.
  */
 export function parseRecordSectionLenient(
   preferred: ProjectLanguage,
   content: string,
 ): ParsedRecordSection {
+  const written = sectionLanguage(content);
   const languages = [
     preferred,
-    ...LENIENT_LANGUAGES.filter((language) => language !== preferred),
+    ...PROJECT_LANGUAGES.filter((language) => language !== preferred),
   ];
   const records: RecordLine[] = [];
   const unrecognized: string[] = [];
   for (const line of contentLines(content)) {
-    const record = languages
-      .map((language) => parseRecordLine(language, line))
-      .find((candidate) => candidate !== null);
-    if (record === undefined || record === null) unrecognized.push(line);
+    const own = written === null ? null : parseRecordLine(written, line);
+    const readings = own === null
+      ? languages
+          .map((language) => parseRecordLine(language, line))
+          .filter((candidate): candidate is RecordLine => candidate !== null)
+      : [own];
+    const record =
+      readings.find((candidate) => !candidate.value.includes("[[")) ??
+      readings[0];
+    if (record === undefined) unrecognized.push(line);
     else records.push(record);
   }
   return { records, unrecognized };
+}
+
+/** The language whose title a section's callout opens with, if any. */
+function sectionLanguage(content: string): ProjectLanguage | null {
+  const title = content
+    .split(/\r\n|\r|\n/u)
+    .map((line) => line.replace(/^>[ \t]?/u, "").trim())
+    .find((line) => line.length > 0);
+  const match = title === undefined ? null : /^\[!info\][ \t]+(.+)$/iu.exec(title);
+  if (match === null) return null;
+  const name = (match[1] ?? "").trim();
+  return (
+    PROJECT_LANGUAGES.find((language) =>
+      (["world-status", "relationships"] as const).some(
+        (id) => COPY[language].sectionTitles[id] === name,
+      ),
+    ) ?? null
+  );
 }
 
 function contentLines(content: string): string[] {
@@ -337,7 +465,7 @@ function splitValueAndClauses(
   copy: RecordCopy,
   tail: string,
 ): { value: string; clauses: RecordClause[] } | null {
-  const separator = copy.valueSeparator.trimEnd();
+  const separator = copy.valueSeparator.trim();
   if (tail.startsWith(separator)) {
     const parsed = parseClauses(copy, tail.slice(separator.length).trim());
     if (parsed === null || parsed.head.length === 0) return null;

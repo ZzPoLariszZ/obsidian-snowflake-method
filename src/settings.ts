@@ -101,9 +101,15 @@ import {
 	type SessionLimit,
 	type WritingSessionScope,
 	type WritingSessionType,
+	isProjectLanguage,
+	PROJECT_LANGUAGES,
+	type ProjectLanguage,
 } from './domain';
 import {
+	isSupportedLocale,
+	LOCALE_NAMES,
 	resolveGlobalLocale,
+	SUPPORTED_LOCALES,
 	t as translate,
 	type UiLocalePreference,
 } from './i18n';
@@ -130,7 +136,7 @@ import {
 import { DIALOG_CLASS } from './ui/dialog-class';
 
 export type { UiLocalePreference } from './i18n';
-export type ProjectLocale = 'en' | 'zh-CN';
+export type ProjectLocale = ProjectLanguage;
 export type DefaultProjectLocale = 'system' | ProjectLocale;
 
 /**
@@ -1109,16 +1115,11 @@ function readFocusLevel(raw: Record<string, unknown>): ManuscriptFocusLevel {
 }
 
 function isUiLocale(value: unknown): value is UiLocalePreference {
-	return (
-		value === 'project' ||
-		value === 'system' ||
-		value === 'en' ||
-		value === 'zh-CN'
-	);
+	return value === 'project' || value === 'system' || isSupportedLocale(value);
 }
 
 function isDefaultProjectLocale(value: unknown): value is DefaultProjectLocale {
-	return value === 'system' || value === 'en' || value === 'zh-CN';
+	return value === 'system' || isProjectLanguage(value);
 }
 
 /**
@@ -1438,8 +1439,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						options: {
 							project: this.t('settings.locale.project'),
 							system: this.t('settings.locale.system'),
-							en: 'English',
-							'zh-CN': '简体中文',
+							...Object.fromEntries(
+								SUPPORTED_LOCALES.map((locale) => [locale, LOCALE_NAMES[locale]]),
+							),
 						},
 					},
 				},
@@ -1452,8 +1454,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						defaultValue: DEFAULT_SETTINGS.defaultProjectLocale,
 						options: {
 							system: this.t('settings.locale.system'),
-							en: 'English',
-							'zh-CN': '简体中文',
+							...Object.fromEntries(
+								PROJECT_LANGUAGES.map((language) => [language, LOCALE_NAMES[language]]),
+							),
 						},
 					},
 				},

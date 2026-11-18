@@ -31,6 +31,7 @@ import type {
 	TimeKind,
 	WorldbuildingKindId,
 	WritingCountMode,
+	ProjectLanguage,
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type { WikilinkTarget } from './segment-editor-backend';
@@ -132,7 +133,7 @@ export interface CreatedProject {
 	path: string;
 	projectId: string;
 	title: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 }
 
 export interface StepViewModel {
@@ -277,7 +278,7 @@ export interface ProjectDashboardModel {
 	path: string;
 	projectId: string;
 	title: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 	readOnly: boolean;
 	readOnlyReason: string | null;
 	/** The series the project is a book of, for the switcher's offers. */
@@ -339,7 +340,7 @@ export interface ManuscriptModel {
 	projectPath: string;
 	projectId: string;
 	projectTitle: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 	readOnly: boolean;
 	/** Every segment of the manuscript, in reading order. */
 	segments: ManuscriptSegmentViewModel[];
@@ -472,7 +473,7 @@ export interface ManuscriptWritingContext {
 export interface ManuscriptHost {
 	t: Translate;
 	translateForProject(
-		locale: 'en' | 'zh-CN' | null,
+		locale: ProjectLanguage | null,
 		key: string,
 		vars?: Record<string, string | number>,
 	): string;
@@ -854,7 +855,7 @@ export interface DashboardHost {
 	/** The bridge the relationship graph workspace reads and writes its project's graph file through. */
 	relationshipGraph(context: SessionPanelContext): RelationshipGraphBridge;
 	translateForProject(
-		locale: 'en' | 'zh-CN' | null,
+		locale: ProjectLanguage | null,
 		key: string,
 		vars?: Record<string, string | number>,
 	): string;
@@ -873,7 +874,7 @@ export interface DashboardHost {
 	/** True while a field that makes a note opens that note's form first. */
 	opensFormWhenCreatingFromField(): boolean;
 	openProjectManager(
-		projectLocale: 'en' | 'zh-CN' | null,
+		projectLocale: ProjectLanguage | null,
 	): Promise<void>;
 	/**
 	 * The projects an import into the one at the path may read from: the
@@ -885,7 +886,7 @@ export interface DashboardHost {
 	openImportDialog(targetPath: string, sourcePath?: string | null): Promise<void>;
 	/** Opens the update dialog on the project, or says why it cannot: no series, or nothing imported from one. */
 	openUpdateFromSeries(targetPath: string): Promise<void>;
-	getDefaultProjectLocale(): 'en' | 'zh-CN';
+	getDefaultProjectLocale(): ProjectLanguage;
 	syncCertificateCelebration(
 		projectId: string,
 		complete: boolean,
@@ -895,7 +896,7 @@ export interface DashboardHost {
 	selectProject(path: string): Promise<void>;
 	activateProject(
 		path: string,
-		locale: 'en' | 'zh-CN',
+		locale: ProjectLanguage,
 		step: StepId,
 	): void;
 	selectStep(step: StepId): Promise<void>;

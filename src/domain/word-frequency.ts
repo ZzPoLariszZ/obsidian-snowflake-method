@@ -33,6 +33,7 @@ import { analyzableRanges } from './analyzable-prose';
 import { patternForms } from './entity-matcher';
 import { fingerprint } from './fingerprint';
 import type { CountableRange } from './markdown-scan';
+import type { ProjectLanguage } from './types';
 import { hasWordBoundary } from './mentions';
 
 /** Bump when tokenization rules change: it invalidates persisted tokens. */
@@ -283,6 +284,108 @@ export const DEFAULT_STOPWORDS_ZH: ReadonlySet<string> = new Set([
 	'但是', '而且', '然后', '呢', '吗', '吧', '啊', '哦', '嗯', '得',
 	'地', '过', '要', '会', '能', '并', '等', '上', '下', '中',
 ]);
+
+/** The Chinese list again in traditional characters, as Taiwan writes it. */
+export const DEFAULT_STOPWORDS_ZH_TW: ReadonlySet<string> = new Set([
+	'的', '了', '著', '在', '是', '我', '你', '他', '她', '它', '們', '我們', '你們', '他們',
+	'她們', '它們', '這', '那', '這個', '那個', '這些', '那些', '這樣', '那樣', '一個', '一', '不',
+	'沒', '沒有', '有', '和', '與', '及', '或', '而', '但', '也', '都', '就', '還', '又', '再',
+	'很', '更', '最', '太', '被', '把', '讓', '向', '從', '對', '給', '為', '以', '於', '之',
+	'其', '此', '個', '只', '才', '已經', '可以', '什麼', '怎麼', '因為', '所以', '如果', '雖然',
+	'但是', '而且', '然後', '呢', '嗎', '吧', '啊', '哦', '嗯', '得', '地', '過', '要', '會',
+	'能', '並', '等', '上', '下', '中',
+]);
+
+/**
+ * Japanese function words as the word segmenter cuts them: particles,
+ * auxiliaries and the stems they leave behind, with the common pronouns.
+ */
+export const DEFAULT_STOPWORDS_JA: ReadonlySet<string> = new Set([
+	'の', 'に', 'は', 'を', 'た', 'が', 'で', 'て', 'と', 'し', 'れ', 'さ', 'ある', 'いる', 'も',
+	'する', 'から', 'な', 'こと', 'として', 'い', 'や', 'れる', 'など', 'なっ', 'ない', 'この', 'ため',
+	'その', 'あっ', 'よう', 'また', 'もの', 'という', 'あり', 'まで', 'られ', 'なる', 'へ', 'か', 'だ',
+	'これ', 'によって', 'により', 'おり', 'より', 'による', 'ず', 'なり', 'られる', 'において', 'ば',
+	'なかっ', 'なく', 'しかし', 'について', 'せ', 'だっ', 'できる', 'それ', 'う', 'ので', 'のみ', 'でき',
+	'き', 'つ', 'いう', 'さらに', 'でも', 'ら', 'たり', 'たち', 'ます', 'ん', 'なら', 'せる', 'これら',
+	'とき', 'では', 'ほか', 'ながら', 'うち', 'そして', 'ただし', 'それぞれ', 'または', 'お', 'ほど',
+	'ものの', 'といった', 'です', 'とも', 'ところ', 'ここ', 'そこ', 'あの', 'あれ', 'どう', 'そう', 'こう',
+	'ね', 'よ', 'わ', 'だけ', 'まし', 'でし', 'いた', 'いっ', 'まま', '私', 'あなた', '彼', '彼女',
+	'僕', '俺',
+]);
+
+/**
+ * Korean function words. The segmenter keeps a word with its particles, so
+ * the list holds the forms that stand alone or are met most often.
+ */
+export const DEFAULT_STOPWORDS_KO: ReadonlySet<string> = new Set([
+	'이', '그', '저', '것', '수', '등', '들', '및', '에서', '그리고', '그러나', '하지만', '그래서',
+	'그런데', '또', '또는', '더', '잘', '안', '못', '좀', '다', '있다', '없다', '하다', '되다',
+	'했다', '있는', '없는', '하는', '되는', '한', '할', '해', '있었다', '없었다', '이다', '아니다',
+	'그는', '그녀는', '나는', '내가', '너는', '네가', '우리는', '우리', '그것은', '이것은', '그것', '이것',
+	'저것', '그런', '이런', '저런', '그렇게', '이렇게', '때', '때문에', '위해', '대한', '통해', '같은',
+	'같이', '정말', '아주', '너무', '매우', '바로', '다시', '이미', '아직', '지금', '여기', '거기',
+	'저기', '무엇', '누구', '어디', '언제', '왜', '어떻게', '아니', '네', '예', '응', '음', '아',
+	'어', '오', '나', '너', '그녀', '그들',
+]);
+
+/** Function words French reading passes over. */
+export const DEFAULT_STOPWORDS_FR: ReadonlySet<string> = new Set([
+	'a', 'à', 'ai', 'au', 'aux', 'avec', 'ce', 'ces', 'cet', 'cette', 'dans',
+	'de', 'des', 'du', 'elle', 'elles', 'en', 'est', 'et', 'eu', 'il', 'ils',
+	'je', 'j', 'la', 'le', 'les', 'leur', 'leurs', 'lui', 'l', 'ma', 'mais',
+	'me', 'même', 'mes', 'moi', 'mon', 'm', 'ne', 'n', 'nos', 'notre', 'nous',
+	'on', 'ou', 'où', 'par', 'pas', 'pour', 'qu', 'que', 'qui', 'sa', 'se', 's',
+	'ses', 'son', 'sur', 'ta', 'te', 'tes', 'toi', 'ton', 'tu', 't', 'un',
+	'une', 'vos', 'votre', 'vous', 'c', 'd', 'y', 'été', 'être', 'avoir',
+	'était', 'étaient', 'sont', 'suis', 'es', 'sommes', 'êtes', 'ont', 'avait',
+	'avaient', 'aussi', 'plus', 'très', 'bien', 'tout', 'tous', 'toute',
+	'toutes', 'comme', 'si', 'alors', 'donc', 'puis', 'quand', 'sans', 'sous',
+	'entre', 'vers', 'chez', 'cela', 'ça', 'ceci', 'celui', 'celle', 'ceux',
+	'celles', 'dont', 'quoi',
+]);
+
+/** Function words German reading passes over. */
+export const DEFAULT_STOPWORDS_DE: ReadonlySet<string> = new Set([
+	'aber', 'alle', 'allem', 'allen', 'aller', 'alles', 'als', 'also', 'am',
+	'an', 'auch', 'auf', 'aus', 'bei', 'bin', 'bis', 'bist', 'da', 'damit',
+	'dann', 'das', 'dass', 'dein', 'deine', 'dem', 'den', 'denn', 'der', 'des',
+	'dich', 'die', 'dir', 'doch', 'du', 'durch', 'ein', 'eine', 'einem',
+	'einen', 'einer', 'eines', 'einmal', 'er', 'es', 'euch', 'euer', 'für',
+	'hab', 'habe', 'haben', 'hat', 'hatte', 'hatten', 'hier', 'ich', 'ihm',
+	'ihn', 'ihnen', 'ihr', 'ihre', 'im', 'in', 'ist', 'ja', 'jetzt', 'kann',
+	'kein', 'keine', 'man', 'mein', 'meine', 'mich', 'mir', 'mit', 'nach',
+	'nicht', 'noch', 'nun', 'nur', 'ob', 'oder', 'ohne', 'schon', 'sehr',
+	'sein', 'seine', 'sich', 'sie', 'sind', 'so', 'über', 'um', 'und', 'uns',
+	'unser', 'unter', 'vom', 'von', 'vor', 'war', 'waren', 'was', 'weil',
+	'wenn', 'wer', 'werden', 'wie', 'wieder', 'wir', 'wird', 'wo', 'wurde',
+	'würde', 'zu', 'zum', 'zur', 'diese', 'dieser', 'dieses',
+]);
+
+/** Function words Spanish reading passes over. */
+export const DEFAULT_STOPWORDS_ES: ReadonlySet<string> = new Set([
+	'a', 'al', 'algo', 'como', 'con', 'contra', 'cual', 'cuando', 'de', 'del',
+	'desde', 'donde', 'durante', 'e', 'el', 'él', 'ella', 'ellas', 'ellos',
+	'en', 'entre', 'era', 'es', 'esa', 'ese', 'eso', 'esta', 'está', 'estaba',
+	'estaban', 'estar', 'este', 'esto', 'estos', 'estas', 'fue', 'ha', 'había',
+	'han', 'hasta', 'hay', 'la', 'las', 'le', 'les', 'lo', 'los', 'me', 'mi',
+	'mis', 'mucho', 'muy', 'más', 'nada', 'ni', 'no', 'nos', 'nosotros', 'o',
+	'otra', 'otro', 'para', 'pero', 'poco', 'por', 'porque', 'que', 'qué',
+	'quien', 'se', 'ser', 'si', 'sí', 'sin', 'sobre', 'son', 'su', 'sus',
+	'también', 'tan', 'te', 'tener', 'tiene', 'todo', 'todos', 'tu', 'tú',
+	'tus', 'un', 'una', 'uno', 'unos', 'unas', 'y', 'ya', 'yo',
+]);
+
+/** Each project language's own list. */
+export const DEFAULT_STOPWORDS: Readonly<Record<ProjectLanguage, ReadonlySet<string>>> = {
+	en: DEFAULT_STOPWORDS_EN,
+	'zh-CN': DEFAULT_STOPWORDS_ZH,
+	'zh-TW': DEFAULT_STOPWORDS_ZH_TW,
+	ja: DEFAULT_STOPWORDS_JA,
+	ko: DEFAULT_STOPWORDS_KO,
+	fr: DEFAULT_STOPWORDS_FR,
+	de: DEFAULT_STOPWORDS_DE,
+	es: DEFAULT_STOPWORDS_ES,
+};
 
 /**
  * The reader's own stopwords, read from free text: split on whitespace and

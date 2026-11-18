@@ -15,6 +15,7 @@ import {
 	type MacaronColor,
 	type ProgressStatus,
 	type TimeKind,
+	type ProjectLanguage,
 } from '../domain';
 import { characterRoleName } from '../services';
 import type { ShownMember } from './corkboard-deal';
@@ -135,7 +136,7 @@ export function entityGroupLabel(t: Translate, field: EntityGroupField): string 
 export function entityGroupValues(
 	member: EntityMember,
 	field: EntityGroupField,
-	ctx: { t: Translate; locale: 'en' | 'zh-CN' },
+	ctx: { t: Translate; locale: ProjectLanguage },
 ): GroupValue[] {
 	switch (field) {
 		case 'status':
@@ -163,7 +164,7 @@ export function entityGroupValues(
 export function entityFilterRows(
 	t: Translate,
 	kind: string,
-	locale: 'en' | 'zh-CN',
+	locale: ProjectLanguage,
 	filters: EntityFilters,
 	extra: { categoryPaths: readonly string[] },
 ): FilterRow[] {

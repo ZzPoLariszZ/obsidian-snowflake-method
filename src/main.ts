@@ -20,8 +20,8 @@ import {
 
 import {
 	DEFAULT_STICKY_NOTE_COLOR,
+	DEFAULT_STOPWORDS,
 	DEFAULT_STOPWORDS_EN,
-	DEFAULT_STOPWORDS_ZH,
 	DEFINITION_FILE_IDS,
 	DIALOGUE_STYLE_TOKENS,
 	deleteFromOrders,
@@ -140,8 +140,9 @@ import {
 	type CanvasExportWords,
 	type NoteStanding,
 	type GraphMemberGroup,
+	type ProjectLanguage,
 } from './domain';
-import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
+import { intlLocaleOf, resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
 	areManagedBoundariesUnlocked,
 	caretParagraphWhen,
@@ -913,9 +914,9 @@ export default class SnowflakeMethodPlugin
 	private projectDiscoveryPromise: Promise<ProjectRef[]> | null = null;
 	/** The books an update can come from, by project id, kept with the scan: the dashboard model asks on every refresh. */
 	private readonly updatableSiblingsByProject = new Map<string, Promise<ProjectRef[]>>();
-	private currentProjectLocale: 'en' | 'zh-CN' | null = null;
+	private currentProjectLocale: ProjectLanguage | null = null;
 	private notePane: NotePane | null = null;
-	private readonly projectLocalesById = new Map<string, 'en' | 'zh-CN'>();
+	private readonly projectLocalesById = new Map<string, ProjectLanguage>();
 	/** Root folders of the projects discovered under the configured root. */
 	private readonly knownProjectRoots = new Set<string>();
 	/**
@@ -923,7 +924,7 @@ export default class SnowflakeMethodPlugin
 	 * too: what the dress on a note and its bar speak, which reach a project
 	 * a newer build wrote as much as any other.
 	 */
-	private readonly projectLocalesByRoot = new Map<string, 'en' | 'zh-CN'>();
+	private readonly projectLocalesByRoot = new Map<string, ProjectLanguage>();
 	/** Whether a scan has filled the roster, which until then is read from the paths alone. */
 	private rosterScanned = false;
 	/** The manuscript's dress on notes in tabs of Obsidian's own. */
@@ -989,7 +990,7 @@ export default class SnowflakeMethodPlugin
 	): string => this.translateForProject(null, key, vars);
 
 	readonly translateForProject = (
-		locale: 'en' | 'zh-CN' | null,
+		locale: ProjectLanguage | null,
 		key: string,
 		vars?: Record<string, string | number>,
 	): string =>
@@ -1833,7 +1834,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async openProjectManager(
-		projectLocale: 'en' | 'zh-CN' | null,
+		projectLocale: ProjectLanguage | null,
 	): Promise<void> {
 		const locale = resolveLocale(
 			this.settings.uiLocale,
@@ -2178,7 +2179,7 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	getDefaultProjectLocale(): 'en' | 'zh-CN' {
+	getDefaultProjectLocale(): ProjectLanguage {
 		return this.resolvedDefaultProjectLocale();
 	}
 
@@ -2860,7 +2861,7 @@ export default class SnowflakeMethodPlugin
 	 */
 	private markCurrentProject(
 		path: string,
-		locale: 'en' | 'zh-CN',
+		locale: ProjectLanguage,
 		step: StepId,
 	): void {
 		this.settings.recentProjectPath = path;
@@ -2872,7 +2873,7 @@ export default class SnowflakeMethodPlugin
 
 	activateProject(
 		path: string,
-		locale: 'en' | 'zh-CN',
+		locale: ProjectLanguage,
 		step: StepId,
 	): void {
 		if (
@@ -6460,7 +6461,7 @@ export default class SnowflakeMethodPlugin
 				read(async (project) => {
 					const stopwords = includeStopwords
 						? null
-						: this.frequencyStopwords();
+						: this.frequencyStopwords(project.locale);
 					const exclude = includeEntities
 						? null
 						: await this.entityExclusionTerms(project);
@@ -6628,14 +6629,16 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The stopword set frequency reads with: both built-in lists at once --
-	 * a Chinese manuscript still holds English function words, and the two
-	 * lists cannot collide -- plus whatever the reader added.
+	 * The stopword set frequency reads with: the English list and the
+	 * project's own -- a manuscript in any language still holds English
+	 * function words -- plus whatever the reader added. The other languages'
+	 * lists stay out, because theirs collide with ordinary words of this one:
+	 * German "die" and French "son" are English words.
 	 */
-	private frequencyStopwords(): Set<string> {
+	private frequencyStopwords(language: ProjectLanguage): Set<string> {
 		return new Set([
 			...DEFAULT_STOPWORDS_EN,
-			...DEFAULT_STOPWORDS_ZH,
+			...DEFAULT_STOPWORDS[language],
 			...parseStopwords(this.settings.customStopwords),
 		]);
 	}
@@ -6886,7 +6889,7 @@ export default class SnowflakeMethodPlugin
 	/** A number as the reader's own locale groups it. */
 	private grouped(value: number): string {
 		const locale = resolveGlobalLocale(this.settings.uiLocale, moment.locale());
-		return value.toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US');
+		return value.toLocaleString(intlLocaleOf(locale));
 	}
 
 	/**
@@ -7677,7 +7680,7 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	private editorLocale(content: string): 'en' | 'zh-CN' {
+	private editorLocale(content: string): ProjectLanguage {
 		return resolveManagedSectionLocale({
 			uiLocale: this.settings.uiLocale,
 			obsidianLocale: moment.locale(),
@@ -8352,7 +8355,7 @@ export default class SnowflakeMethodPlugin
 	 * beside the first rather than written over it.
 	 */
 	private passageScope(
-		locale: 'en' | 'zh-CN' | null,
+		locale: ProjectLanguage | null,
 		name: string,
 		text: string,
 	): ManuscriptExportScope {
@@ -8370,7 +8373,7 @@ export default class SnowflakeMethodPlugin
 	 */
 	private async exportOutOfNote(
 		path: string,
-		scope: (locale: 'en' | 'zh-CN' | null) => ManuscriptExportScope,
+		scope: (locale: ProjectLanguage | null) => ManuscriptExportScope,
 	): Promise<void> {
 		const root = this.noteProjectRoot(path);
 		if (root !== null) {
@@ -11535,9 +11538,7 @@ export default class SnowflakeMethodPlugin
 					this.app.workspace.containerEl.win.setTimeout(resolve, 0);
 				}),
 			locale: () =>
-				resolveGlobalLocale(this.settings.uiLocale, moment.locale()) === 'zh-CN'
-					? 'zh-CN'
-					: 'en-US',
+				intlLocaleOf(resolveGlobalLocale(this.settings.uiLocale, moment.locale())),
 			notice: (text) => {
 				new Notice(text);
 			},
@@ -11652,7 +11653,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/** The language of whichever project owns a path, for menu text. */
-	private projectLocaleOfPath(path: string): 'en' | 'zh-CN' | null {
+	private projectLocaleOfPath(path: string): ProjectLanguage | null {
 		const projectId = this.projectIdOfPath(path);
 		const locale =
 			projectId === null ? undefined : this.projectLocalesById.get(projectId);
@@ -12525,7 +12526,7 @@ export default class SnowflakeMethodPlugin
 	 */
 	private noteStanding(
 		path: string,
-	): NoteStanding & { locale: 'en' | 'zh-CN' | null; root: string | null } {
+	): NoteStanding & { locale: ProjectLanguage | null; root: string | null } {
 		// Every project the scan knows, the read-only ones too: the dress is a
 		// look, and changes nothing in the note. Before the first scan the
 		// folder over the note is asked from its paths alone, so a note the
@@ -12661,7 +12662,7 @@ export default class SnowflakeMethodPlugin
 	 * configured root, holding a project's metadata note in either layout.
 	 * Empty for a note in no such folder.
 	 */
-	private projectFolderAt(path: string): [string, 'en' | 'zh-CN'][] {
+	private projectFolderAt(path: string): [string, ProjectLanguage][] {
 		const root = normalizeProjectRoot(this.settings.projectRoot);
 		if (root.length > 0 && !path.startsWith(`${root}/`)) return [];
 		const rest = root.length === 0 ? path : path.slice(root.length + 1);
@@ -12671,7 +12672,7 @@ export default class SnowflakeMethodPlugin
 		for (const [locale, layout] of Object.entries(PROJECT_PATH_LAYOUTS)) {
 			const metadata = `${folder}/${layout.directories.system}/${layout.projectFileName}`;
 			if (this.projects.repository.getFile(metadata) !== null) {
-				return [[folder, locale as 'en' | 'zh-CN']];
+				return [[folder, locale as ProjectLanguage]];
 			}
 		}
 		return [];
@@ -12734,7 +12735,7 @@ export default class SnowflakeMethodPlugin
 		this.settings = sanitizeSettings(await this.loadData());
 	}
 
-	private currentLocale(): 'en' | 'zh-CN' {
+	private currentLocale(): ProjectLanguage {
 		return resolveLocale(
 			this.settings.uiLocale,
 			moment.locale(),
@@ -12742,7 +12743,7 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	private resolvedDefaultProjectLocale(): 'en' | 'zh-CN' {
+	private resolvedDefaultProjectLocale(): ProjectLanguage {
 		return this.settings.defaultProjectLocale === 'system'
 			? resolveLocale('system', moment.locale())
 			: this.settings.defaultProjectLocale;
@@ -13141,7 +13142,7 @@ export default class SnowflakeMethodPlugin
 
 	private async openCreateProjectModal(
 		t: Translate = this.globalT,
-		defaultLocale: 'en' | 'zh-CN' = this.getDefaultProjectLocale(),
+		defaultLocale: ProjectLanguage = this.getDefaultProjectLocale(),
 	): Promise<void> {
 		try {
 			const [existing, sources] = await Promise.all([

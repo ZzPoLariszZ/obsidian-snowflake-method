@@ -44,6 +44,7 @@ import {
 	wikiLinkText,
 	wikiLinkLabel,
 	type WorldbuildingKindId,
+	type ProjectLanguage,
 } from '../domain';
 import {
 	MAX_DEFINITION_DEPTH,
@@ -688,7 +689,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private stateDelivered = false;
 	private projectPath: string | null = null;
 	private projectTitle: string | null = null;
-	private projectLocale: 'en' | 'zh-CN' | null = null;
+	private projectLocale: ProjectLanguage | null = null;
 	private opened = false;
 	private refreshing = false;
 	private refreshPending = false;
@@ -893,7 +894,7 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/** The loaded project available for immediate workspace activation. */
-	workspaceProjectContext(): { path: string; locale: 'en' | 'zh-CN' } | null {
+	workspaceProjectContext(): { path: string; locale: ProjectLanguage } | null {
 		if (
 			this.loadFailed ||
 			this.projectPath === null ||
@@ -1923,7 +1924,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	private async openCreateProject(
 		t: Translate,
-		locale: 'en' | 'zh-CN',
+		locale: ProjectLanguage,
 	): Promise<void> {
 		try {
 			const [existing, sources] = await Promise.all([

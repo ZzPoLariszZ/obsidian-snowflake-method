@@ -42,6 +42,7 @@ import {
 	type WritingMode,
 	type WritingSessionScope,
 	type WritingSessionType,
+	type ProjectLanguage,
 } from '../domain';
 import { sessionClockMs } from '../services';
 import type {
@@ -60,7 +61,7 @@ export interface SessionPanelContext {
 	/** The project metadata note whose day this panel reads. */
 	projectPath?: string | null;
 	/** That project's language, when the host already knows it. */
-	locale?: 'en' | 'zh-CN' | null;
+	locale?: ProjectLanguage | null;
 }
 
 /**

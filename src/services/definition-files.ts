@@ -6,6 +6,7 @@ import {
   type CharacterType,
   type DefinitionFileId,
   type EntityKind,
+  PROJECT_LANGUAGES,
   type ProjectLanguage,
 } from "../domain";
 import { getProjectPathLayout } from "./types";
@@ -285,6 +286,78 @@ const COPY: Record<ProjectLanguage, DefinitionCopy> = {
     worldStatusStarters: ["受伤", "失踪", "已故"],
     relationshipStarters: ["盟友", "敌人", "朋友", "家人", "成员"],
   },
+  "zh-TW": {
+    fileStems: {
+      category: "類別",
+      "world-status": "狀態",
+      relationship: "關係",
+    },
+    customFieldStem: "自訂欄位",
+    galleryStem: "圖庫",
+    roles: { major: "主角", supporting: "配角", minor: "次要角色" },
+    worldStatusStarters: ["受傷", "失蹤", "已故"],
+    relationshipStarters: ["盟友", "敵人", "朋友", "家人", "成員"],
+  },
+  ja: {
+    fileStems: {
+      category: "カテゴリー",
+      "world-status": "状態",
+      relationship: "関係",
+    },
+    customFieldStem: "カスタムフィールド",
+    galleryStem: "ギャラリー",
+    roles: { major: "主役", supporting: "脇役", minor: "端役" },
+    worldStatusStarters: ["負傷", "行方不明", "死亡"],
+    relationshipStarters: ["味方", "敵", "友人", "家族", "所属"],
+  },
+  ko: {
+    fileStems: {
+      category: "카테고리",
+      "world-status": "상태",
+      relationship: "관계",
+    },
+    customFieldStem: "사용자_지정_필드",
+    galleryStem: "갤러리",
+    roles: { major: "주연", supporting: "조연", minor: "단역" },
+    worldStatusStarters: ["부상", "실종", "사망"],
+    relationshipStarters: ["동맹", "적", "친구", "가족", "소속"],
+  },
+  fr: {
+    fileStems: {
+      category: "Catégorie",
+      "world-status": "État",
+      relationship: "Relation",
+    },
+    customFieldStem: "Champ_personnalisé",
+    galleryStem: "Galerie",
+    roles: { major: "Principal", supporting: "Secondaire", minor: "Mineur" },
+    worldStatusStarters: ["Blessé", "Disparu", "Décédé"],
+    relationshipStarters: ["Allié", "Ennemi", "Ami", "Famille", "Membre"],
+  },
+  de: {
+    fileStems: {
+      category: "Kategorie",
+      "world-status": "Status",
+      relationship: "Beziehung",
+    },
+    customFieldStem: "Eigenes_Feld",
+    galleryStem: "Galerie",
+    roles: { major: "Hauptfigur", supporting: "Nebenfigur", minor: "Randfigur" },
+    worldStatusStarters: ["Verletzt", "Vermisst", "Verstorben"],
+    relationshipStarters: ["Verbündeter", "Feind", "Freund", "Familie", "Mitglied"],
+  },
+  es: {
+    fileStems: {
+      category: "Categoría",
+      "world-status": "Estado",
+      relationship: "Relación",
+    },
+    customFieldStem: "Campo_personalizado",
+    galleryStem: "Galería",
+    roles: { major: "Principal", supporting: "Secundario", minor: "Terciario" },
+    worldStatusStarters: ["Herido", "Desaparecido", "Fallecido"],
+    relationshipStarters: ["Aliado", "Enemigo", "Amigo", "Familia", "Miembro"],
+  },
 };
 
 /**
@@ -410,14 +483,14 @@ export function characterRoleName(
 }
 
 /**
- * The character type a node name names, in either language. Both languages
- * are consulted because a project's language can change while its notes keep
- * the links they were written with.
+ * The character type a node name names, in any language. Every language is
+ * consulted because a project's language can change while its notes keep the
+ * links they were written with.
  */
 export function characterTypeFromNodeName(
   name: string,
 ): CharacterType | null {
-  for (const language of ["en", "zh-CN"] as const) {
+  for (const language of PROJECT_LANGUAGES) {
     const roles = COPY[language].roles;
     for (const type of ["major", "supporting", "minor"] as const) {
       if (name === roles[type]) return type;
@@ -452,9 +525,9 @@ export function characterRoleFromValue(value: unknown): CharacterType | null {
   return parent === undefined || isCategoryRootName(parent) ? type : null;
 }
 
-/** Whether a folder name is a character category tree root, either language. */
+/** Whether a folder name is a character category tree root, in any language. */
 function isCategoryRootName(name: string): boolean {
-  for (const language of ["en", "zh-CN"] as const) {
+  for (const language of PROJECT_LANGUAGES) {
     if (name === definitionRootName("character", "category", language)) {
       return true;
     }

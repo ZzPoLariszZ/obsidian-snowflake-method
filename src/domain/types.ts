@@ -60,7 +60,31 @@ export const DOCUMENT_TYPES = [
 ] as const;
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
-export type ProjectLanguage = 'en' | 'zh-CN';
+/**
+ * Every language a project can be written in, in the order the language
+ * menus offer them. A project's language names its folders and files, heads
+ * its starter notes and labels what the plugin writes into them, so each one
+ * is a layout on disk as well as a word list, and none can be taken back once
+ * a release has written it.
+ */
+export const PROJECT_LANGUAGES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'fr', 'de', 'es'] as const;
+export type ProjectLanguage = (typeof PROJECT_LANGUAGES)[number];
+
+/**
+ * The name a project's first view takes before any view of its own is written,
+ * in the freeform and timeline workspaces alike: data in the project's
+ * language from the moment it is saved, so not an interface string.
+ */
+export const MAIN_VIEW_NAMES: Readonly<Record<ProjectLanguage, string>> = {
+	en: 'Main',
+	'zh-CN': '主视图',
+	'zh-TW': '主檢視',
+	ja: 'メイン',
+	ko: '메인',
+	fr: 'Principale',
+	de: 'Hauptansicht',
+	es: 'Principal',
+};
 /** The roles a character can have, the major first, as the board and the funnel rank them. */
 export const CHARACTER_TYPES = ['major', 'supporting', 'minor'] as const;
 export type CharacterType = (typeof CHARACTER_TYPES)[number];
@@ -259,7 +283,7 @@ export function isDocumentType(value: unknown): value is DocumentType {
 }
 
 export function isProjectLanguage(value: unknown): value is ProjectLanguage {
-	return value === 'en' || value === 'zh-CN';
+	return (PROJECT_LANGUAGES as readonly unknown[]).includes(value);
 }
 
 export function isCharacterType(

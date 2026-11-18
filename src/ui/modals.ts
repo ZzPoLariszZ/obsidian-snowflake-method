@@ -50,6 +50,8 @@ import {
 	type CustomHighlightRule,
 	type HighlightDecoration,
 	type HighlightRuleKind,
+	isProjectLanguage,
+	PROJECT_LANGUAGES,
 } from '../domain';
 import type { MemberUsage, ProjectSeries } from '../services';
 import { FieldSuggest } from './field-suggest';
@@ -80,7 +82,7 @@ import {
 	type RecordDraft,
 	type RecordEditorContext,
 } from './entity-form';
-import { t as translate } from '../i18n';
+import { LOCALE_NAMES, t as translate } from '../i18n';
 import {
 	displayProjectRoot,
 	isValidProjectRoot,
@@ -941,19 +943,20 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 
 		new Setting(this.contentEl)
 			.setName(this.t('modal.project.language'))
-			.addDropdown((dropdown) =>
+			.addDropdown((dropdown) => {
+				for (const language of PROJECT_LANGUAGES) {
+					dropdown.addOption(language, LOCALE_NAMES[language]);
+				}
 				dropdown
-					.addOption('en', 'English')
-					.addOption('zh-CN', '简体中文')
 					.setValue(this.locale)
 					.onChange((value) => {
-						if (value !== 'en' && value !== 'zh-CN') return;
+						if (!isProjectLanguage(value)) return;
 						this.locale = value;
 						this.t = (key, vars) => translate(this.locale, key, vars);
 						this.setTitle(this.t('modal.project.title'));
 						this.renderForm();
-					}),
-			);
+					});
+			});
 
 		this.seriesField?.destroy();
 		this.seriesField = buildSeriesRows(
@@ -2141,12 +2144,14 @@ export class ManageProjectsModal extends SnowflakeModal {
 			attr: { 'aria-hidden': 'true' },
 		});
 		setIcon(selector, 'chevrons-up-down');
-		select.createEl('option', { text: 'English', value: 'en' });
-		select.createEl('option', { text: '简体中文', value: 'zh-CN' });
+		for (const language of PROJECT_LANGUAGES) {
+			select.createEl('option', { text: LOCALE_NAMES[language], value: language });
+		}
 		select.value = this.locale;
 		select.addEventListener('change', () => {
-			if (select.value !== 'en' && select.value !== 'zh-CN') return;
-			this.changeLanguage(select.value);
+			const language = select.value;
+			if (!isProjectLanguage(language)) return;
+			this.changeLanguage(language);
 		});
 	}
 

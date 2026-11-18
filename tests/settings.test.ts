@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_MANUSCRIPT_PRESENTATION,
+	PROJECT_LANGUAGES,
 	type CustomHighlightRule,
 	type ManuscriptPresentation,
 } from '../src/domain';
@@ -672,13 +673,13 @@ describe('settings', () => {
 	});
 
 	it('preserves each supported default project language preference', () => {
-		for (const defaultProjectLocale of ['system', 'en', 'zh-CN'] as const) {
+		for (const defaultProjectLocale of ['system', ...PROJECT_LANGUAGES] as const) {
 			expect(sanitizeSettings({ defaultProjectLocale }).defaultProjectLocale).toBe(
 				defaultProjectLocale,
 			);
 		}
 		expect(
-			sanitizeSettings({ defaultProjectLocale: 'fr' }).defaultProjectLocale,
+			sanitizeSettings({ defaultProjectLocale: 'it' }).defaultProjectLocale,
 		).toBe('system');
 	});
 

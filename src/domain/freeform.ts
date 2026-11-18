@@ -24,6 +24,7 @@
  */
 
 import { isMacaronColor, type MacaronColor } from './macaron';
+import { MAIN_VIEW_NAMES, type ProjectLanguage } from './types';
 
 export const FREEFORM_RESOURCE_TYPES = [
 	'entity',
@@ -650,8 +651,8 @@ export const MAIN_FREEFORM_VIEW_ID = 'freeform-view-main';
  * rather than a hint, as the timeline's does. The first change to it
  * writes it; until then it is no file.
  */
-export function freshFreeformDocument(locale: 'en' | 'zh-CN'): FreeformDocument {
-	return { views: [newFreeformView({ id: MAIN_FREEFORM_VIEW_ID, name: locale === 'zh-CN' ? '主视图' : 'Main', now: 0 })] };
+export function freshFreeformDocument(locale: ProjectLanguage): FreeformDocument {
+	return { views: [newFreeformView({ id: MAIN_FREEFORM_VIEW_ID, name: MAIN_VIEW_NAMES[locale], now: 0 })] };
 }
 
 export function renameFreeformView(held: FreeformView, name: string, now: number): FreeformView | null {

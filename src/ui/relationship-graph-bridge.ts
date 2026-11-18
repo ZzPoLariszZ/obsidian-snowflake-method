@@ -14,6 +14,7 @@ import type {
 	ProjectWorldbuildingKind,
 	RelationshipGraphDocument,
 	ResolveGraphTarget,
+	ProjectLanguage,
 } from '../domain';
 import type { RelationshipGraphWrite } from '../services';
 import type { FullScreenControl } from './full-screen';
@@ -33,7 +34,7 @@ export interface RelationshipGraphReading {
 	projectPath: string;
 	/** The project's root folder, which the native preset's filters are written for. */
 	rootPath: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 	/** The document held, shared with the store's memo: treated as immutable by everyone who reads it. */
 	held: RelationshipGraphDocument;
 	/** Every member whose relationships are drawn, kinds in the project's order. */

@@ -16,6 +16,7 @@ import type {
 	FreeformLimits,
 	FreeformStep,
 	FreeformViewport,
+	ProjectLanguage,
 } from '../domain';
 import type { FreeformTransacted, FreeformViewWrite } from '../services';
 import type { MountFreeformCanvas } from './freeform-canvas-port';
@@ -33,7 +34,7 @@ import type { DashboardHost, ProjectDashboardModel } from './view-model';
  */
 export interface FreeformReading {
 	projectPath: string;
-	locale: 'en' | 'zh-CN';
+	locale: ProjectLanguage;
 	/** The views held, shared with the store's memo: treated as immutable by everyone who reads them. */
 	held: FreeformDocument;
 	limits: Readonly<FreeformLimits>;

@@ -1,10 +1,16 @@
+import { de } from './de';
 import { en, type TranslationKey } from './en';
+import { es } from './es';
+import { fr } from './fr';
+import { ja } from './ja';
+import { ko } from './ko';
 import { zhCN } from './zh-CN';
+import { zhTW } from './zh-TW';
 
-export { en, zhCN };
+export { de, en, es, fr, ja, ko, zhCN, zhTW };
 export type { TranslationKey };
 
-export const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const;
+export const SUPPORTED_LOCALES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'fr', 'de', 'es'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 export type UiLocalePreference = 'project' | 'system' | SupportedLocale;
 export type TranslationVariables = Readonly<Record<string, string | number>>;
@@ -14,10 +20,71 @@ const TRANSLATIONS: Readonly<
 > = {
 	en,
 	'zh-CN': zhCN,
+	'zh-TW': zhTW,
+	ja,
+	ko,
+	fr,
+	de,
+	es,
+};
+
+/**
+ * Each language in its own words, the way a language menu names it whatever
+ * language the menu around it speaks.
+ */
+export const LOCALE_NAMES: Readonly<Record<SupportedLocale, string>> = {
+	en: 'English',
+	'zh-CN': '简体中文',
+	'zh-TW': '繁體中文',
+	ja: '日本語',
+	ko: '한국어',
+	fr: 'Français',
+	de: 'Deutsch',
+	es: 'Español',
+};
+
+/** The tag the platform's number and date formatting is asked for in each language. */
+const INTL_LOCALES: Readonly<Record<SupportedLocale, string>> = {
+	en: 'en-US',
+	'zh-CN': 'zh-CN',
+	'zh-TW': 'zh-TW',
+	ja: 'ja-JP',
+	ko: 'ko-KR',
+	fr: 'fr-FR',
+	de: 'de-DE',
+	es: 'es-ES',
 };
 
 export function isSupportedLocale(value: unknown): value is SupportedLocale {
-	return value === 'en' || value === 'zh-CN';
+	return (SUPPORTED_LOCALES as readonly unknown[]).includes(value);
+}
+
+export function intlLocaleOf(locale: SupportedLocale): string {
+	return INTL_LOCALES[locale];
+}
+
+/**
+ * The interface language a platform locale asks for. Chinese written in the
+ * traditional script, or for Taiwan, Hong Kong or Macau, reads Traditional
+ * Chinese unless the tag names the simplified script; any other Chinese reads
+ * Simplified. A language the plugin does not speak reads English.
+ */
+export function systemLocaleOf(systemLocale: string): SupportedLocale {
+	const [language = '', ...subtags] = systemLocale
+		.trim()
+		.replaceAll('_', '-')
+		.toLowerCase()
+		.split('-');
+	if (language === 'zh') {
+		if (subtags.includes('hans')) return 'zh-CN';
+		return subtags.some((tag) => tag === 'hant' || tag === 'tw' || tag === 'hk' || tag === 'mo')
+			? 'zh-TW'
+			: 'zh-CN';
+	}
+	if (language === 'ja' || language === 'ko' || language === 'fr' || language === 'de' || language === 'es') {
+		return language;
+	}
+	return 'en';
 }
 
 export function resolveLocale(
@@ -27,8 +94,7 @@ export function resolveLocale(
 ): SupportedLocale {
 	if (preference === 'project') return projectLocale;
 	if (preference !== 'system') return preference;
-	const normalized = systemLocale.trim().replaceAll('_', '-').toLowerCase();
-	return normalized === 'zh' || normalized.startsWith('zh-') ? 'zh-CN' : 'en';
+	return systemLocaleOf(systemLocale);
 }
 
 /** Global UI has no project context, so Follow Project falls back to Obsidian. */

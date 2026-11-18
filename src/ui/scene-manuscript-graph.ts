@@ -24,6 +24,7 @@
 import type { App, EventRef, WorkspaceLeaf } from 'obsidian';
 
 import {
+	isProjectLanguage,
 	readNativeGraphOptions,
 	type NativeGraphOptions,
 	type ProjectLanguage,
@@ -113,7 +114,7 @@ const readProject = (value: unknown): SceneManuscriptProject | null => {
 	if (!isRecord(value)) return null;
 	const { projectFile, rootPath, locale, readOnly } = value;
 	if (typeof projectFile !== 'string' || typeof rootPath !== 'string') return null;
-	if (locale !== 'en' && locale !== 'zh-CN') return null;
+	if (!isProjectLanguage(locale)) return null;
 	return { projectFile, rootPath, locale, readOnly: readOnly === true };
 };
 

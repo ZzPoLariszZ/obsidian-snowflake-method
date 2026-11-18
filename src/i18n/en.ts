@@ -2184,6 +2184,12 @@ export const en = {
 	'modal.importLanguage.confirm': 'Continue',
 	'modal.importLanguage.en': 'English',
 	'modal.importLanguage.zh-CN': 'Simplified Chinese',
+	'modal.importLanguage.zh-TW': 'Traditional Chinese',
+	'modal.importLanguage.ja': 'Japanese',
+	'modal.importLanguage.ko': 'Korean',
+	'modal.importLanguage.fr': 'French',
+	'modal.importLanguage.de': 'German',
+	'modal.importLanguage.es': 'Spanish',
 	'modal.streamImport.title': 'Import {count} notes into “{project}”?',
 	'modal.streamImport.titleOne': 'Import {count} note into “{project}”?',
 	'modal.streamImport.note':
@@ -2421,7 +2427,7 @@ export const en = {
 	'steps.9.title': 'Scene planning (optional)',
 	'steps.9.description':
 		'Optional step: before drafting, further develop each scene’s conflict,\nsatisfying moments, comic beats, foreshadowing, memorable dialogue, and more.',
-	'step9.hints.title': 'Hints for scene list',
+	'step9.hints.title': 'Hints for scene planning',
 	'step9.hints.reorder': 'Drag to reorder the scenes. The row menu moves one to an exact position.',
 	'step9.hints.sceneTypes':
 		'Planning example: Decide whether each scene is proactive (goal → conflict → setback) or reactive (reaction → dilemma → decision).',
@@ -2768,7 +2774,7 @@ export const en = {
 	'manuscript.revision.discard': 'Discard',
 	'manuscript.revision.previous': 'Previous revision',
 	'manuscript.revision.next': 'Next revision',
-	'manuscript.newSegment': 'New manuscript note',
+	'manuscript.newSegment': 'Add manuscript note',
 	'manuscript.segmentTitle': 'Name',
 	'manuscript.segmentTitlePlaceholder': 'Chapter 1',
 	'manuscript.segmentTitleRequired': 'A name is required.',
