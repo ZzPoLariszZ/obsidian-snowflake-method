@@ -79,6 +79,47 @@ describe('finding dialogue ranges', () => {
 	});
 });
 
+describe('German, French and Spanish quotation marks', () => {
+	it('closes a German quotation on the mark English opens with', () => {
+		const body = '„Hallo“, sagte sie. Dann ging sie hinaus.';
+		expect(quoted(body)).toEqual(['„Hallo“']);
+		expect(quoted(body, styles('“”', '„“'))).toEqual(['„Hallo“']);
+	});
+
+	it('reads the German closing mark as an opening one when only curly quotes are on', () => {
+		expect(quoted('„Hallo“, sagte sie.', styles('“”'))).toEqual(['“, sagte sie.']);
+	});
+
+	it('keeps English curly quotes whole beside the German style', () => {
+		expect(quoted('“Hi,” she said. “Bye.”')).toEqual(['“Hi,”', '“Bye.”']);
+	});
+
+	it('reads guillemets both ways round', () => {
+		expect(quoted('« Bonjour », dit-elle.')).toEqual(['« Bonjour »']);
+		expect(quoted('«Ya voy», dijo.')).toEqual(['«Ya voy»']);
+		expect(quoted('»Hallo«, sagte er.')).toEqual(['»Hallo«']);
+		expect(quoted('« Oui », dit-il. »Ja«, sagte er.')).toEqual(['« Oui »', '»Ja«']);
+	});
+
+	it('collapses German print quotes inside a German quotation', () => {
+		expect(quoted('„Er rief »Halt!« und lief“, sagte sie.')).toEqual([
+			'„Er rief »Halt!« und lief“',
+		]);
+	});
+
+	it('leaves each style to its own switch', () => {
+		expect(quoted('« Bonjour »', styles('“”', '„“'))).toEqual([]);
+		expect(quoted('„Hallo“', styles('«»', '»«'))).toEqual([]);
+	});
+
+	it('splits French dialogue from its narration', () => {
+		const body = '« Viens vite », dit Marie.';
+		const split = dialogueSplit(body, dialogueRanges(body, all));
+		expect(split.dialogue.words).toBe(2);
+		expect(split.narrative.words).toBe(2);
+	});
+});
+
 describe('splitting the writing at the quotes', () => {
 	it('counts inside and outside, the marks to neither', () => {
 		const body = '他说：「你好啊」然后走了。';

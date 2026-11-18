@@ -9265,7 +9265,7 @@ export default class SnowflakeMethodPlugin
 		return this.projects.mentions.aggregate(project, matcher);
 	}
 
-	/** The quote styles the settings have switched on, as pairs: all four
+	/** The quote styles the settings have switched on, as pairs: all of them
 	 *  off is how dialogue reading is turned off. */
 	private dialogueStylesFromSettings(): DialogueStyle[] {
 		const chosen: string[] = [];
@@ -9274,6 +9274,15 @@ export default class SnowflakeMethodPlugin
 		}
 		if (this.settings.dialogueQuotesStraight) {
 			chosen.push(DIALOGUE_STYLE_TOKENS.straight);
+		}
+		if (this.settings.dialogueQuotesLowHigh) {
+			chosen.push(DIALOGUE_STYLE_TOKENS.lowHigh);
+		}
+		if (this.settings.dialogueQuotesGuillemets) {
+			chosen.push(DIALOGUE_STYLE_TOKENS.guillemets);
+		}
+		if (this.settings.dialogueQuotesInwardGuillemets) {
+			chosen.push(DIALOGUE_STYLE_TOKENS.inwardGuillemets);
 		}
 		if (this.settings.dialogueQuotesCorner) {
 			chosen.push(DIALOGUE_STYLE_TOKENS.corner);

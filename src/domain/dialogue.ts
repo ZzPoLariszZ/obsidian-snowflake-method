@@ -27,10 +27,19 @@ export interface DialogueStyle {
 	close: string;
 }
 
-/** The four styles the settings offer, spelled as two-character tokens. */
+/**
+ * The styles the settings offer, spelled as two-character tokens. German
+ * closes „ with the mark English opens with, and German print turns French
+ * guillemets inward, so with several on, one paragraph can hold a mark that
+ * opens in one style and closes in another. The scan settles it: a mark that
+ * answers the open on top of the stack closes that, and only otherwise opens.
+ */
 export const DIALOGUE_STYLE_TOKENS = {
 	curly: '“”',
 	straight: '""',
+	lowHigh: '„“',
+	guillemets: '«»',
+	inwardGuillemets: '»«',
 	corner: '「」',
 	white: '『』',
 } as const;

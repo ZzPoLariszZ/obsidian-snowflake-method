@@ -280,10 +280,13 @@ export interface SnowflakeSettings {
 	sensitiveHighlight: boolean;
 	/** The sensitive words themselves, one term per line. */
 	sensitiveWords: string;
-	/** Which quote styles open dialogue: “ ”, " ", 「 」, 『 』. All four off
-	 *  is what turns dialogue reading off. */
+	/** Which quote styles open dialogue: “ ”, " ", „ “, « », » «, 「 」, 『 』.
+	 *  All of them off is what turns dialogue reading off. */
 	dialogueQuotesCurly: boolean;
 	dialogueQuotesStraight: boolean;
+	dialogueQuotesLowHigh: boolean;
+	dialogueQuotesGuillemets: boolean;
+	dialogueQuotesInwardGuillemets: boolean;
 	dialogueQuotesCorner: boolean;
 	dialogueQuotesWhite: boolean;
 	/** How the stream shows dialogue: not at all, tinted, or all else faded. */
@@ -458,6 +461,9 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sensitiveWords: '',
 	dialogueQuotesCurly: true,
 	dialogueQuotesStraight: true,
+	dialogueQuotesLowHigh: true,
+	dialogueQuotesGuillemets: true,
+	dialogueQuotesInwardGuillemets: true,
 	dialogueQuotesCorner: true,
 	dialogueQuotesWhite: true,
 	dialoguePresentation: 'off',
@@ -562,6 +568,9 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'sensitiveWords',
 	'dialogueQuotesCurly',
 	'dialogueQuotesStraight',
+	'dialogueQuotesLowHigh',
+	'dialogueQuotesGuillemets',
+	'dialogueQuotesInwardGuillemets',
 	'dialogueQuotesCorner',
 	'dialogueQuotesWhite',
 	'dialoguePresentation',
@@ -870,6 +879,18 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.dialogueQuotesStraight === 'boolean'
 				? raw.dialogueQuotesStraight
 				: DEFAULT_SETTINGS.dialogueQuotesStraight,
+		dialogueQuotesLowHigh:
+			typeof raw.dialogueQuotesLowHigh === 'boolean'
+				? raw.dialogueQuotesLowHigh
+				: DEFAULT_SETTINGS.dialogueQuotesLowHigh,
+		dialogueQuotesGuillemets:
+			typeof raw.dialogueQuotesGuillemets === 'boolean'
+				? raw.dialogueQuotesGuillemets
+				: DEFAULT_SETTINGS.dialogueQuotesGuillemets,
+		dialogueQuotesInwardGuillemets:
+			typeof raw.dialogueQuotesInwardGuillemets === 'boolean'
+				? raw.dialogueQuotesInwardGuillemets
+				: DEFAULT_SETTINGS.dialogueQuotesInwardGuillemets,
 		dialogueQuotesCorner:
 			typeof raw.dialogueQuotesCorner === 'boolean'
 				? raw.dialogueQuotesCorner
@@ -2304,6 +2325,33 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: this.t('settings.dialogue.quotesLowHigh'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'dialogueQuotesLowHigh',
+							defaultValue: DEFAULT_SETTINGS.dialogueQuotesLowHigh,
+						},
+					},
+					{
+						name: this.t('settings.dialogue.quotesGuillemets'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'dialogueQuotesGuillemets',
+							defaultValue: DEFAULT_SETTINGS.dialogueQuotesGuillemets,
+						},
+					},
+					{
+						name: this.t('settings.dialogue.quotesInwardGuillemets'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'dialogueQuotesInwardGuillemets',
+							defaultValue: DEFAULT_SETTINGS.dialogueQuotesInwardGuillemets,
+						},
+					},
+					{
 						name: this.t('settings.dialogue.quotesCorner'),
 						desc: '',
 						control: {
@@ -3517,6 +3565,21 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'dialogueQuotesStraight':
 				if (typeof value === 'boolean') {
 					this.owner.settings.dialogueQuotesStraight = value;
+				}
+				break;
+			case 'dialogueQuotesLowHigh':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueQuotesLowHigh = value;
+				}
+				break;
+			case 'dialogueQuotesGuillemets':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueQuotesGuillemets = value;
+				}
+				break;
+			case 'dialogueQuotesInwardGuillemets':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueQuotesInwardGuillemets = value;
 				}
 				break;
 			case 'dialogueQuotesCorner':
