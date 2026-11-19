@@ -403,6 +403,23 @@ describe('the source OBS is asked to capture with', () => {
 		];
 		expect(pickObsListItem(windows, 'x11-window', null)).toBe('52428807\r\nDraft\r\nobsidian');
 		expect(pickObsListItem(windows.slice(0, 1), 'x11-window', null)).toBeNull();
+		// Another program's window with Obsidian's name in its title is not Obsidian's, listed first or alone.
+		const browser = {
+			itemName: '[firefox] Obsidian Help - Mozilla Firefox',
+			itemEnabled: true,
+			itemValue: '39845891\r\nObsidian Help - Mozilla Firefox\r\nfirefox',
+		};
+		expect(pickObsListItem([browser, ...windows], 'x11-window', null, 'Gone')).toBe('52428807\r\nDraft\r\nobsidian');
+		expect(pickObsListItem([browser], 'x11-window', null)).toBeNull();
+		expect(pickObsWindow([browser], 'x11-window', 'Obsidian Help - Mozilla Firefox')).toBeNull();
+		// A class that only carries Obsidian's name, as a packaged build may write it, is still Obsidian's.
+		expect(
+			pickObsListItem(
+				[{ itemName: 'Draft', itemEnabled: true, itemValue: '52428807\r\nDraft\r\nmd.obsidian.Obsidian' }],
+				'x11-window',
+				null,
+			),
+		).toBe('52428807\r\nDraft\r\nmd.obsidian.Obsidian');
 	});
 
 	it('picks the window of Obsidian’s with the title asked for, and the first of them where none carries it', () => {

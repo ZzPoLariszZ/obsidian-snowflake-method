@@ -402,13 +402,17 @@ type ObsWindowRule = Exclude<ObsPickRule, 'display'>;
 /** Under X11 a window is listed as its id, its title and its class on three lines. */
 const x11Parts = (item: ObsListItem): string[] => (typeof item.value === 'string' ? item.value.split('\r\n') : []);
 
-/** Whether a listed window is one of Obsidian's: by its program on Windows, by its class under X11. */
+/**
+ * Whether a listed window is one of Obsidian's: by its program on Windows,
+ * by its class under X11. Never by its title: another program's window may
+ * carry Obsidian's name in its own, a browser on Obsidian's pages for one,
+ * and would then be recorded in Obsidian's place.
+ */
 function isObsidianWindow(item: ObsListItem, rule: ObsWindowRule): boolean {
 	if (rule === 'windows-window') {
 		return typeof item.value === 'string' && item.value.toLowerCase().endsWith(OBSIDIAN_WINDOWS_PROGRAM);
 	}
-	const windowClass = x11Parts(item)[2] ?? '';
-	return windowClass.toLowerCase() === 'obsidian' || item.name.toLowerCase().includes('obsidian');
+	return (x11Parts(item)[2] ?? '').toLowerCase().includes('obsidian');
 }
 
 /**
