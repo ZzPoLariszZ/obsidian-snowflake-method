@@ -1606,6 +1606,45 @@ describe('an OBS busy with something of the author’s own', () => {
 	});
 });
 
+describe('a stop OBS may not have heard', () => {
+	it('says the recording was lost where the stop never reached OBS', async () => {
+		const { obs, clock, recorder, hooks, seen, ledger } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		// The conversation drops, and the author stops before OBS is found again.
+		obs.closed = true;
+		obs.drop();
+		await clock.advance(500);
+		expect(await clock.drive(recorder.stop())).toEqual({ path: null, error: 'obs-lost' });
+		// OBS was told nothing and records on. The ledger keeps what is still borrowed.
+		expect(obs.recording).toBe(true);
+		expect(seen.notices).toEqual(['return-pending']);
+		expect(ledger.value?.loans.length).toBeGreaterThan(0);
+	});
+
+	it('gives up on an OBS that says nothing to a stop, and leaves the scene it records where it is', async () => {
+		const { obs, clock, recorder, hooks } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		obs.silent = true;
+		const from = clock.now;
+		const asked = obs.types().length;
+		expect(await clock.drive(recorder.stop())).toEqual({ path: null, error: 'obs-lost' });
+		// One stop and two looks, each given its time, and never the whole minute of a stop OBS took.
+		expect(clock.now - from).toBeLessThan(40_000);
+		expect(obs.types().slice(asked)).toEqual(['StopRecord', 'GetRecordStatus', 'GetRecordStatus']);
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+	});
+
+	it('tells a stop OBS took as a stop, even where the file is not closed in time', async () => {
+		const { obs, clock, recorder, hooks, seen } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		obs.stopsLate = 90;
+		expect(await clock.drive(recorder.stop())).toEqual({ path: obs.recordPath, error: null });
+		expect(seen.notices).toEqual(['return-pending']);
+		// Its picture is of no use any more: the scene went with the stop.
+		expect(obs.scenes.map((scene) => scene.name)).toEqual(['Scene']);
+	});
+});
+
 describe('a plugin that goes while OBS is being asked', () => {
 	it('lets a start under way end by itself, and gives everything back first', async () => {
 		const { obs, clock, recorder, hooks, seen, ledger } = rig();

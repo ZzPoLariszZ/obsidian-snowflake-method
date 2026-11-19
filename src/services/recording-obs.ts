@@ -162,6 +162,8 @@ const RECONNECTS = 5;
 const RECONNECT_MS = 3000;
 const BLANK_TRIES = 6;
 const BLANK_WAIT_MS = 500;
+/** How many times in a row OBS may say nothing to a look at its recording before the look is given up. */
+const SILENT_TRIES = 2;
 /** A source new in OBS has no size until its first picture comes: it is asked again for a while. */
 const SIZE_TRIES = 10;
 const SIZE_WAIT_MS = 300;
@@ -1282,19 +1284,28 @@ export class ObsRecorder {
 		const stopped = await this.confirmStopped(seconds);
 		path = this.path ?? path;
 		if (stopped) await this.giveBack();
-		// The recording was asked to end either way: its picture is of no use to anything now.
-		await this.tidy();
+		// Once OBS took the stop, the recording's picture is of no use to
+		// anything. A recording OBS never took a stop for may still run, and
+		// keeps the scene it shows.
+		const asEnded = stopped || asked.ok;
+		if (asEnded) await this.tidy();
 		this.finish();
 		if (this.loans.length > 0) hooks?.notice('return-pending');
-		return { path, error: null };
+		// A stop OBS neither took nor was seen to make is no stop, and is not told as one.
+		return asEnded ? { path, error: null } : { path: null, error: 'obs-lost' };
 	}
 
 	private async confirmStopped(seconds: number): Promise<boolean> {
+		let silent = 0;
 		for (let second = 0; second < seconds; second += 1) {
 			if (this.sawStopped) return true;
 			const status = await this.ask('GetRecordStatus');
 			if (status.ok && status.data.outputActive !== true) return true;
-			if (unanswered(status) && (this.socket === null || !this.socket.open)) return false;
+			if (unanswered(status)) {
+				// The conversation is down, or OBS has stopped answering: asking on would learn nothing.
+				silent += 1;
+				if (this.socket === null || !this.socket.open || silent >= SILENT_TRIES) return false;
+			} else silent = 0;
 			await waitOn(this.deps.timers, READY_WAIT_MS);
 		}
 		return this.sawStopped;
