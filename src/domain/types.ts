@@ -71,6 +71,13 @@ export const PROJECT_LANGUAGES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'fr', 'de'
 export type ProjectLanguage = (typeof PROJECT_LANGUAGES)[number];
 
 /**
+ * The two languages there were before the other six. What a project wrote
+ * down while they were the only two was read by either's words, whichever of
+ * them the project spoke, and still is: its notes are older than the rest.
+ */
+export const FIRST_PROJECT_LANGUAGES: readonly ProjectLanguage[] = ['en', 'zh-CN'];
+
+/**
  * The name a project's first view takes before any view of its own is written,
  * in the freeform and timeline workspaces alike: data in the project's
  * language from the moment it is saved, so not an interface string.

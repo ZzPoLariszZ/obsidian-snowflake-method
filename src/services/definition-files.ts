@@ -6,6 +6,7 @@ import {
   type CharacterType,
   type DefinitionFileId,
   type EntityKind,
+  FIRST_PROJECT_LANGUAGES,
   PROJECT_LANGUAGES,
   type ProjectLanguage,
 } from "../domain";
@@ -483,14 +484,16 @@ export function characterRoleName(
 }
 
 /**
- * The character type a node name names, in any language. Every language is
- * consulted because a project's language can change while its notes keep the
+ * The character type a node name names, in any of the languages given. Every
+ * language is consulted unless the caller knows which could have written the
+ * name, because a project's language can change while its notes keep the
  * links they were written with.
  */
 export function characterTypeFromNodeName(
   name: string,
+  languages: readonly ProjectLanguage[] = PROJECT_LANGUAGES,
 ): CharacterType | null {
-  for (const language of PROJECT_LANGUAGES) {
+  for (const language of languages) {
     const roles = COPY[language].roles;
     for (const type of ["major", "supporting", "minor"] as const) {
       if (name === roles[type]) return type;
@@ -504,7 +507,9 @@ export function characterTypeFromNodeName(
  * the category tree, where the roles are seeded. An author is free to name a
  * deeper node after a role, `Houses/Major`, and that is an ordinary category:
  * reading it as the role would make the dashboard disagree with the generated
- * base, and the migration mistake it for a converted role.
+ * base, and the migration mistake it for a converted role. The root says
+ * which language's roles are meant, too: another language's word for a role
+ * is an ordinary word under this one's root, and the author's own category.
  */
 export function characterRoleFromValue(value: unknown): CharacterType | null {
   const link = parseDefinitionValue(value);
@@ -516,23 +521,30 @@ export function characterRoleFromValue(value: unknown): CharacterType | null {
   popNodeNoteSegment(segments);
   const name = segments.pop();
   if (name === undefined) return null;
-  const type = characterTypeFromNodeName(name);
-  if (type === null) return null;
   // The folder above a root node is the tree root itself. A target too short
   // to say -- a hand-typed link relative to the root -- is given the benefit
   // of the doubt, the way every link was before nodes had depth.
   const parent = segments.pop();
-  return parent === undefined || isCategoryRootName(parent) ? type : null;
+  return characterTypeFromNodeName(
+    name,
+    parent === undefined ? PROJECT_LANGUAGES : categoryRootLanguages(parent),
+  );
 }
 
-/** Whether a folder name is a character category tree root, in any language. */
-function isCategoryRootName(name: string): boolean {
-  for (const language of PROJECT_LANGUAGES) {
-    if (name === definitionRootName("character", "category", language)) {
-      return true;
-    }
-  }
-  return false;
+/**
+ * The languages whose roles a folder holds at its root: none unless it is a
+ * character category tree root, and then the language it is named in, since
+ * each language seeds its roles under its own root. `Principal` is the lead
+ * under the French root and an author's own category under the English one.
+ * The first two languages read each other's roles under either's root, as
+ * they did while they were the only two.
+ */
+function categoryRootLanguages(name: string): readonly ProjectLanguage[] {
+  const own = PROJECT_LANGUAGES.find(
+    (language) => name === definitionRootName("character", "category", language),
+  );
+  if (own === undefined) return [];
+  return FIRST_PROJECT_LANGUAGES.includes(own) ? FIRST_PROJECT_LANGUAGES : [own];
 }
 
 /**

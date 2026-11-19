@@ -248,6 +248,36 @@ describe("character roles", () => {
     expect(characterRoleFromCategories("not a list")).toBeNull();
   });
 
+  it("reads another language's word for a role as the author's own category", () => {
+    // Principal is French and Spanish for the lead, and an English author's
+    // own category: under the English root it is no role, and it does not
+    // hide the role listed after it.
+    expect(
+      characterRoleFromCategories([
+        "[[P/20_Character/21_Category/Principal/Principal|Principal]]",
+      ]),
+    ).toBeNull();
+    expect(
+      characterRoleFromCategories([
+        "[[P/20_Character/21_Category/Principal/Principal|Principal]]",
+        "[[P/20_Character/21_Category/Supporting/Supporting|Supporting]]",
+      ]),
+    ).toBe("supporting");
+    // Under its own language's root it is the role.
+    expect(
+      characterRoleFromCategories([
+        "[[P/20_Personnage/21_Catégorie/Principal/Principal|Principal]]",
+      ]),
+    ).toBe("major");
+    // The first two languages still read each other's, as they always have.
+    expect(
+      characterRoleFromCategories(["[[P/20_Character/21_Category/主角/主角|主角]]"]),
+    ).toBe("major");
+    expect(
+      characterRoleFromCategories(["[[P/20_角色/21_类别/Minor/Minor|Minor]]"]),
+    ).toBe("minor");
+  });
+
   it("does not read a deeper node named after a role as the role", () => {
     // An author is free to file houses under `Houses/Major`: that is an
     // ordinary category, not the author's role choice, in either era.
