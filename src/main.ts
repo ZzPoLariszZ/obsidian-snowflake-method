@@ -22,6 +22,7 @@ import {
 	DEFAULT_STICKY_NOTE_COLOR,
 	DEFAULT_STOPWORDS,
 	DEFAULT_STOPWORDS_EN,
+	DEFAULT_STOPWORDS_ZH,
 	DEFINITION_FILE_IDS,
 	DIALOGUE_STYLE_TOKENS,
 	deleteFromOrders,
@@ -6656,15 +6657,18 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The stopword set frequency reads with: the English list and the
-	 * project's own -- a manuscript in any language still holds English
-	 * function words -- plus whatever the reader added. The other languages'
+	 * The stopword set frequency reads with: the English and the Chinese
+	 * lists at once, as it always has -- a manuscript in any language still
+	 * holds English function words, a Chinese one can stand in a project of
+	 * another language, and the two lists cannot collide -- then the
+	 * project's own, plus whatever the reader added. The other languages'
 	 * lists stay out, because theirs collide with ordinary words of this one:
 	 * German "die" and French "son" are English words.
 	 */
 	private frequencyStopwords(language: ProjectLanguage): Set<string> {
 		return new Set([
 			...DEFAULT_STOPWORDS_EN,
+			...DEFAULT_STOPWORDS_ZH,
 			...DEFAULT_STOPWORDS[language],
 			...parseStopwords(this.settings.customStopwords),
 		]);
