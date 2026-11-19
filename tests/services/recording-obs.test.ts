@@ -472,7 +472,7 @@ describe('recording through OBS', () => {
 		});
 	});
 
-	it('points OBS under X11 at the screen Obsidian stands on, chosen from OBS’s own list', async () => {
+	it('points OBS under X11 at the screen Obsidian stands on, chosen from OBS’s own list, and at no other', async () => {
 		const linux = rig({ system: 'linux' });
 		linux.obs.kinds = ['xshm_input_v2', 'xcomposite_input'];
 		linux.obs.loudKinds = [];
@@ -486,6 +486,23 @@ describe('recording through OBS', () => {
 			kind: 'xshm_input_v2',
 			settings: { show_cursor: true, screen: 1 },
 		});
+
+		// Where OBS lists no screen at that corner, none is recorded in its place.
+		const elsewhere = rig({ system: 'linux' });
+		elsewhere.obs.kinds = ['xshm_input_v2', 'xcomposite_input'];
+		elsewhere.obs.loudKinds = [];
+		elsewhere.obs.lists.screen = [
+			{ itemName: 'Screen HDMI-1 (1920x1080 @ -1920,0)', itemEnabled: true, itemValue: 0 },
+			{ itemName: 'Screen DP-1 (2560x1440 @ 40,0)', itemEnabled: true, itemValue: 1 },
+		];
+		const before = elsewhere.obs.borrowable();
+		expect(await elsewhere.clock.drive(elsewhere.recorder.start(request(), elsewhere.hooks))).toMatchObject({
+			ok: false,
+			code: 'obs-scene',
+		});
+		expect(elsewhere.obs.types()).not.toContain('StartRecord');
+		expect(elsewhere.obs.borrowable()).toEqual(before);
+		expect(elsewhere.obs.capturing()).toEqual([]);
 	});
 
 	it('stays on the window it shows where OBS lists none of the title asked for', async () => {

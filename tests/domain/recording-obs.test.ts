@@ -328,10 +328,20 @@ describe('the source OBS is asked to capture with', () => {
 		];
 		expect(pickObsListItem(screens, 'display', { x: -1440, y: -560 })).toBe('uuid-side');
 		expect(pickObsListItem(screens, 'display', { x: 0, y: 0 })).toBe('uuid-main');
-		// A screen OBS does not list falls to the main one, then to the first.
-		expect(pickObsListItem(screens, 'display', { x: 9999, y: 0 })).toBe('uuid-main');
+		// A corner turned from points into pixels may land a pixel off.
+		expect(pickObsListItem(screens, 'display', { x: -1439, y: -561 })).toBe('uuid-side');
+		// A corner OBS lists no screen at names none: the main screen in its place would be the wrong one, recorded without a word.
+		expect(pickObsListItem(screens, 'display', { x: 9999, y: 0 })).toBeNull();
+		expect(pickObsListItem(screens, 'display', { x: -1437, y: -560 })).toBeNull();
+		// Only where the desktop gave no corner is the main screen taken, then the first.
 		expect(pickObsListItem(screens, 'display', null)).toBe('uuid-main');
-		expect(pickObsListItem([{ itemName: 'Odd', itemEnabled: true, itemValue: 'only' }], 'display', null)).toBe('only');
+		expect(pickObsListItem([...screens].reverse().map((screen) => ({ ...screen, itemName: 'Unplaced' })), 'display', null)).toBe(
+			'uuid-side',
+		);
+		// One screen alone is the one, whatever its name says and wherever the corner is said to be.
+		const only = [{ itemName: 'Odd', itemEnabled: true, itemValue: 'only' }];
+		expect(pickObsListItem(only, 'display', null)).toBe('only');
+		expect(pickObsListItem(only, 'display', { x: 1920, y: 0 })).toBe('only');
 	});
 
 	it('picks a screen under X11 from the same kind of list, by its number', () => {
@@ -342,6 +352,7 @@ describe('the source OBS is asked to capture with', () => {
 		];
 		expect(pickObsListItem(x11, 'display', { x: 2560, y: 180 })).toBe(1);
 		expect(pickObsListItem(x11, 'display', { x: 0, y: 0 })).toBe(0);
+		expect(pickObsListItem(x11, 'display', { x: 1280, y: 90 })).toBeNull();
 	});
 
 	it('finds a screen on Windows by its place wherever that stands in the name', () => {
@@ -356,8 +367,9 @@ describe('the source OBS is asked to capture with', () => {
 		expect(pickObsListItem(windows, 'display', { x: 0, y: 0 })).toBe('main');
 		expect(pickObsListItem(windows, 'display', { x: 3840, y: 360 })).toBe('right');
 		expect(pickObsListItem(windows, 'display', { x: -2560, y: 0 })).toBe('left');
-		// A corner OBS lists no screen at falls to the main one, which is not the first here.
-		expect(pickObsListItem(windows, 'display', { x: 2560, y: 240 })).toBe('main');
+		// A corner OBS lists no screen at names none of them.
+		expect(pickObsListItem(windows, 'display', { x: 2560, y: 240 })).toBeNull();
+		// With no corner known, the main one is taken, which is not the first here.
 		expect(pickObsListItem(windows, 'display', null)).toBe('main');
 		// The mark reads otherwise in another language, and the place is found all the same.
 		const chinese = [
@@ -366,7 +378,7 @@ describe('the source OBS is asked to capture with', () => {
 		];
 		expect(pickObsListItem(chinese, 'display', { x: 0, y: 0 })).toBe('main');
 		// A place that only begins as another does is not that place.
-		expect(pickObsListItem(chinese, 'display', { x: 384, y: 0 })).toBe('main');
+		expect(pickObsListItem(chinese, 'display', { x: 384, y: 0 })).toBeNull();
 		expect(pickObsListItem(chinese, 'display', { x: 3840, y: 0 })).toBe('side');
 	});
 

@@ -399,6 +399,9 @@ function listItems(items: readonly unknown[]): ObsListItem[] {
 
 type ObsWindowRule = Exclude<ObsPickRule, 'display'>;
 
+/** How far a corner turned from points into pixels may land from the one OBS lists: no two screens stand that close. */
+const PLACE_SLACK = 1;
+
 /** Under X11 a window is listed as its id, its title and its class on three lines. */
 const x11Parts = (item: ObsListItem): string[] => (typeof item.value === 'string' ? item.value.split('\r\n') : []);
 
@@ -433,7 +436,11 @@ function carriesTitle(item: ObsListItem, rule: ObsWindowRule, title: string): bo
  * name, wherever it stands in it: on Windows OBS writes "(Primary
  * Monitor)" after the main screen's, in its own language. OBS counts a
  * screen's place in pixels, so the corner asked for must be in pixels
- * too. Obsidian's window is listed by its program
+ * too. A corner that is known names its screen or none at all: the main
+ * screen taken in another's place would be a recording of the wrong
+ * screen, made without a word. Only where the desktop gave no corner is
+ * the main screen taken, and one screen alone is the one, whatever its
+ * name says. Obsidian's window is listed by its program
  * on Windows and by its class under X11. Where Obsidian has several, the
  * one with the title asked for is chosen, and the first of them where none
  * carries it.
@@ -450,12 +457,14 @@ export function pickObsListItem(
 	if (rule === 'display') {
 		// OBS lists a placeholder beside the screens while none is chosen.
 		const screens = listed.filter((item) => item.value !== 'DUMMY');
+		const only = screens.length === 1 ? screens[0] : undefined;
+		if (only !== undefined) return only.value;
 		const at = (x: number, y: number): ObsListItem | undefined =>
 			screens.find((item) => {
 				const frame = obsListedFrame(item.name);
-				return frame !== null && frame.x === x && frame.y === y;
+				return frame !== null && Math.abs(frame.x - x) <= PLACE_SLACK && Math.abs(frame.y - y) <= PLACE_SLACK;
 			});
-		const chosen = (origin === null ? undefined : at(origin.x, origin.y)) ?? at(0, 0) ?? screens[0];
+		const chosen = origin === null ? (at(0, 0) ?? screens[0]) : at(origin.x, origin.y);
 		return chosen === undefined ? null : chosen.value;
 	}
 	const windows = listed.filter((item) => isObsidianWindow(item, rule));
