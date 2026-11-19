@@ -137,11 +137,9 @@ export default defineConfig(
 						// The screen recording's setup guide quotes OBS's menus and
 						// boxes as OBS itself writes them, capitals and all, so the
 						// author finds the same words on the screen.
-						'^(WebSocket Server Settings|Enable WebSocket server|Show Connect Info|Server Password|Server Port|Audio Mixer|Recording Quality)$',
-						// A picture's height as it is always written, and an option
-						// quoted by its own name in the middle of a sentence.
+						'^(WebSocket Server Settings|Enable WebSocket server|Show Connect Info|Server Password|Server Port)$',
+						// A picture's height as it is always written.
 						'^(1080|720)p$',
-						'“As set in OBS”',
 					],
 				},
 			],
