@@ -131,6 +131,7 @@ import { isMobileDevice } from './ui/device';
 import type { RecordingSettingsBridge } from './ui/recording-bridge';
 import {
 	describeRecordingVaultFolder,
+	forgetObsProbe,
 	freshRecordingSettingsMemory,
 	recordingScopeHint,
 	renderObsGuide,
@@ -2750,7 +2751,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						desc: this.lines('recording.obs.passwordHint'),
 						visible: withObs,
 						render: (setting) => {
-							renderObsPassword(setting, bridge);
+							renderObsPassword(setting, bridge, () => {
+								this.forgetRecordingProbe();
+							});
 						},
 					},
 					{
@@ -2843,10 +2846,19 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * A choice the look at OBS was made with has changed: its answer is
+	 * forgotten, and drawn away where it was showing. The page is drawn
+	 * again only then, so a port typed figure by figure redraws it once.
+	 */
+	private forgetRecordingProbe(): void {
+		if (forgetObsProbe(this.recordingMemory)) this.update();
+	}
+
+	/**
 	 * Keeps one of the screen recording's choices. A recorder brings its own
 	 * answers for what to record, so a scope the new recorder has not falls
-	 * back to the screen. A look at OBS stands for the choices it was made
-	 * with: it is forgotten when one of them changes.
+	 * back to the one a device starts on. A look at OBS stands for the
+	 * choices it was made with: it is forgotten when one of them changes.
 	 */
 	private setRecordingControlValue(name: string, value: unknown): void {
 		const bridge = this.owner.recordingSettings();
@@ -2864,7 +2876,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		if (name === 'obsPort') {
 			if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 65535) return;
 			bridge.update({ obsPort: value });
-			this.recordingMemory.probe = null;
+			this.forgetRecordingProbe();
 			return;
 		}
 		if (name === 'tool' && isOneOf(recordingTools(bridge.system()), value)) {
@@ -2880,7 +2892,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		} else if (name === 'scope' && isOneOf(recordingScopes(bridge.preferences().tool), value)) {
 			bridge.update({ scope: value });
 		} else return;
-		this.recordingMemory.probe = null;
+		forgetObsProbe(this.recordingMemory);
 		// The rows under a choice follow it at once.
 		this.update();
 	}

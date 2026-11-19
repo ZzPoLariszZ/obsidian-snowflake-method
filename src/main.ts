@@ -5890,13 +5890,14 @@ export default class SnowflakeMethodPlugin
 				this.desktopParts()?.openScreenPrivacy();
 			},
 			testObs: (onOpening) => service.testObs(onOpening),
-			mountSecret: (host) => {
+			mountSecret: (host, changed) => {
 				// Obsidian's own field: the author picks or makes a secret there,
 				// and the choices keep its name, never the password.
 				new SecretComponent(this.app, host)
 					.setValue(this.recordingPreferences().obsSecret)
 					.onChange((name) => {
 						update({ obsSecret: name });
+						changed();
 					});
 			},
 			openObsDownload: () => {

@@ -39,8 +39,8 @@ export interface RecordingSettingsBridge {
 	/** Looks at OBS without recording: whether it answers and what it would record. */
 	/** Looks at OBS. `onOpening` is told where OBS was closed and is being opened for the look. */
 	testObs(onOpening?: () => void): Promise<ObsProbe>;
-	/** Draws Obsidian's own field for a secret into a host, for OBS's password. */
-	mountSecret(host: HTMLElement): void;
+	/** Draws Obsidian's own field for a secret into a host, for OBS's password. `changed` is told when another secret is chosen. */
+	mountSecret(host: HTMLElement, changed: () => void): void;
 	/** Opens OBS's own download page in the browser. */
 	openObsDownload(): void;
 }

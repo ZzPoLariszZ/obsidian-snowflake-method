@@ -34,6 +34,8 @@ export interface RecordingSettingsMemory {
 	opening: boolean;
 	/** What the last look found, until a choice it depended on changes. */
 	probe: ObsProbe | null;
+	/** Goes up whenever a choice a look depends on changes, so a look begun before the change is known for an old one. */
+	stamp: number;
 	/** The setup guide stands open. */
 	guideOpen: boolean;
 }
@@ -42,8 +44,23 @@ export const freshRecordingSettingsMemory = (): RecordingSettingsMemory => ({
 	testing: false,
 	opening: false,
 	probe: null,
+	stamp: 0,
 	guideOpen: false,
 });
+
+/**
+ * A choice the look at OBS depends on has changed: the port, the password,
+ * the recorder, what is recorded. The answer that stood was for the old
+ * choice and says nothing of the new one, and neither will a look still
+ * under way. True where an answer was showing, which the page then draws
+ * away.
+ */
+export function forgetObsProbe(memory: RecordingSettingsMemory): boolean {
+	memory.stamp += 1;
+	if (memory.probe === null) return false;
+	memory.probe = null;
+	return true;
+}
 
 /**
  * What the choice of what to record comes to with the recorder chosen, one
@@ -308,11 +325,12 @@ export function renderObsGuide(
  * OBS's password, in Obsidian's own field for a secret: the choices keep
  * the secret's name and never the password. Of the field's parts the row
  * shows the button alone, which reads as the way to choose a secret, then
- * as the way to change it.
+ * as the way to change it. `changed` is told when another secret is
+ * chosen: a look at OBS made with the old one no longer stands.
  */
-export function renderObsPassword(setting: Setting, bridge: RecordingSettingsBridge): void {
+export function renderObsPassword(setting: Setting, bridge: RecordingSettingsBridge, changed: () => void): void {
 	setting.settingEl.addClass('snowflake-method-settings-recording-secret');
-	bridge.mountSecret(setting.controlEl);
+	bridge.mountSecret(setting.controlEl, changed);
 }
 
 /**
@@ -361,11 +379,13 @@ export function renderObsTest(
 					memory.opening = true;
 					refresh();
 				};
+				const stamp = memory.stamp;
 				void bridge.testObs(opening).then(
 					(found) => {
 						memory.testing = false;
 						memory.opening = false;
-						memory.probe = found;
+						// A choice changed while OBS was looked at: the answer is for the old one, and is not shown.
+						memory.probe = memory.stamp === stamp ? found : null;
 						refresh();
 					},
 					() => {

@@ -30,7 +30,9 @@ import {
 	type RecordingState,
 	type RecordingSystem,
 } from '../src/domain';
+import type { ObsProbe } from '../src/services';
 import type { RecordingSettingsBridge } from '../src/ui/recording-bridge';
+import type { RecordingSettingsMemory } from '../src/ui/recording-settings';
 
 function settingTabFor(
 	uiLocale: SnowflakeSettings['uiLocale'],
@@ -1113,7 +1115,13 @@ describe('the screen recording’s section of the settings', () => {
 	}
 
 	function recordingTab(system: RecordingSystem = 'mac', patch: Partial<RecordingPreferences> = {}) {
-		const held: { preferences: RecordingPreferences; state: RecordingState; access: 'granted' | 'denied' | 'unknown' } = {
+		const held: {
+			preferences: RecordingPreferences;
+			state: RecordingState;
+			access: 'granted' | 'denied' | 'unknown';
+			/** What Obsidian's field for a secret calls when another secret is chosen, once the row is drawn. */
+			secretChanged: () => void;
+		} = {
 			// The choices most of these rows are tested with: a folder outside the vault, the screen
 			// Obsidian is on, OBS's own size. What a device starts on has a test of its own.
 			preferences: {
@@ -1125,6 +1133,7 @@ describe('the screen recording’s section of the settings', () => {
 			},
 			state: { ...IDLE_RECORDING_STATE },
 			access: 'granted',
+			secretChanged: () => {},
 		};
 		const bridge: RecordingSettingsBridge = {
 			system: () => system,
@@ -1145,7 +1154,9 @@ describe('the screen recording’s section of the settings', () => {
 			screenAccess: () => held.access,
 			openScreenPrivacy: () => {},
 			testObs: () => Promise.resolve({ ok: false, code: 'obs-closed' }),
-			mountSecret: () => {},
+			mountSecret: (_host, changed) => {
+				held.secretChanged = changed;
+			},
 			openObsDownload: () => {},
 		};
 		const plugin = {
@@ -1333,6 +1344,32 @@ describe('the screen recording’s section of the settings', () => {
 		expect([held.preferences.quality, held.preferences.obsPort]).toEqual(['720p', 4460]);
 		// None of it is one of the settings that travel with the vault.
 		expect(Object.keys(DEFAULT_SETTINGS).some((key) => key.toLowerCase().includes('record'))).toBe(false);
+	});
+
+	it('forgets the look at OBS when its port or its password changes, and draws the page again only where an answer showed', () => {
+		const { tab, held, row, updates } = recordingTab('mac', { tool: 'obs' });
+		const memory = (tab as unknown as { recordingMemory: RecordingSettingsMemory }).recordingMemory;
+		const answer: ObsProbe = { ok: true, version: '33.0.1', picture: null, problem: null };
+		// No answer showing: a port typed figure by figure draws nothing again.
+		void tab.setControlValue('recording.obsPort', 4460);
+		void tab.setControlValue('recording.obsPort', 4461);
+		expect([memory.probe, memory.stamp, updates()]).toEqual([null, 2, 0]);
+		// An answer showing is for the old port: it goes, and the page is drawn once to say so.
+		memory.probe = answer;
+		void tab.setControlValue('recording.obsPort', 4462);
+		void tab.setControlValue('recording.obsPort', 4463);
+		expect([memory.probe, held.preferences.obsPort, updates()]).toEqual([null, 4463, 1]);
+		// Another secret chosen for the password does the same: the answer was for the old one.
+		const password = { settingEl: { addClass: () => {} }, controlEl: {} };
+		(row('Password').render as (given: typeof password) => void)(password);
+		memory.probe = answer;
+		const stamp = memory.stamp;
+		held.secretChanged();
+		expect([memory.probe, memory.stamp, updates()]).toEqual([null, stamp + 1, 2]);
+		// How sharp the picture is has no part in the look, and leaves its answer standing.
+		memory.probe = answer;
+		void tab.setControlValue('recording.quality', '720p');
+		expect([memory.probe, updates()]).toEqual([answer, 2]);
 	});
 
 	it('names a port out of range in the row itself', () => {

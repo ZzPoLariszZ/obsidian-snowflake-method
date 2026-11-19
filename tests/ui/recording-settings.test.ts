@@ -15,6 +15,7 @@ import type { ObsProbe, RecordingStorage } from '../../src/services';
 import type { RecordingSettingsBridge } from '../../src/ui/recording-bridge';
 import {
 	describeRecordingVaultFolder,
+	forgetObsProbe,
 	freshRecordingSettingsMemory,
 	recordingScopeHint,
 	renderObsGuide,
@@ -84,6 +85,8 @@ function rig(system: RecordingSystem = 'mac') {
 		figures: { files: number; bytes: number } | null;
 		access: 'granted' | 'denied' | 'unknown';
 		probe: ObsProbe;
+		/** What Obsidian's field for a secret calls when another secret is chosen. */
+		secretChanged: () => void;
 	} = {
 		state: { ...IDLE_RECORDING_STATE },
 		preferences: defaultRecordingPreferences(system),
@@ -91,6 +94,7 @@ function rig(system: RecordingSystem = 'mac') {
 		figures: null,
 		access: 'granted',
 		probe: { ok: true, version: '33.0.1', picture: 'data:image/jpeg;base64,AAAA', problem: null },
+		secretChanged: () => {},
 	};
 	const calls: string[] = [];
 	const refreshed = { count: 0 };
@@ -123,8 +127,9 @@ function rig(system: RecordingSystem = 'mac') {
 			calls.push('testObs');
 			return Promise.resolve(held.probe);
 		},
-		mountSecret: (host) => {
+		mountSecret: (host, changed) => {
 			calls.push(`mountSecret ${host.className}`);
+			held.secretChanged = changed;
 		},
 		openObsDownload: () => {
 			calls.push('openObsDownload');
@@ -353,10 +358,16 @@ describe('the screen recording’s rows in the settings', () => {
 	});
 
 	it('hands OBS’s password to Obsidian’s own field for a secret', () => {
-		const { bridge, calls } = rig();
+		const { bridge, held, calls } = rig();
 		const row = new Row();
-		renderObsPassword(row.setting, bridge);
+		let changed = 0;
+		renderObsPassword(row.setting, bridge, () => {
+			changed += 1;
+		});
 		expect(calls).toEqual(['mountSecret setting-item-control']);
+		// Another secret chosen in that field is passed on: a look made with the old one no longer stands.
+		held.secretChanged();
+		expect(changed).toBe(1);
 	});
 
 	it('looks at OBS when asked, and keeps the answer and its picture until a choice changes', async () => {
@@ -417,6 +428,39 @@ describe('the screen recording’s rows in the settings', () => {
 		// The next look starts as a look, not as an opening.
 		answered.button('Test connection').click();
 		expect([memory.testing, memory.opening]).toEqual([true, false]);
+	});
+
+	it('forgets a look when a choice it was made with changes: its answer, and the one still on its way', async () => {
+		const { bridge, held, refresh } = rig();
+		const memory = freshRecordingSettingsMemory();
+		// Nothing showing: there is nothing to draw away.
+		expect(forgetObsProbe(memory)).toBe(false);
+		memory.probe = held.probe;
+		// An answer was showing, and is not any more: the page is told to draw.
+		expect(forgetObsProbe(memory)).toBe(true);
+		expect(memory.probe).toBeNull();
+
+		// A look begun under the old port answers after the port was changed: it says nothing of the new one.
+		let finish: (probe: ObsProbe) => void = () => {};
+		bridge.testObs = () =>
+			new Promise((resolve) => {
+				finish = resolve;
+			});
+		const row = new Row();
+		renderObsTest(row.setting, bridge, t, memory, refresh);
+		row.button('Test connection').click();
+		expect(forgetObsProbe(memory)).toBe(false);
+		finish(held.probe);
+		await settle();
+		expect([memory.testing, memory.probe]).toEqual([false, null]);
+		const after = new Row();
+		renderObsTest(after.setting, bridge, t, memory, refresh);
+		expect(after.said()).toEqual([['Check that OBS Studio answers and see what it would record.', false]]);
+		// A look made with the choices as they stand is kept as before.
+		after.button('Test connection').click();
+		finish(held.probe);
+		await settle();
+		expect(memory.probe).toEqual(held.probe);
 	});
 
 	it('says that OBS is live on another output where that stands in a recording’s way, with no picture', () => {
