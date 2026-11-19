@@ -813,6 +813,41 @@ describe('the screen recording service', () => {
 		expect(runner.last.options).toEqual({ cwd: 'C:\\Program Files\\obs-studio\\bin\\64bit', detached: true });
 	});
 
+	it('takes a launch that ends at once with a fault as no OBS opened, tries the next way, and waits for nothing', async () => {
+		const { clock, obs, runner, service } = rig({
+			system: 'linux',
+			preferences: { tool: 'obs', obsReached: true, folder: '/home/ada/Proof', scope: 'obs' },
+		});
+		obs.closed = true;
+		// No OBS of the system's own, and a Flatpak that has none either and says so with its code.
+		runner.played.set('/usr/bin/obs', (process) => {
+			process.fail('spawn /usr/bin/obs ENOENT');
+		});
+		runner.played.set('/usr/bin/flatpak', (process) => {
+			process.end(1);
+		});
+		const from = clock.now;
+		expect(await clock.drive(service.start())).toBe('obs-closed');
+		expect(runner.runs.map((process) => process.command)).toEqual(['/usr/bin/obs', '/usr/bin/flatpak']);
+		// The half minute OBS is given to come up is not waited for nothing.
+		expect(clock.now - from).toBeLessThan(5000);
+	});
+
+	it('takes a launcher that ends at once with no fault as OBS on its way', async () => {
+		const { clock, obs, runner, service } = rig({
+			system: 'linux',
+			preferences: { tool: 'obs', obsReached: true, folder: '/home/ada/Proof', scope: 'obs' },
+		});
+		obs.scenes[0]?.items.push({ id: 1, source: 'Mine' });
+		obs.closed = true;
+		runner.played.set('/usr/bin/obs', (process) => {
+			obs.closed = false;
+			process.end(0);
+		});
+		expect(await clock.drive(service.start())).toBeNull();
+		expect(runner.runs.map((process) => process.command)).toEqual(['/usr/bin/obs']);
+	});
+
 	it('marks OBS as reached when it answers with anything, a refusal included', async () => {
 		const { clock, obs, kept, service } = rig({ preferences: { tool: 'obs' } });
 		obs.password = 'supersecretpassword';

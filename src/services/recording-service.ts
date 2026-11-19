@@ -645,8 +645,11 @@ export class ScreenRecordingService {
 				if (exit.error === null && exit.code === 0) return true;
 				continue;
 			}
+			// Still there after a moment, or gone with no fault: OBS is on its
+			// way. One that went at once with a fault opened nothing, and the
+			// half minute OBS is waited for would be waited for nothing.
 			const early = await within(this.deps.timers, program.closed, LAUNCH_WATCH_MS);
-			if (early === null || early.error === null) return true;
+			if (early === null || (early.error === null && early.code === 0)) return true;
 		}
 		return false;
 	}
