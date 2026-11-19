@@ -363,6 +363,7 @@ export function renderHistoryPanel(
 		wrap: tableWrap,
 		bodyWrap,
 		body: tableBody,
+		fitActions,
 	} = buildTableFrame(root, {
 		wrapCls: 'snowflake-method-history-table-wrap',
 		tableCls: `snowflake-method-history-table${withActions ? ' has-actions-column' : ''}`,
@@ -418,27 +419,6 @@ export function renderHistoryPanel(
 	};
 	const iconOf = (entry: HistoryEntry): string =>
 		entry.kind === 'note' ? bridge.kindIcon(entry.note) : ENTRY_ICONS[entry.kind];
-
-	// The actions column is as wide as its one button and the cell's padding,
-	// measured from the first row drawn, whatever the button's language says:
-	// the fallback width leaves the button room until then, so nothing is
-	// clipped on the way. A row drawn while the frame is hidden measures
-	// nothing and the next row drawn tries again.
-	let actionsFitted = false;
-	const fitActionsColumn = (button: HTMLElement): void => {
-		if (actionsFitted) return;
-		const width = button.offsetWidth;
-		if (!(width > 0)) return;
-		const cell = button.closest('td');
-		if (cell === null) return;
-		const style = cell.win.getComputedStyle(cell);
-		const padding = parseFloat(style.paddingInlineStart) + parseFloat(style.paddingInlineEnd);
-		tableWrap.style.setProperty(
-			'--snowflake-method-history-actions-width',
-			`${String(Math.ceil(width + padding))}px`,
-		);
-		actionsFitted = true;
-	};
 
 	const virtual = new VirtualTable({
 		scroller: bodyWrap,
@@ -553,7 +533,9 @@ export function renderHistoryPanel(
 			recover.addEventListener('click', () => {
 				openRecovery(target);
 			});
-			fitActionsColumn(recover);
+			// The column is as wide as the button and the cell's padding,
+			// whatever the button's language says, measured by the frame.
+			fitActions();
 		},
 		renderTail: () => undefined,
 		onScroll: () => undefined,

@@ -1014,7 +1014,12 @@ describe('styles.css', () => {
 		const fixed = ['name', 'related', 'role', 'place']
 			.map((column) => rem(`col.snowflake-method-foreshadowing-column-${column}`))
 			.reduce((sum, width) => sum + width, 0);
-		const buttons = rem('col.snowflake-method-foreshadowing-column-actions');
+		// The buttons' column reads its width off the table, where the frame finds it.
+		const buttons = Number(
+			/--snowflake-method-table-actions-width: ([\d.]+)rem/u.exec(
+				declarations('.snowflake-method-table.snowflake-method-foreshadowing-table'),
+			)?.[1],
+		);
 		const floor = rem('.snowflake-method-table.snowflake-method-foreshadowing-table');
 		const bare = rem('.snowflake-method-table.snowflake-method-foreshadowing-table:not(.has-actions-column)');
 		expect(floor - fixed - buttons).toBeGreaterThanOrEqual(8.5);
@@ -1026,6 +1031,62 @@ describe('styles.css', () => {
 			.map((block) => block.split(/\n\}\n/u)[0] ?? '');
 		expect(narrow.length).toBeGreaterThan(0);
 		for (const block of narrow) expect(block).not.toMatch(/\.snowflake-method-table(?:[\s.:{>]|-wrap|-head)/u);
+	});
+
+	/**
+	 * An actions column is as wide as its first row's buttons need, in every
+	 * language, so they stand the cell's padding from either edge; the floor
+	 * grows by what it takes past the width the table says. The frame works
+	 * both out from the two widths the table says, so the columns take their
+	 * width from the table, and the table says both in plain rem or px, the
+	 * only forms the frame reads. Held to eleven rems, French and German ran
+	 * Delete past the column's edge and the English pair stood eight pixels
+	 * off the frame's side; Delete itself is as wide as its word, four rems at
+	 * the least, in the column too.
+	 */
+	it('fits an actions column to its buttons from the widths its table says', () => {
+		const member = declarations('.snowflake-method-table.has-actions-column');
+		expect(member).toContain('--snowflake-method-table-floor: 52rem');
+		expect(member).toContain('--snowflake-method-table-actions-width: 11rem');
+		expect(declarations('.snowflake-method-member-column-actions')).toContain(
+			'width: var(--snowflake-method-table-actions-width)',
+		);
+		expect(declarations('.snowflake-method-table.snowflake-method-foreshadowing-table')).toContain(
+			'--snowflake-method-table-actions-width: 12.5rem',
+		);
+		expect(declarations('col.snowflake-method-foreshadowing-column-actions')).toContain(
+			'width: var(--snowflake-method-table-actions-width)',
+		);
+		expect(
+			declarations('body.is-mobile .snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column'),
+		).toContain('--snowflake-method-table-actions-width: 14rem');
+		// The history's one button is fitted the same way, from sixteen rems.
+		expect(declarations('.snowflake-method-table.snowflake-method-history-table.has-actions-column')).toContain(
+			'--snowflake-method-table-actions-width: 16rem',
+		);
+		expect(declarations('col.snowflake-method-history-column-actions')).toContain(
+			'width: var(--snowflake-method-table-actions-width)',
+		);
+		expect(styles).not.toContain('--snowflake-method-history-actions-width');
+		const plain = styles.replace(/\/\*[\s\S]*?\*\//gu, ' ');
+		// No rule holds a fitted column to a width of its own the frame cannot see.
+		expect(plain).not.toMatch(
+			/(?:member|foreshadowing|history)-column-actions\s*\{[^}]*(?:^|[\s;{])width:(?!\s*var\(--snowflake-method-table-actions-width\))/u,
+		);
+		const said = [...plain.matchAll(/--snowflake-method-table-(?:floor|actions-width):\s*([^;]+);/gu)].map(
+			(match) => match[1]?.trim(),
+		);
+		expect(said.length).toBeGreaterThan(0);
+		for (const value of said) expect(value).toMatch(/^\d+(?:\.\d+)?(?:rem|px)$/u);
+		const remove = declarations('.snowflake-method-character-delete');
+		expect(remove).toContain('width: auto');
+		expect(remove).toContain('flex: 0 0 auto');
+		expect(remove).toContain('min-width: 4rem');
+		expect(
+			declarations(
+				'.snowflake-method-table.has-actions-column td:last-child > .snowflake-method-table-actions button.snowflake-method-character-delete',
+			),
+		).toContain('min-width: 4rem');
 	});
 
 	/**
@@ -2225,10 +2286,12 @@ describe('styles.css', () => {
 		// actions column by their growth, and its floor by the same, so the
 		// description keeps its 8.5rem at the floor as on the desktop.
 		const rem = (selector: string): number => Number(/(?:width|floor): ([\d.]+)rem/u.exec(declarations(selector))?.[1]);
+		const actions = (selector: string): number =>
+			Number(/--snowflake-method-table-actions-width: ([\d.]+)rem/u.exec(declarations(selector))?.[1]);
 		const grown = 2 * (2.75 - 2);
 		expect(
-			rem('body.is-mobile col.snowflake-method-foreshadowing-column-actions') -
-				rem('col.snowflake-method-foreshadowing-column-actions'),
+			actions('body.is-mobile .snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column') -
+				actions('.snowflake-method-table.snowflake-method-foreshadowing-table'),
 		).toBeCloseTo(grown);
 		expect(
 			rem('body.is-mobile .snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column') -

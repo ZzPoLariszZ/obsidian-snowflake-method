@@ -419,19 +419,29 @@ export interface TableFrame {
 	bodyWrap: HTMLElement;
 	/** The body the rows are drawn into. */
 	body: HTMLElement;
+	/**
+	 * Fits the actions column to the buttons of the first row drawn with
+	 * them, for a caller to say once it has drawn a row. The column takes
+	 * what they need, so they stand the cell's padding from either edge, and
+	 * a column wider than the stylesheet's grows the floor with it (see
+	 * buildTableFrame). Cheap once fitted, so it can be said after every row.
+	 */
+	fitActions: () => void;
 }
 
 type MigratingElement = HTMLElement & {
 	onWindowMigrated?: (listener: (win: Window) => unknown) => () => void;
 };
 
-/** The floor the stylesheet sets on a table, in pixels; null where none can be read. */
-function tableFloor(table: HTMLElement): number | null {
+/** The narrowest a table's columns read as a table at, which the frame stacks it under. */
+const TABLE_FLOOR = '--snowflake-method-table-floor';
+/** The width the stylesheet gives a table's actions column until it is measured, and the floor's reckoning. */
+const ACTIONS_WIDTH = '--snowflake-method-table-actions-width';
+
+/** A length the stylesheet sets on a table, in pixels; null where none can be read. */
+function tableLength(table: HTMLElement, property: string): number | null {
 	const win = table.win;
-	const value = win
-		.getComputedStyle(table)
-		.getPropertyValue('--snowflake-method-table-floor')
-		.trim();
+	const value = win.getComputedStyle(table).getPropertyValue(property).trim();
 	const match = /^(\d+(?:\.\d+)?)(rem|px)$/u.exec(value);
 	if (match === null) return null;
 	const size = Number(match[1]);
@@ -443,6 +453,37 @@ function tableFloor(table: HTMLElement): number | null {
 }
 
 /**
+ * How wide a column must be to hold a row's buttons whole: every button at
+ * its own width, the gaps between them, and the cell's padding on either
+ * side. Summed rather than read off the group, which fills its cell and in
+ * a card lets the buttons wrap. Read to the fraction of a pixel a layout
+ * keeps, not rounded to whole ones as an offset is: the space after the
+ * last button is the column's leftover, and a rounded sum left it up to a
+ * pixel wider or narrower than the space before the first. Nothing for a
+ * row not laid out, as one drawn in a hidden frame is not.
+ */
+export function actionsWidth(group: HTMLElement): number {
+	const cell = group.parentElement;
+	const buttons = Array.from(group.children);
+	if (cell === null || buttons.length === 0) return 0;
+	let width = 0;
+	for (const button of buttons) {
+		const own = button.getBoundingClientRect().width;
+		if (!(own > 0)) return 0;
+		width += own;
+	}
+	const win = group.win;
+	const gap = parseFloat(win.getComputedStyle(group).columnGap);
+	const box = win.getComputedStyle(cell);
+	const padding = parseFloat(box.paddingInlineStart) + parseFloat(box.paddingInlineEnd);
+	return (
+		width +
+		(Number.isNaN(gap) ? 0 : gap) * (buttons.length - 1) +
+		(Number.isNaN(padding) ? 0 : padding)
+	);
+}
+
+/**
  * Lays a table out as cards while its frame is narrower than the table's
  * floor, the width its columns need to read as a table. The frame is
  * watched, not the dashboard: the rail and the panel's own chrome take a
@@ -450,17 +491,21 @@ function tableFloor(table: HTMLElement): number | null {
  * its floor in a narrower frame ran past the frame's edge. The floor is the
  * stylesheet's, read from the table, so the two cannot disagree. Nothing is
  * let go by hand: a kept panel's frame can leave the document and come
- * back, and a discarded one takes its watcher with it.
+ * back, and a discarded one takes its watcher with it. Answers the settling
+ * itself, for a floor changed without a resize to be read again.
  */
 function stackWhenNarrow(
 	wrap: HTMLElement,
 	bodyWrap: HTMLElement,
 	table: HTMLElement,
-): void {
+	/** Said before each settling, so a floor it changes is the one read. */
+	before: () => void,
+): () => void {
 	/** The frame's own border while it draws one, which a stacked frame takes off. */
 	let border = 0;
 	const settle = (): void => {
-		const floor = tableFloor(table);
+		before();
+		const floor = tableLength(table, TABLE_FLOOR);
 		if (floor === null) return;
 		const stacked = wrap.classList.contains('is-stacked');
 		if (!stacked) {
@@ -497,6 +542,7 @@ function stackWhenNarrow(
 	// Once now as well, so rows drawn straight after are measured as the
 	// cards they will be in a frame too narrow for them.
 	settle();
+	return settle;
 }
 
 /**
@@ -507,6 +553,19 @@ function stackWhenNarrow(
  * these class names and the carry idiom alike, and four frames laid by hand
  * were four places for either to drift. A frame too narrow for its table
  * lays it out as cards.
+ *
+ * The actions column is as wide as the first row drawn with buttons needs,
+ * so they stand the cell's padding from the rule before them and from the
+ * frame after them alike, in every language. The stylesheet's width for it
+ * holds only until then: kept where the buttons needed less, it left the
+ * English pair eight pixels further from the frame than from the rule, and
+ * where they needed more, French and German ran Delete past the column's
+ * edge. A column wider than the stylesheet's grows the floor by as much, so
+ * the other columns keep their room at the floor; a narrower one leaves the
+ * floor, and the room to the text. Both are written on the two tables,
+ * where the stylesheet sets them. A row drawn while the frame is hidden
+ * measures nothing, and the next row drawn or the frame's next change in
+ * size tries again. Only a frame whose caller asks is fitted.
  */
 export function buildTableFrame(
 	host: HTMLElement,
@@ -548,6 +607,41 @@ export function buildTableFrame(
 		carried = shift;
 		headTable.style.transform = shift;
 	});
-	stackWhenNarrow(wrap, bodyWrap, bodyTable);
-	return { wrap, headTable, bodyWrap, body: bodyTable.createEl('tbody') };
+	const body = bodyTable.createEl('tbody');
+	let asked = false;
+	let fitted = false;
+	/** True when it moved the floor, which the stacking is read against. */
+	const fit = (): boolean => {
+		if (!asked || fitted) return false;
+		const group = body.querySelector<HTMLElement>('.snowflake-method-table-actions');
+		if (group === null) return false;
+		// Up to the next of the layout's own sixty-fourths, so the buttons
+		// are never a sliver short of their room.
+		const need = Math.ceil(actionsWidth(group) * 64) / 64;
+		if (need === 0) return false;
+		fitted = true;
+		const width = tableLength(bodyTable, ACTIONS_WIDTH);
+		const floor = tableLength(bodyTable, TABLE_FLOOR);
+		if (width === null || floor === null || need === width) return false;
+		const props: Record<string, string> = { [ACTIONS_WIDTH]: `${String(need)}px` };
+		const grows = need > width;
+		if (grows) props[TABLE_FLOOR] = `${String(floor + need - width)}px`;
+		headTable.setCssProps(props);
+		bodyTable.setCssProps(props);
+		return grows;
+	};
+	const settle = stackWhenNarrow(wrap, bodyWrap, bodyTable, () => {
+		fit();
+	});
+	return {
+		wrap,
+		headTable,
+		bodyWrap,
+		body,
+		fitActions: () => {
+			asked = true;
+			// The floor changed under a frame whose size did not.
+			if (fit()) settle();
+		},
+	};
 }

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildTableFrame, rowOffsets, scrollerOf, VirtualTable, virtualWindow } from '../../src/ui/virtual-table';
+import {
+	actionsWidth,
+	buildTableFrame,
+	rowOffsets,
+	scrollerOf,
+	VirtualTable,
+	virtualWindow,
+} from '../../src/ui/virtual-table';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
 const uniform = rowOffsets(new Array<number>(100).fill(40));
@@ -213,6 +220,152 @@ describe('table frame', () => {
 		refresh.mockClear();
 		popout.resize(600);
 		expect(refresh).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * The actions column takes what its first row's buttons need, in every
+ * language, so they stand the cell's padding from either edge: narrower than
+ * the stylesheet's width for the English pair, wider for a longer language's,
+ * with the floor grown by what it takes past that width. The need is the
+ * buttons' own widths, the gaps between them and the cell's padding, never
+ * the group's width, which fills its cell and in a card lets them wrap.
+ */
+describe('the actions column of a frame', () => {
+	/**
+	 * A frame as wide as the fake window, in a stylesheet that gives the
+	 * table a floor of 52rem and its actions column 11rem, the buttons' group
+	 * a gap of four and the cell twelve of padding on either side. What the
+	 * frame writes on a table wins over the stylesheet, as an inline style does.
+	 */
+	const fitting = (width: number) => {
+		const dom = new CorkboardDom();
+		const sheet: Record<string, string> = {
+			'--snowflake-method-table-floor': '52rem',
+			'--snowflake-method-table-actions-width': '11rem',
+		};
+		(dom.win as unknown as { getComputedStyle: (element: CorkboardElement) => unknown }).getComputedStyle = (element) => ({
+			fontSize: '16px',
+			paddingLeft: '0px',
+			paddingRight: '0px',
+			paddingInlineStart: '12px',
+			paddingInlineEnd: '12px',
+			columnGap: '4px',
+			getPropertyValue: (name: string): string =>
+				element.classList.contains('snowflake-method-table') ? (element.styles[name] ?? sheet[name] ?? '') : '',
+		});
+		dom.width = width;
+		const frame = buildTableFrame(dom.container as unknown as HTMLElement, {
+			tableCls: 'snowflake-method-character-table has-actions-column',
+			columns: ['order', 'name', 'actions'],
+			headers: ['#', 'Name', 'Actions'],
+		});
+		const body = frame.body as unknown as CorkboardElement;
+		/** A row whose last cell holds buttons of the widths given, nothing being a button not laid out. */
+		const row = (...widths: number[]): CorkboardElement => {
+			const group = body
+				.createEl('tr')
+				.createEl('td')
+				.createDiv({ cls: 'snowflake-method-table-actions' });
+			for (const each of widths) lay(group.createEl('button'), each);
+			return group;
+		};
+		/** What the frame wrote on the header's table and the body's. */
+		const written = (): Record<string, string>[] =>
+			[frame.headTable, body.parentElement].map((table) => ({ ...(table as unknown as CorkboardElement).styles }));
+		const stacked = (): boolean => frame.wrap.classList.contains('is-stacked');
+		return { dom, frame, row, written, stacked };
+	};
+	/** A box as wide as given, as the layout reads it; nothing being one not laid out. */
+	const lay = (element: CorkboardElement, width: number): void => {
+		element.box = { left: 0, width };
+	};
+	/** French: Modifier's split button, its 66 and the chevron's 32, beside Supprimer's 79. */
+	const FRENCH = [98, 79] as const;
+
+	it('measures a row’s buttons by their own widths, the gaps between them and the cell’s padding', () => {
+		const { row } = fitting(1000);
+		const group = row(...FRENCH);
+		// The group fills the cell's 152, which is the room it has, not the room it needs.
+		lay(group, 152);
+		expect(actionsWidth(group as unknown as HTMLElement)).toBe(98 + 4 + 79 + 24);
+		// A third button brings its own gap.
+		expect(actionsWidth(row(98, 79, 40) as unknown as HTMLElement)).toBe(98 + 4 + 79 + 4 + 40 + 24);
+		// The fractions a layout keeps are kept: a rounded sum moved the last button off its padding.
+		expect(actionsWidth(row(85.296875, 78.90625) as unknown as HTMLElement)).toBe(85.296875 + 4 + 78.90625 + 24);
+	});
+
+	it('measures nothing for a row not laid out, or one with no buttons', () => {
+		const { row } = fitting(1000);
+		expect(actionsWidth(row(98, 0) as unknown as HTMLElement)).toBe(0);
+		expect(actionsWidth(row() as unknown as HTMLElement)).toBe(0);
+	});
+
+	it('narrows the column to the English buttons, and leaves the floor', () => {
+		// 52rem is 832 pixels: a frame of 840 holds the table, and still does.
+		const { frame, row, written, stacked } = fitting(840);
+		// Edit's split button and Delete at their least widths: 168 of the 176.
+		row(76, 64);
+		frame.fitActions();
+		const fitted = { '--snowflake-method-table-actions-width': '168px' };
+		expect(written()).toEqual([fitted, fitted]);
+		expect(stacked()).toBe(false);
+	});
+
+	it('writes nothing for buttons that need the stylesheet’s width exactly', () => {
+		const { frame, row, written } = fitting(840);
+		row(76, 72);
+		frame.fitActions();
+		expect(written()).toEqual([{}, {}]);
+	});
+
+	it('rounds a fractional need up to the layout’s next sixty-fourth, never down', () => {
+		const { frame, row, written } = fitting(1000);
+		// Ouvrir's split button and Supprimer as the French desktop lays them: 192.2 in all.
+		row(85.3, 78.9);
+		frame.fitActions();
+		expect(written()[1]?.['--snowflake-method-table-actions-width']).toBe(`${String(12301 / 64)}px`);
+		expect(written()[1]?.['--snowflake-method-table-floor']).toBe(`${String(832 + 12301 / 64 - 176)}px`);
+	});
+
+	it('widens the column to a longer language’s first row, and the floor by as much, and settles again', () => {
+		// 52rem is 832 pixels: a frame of 850 holds the table until French asks 29 more.
+		const { frame, row, written, stacked } = fitting(850);
+		expect(stacked()).toBe(false);
+		row(...FRENCH);
+		frame.fitActions();
+		const grown = {
+			'--snowflake-method-table-actions-width': '205px',
+			'--snowflake-method-table-floor': '861px',
+		};
+		expect(written()).toEqual([grown, grown]);
+		expect(stacked()).toBe(true);
+		// The first row drawn decides: the rows after it say the same words.
+		row(120, 90);
+		frame.fitActions();
+		expect(written()).toEqual([grown, grown]);
+	});
+
+	it('tries again when a row drawn in a hidden frame comes to be laid out', () => {
+		const { dom, frame, row, written, stacked } = fitting(850);
+		const group = row(0, 0);
+		frame.fitActions();
+		expect(written()).toEqual([{}, {}]);
+		// The frame is shown: its buttons have widths, and it hears its size.
+		group.children.forEach((button, at) => {
+			lay(button, FRENCH[at] ?? 0);
+		});
+		dom.resize(850);
+		expect(written()[1]?.['--snowflake-method-table-floor']).toBe('861px');
+		expect(stacked()).toBe(true);
+	});
+
+	it('fits no frame its caller has not asked to', () => {
+		const { dom, row, written, stacked } = fitting(850);
+		row(...FRENCH);
+		dom.resize(850);
+		expect(written()).toEqual([{}, {}]);
+		expect(stacked()).toBe(false);
 	});
 });
 

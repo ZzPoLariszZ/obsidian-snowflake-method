@@ -180,7 +180,7 @@ import {
 import { renderTaskBoard, type TaskBoardHandle } from './task-board';
 import { taskBoardMemory, type TaskBoardMemory } from './task-board-rows';
 import type { TaskNavigationTarget } from './task-bridge';
-import { buildTableFrame, scrollerOf, VirtualTable } from './virtual-table';
+import { buildTableFrame, scrollerOf, type TableFrame, VirtualTable } from './virtual-table';
 import type {
 	CharacterViewModel,
 	CreatedProject,
@@ -2711,7 +2711,7 @@ export class SnowflakeDashboardView extends ItemView {
 		setIcon(filterButton, 'funnel');
 		setTooltip(filterButton, this.t('table.filter'));
 
-		const { bodyWrap, body } = this.buildTableFrame(
+		const { bodyWrap, body, fitActions } = this.buildTableFrame(
 			panel,
 			'snowflake-method-entity-table',
 			[
@@ -2747,6 +2747,7 @@ export class SnowflakeDashboardView extends ItemView {
 					reorderReadOnly,
 					reorderReadOnly || this.entityListFiltered(kind),
 				);
+				fitActions();
 			},
 			renderTail: (rows) => {
 				this.renderAddRow(
@@ -3752,6 +3753,9 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			return { template, row };
 		});
+		// Drawn into a fold that is still closed, the rows measure nothing:
+		// the frame tries again when the fold opens.
+		frame.fitActions();
 		this.renderAddRow(
 			frame.body,
 			2 + (this.host.showsTableActionsColumn() ? 1 : 0),
@@ -6725,7 +6729,7 @@ export class SnowflakeDashboardView extends ItemView {
 		setIcon(filterButton, 'funnel');
 		setTooltip(filterButton, this.t('table.filter'));
 
-		const { bodyWrap, body } = this.buildTableFrame(
+		const { bodyWrap, body, fitActions } = this.buildTableFrame(
 			panel,
 			'snowflake-method-character-table',
 			[
@@ -6761,6 +6765,7 @@ export class SnowflakeDashboardView extends ItemView {
 					reorderReadOnly,
 					reorderReadOnly || this.characterListFiltered(),
 				);
+				fitActions();
 			},
 			renderTail: (rows) => {
 				this.renderAddRow(
@@ -6867,18 +6872,18 @@ export class SnowflakeDashboardView extends ItemView {
 		// Member tables lay the member grid; a caller with fewer columns says
 		// so here.
 		columnClasses: readonly string[] = this.tableColumnClasses(),
-	): { bodyWrap: HTMLElement; body: HTMLElement } {
+	): Pick<TableFrame, 'bodyWrap' | 'body' | 'fitActions'> {
 		const shown = this.host.showsTableActionsColumn()
 			? [...headers, this.t('table.actions')]
 			: headers;
-		const { bodyWrap, body } = buildTableFrame(panel, {
+		const { bodyWrap, body, fitActions } = buildTableFrame(panel, {
 			tableCls: `${tableCls}${
 				this.host.showsTableActionsColumn() ? ' has-actions-column' : ''
 			}`,
 			columns: columnClasses,
 			headers: shown,
 		});
-		return { bodyWrap, body };
+		return { bodyWrap, body, fitActions };
 	}
 
 	private renderCharacterRow(
@@ -7101,7 +7106,7 @@ export class SnowflakeDashboardView extends ItemView {
 		setIcon(filterButton, 'funnel');
 		setTooltip(filterButton, this.t('table.filter'));
 
-		const { bodyWrap, body } = this.buildTableFrame(
+		const { bodyWrap, body, fitActions } = this.buildTableFrame(
 			panel,
 			'snowflake-method-scene-table',
 			['order', 'sceneName', 'scenePov', 'conflict'].map((key) =>
@@ -7141,6 +7146,7 @@ export class SnowflakeDashboardView extends ItemView {
 					},
 					shownPositions,
 				);
+				fitActions();
 			},
 			renderTail: (rows) => {
 				this.renderAddRow(

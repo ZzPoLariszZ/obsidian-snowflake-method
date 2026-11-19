@@ -163,6 +163,7 @@ export function renderForeshadowingPanel(
 		wrap: tableWrap,
 		bodyWrap,
 		body: tableBody,
+		fitActions,
 	} = buildTableFrame(root, {
 		wrapCls: 'snowflake-method-foreshadowing-table-wrap',
 		tableCls: `snowflake-method-foreshadowing-table${
@@ -462,6 +463,7 @@ export function renderForeshadowingPanel(
 					deleteItems,
 					readOnly,
 				);
+				fitActions();
 			}
 		},
 		renderTail: () => undefined,
