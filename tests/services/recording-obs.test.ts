@@ -1604,6 +1604,86 @@ describe('an OBS busy with something of the author’s own', () => {
 		expect(obs.mutes['Mic/Aux']).toBe(false);
 		expect(ledger.value).toBeNull();
 	});
+
+	it('never takes up a recording the author began in OBS, whatever the ledger still holds', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig({ ledger: { version: 1, loans: [mute] } });
+		obs.mutes['Mic/Aux'] = true;
+		obs.recording = true;
+		expect(await clock.drive(recorder.start(request(), hooks))).toEqual({
+			ok: false,
+			code: 'obs-recording',
+			detail: null,
+		});
+		// Their recording goes on untouched: not stopped, and nothing given back under it.
+		expect(obs.writes()).toEqual([]);
+		expect(obs.recording).toBe(true);
+		expect(ledger.value?.loans).toEqual([mute]);
+		// A look says the same, and moves nothing either.
+		const probe = await clock.drive(recorder.probe({ port: 4455, password: null, scope: 'screen', mayOpen: false }));
+		expect(probe).toMatchObject({ ok: true, problem: 'obs-recording' });
+		expect(obs.writes()).toEqual([]);
+	});
+
+	it('takes up its own recording even where it borrowed nothing for it', async () => {
+		const first = rig();
+		// OBS already records where the plugin wants, under the name it wants, and its own scene is recorded.
+		first.obs.parameters['SimpleOutput/FilePath'] = '/Users/ada/Proof';
+		first.obs.parameters['Output/FilenameFormatting'] = '%CCYY-%MM-%DD %hh.%mm.%ss';
+		first.obs.scenes[0]?.items.push({ id: 7, source: 'The author’s own capture' });
+		await first.clock.drive(first.recorder.start(request({ scope: 'obs' }), first.hooks));
+		expect(first.ledger.value).toEqual({ version: 1, loans: [], recording: true });
+		// The plugin goes away without a word, and comes back.
+		const second = rig({ obs: first.obs, ledger: first.ledger.value });
+		expect((await second.clock.drive(second.recorder.start(request({ scope: 'obs' }), second.hooks))).ok).toBe(true);
+		expect(second.seen.held).toBe(0);
+		// A look at it finds nothing in the way: the recording is the plugin's own.
+		await second.clock.drive(second.recorder.stop());
+		expect(first.obs.recording).toBe(false);
+		expect(second.ledger.value).toBeNull();
+	});
+
+	it('strikes its mark out once OBS is seen not to record: after a stop, a stop in OBS, or OBS quitting', async () => {
+		const stopped = rig();
+		await stopped.clock.drive(stopped.recorder.start(request(), stopped.hooks));
+		expect(stopped.ledger.value?.recording).toBe(true);
+		await stopped.clock.drive(stopped.recorder.stop());
+		expect(stopped.ledger.value).toBeNull();
+
+		const inside = rig();
+		await inside.clock.drive(inside.recorder.start(request(), inside.hooks));
+		inside.obs.stopFromInside();
+		await inside.clock.advance(1000);
+		expect(inside.ledger.value).toBeNull();
+
+		const quit = rig();
+		await quit.clock.drive(quit.recorder.start(request(), quit.hooks));
+		quit.obs.emit('ExitStarted');
+		await quit.clock.advance(100);
+		// What was borrowed waits for OBS to come back. The recording does not: it ended with OBS.
+		expect(quit.ledger.value?.loans.length).toBeGreaterThan(0);
+		expect(quit.ledger.value?.recording).toBeUndefined();
+		// So a recording the author begins in the OBS they open again is theirs.
+		const next = quit.again();
+		expect(await quit.clock.drive(next.start(request(), quit.hooks))).toMatchObject({ ok: false, code: 'obs-recording' });
+		expect(quit.obs.recording).toBe(true);
+	});
+
+	it('keeps its mark where OBS was lost under a recording, and takes that recording up when OBS answers again', async () => {
+		const { obs, clock, recorder, hooks, seen, ledger, again } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		obs.closed = true;
+		obs.drop();
+		await clock.advance(20_000);
+		expect(seen.ended).toEqual([{ reason: 'lost', path: null, error: 'obs-lost' }]);
+		expect(ledger.value?.recording).toBe(true);
+		obs.closed = false;
+		const next = again();
+		expect((await clock.drive(next.start(request(), hooks))).ok).toBe(true);
+		expect(await clock.drive(next.stop())).toMatchObject({ error: null });
+		expect(obs.recording).toBe(false);
+		expect(obs.program).toBe('Scene');
+		expect(ledger.value).toBeNull();
+	});
 });
 
 describe('a stop OBS may not have heard', () => {
@@ -1615,9 +1695,10 @@ describe('a stop OBS may not have heard', () => {
 		obs.drop();
 		await clock.advance(500);
 		expect(await clock.drive(recorder.stop())).toEqual({ path: null, error: 'obs-lost' });
-		// OBS was told nothing and records on. The ledger keeps what is still borrowed.
+		// OBS was told nothing and records on. The ledger keeps what is still borrowed, and whose recording it is.
 		expect(obs.recording).toBe(true);
 		expect(seen.notices).toEqual(['return-pending']);
+		expect(ledger.value?.recording).toBe(true);
 		expect(ledger.value?.loans.length).toBeGreaterThan(0);
 	});
 

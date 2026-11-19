@@ -589,6 +589,16 @@ describe('the ledger of what is borrowed from OBS', () => {
 		}
 	});
 
+	it('keeps the mark of a recording the plugin asked for, with loans beside it or with none', () => {
+		const marked = { version: 1, loans: [folder], recording: true };
+		expect(readObsJournal(JSON.parse(JSON.stringify(marked)))).toEqual(marked);
+		// A recording that borrowed nothing is the plugin's own all the same.
+		expect(readObsJournal({ version: 1, loans: [], recording: true })).toEqual({ version: 1, loans: [], recording: true });
+		// Anything but a plain yes is no mark, and a ledger an earlier build wrote carries none.
+		expect(readObsJournal({ version: 1, loans: [folder], recording: 'yes' })).toEqual({ version: 1, loans: [folder] });
+		expect(readObsJournal({ version: 1, loans: [], recording: false })).toBeNull();
+	});
+
 	it('drops an entry it cannot read and keeps the rest', () => {
 		expect(
 			readObsJournal({

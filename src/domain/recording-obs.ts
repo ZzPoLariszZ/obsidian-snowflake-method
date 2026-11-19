@@ -617,10 +617,16 @@ export type ObsLoan =
  * Everything on loan, written to the device before the first change and
  * struck out entry by entry as each is given back, so a crash of either
  * program leaves a list the next conversation with OBS can finish.
+ *
+ * `recording` is written before OBS is asked to record, and struck out once
+ * OBS is known to have stopped. A recording found running in OBS is the
+ * plugin's own only while it stands: one the author began in OBS is theirs,
+ * whatever else the ledger still holds.
  */
 export interface ObsJournal {
 	version: 1;
 	loans: ObsLoan[];
+	recording?: true;
 }
 
 const isSize = (value: unknown): value is ObsSize =>
@@ -680,6 +686,7 @@ export function readObsJournal(raw: unknown): ObsJournal | null {
 		const loan = readLoan(entry);
 		if (loan !== null) loans.push(loan);
 	}
+	if (raw.recording === true) return { version: 1, loans, recording: true };
 	return loans.length === 0 ? null : { version: 1, loans };
 }
 

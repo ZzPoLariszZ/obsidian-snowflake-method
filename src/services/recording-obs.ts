@@ -94,10 +94,11 @@ import {
  * stopped.
  *
  * OBS may be busy with something of the author's own, and that is left
- * alone. While OBS streams, or feeds its virtual camera or a replay
- * buffer, no scene of the plugin's is put on air and nothing is muted,
- * since that output shows the same picture and hears the same sound a
- * recording does.
+ * alone. A recording the author began in OBS is never taken up: only one
+ * the ledger says the plugin asked for is. While OBS streams, or feeds its
+ * virtual camera or a replay buffer, no scene of the plugin's is put on
+ * air and nothing is muted, since that output shows the same picture and
+ * hears the same sound a recording does.
  */
 
 export interface ObsRecorderDeps {
@@ -255,11 +256,19 @@ export class ObsRecorder {
 	private followTimer: unknown = null;
 	/** The run whose source is being pointed anew, while it is. */
 	private turning: number | null = null;
+	/**
+	 * OBS was asked to record by the plugin and has not been seen to stop.
+	 * Kept in the ledger, so a recording found running after a restart is
+	 * known for the plugin's own, and one the author began is not.
+	 */
+	private mine: boolean;
 	/** The plugin is going away: whatever is under way ends at its next step and begins nothing more. */
 	private left = false;
 
 	constructor(private readonly deps: ObsRecorderDeps) {
-		this.loans = readObsJournal(deps.journal.load())?.loans ?? [];
+		const kept = readObsJournal(deps.journal.load());
+		this.loans = kept?.loans ?? [];
+		this.mine = kept?.recording === true;
 	}
 
 	/** True while something borrowed from OBS has not been given back. */
@@ -365,12 +374,14 @@ export class ObsRecorder {
 			const status = await this.ask('GetRecordStatus');
 			if (status.ok && status.data.outputActive === true) {
 				// Something records already: OBS is looked at as it stands and nothing in it is moved.
-				problem = this.loans.length === 0 ? 'obs-recording' : null;
+				problem = this.mine ? null : 'obs-recording';
 				picture = await this.picture(await this.programScene());
 			} else if (request.scope !== 'obs' && (await this.otherOutputRuns())) {
 				// OBS is live elsewhere: the plugin's scene put on air for a look would be seen there.
 				problem = 'obs-live';
 			} else {
+				// Nothing records: a recording the plugin once asked for is over.
+				if (status.ok) this.mark(false);
 				await this.giveBack();
 				await this.tidy();
 				let scene = await this.programScene();
@@ -438,7 +449,9 @@ export class ObsRecorder {
 		const status = await this.ask('GetRecordStatus');
 		if (!status.ok) return this.giveUp('obs-refused', 'GetRecordStatus');
 		if (status.data.outputActive === true) {
-			if (this.loans.length === 0) return this.giveUp('obs-recording', null);
+			// A recording the author began in OBS is theirs, whatever the
+			// ledger still holds of an earlier run: nothing is moved under it.
+			if (!this.mine) return this.leave('obs-recording');
 			// OBS is still making the recording an earlier run of the plugin
 			// asked for: it is taken up where it was left, and stopping it
 			// gives back what that run borrowed.
@@ -451,12 +464,14 @@ export class ObsRecorder {
 				path: null,
 			};
 		}
+		// Nothing records: a recording the plugin once asked for is over.
+		this.mark(false);
 		// A stream, the virtual camera or a replay buffer shows the scene on
 		// air and hears what OBS hears. A scene of the plugin's would take
 		// both over, so none is made, and nothing of OBS's is moved at all.
 		if (request.scope !== 'obs' && (await this.otherOutputRuns())) return this.leave('obs-live');
-		// Nothing records: whatever an earlier run left borrowed goes back
-		// first, and whatever it left of its own in OBS is taken away.
+		// Whatever an earlier run left borrowed goes back first, and whatever
+		// it left of its own in OBS is taken away.
 		await this.giveBack();
 		this.staged = true;
 		await this.tidy();
@@ -502,8 +517,13 @@ export class ObsRecorder {
 		this.sawStarted = false;
 		this.sawStopped = false;
 		this.path = null;
+		// Written down before OBS is asked, as a loan is: a recording found
+		// running after a crash is then known for the plugin's own.
+		this.mark(true);
 		const asked = await this.ask('StartRecord');
 		if (!asked.ok) {
+			// OBS said no: nothing of the plugin's records. Where it said nothing at all, the mark stands.
+			if (!unanswered(asked)) this.mark(false);
 			return this.giveUp(asked.code === OUTPUT_RUNNING ? 'obs-recording' : 'obs-refused', asked.comment);
 		}
 		if (!(await this.confirmStarted())) return this.giveUp('obs-refused', 'StartRecord');
@@ -514,18 +534,25 @@ export class ObsRecorder {
 
 	/** A start that came to nothing: what it borrowed goes back and the conversation ends. */
 	private async giveUp(code: RecordingErrorCode | 'cancelled', detail: string | null): Promise<RecorderStart> {
+		if (this.mine) {
+			// OBS was asked to record and the start came to nothing all the
+			// same. Where OBS says nothing records, the mark goes. Where it
+			// cannot be asked, the mark stands for the next conversation.
+			const status = await this.ask('GetRecordStatus');
+			if (status.ok && status.data.outputActive !== true) this.mark(false);
+		}
 		await this.giveBack();
-		// An OBS that never got as far as a scene of the plugin's is asked for nothing more:
-		// one that records something of the author's own least of all.
+		// An OBS that never got as far as a scene of the plugin's is asked for nothing more.
 		if (this.staged) await this.tidy();
 		this.finish();
 		return { ok: false, code, detail };
 	}
 
 	/**
-	 * A start OBS is too busy for: it is live on another output. Nothing
-	 * of OBS's is touched, not even to give back what an earlier run
-	 * borrowed, and the conversation ends.
+	 * A start OBS is too busy for: it records something of the author's
+	 * own, or it is live on another output. Nothing of OBS's is touched,
+	 * not even to give back what an earlier run borrowed, and the
+	 * conversation ends.
 	 */
 	private leave(code: RecordingErrorCode): RecorderStart {
 		this.finish();
@@ -933,7 +960,18 @@ export class ObsRecorder {
 	// ---- The ledger ----
 
 	private saveLedger(): void {
-		this.deps.journal.save(this.loans.length === 0 ? null : { version: 1, loans: [...this.loans] });
+		if (this.loans.length === 0 && !this.mine) {
+			this.deps.journal.save(null);
+			return;
+		}
+		this.deps.journal.save({ version: 1, loans: [...this.loans], ...(this.mine ? { recording: true as const } : {}) });
+	}
+
+	/** Writes down that OBS was asked to record by the plugin, or that such a recording is over. */
+	private mark(mine: boolean): void {
+		if (this.mine === mine) return;
+		this.mine = mine;
+		this.saveLedger();
 	}
 
 	/**
@@ -1221,6 +1259,7 @@ export class ObsRecorder {
 			// take anything back now: the ledger waits for it to return.
 			const hooks = this.hooks;
 			const path = this.path;
+			this.mark(false);
 			this.finish();
 			if (this.loans.length > 0) hooks?.notice('return-pending');
 			hooks?.ended({ reason: 'external', path, error: null });
@@ -1232,6 +1271,7 @@ export class ObsRecorder {
 		if (!this.recording || this.stopping) return;
 		this.stopping = true;
 		const hooks = this.hooks;
+		this.mark(false);
 		await this.giveBack();
 		await this.tidy();
 		const path = this.path;
@@ -1283,7 +1323,10 @@ export class ObsRecorder {
 		// while it writes: nothing is given back until it has stopped.
 		const stopped = await this.confirmStopped(seconds);
 		path = this.path ?? path;
-		if (stopped) await this.giveBack();
+		if (stopped) {
+			this.mark(false);
+			await this.giveBack();
+		}
 		// Once OBS took the stop, the recording's picture is of no use to
 		// anything. A recording OBS never took a stop for may still run, and
 		// keeps the scene it shows.
