@@ -1011,6 +1011,8 @@ export const en = {
 	'recording.error.obs-password': 'OBS Studio didn’t accept the password.',
 	'recording.error.obs-old': 'This OBS Studio is too old. Update OBS Studio to version 28 or later.',
 	'recording.error.obs-recording': 'OBS Studio is already recording.',
+	'recording.error.obs-live':
+		'OBS Studio is streaming or running another output, and the plugin’s scene would take it over. Stop that output, or choose “As set in OBS Studio”.',
 	'recording.error.obs-scene':
 		'The plugin couldn’t set up a capture source in OBS Studio. Choose “As set in OBS Studio” and set up the scene in OBS Studio yourself.',
 	'recording.error.obs-empty':

@@ -109,6 +109,18 @@ export class FakeObs {
 	formats = ['bmp', 'jpg', 'png'];
 	/** The picture OBS takes of a scene is one flat color. */
 	blank = false;
+	/** OBS is streaming. The stream shows the scene on air and hears what OBS hears. */
+	streaming = false;
+	/** OBS's virtual camera is on, which shows the scene on air too. */
+	virtualCamera = false;
+	/** OBS's replay buffer runs, or is off, or is not there at all, as in an OBS that was never set up for one. */
+	replayBuffer: boolean | null = null;
+	/**
+	 * How many times OBS's video was set anew. The real OBS 33 falls over when
+	 * it is asked for the list of its outputs after that: it reads an output's
+	 * width through a picture that is gone.
+	 */
+	videoResets = 0;
 	/** OBS says yes to a start and records nothing, as it does into a folder that is not there. */
 	startsNothing = false;
 	/** How many more looks at the recording find it still running after a stop was asked. */
@@ -128,7 +140,9 @@ export class FakeObs {
 	/**
 	 * OBS has fallen over. The real one does when its macOS capture source is
 	 * asked for its list of screens: the list's values are empty on the newer
-	 * systems, and its WebSocket server reads them as text all the same.
+	 * systems, and its WebSocket server reads them as text all the same. It
+	 * does when it is asked for its list of outputs after its video was set
+	 * anew, too.
 	 */
 	crashed = false;
 
@@ -332,9 +346,10 @@ export class FakeObs {
 		const data = isRecord(message.d.requestData) ? message.d.requestData : {};
 		this.calls.push({ type, data });
 		if (
-			type === 'GetInputPropertiesListPropertyItems' &&
-			this.inputs[String(data.inputName)]?.kind.startsWith('screen_capture') === true &&
-			['display_uuid', 'application'].includes(String(data.propertyName))
+			(type === 'GetOutputList' && this.videoResets > 0) ||
+			(type === 'GetInputPropertiesListPropertyItems' &&
+				this.inputs[String(data.inputName)]?.kind.startsWith('screen_capture') === true &&
+				['display_uuid', 'application'].includes(String(data.propertyName)))
 		) {
 			this.crashed = true;
 			this.closed = true;
@@ -377,6 +392,23 @@ export class FakeObs {
 				}
 				return ok({ outputActive: active, outputDuration: this.duration, outputBytes: this.bytes });
 			}
+			case 'GetOutputList':
+				return ok({
+					outputs: [
+						{ outputName: 'simple_file_output', outputKind: 'mov_output', outputActive: this.recording },
+						{ outputName: 'virtualcam_output', outputKind: 'virtualcam_output', outputActive: this.virtualCamera },
+						...(this.streaming
+							? [{ outputName: 'simple_stream', outputKind: 'rtmp_output', outputActive: true }]
+							: []),
+					],
+				});
+			case 'GetStreamStatus':
+				return ok({ outputActive: this.streaming });
+			case 'GetVirtualCamStatus':
+				return ok({ outputActive: this.virtualCamera });
+			case 'GetReplayBufferStatus':
+				// One that is not there says so, as OBS does.
+				return this.replayBuffer === null ? { code: 604 } : ok({ outputActive: this.replayBuffer });
 			case 'GetProfileList':
 				return ok({ currentProfileName: this.profile, profiles: [this.profile] });
 			case 'GetProfileParameter':
@@ -400,7 +432,10 @@ export class FakeObs {
 			case 'GetVideoSettings':
 				return ok({ ...this.video, fpsNumerator: 30, fpsDenominator: 1 });
 			case 'SetVideoSettings': {
-				if (this.recording || this.outputBusy) return { code: 500 };
+				if (this.recording || this.outputBusy || this.streaming || this.virtualCamera || this.replayBuffer === true) {
+					return { code: 500 };
+				}
+				this.videoResets += 1;
 				const sides = [data.baseWidth, data.baseHeight, data.outputWidth, data.outputHeight].filter(
 					(side): side is number => typeof side === 'number',
 				);

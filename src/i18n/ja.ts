@@ -907,6 +907,8 @@ export const ja = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.obs-password': 'OBS Studioがパスワードを受け付けませんでした。',
 	'recording.error.obs-old': 'このOBS Studioは古すぎます。OBS Studioをバージョン28以降に更新してください。',
 	'recording.error.obs-recording': 'OBS Studioはすでに録画中です。',
+	'recording.error.obs-live':
+		'OBS Studioが配信中か、ほかの出力が動作中のため、プラグインのシーンに切り替えるとその映像が置き換わります。その出力を止めるか、「OBS Studioの設定どおり」を選んでください。',
 	'recording.error.obs-scene': 'プラグインがOBS Studioにキャプチャソースを用意できませんでした。「OBS Studioの設定どおり」を選び、OBS Studioで自分でシーンを用意してください。',
 	'recording.error.obs-empty': 'OBS Studioの現在のシーンにソースがないため、何も収録されません。OBS Studioでキャプチャソースを追加してください。',
 	'recording.error.obs-blank':

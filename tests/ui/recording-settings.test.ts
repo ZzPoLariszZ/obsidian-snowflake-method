@@ -419,6 +419,21 @@ describe('the screen recording’s rows in the settings', () => {
 		expect([memory.testing, memory.opening]).toEqual([true, false]);
 	});
 
+	it('says that OBS is live on another output where that stands in a recording’s way, with no picture', () => {
+		const { bridge, refresh } = rig();
+		const memory = freshRecordingSettingsMemory();
+		memory.probe = { ok: true, version: '33.0.1', picture: null, problem: 'obs-live' };
+		const live = new Row();
+		renderObsTest(live.setting, bridge, t, memory, refresh);
+		expect(live.said()).toEqual([
+			[
+				'OBS Studio is streaming or running another output, and the plugin’s scene would take it over. Stop that output, or choose “As set in OBS Studio”.',
+				true,
+			],
+		]);
+		expect(live.descEl.querySelector('img')).toBeNull();
+	});
+
 	it('says why OBS could not be looked at, or what stands in a recording’s way, and waits while one runs', () => {
 		const { bridge, held, refresh } = rig();
 		const memory = freshRecordingSettingsMemory();

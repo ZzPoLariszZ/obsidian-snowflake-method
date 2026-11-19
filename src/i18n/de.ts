@@ -914,6 +914,8 @@ export const de = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.obs-old':
 		'Dieses OBS Studio ist zu alt. Aktualisiere OBS Studio auf Version 28 oder neuer.',
 	'recording.error.obs-recording': 'OBS Studio nimmt bereits auf.',
+	'recording.error.obs-live':
+		'OBS Studio streamt gerade oder eine andere Ausgabe läuft, und die Szene der Erweiterung würde sie ersetzen. Stoppe diese Ausgabe oder wähle „Wie in OBS Studio“.',
 	'recording.error.obs-scene':
 		'Die Erweiterung konnte in OBS Studio keine Aufnahmequelle einrichten. Wähle „Wie in OBS Studio“ und richte die Szene selbst in OBS Studio ein.',
 	'recording.error.obs-empty':

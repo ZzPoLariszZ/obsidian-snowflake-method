@@ -917,6 +917,8 @@ export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.obs-old':
 		'Cette version d\'OBS Studio est trop ancienne. Mettez OBS Studio à jour vers la version 28 ou ultérieure.',
 	'recording.error.obs-recording': 'OBS Studio enregistre déjà.',
+	'recording.error.obs-live':
+		'OBS Studio diffuse en direct ou une autre de ses sorties est active, et la scène du module la remplacerait. Arrêtez cette sortie ou choisissez « Selon OBS Studio ».',
 	'recording.error.obs-scene':
 		'Le module n\'a pas pu préparer de source de capture dans OBS Studio. Choisissez « Selon OBS Studio » et préparez la scène vous-même dans OBS Studio.',
 	'recording.error.obs-empty':

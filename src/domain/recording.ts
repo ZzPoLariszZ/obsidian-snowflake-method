@@ -88,6 +88,8 @@ export const RECORDING_ERROR_CODES = [
 	'obs-old',
 	/** OBS is already recording something of its own. */
 	'obs-recording',
+	/** OBS is streaming, or another output of its runs: a scene of the plugin's would take that picture over. */
+	'obs-live',
 	/** The plugin's capture source could not be made in OBS. */
 	'obs-scene',
 	/** OBS's own scene holds nothing to record. */

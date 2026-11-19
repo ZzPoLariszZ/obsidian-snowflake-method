@@ -933,6 +933,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'recording.error.obs-password': 'OBS Studio 没有接受这个密码。',
 	'recording.error.obs-old': '这个 OBS Studio 版本太旧，请将 OBS Studio 更新到 28 或更高版本。',
 	'recording.error.obs-recording': 'OBS Studio 已经在录制。',
+	'recording.error.obs-live': 'OBS Studio 正在直播或进行其他输出，插件的场景会顶替它的画面。请先停止该输出，或选择“按 OBS Studio 中的设置”。',
 	'recording.error.obs-scene': '插件无法在 OBS Studio 中建立采集源。请选择“按 OBS Studio 中的设置”，并自己在 OBS Studio 中布置场景。',
 	'recording.error.obs-empty': 'OBS Studio 当前的场景里没有任何源，录下来会是空的。请在 OBS Studio 中添加采集源。',
 	'recording.error.obs-blank': 'OBS Studio 的画面是空白的，录下来会是空的。请检查采集源，并确认系统允许 OBS Studio 录制屏幕。',

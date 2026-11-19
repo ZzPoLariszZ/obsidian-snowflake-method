@@ -907,6 +907,7 @@ export const zhTW = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.obs-password': 'OBS Studio 沒有接受這個密碼。',
 	'recording.error.obs-old': '這個 OBS Studio 版本太舊，請將 OBS Studio 更新到 28 或更新的版本。',
 	'recording.error.obs-recording': 'OBS Studio 已經在錄製。',
+	'recording.error.obs-live': 'OBS Studio 正在串流或進行其他輸出，外掛程式的場景會頂替它的畫面。請先停止該輸出，或選擇「依 OBS Studio 中的設定」。',
 	'recording.error.obs-scene': '外掛程式無法在 OBS Studio 中建立擷取來源。請選擇「依 OBS Studio 中的設定」，並自己在 OBS Studio 中佈置場景。',
 	'recording.error.obs-empty': 'OBS Studio 目前的場景裡沒有任何來源，錄下來會是空的。請在 OBS Studio 中加入擷取來源。',
 	'recording.error.obs-blank': 'OBS Studio 的畫面是空白的，錄下來會是空的。請檢查擷取來源，並確認系統允許 OBS Studio 錄製螢幕。',

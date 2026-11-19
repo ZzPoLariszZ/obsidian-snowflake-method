@@ -908,6 +908,7 @@ export const ko = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.obs-password': 'OBS Studio가 비밀번호를 받아들이지 않았습니다.',
 	'recording.error.obs-old': '이 OBS Studio는 너무 오래되었습니다. OBS Studio를 28 이상 버전으로 업데이트하세요.',
 	'recording.error.obs-recording': 'OBS Studio가 이미 녹화 중입니다.',
+	'recording.error.obs-live': 'OBS Studio가 방송 중이거나 다른 출력이 실행 중이어서 플러그인의 장면이 그 화면을 대신하게 됩니다. 해당 출력을 멈추거나 “OBS Studio 설정대로”를 선택하세요.',
 	'recording.error.obs-scene': '플러그인이 OBS Studio에 캡처 소스를 만들지 못했습니다. “OBS Studio 설정대로”를 선택하고 OBS Studio에서 장면을 직접 구성하세요.',
 	'recording.error.obs-empty': 'OBS Studio의 현재 장면에 소스가 없어 아무것도 녹화되지 않습니다. OBS Studio에서 캡처 소스를 추가하세요.',
 	'recording.error.obs-blank': 'OBS Studio 화면이 비어 있어 아무것도 녹화되지 않습니다. 캡처 소스와 시스템이 OBS Studio의 화면 녹화를 허용하는지 확인하세요.',

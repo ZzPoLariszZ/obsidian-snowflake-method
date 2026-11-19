@@ -1495,6 +1495,101 @@ describe('recording through OBS', () => {
 	});
 });
 
+describe('an OBS busy with something of the author’s own', () => {
+	const mute = { kind: 'mute', input: 'Mic/Aux', before: false, after: true } as const;
+
+	it('puts no scene of its own on air while OBS is live on another output, and moves nothing', async () => {
+		for (const live of ['streaming', 'virtualCamera', 'replayBuffer'] as const) {
+			const { obs, clock, recorder, hooks, ledger } = rig();
+			obs[live] = true;
+			const before = obs.borrowable();
+			for (const scope of ['screen', 'all', 'obsidian'] as const) {
+				expect(
+					await clock.drive(recorder.start(request({ scope, quality: '1080p' }), hooks)),
+					`${live} ${scope}`,
+				).toEqual({ ok: false, code: 'obs-live', detail: null });
+			}
+			// Nothing was changed, made or muted: what goes out live goes on as it was.
+			expect(obs.writes()).toEqual([]);
+			expect(obs.borrowable()).toEqual(before);
+			expect(ledger.value).toBeNull();
+		}
+	});
+
+	it('records OBS’s own scene while OBS streams, as the stream shows it, at OBS’s own size', async () => {
+		const { obs, clock, recorder, hooks, seen } = rig();
+		obs.streaming = true;
+		obs.scenes[0]?.items.push({ id: 7, source: 'The author’s own capture' });
+		const started = await clock.drive(recorder.start(request({ scope: 'obs', quality: '1080p' }), hooks));
+		expect(started.ok).toBe(true);
+		// The scene on air and what OBS hears are the stream's, and stay as they are.
+		expect(obs.program).toBe('Scene');
+		expect(obs.mutes).toEqual({ 'Mic/Aux': false, 'Desktop Audio': true });
+		expect(obs.writes()).not.toContain('SetCurrentProgramScene');
+		expect(obs.writes()).not.toContain('SetInputMute');
+		// OBS changes no size while it streams, and the author is told.
+		expect(seen.notices).toEqual(['quality-kept']);
+		await clock.drive(recorder.stop());
+		expect(obs.parameters['SimpleOutput/FilePath']).toBe('/Users/ada/Movies');
+	});
+
+	it('asks of each output by its own name, and takes one OBS has none of as not running', async () => {
+		// A replay buffer that is there and off, and one that is not there at all, stand in nobody's way.
+		const off = rig();
+		off.obs.replayBuffer = false;
+		expect((await off.clock.drive(off.recorder.start(request(), off.hooks))).ok).toBe(true);
+		const none = rig();
+		expect((await none.clock.drive(none.recorder.start(request(), none.hooks))).ok).toBe(true);
+		expect(none.obs.types()).toEqual(expect.arrayContaining(['GetStreamStatus', 'GetVirtualCamStatus', 'GetReplayBufferStatus']));
+		// An OBS that answers none of the three is taken as not live, and records.
+		const old = rig();
+		for (const type of ['GetStreamStatus', 'GetVirtualCamStatus', 'GetReplayBufferStatus']) old.obs.failNext(type, 204);
+		expect((await old.clock.drive(old.recorder.start(request(), old.hooks))).ok).toBe(true);
+	});
+
+	it('never asks OBS for the list of its outputs, which ends an OBS whose video was set anew', async () => {
+		const { obs, clock, recorder, hooks } = rig();
+		// A recording that borrows a size sets OBS's video anew, twice over, and gives it back the same way.
+		await clock.drive(recorder.start(request({ quality: '1080p' }), hooks));
+		await clock.drive(recorder.stop());
+		expect(obs.videoResets).toBeGreaterThan(1);
+		// The next look and the next start ask whether OBS is live elsewhere, and OBS is still there after both.
+		expect(await clock.drive(recorder.probe({ port: 4455, password: null, scope: 'screen', mayOpen: false }))).toMatchObject({
+			ok: true,
+			problem: null,
+		});
+		expect((await clock.drive(recorder.start(request({ quality: '720p' }), hooks))).ok).toBe(true);
+		expect(obs.types()).not.toContain('GetOutputList');
+		expect(obs.crashed).toBe(false);
+	});
+
+	it('shows what asking for that list would cost: the scripted OBS falls over as the real one does', async () => {
+		const { obs, clock, recorder, hooks } = rig();
+		await clock.drive(recorder.start(request({ quality: '1080p' }), hooks));
+		await clock.drive(recorder.stop());
+		const socket = new ObsSocket({ open: obs.open, timers: clock.timers, mint: () => 'direct' });
+		await clock.drive(socket.connect(4455, null));
+		const answer = await clock.drive(socket.call('GetOutputList'));
+		expect(answer.ok).toBe(false);
+		expect(obs.crashed).toBe(true);
+	});
+
+	it('gives nothing back under a live output either, and settles the ledger once OBS is quiet', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig({ ledger: { version: 1, loans: [mute] } });
+		obs.mutes['Mic/Aux'] = true;
+		obs.streaming = true;
+		expect(await clock.drive(recorder.start(request(), hooks))).toMatchObject({ ok: false, code: 'obs-live' });
+		// The microphone an earlier run muted stays muted on the stream: this is not the moment to move it.
+		expect(obs.mutes['Mic/Aux']).toBe(true);
+		expect(ledger.value?.loans).toEqual([mute]);
+		obs.streaming = false;
+		expect((await clock.drive(recorder.start(request(), hooks))).ok).toBe(true);
+		await clock.drive(recorder.stop());
+		expect(obs.mutes['Mic/Aux']).toBe(false);
+		expect(ledger.value).toBeNull();
+	});
+});
+
 describe('a look at OBS', () => {
 	it('says which OBS answered and shows what it would record, and leaves the scene as it was', async () => {
 		const { obs, clock, recorder } = rig();
@@ -1620,5 +1715,20 @@ describe('a look at OBS', () => {
 		const probe = await clock.drive(recorder.probe({ port: 4455, password: null, scope: 'screen', mayOpen: false }));
 		expect(probe).toMatchObject({ ok: true, problem: 'obs-recording' });
 		expect(obs.writes()).toEqual([]);
+	});
+
+	it('puts no scene on air for a look while OBS is live on another output, and says what stands in the way', async () => {
+		const { obs, clock, recorder } = rig();
+		obs.streaming = true;
+		const probe = await clock.drive(recorder.probe({ port: 4455, password: null, scope: 'obsidian', mayOpen: false }));
+		// No picture: what the plugin would record is the scene it may not put on air now.
+		expect(probe).toEqual({ ok: true, version: '33.0.1', picture: null, problem: 'obs-live' });
+		expect(obs.writes()).toEqual([]);
+		// OBS's own scene is looked at as the stream shows it, with nothing in the way.
+		obs.scenes[0]?.items.push({ id: 7, source: 'The author’s own capture' });
+		const own = await clock.drive(recorder.probe({ port: 4455, password: null, scope: 'obs', mayOpen: false }));
+		expect(own).toMatchObject({ ok: true, problem: null, picture: 'data:image/jpg;base64,AAAA' });
+		expect(obs.program).toBe('Scene');
+		expect(obs.writes()).not.toContain('SetCurrentProgramScene');
 	});
 });
