@@ -75,8 +75,11 @@ export function exportScriptOf(text: string): ExportScript {
 	const han = text.match(HAN)?.length ?? 0;
 	if ((text.match(HANGUL)?.length ?? 0) > han) return 'hangul';
 	// Japanese writes its grammar in kana, so even a page heavy with kanji
-	// carries a good share of it, where Chinese carries none.
-	return (text.match(KANA)?.length ?? 0) * 10 >= han ? 'kana' : 'cjk';
+	// carries a good share of it, where Chinese carries none. Nor does any
+	// other writing counted character by character, which keeps the indent
+	// it had before the two were told apart.
+	const kana = text.match(KANA)?.length ?? 0;
+	return kana > 0 && kana * 10 >= han ? 'kana' : 'cjk';
 }
 
 /** The indent a project's language asks for. */

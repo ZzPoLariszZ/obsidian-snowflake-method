@@ -387,5 +387,10 @@ describe('the indent an export sets in each language', () => {
 		expect(exportScriptOf('그녀는 방에 들어가 창밖의 눈을 보았다.')).toBe('hangul');
 		expect(exportScriptOf('She walked into the room and saw the snow.')).toBe('latin');
 		expect(exportScriptOf('Elle entra dans la pièce et vit la neige.')).toBe('latin');
+		// Writing counted character by character with neither Han nor kana in
+		// it is no Japanese: it keeps the indent it had before kana was read.
+		expect(exportScriptOf('เธอเดินเข้าไปในห้องและมองเห็นหิมะ')).toBe('cjk');
+		// Kana alone is Japanese, as a page written for children is.
+		expect(exportScriptOf('かのじょはへやにはいった。')).toBe('kana');
 	});
 });
