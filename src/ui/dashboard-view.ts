@@ -6896,17 +6896,16 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		// so here.
 		columnClasses: readonly string[] = this.tableColumnClasses(),
 	): Pick<TableFrame, 'bodyWrap' | 'body' | 'fitActions'> {
-		const shown = this.host.showsTableActionsColumn()
-			? [...headers, this.t('table.actions')]
-			: headers;
+		const actions = this.host.showsTableActionsColumn();
+		const shown = actions ? [...headers, this.t('table.actions')] : headers;
 		const { bodyWrap, body, fitActions } = buildTableFrame(panel, {
-			tableCls: `${tableCls}${
-				this.host.showsTableActionsColumn() ? ' has-actions-column' : ''
-			}`,
+			tableCls: `${tableCls}${actions ? ' has-actions-column' : ''}`,
 			columns: columnClasses,
 			headers: shown,
 		});
-		return { bodyWrap, body, fitActions };
+		// With no actions column there are no buttons to fit, and the frame is
+		// never asked: asked, it would search every row drawn for them.
+		return { bodyWrap, body, fitActions: actions ? fitActions : () => undefined };
 	}
 
 	private renderCharacterRow(
