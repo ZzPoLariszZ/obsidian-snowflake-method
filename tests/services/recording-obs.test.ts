@@ -472,6 +472,22 @@ describe('recording through OBS', () => {
 		});
 	});
 
+	it('points OBS under X11 at the screen Obsidian stands on, chosen from OBS’s own list', async () => {
+		const linux = rig({ system: 'linux' });
+		linux.obs.kinds = ['xshm_input_v2', 'xcomposite_input'];
+		linux.obs.loudKinds = [];
+		// Obsidian stands on the screen at 0,0, which OBS lists second: a source left to itself would show the first.
+		linux.obs.lists.screen = [
+			{ itemName: 'Screen HDMI-1 (1920x1080 @ -1920,0)', itemEnabled: true, itemValue: 0 },
+			{ itemName: 'Screen DP-1 (2560x1440 @ 0,0)', itemEnabled: true, itemValue: 1 },
+		];
+		expect((await linux.clock.drive(linux.recorder.start(request(), linux.hooks))).ok).toBe(true);
+		expect(linux.obs.inputs[OBS_SCENES.screen.input]).toMatchObject({
+			kind: 'xshm_input_v2',
+			settings: { show_cursor: true, screen: 1 },
+		});
+	});
+
 	it('stays on the window it shows where OBS lists none of the title asked for', async () => {
 		const windows = rig({ system: 'win' });
 		windows.obs.kinds = ['monitor_capture', 'window_capture'];

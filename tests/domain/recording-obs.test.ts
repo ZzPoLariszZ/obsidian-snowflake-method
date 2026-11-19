@@ -298,11 +298,12 @@ describe('the source OBS is asked to capture with', () => {
 
 	it('captures under X11 and leaves Wayland, which lists neither X11 kind, to OBS', () => {
 		const x11 = ['xshm_input_v2', 'xcomposite_input', 'pipewire-screen-capture-source'];
+		// The screen is chosen from OBS's own list: a source left to itself shows OBS's first screen.
 		expect(obsCapturePlan('linux', 'screen', x11, null)).toEqual({
 			kind: 'ready',
 			inputKind: 'xshm_input_v2',
 			settings: { show_cursor: true },
-			pick: null,
+			pick: { property: 'screen', rule: 'display' },
 		});
 		expect(obsCapturePlan('linux', 'obsidian', x11, null)).toMatchObject({
 			inputKind: 'xcomposite_input',
@@ -331,6 +332,16 @@ describe('the source OBS is asked to capture with', () => {
 		expect(pickObsListItem(screens, 'display', { x: 9999, y: 0 })).toBe('uuid-main');
 		expect(pickObsListItem(screens, 'display', null)).toBe('uuid-main');
 		expect(pickObsListItem([{ itemName: 'Odd', itemEnabled: true, itemValue: 'only' }], 'display', null)).toBe('only');
+	});
+
+	it('picks a screen under X11 from the same kind of list, by its number', () => {
+		// Read from OBS's own code for X11: the screen's name, then its size and its place in brackets.
+		const x11 = [
+			{ itemName: 'Screen DP-1 (2560x1440 @ 0,0)', itemEnabled: true, itemValue: 0 },
+			{ itemName: 'Screen HDMI-1 (1920x1080 @ 2560,180)', itemEnabled: true, itemValue: 1 },
+		];
+		expect(pickObsListItem(x11, 'display', { x: 2560, y: 180 })).toBe(1);
+		expect(pickObsListItem(x11, 'display', { x: 0, y: 0 })).toBe(0);
 	});
 
 	it('finds a screen on Windows by its place wherever that stands in the name', () => {

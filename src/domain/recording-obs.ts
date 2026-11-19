@@ -230,7 +230,9 @@ export function resolveObsKind(kinds: readonly string[], base: string): string |
  * own code. Linux under X11 registers its two capture kinds only there, so
  * their absence is how Wayland is told: its sources are chosen in a dialog
  * of the system's that nothing can answer for the author, and the plugin
- * leaves that scene to OBS.
+ * leaves that scene to OBS. Under X11 the screen is chosen from OBS's own
+ * list as it is on Windows: a source left to itself shows OBS's first
+ * screen, whichever one Obsidian stands on.
  *
  * On a Mac nothing is chosen from a list of OBS's. OBS fills its list of
  * screens with values the newer systems no longer hand it, and its
@@ -274,7 +276,7 @@ export function obsCapturePlan(
 				);
 	}
 	return scope === 'screen'
-		? ready('xshm_input', { show_cursor: true }, null)
+		? ready('xshm_input', { show_cursor: true }, { property: 'screen', rule: 'display' })
 		: ready('xcomposite_input', { show_cursor: true }, { property: 'capture_window', rule: 'x11-window' });
 }
 
