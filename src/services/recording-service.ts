@@ -108,6 +108,8 @@ export type RecordingEvent =
 
 /** How long an application being opened is given to say it cannot be. */
 const LAUNCH_WATCH_MS = 500;
+/** How long a quitting Obsidian waits for a start that was given up, or a look at OBS, to end and give back. */
+const SETTLE_WAIT_MS = 3000;
 
 export class ScreenRecordingService {
 	private current: RecordingState = { ...IDLE_RECORDING_STATE };
@@ -120,6 +122,9 @@ export class ScreenRecordingService {
 	private mending: Promise<void> | null = null;
 	/** The count that runs before a recording begins, while it runs. */
 	private count: RecordingCount | null = null;
+	/** The start under way and the look at OBS under way, while there is one: a quitting Obsidian waits for them a short while. */
+	private beginning: Promise<void> | null = null;
+	private looking: Promise<void> | null = null;
 	/** Where a window that opens under a recording of Obsidian's windows is recorded to, and how many files there are so far. */
 	private windowed: { folder: string; stem: string; system: RecordingSystem; files: number } | null = null;
 
@@ -217,16 +222,12 @@ export class ScreenRecordingService {
 		const run = this.run;
 		this.givenUp = false;
 		this.move({ phase: 'starting', tool: preferences.tool, startedAt: null, bytes: null, error: null });
-		let outcome: RecorderStart;
-		try {
-			outcome = system === null ? { ok: false, code: 'unavailable', detail: null } : await this.begin(system, preferences, run);
-		} catch (error) {
-			outcome = {
-				ok: false,
-				code: 'unavailable',
-				detail: error instanceof Error ? error.message.slice(0, 200) : null,
-			};
-		}
+		const attempt = this.attempt(system, preferences, run);
+		// Kept while it runs, so a quitting Obsidian can wait for it to end.
+		const ended = attempt.then(() => {});
+		this.beginning = ended;
+		const outcome = await attempt;
+		if (this.beginning === ended) this.beginning = null;
 		if (run !== this.run) return 'cancelled';
 		if (!outcome.ok) {
 			if (outcome.code === 'cancelled') {
@@ -281,7 +282,7 @@ export class ScreenRecordingService {
 	async testObs(onOpening: () => void = () => {}): Promise<ObsProbe> {
 		if (this.disposed || this.current.phase !== 'idle') return { ok: false, code: 'unavailable' };
 		const preferences = this.deps.preferences();
-		const probe = await this.obs.probe(
+		const look = this.obs.probe(
 			{
 				port: preferences.obsPort,
 				password: this.password(preferences),
@@ -290,6 +291,11 @@ export class ScreenRecordingService {
 			},
 			onOpening,
 		);
+		// Kept while it runs: the plugin's scene may be on air in OBS for its moment.
+		const ended = look.then(() => {});
+		this.looking = ended;
+		const probe = await look;
+		if (this.looking === ended) this.looking = null;
 		if (probe.ok || probe.code !== 'obs-closed') this.reached();
 		return probe;
 	}
@@ -333,13 +339,23 @@ export class ScreenRecordingService {
 		if (this.current.phase === 'recording' && this.current.tool === 'obs') this.obs.follow(window);
 	}
 
-	/** Obsidian is quitting: the recording is stopped as far as a short wait allows. */
+	/**
+	 * Obsidian is quitting: the recording is stopped as far as a short wait
+	 * allows. A start still under way is given up and waited for likewise,
+	 * and so is a look at OBS: each has borrowed from OBS by then, and
+	 * gives it back as it ends. An Obsidian that went at once would leave
+	 * OBS with the plugin's scene on air and its sound muted.
+	 */
 	async settle(): Promise<void> {
 		if (this.current.phase === 'opening' || this.current.phase === 'starting') {
 			this.giveUp();
+			if (this.beginning !== null) await within(this.deps.timers, this.beginning, SETTLE_WAIT_MS);
 			return;
 		}
-		if (this.current.phase !== 'recording') return;
+		if (this.current.phase !== 'recording') {
+			if (this.looking !== null) await within(this.deps.timers, this.looking, SETTLE_WAIT_MS);
+			return;
+		}
 		const run = this.run;
 		this.move({ phase: 'stopping' });
 		const stopped = this.current.tool === 'obs' ? await this.obs.settle() : await this.native.settle();
@@ -361,6 +377,24 @@ export class ScreenRecordingService {
 	}
 
 	// ---- A start ----
+
+	/** One start, however it ends: a fault on the way is a start that came to nothing, with what was said. */
+	private async attempt(
+		system: RecordingSystem | null,
+		preferences: RecordingPreferences,
+		run: number,
+	): Promise<RecorderStart> {
+		if (system === null) return { ok: false, code: 'unavailable', detail: null };
+		try {
+			return await this.begin(system, preferences, run);
+		} catch (error) {
+			return {
+				ok: false,
+				code: 'unavailable',
+				detail: error instanceof Error ? error.message.slice(0, 200) : null,
+			};
+		}
+	}
 
 	private async begin(
 		system: RecordingSystem,

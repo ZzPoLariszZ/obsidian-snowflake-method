@@ -1606,6 +1606,76 @@ describe('an OBS busy with something of the author’s own', () => {
 	});
 });
 
+describe('a plugin that goes while OBS is being asked', () => {
+	it('lets a start under way end by itself, and gives everything back first', async () => {
+		const { obs, clock, recorder, hooks, seen, ledger } = rig();
+		const before = obs.borrowable();
+		let finish: (ran: boolean) => void = () => {};
+		seen.count = () =>
+			new Promise((resolve) => {
+				finish = resolve;
+			});
+		const starting = recorder.start(request({ quality: '1080p' }), hooks);
+		await clock.advance(5000);
+		expect(seen.held).toBe(1);
+		// Everything is borrowed by now, and the plugin's scene is on air.
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		expect(obs.mutes['Mic/Aux']).toBe(true);
+		recorder.abandon();
+		// The service ends the count as it goes.
+		seen.cancel = true;
+		finish(false);
+		expect(await clock.drive(starting)).toEqual({ ok: false, code: 'cancelled', detail: null });
+		expect(obs.types()).not.toContain('StartRecord');
+		expect(obs.borrowable()).toEqual(before);
+		expect([obs.scenes.map((scene) => scene.name), obs.capturing()]).toEqual([['Scene'], []]);
+		expect(ledger.value).toBeNull();
+	});
+
+	it('ends a recording that began only after the plugin had gone', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		const before = obs.borrowable();
+		// OBS takes the start, and its answer is still on its way when the plugin goes.
+		obs.holdNext('StartRecord');
+		const starting = recorder.start(request(), hooks);
+		await clock.advance(5000);
+		expect(obs.recording).toBe(true);
+		recorder.abandon();
+		obs.release();
+		expect(await clock.drive(starting)).toEqual({ ok: false, code: 'cancelled', detail: null });
+		expect(obs.recording).toBe(false);
+		expect(obs.borrowable()).toEqual(before);
+		expect(ledger.value).toBeNull();
+	});
+
+	it('lets a look under way end by itself too, with nothing of its own left in OBS', async () => {
+		const { obs, clock, recorder } = rig();
+		const before = obs.borrowable();
+		obs.holdNext('GetSourceScreenshot');
+		const looking = recorder.probe({ port: 4455, password: null, scope: 'screen', mayOpen: false });
+		await clock.advance(2000);
+		// The plugin's scene is on air for the look.
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		recorder.abandon();
+		obs.release();
+		await clock.drive(looking);
+		expect(obs.borrowable()).toEqual(before);
+		expect([obs.scenes.map((scene) => scene.name), obs.capturing()]).toEqual([['Scene'], []]);
+	});
+
+	it('opens no OBS and makes no scene for a look once the plugin has gone', async () => {
+		const { obs, clock, recorder, opened } = rig();
+		obs.closed = true;
+		const looking = recorder.probe({ port: 4455, password: null, scope: 'screen', mayOpen: true });
+		await clock.advance(4000);
+		expect(opened.count).toBe(1);
+		recorder.abandon();
+		obs.closed = false;
+		expect(await clock.drive(looking)).toEqual({ ok: false, code: 'obs-closed' });
+		expect(obs.writes()).toEqual([]);
+	});
+});
+
 describe('a look at OBS', () => {
 	it('says which OBS answered and shows what it would record, and leaves the scene as it was', async () => {
 		const { obs, clock, recorder } = rig();

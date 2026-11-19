@@ -202,11 +202,16 @@ export class FakeObs {
 	};
 	recording = false;
 
+	/** OBS takes every request and answers none, as one that hangs does: the conversation stays open. */
+	silent = false;
+
 	/** Every request, in the order OBS got them. */
 	readonly calls: FakeObsCall[] = [];
 	/** Every frame the plugin sent, as written. */
 	readonly sent: string[] = [];
 	private readonly failures = new Map<string, number[]>();
+	private readonly holding = new Map<string, number>();
+	private readonly held: (() => void)[] = [];
 	private readonly lingering = new Map<string, number>();
 	private readonly sockets: FakeSocket[] = [];
 	private nextItem = 1;
@@ -294,6 +299,21 @@ export class FakeObs {
 		this.failures.set(type, [...(this.failures.get(type) ?? []), code]);
 	}
 
+	/**
+	 * Keeps back the answer to the next request of a kind, as an OBS that is
+	 * slow about it would: the request is taken and done, and its answer
+	 * comes only when `release` is called. A test stands in the middle of
+	 * what the plugin is doing that way.
+	 */
+	holdNext(type: string): void {
+		this.holding.set(type, (this.holding.get(type) ?? 0) + 1);
+	}
+
+	/** Lets every answer kept back go, in the order they were kept. */
+	release(): void {
+		for (const deliver of this.held.splice(0)) deliver();
+	}
+
 	/** OBS says something to every open conversation. */
 	emit(type: string, data: Record<string, unknown> = {}): void {
 		for (const socket of this.sockets) {
@@ -357,18 +377,28 @@ export class FakeObs {
 			this.drop();
 			return;
 		}
+		if (this.silent) return;
 		const queued = this.failures.get(type) ?? [];
 		const forced = queued.shift();
 		const outcome = forced === undefined ? this.answer(type, data) : { code: forced };
-		socket.deliver({
-			op: 7,
-			d: {
-				requestType: type,
-				requestId: id,
-				requestStatus: 'code' in outcome ? { result: false, code: outcome.code } : { result: true, code: 100 },
-				...('code' in outcome ? {} : { responseData: outcome.data }),
-			},
-		});
+		const deliver = (): void => {
+			socket.deliver({
+				op: 7,
+				d: {
+					requestType: type,
+					requestId: id,
+					requestStatus: 'code' in outcome ? { result: false, code: outcome.code } : { result: true, code: 100 },
+					...('code' in outcome ? {} : { responseData: outcome.data }),
+				},
+			});
+		};
+		const kept = this.holding.get(type) ?? 0;
+		if (kept > 0) {
+			this.holding.set(type, kept - 1);
+			this.held.push(deliver);
+			return;
+		}
+		deliver();
 	}
 
 	private scene(name: unknown): FakeScene | undefined {

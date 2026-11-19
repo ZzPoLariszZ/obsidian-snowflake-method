@@ -918,6 +918,85 @@ describe('the screen recording service', () => {
 		});
 	});
 
+	it('waits for a start given up at quitting to give OBS back what it borrowed, a short while', async () => {
+		const { clock, obs, kept, service } = rig({ preferences: { tool: 'obs', quality: '1080p' } });
+		const before = obs.borrowable();
+		const count = heldCount();
+		kept.count = () => count.handle;
+		const starting = service.start();
+		await clock.advance(5000);
+		// Counted in: the plugin's scene is on air, OBS's microphone muted and its canvas resized.
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		expect(obs.mutes['Mic/Aux']).toBe(true);
+		// OBS is slow to answer as Obsidian quits.
+		obs.holdNext('GetProfileList');
+		let settled = false;
+		const settling = service.settle().then(() => {
+			settled = true;
+		});
+		await clock.settle();
+		expect([count.cancelled(), settled]).toEqual([1, false]);
+		obs.release();
+		await clock.drive(settling);
+		expect(obs.types()).not.toContain('StartRecord');
+		expect(obs.borrowable()).toEqual(before);
+		expect(obs.scenes.map((scene) => scene.name)).toEqual(['Scene']);
+		expect(kept.journal).toBeNull();
+		expect(await clock.drive(starting)).toBe('cancelled');
+
+		// An OBS that says nothing at all holds the quit up for three seconds and no longer.
+		const hung = rig({ preferences: { tool: 'obs' } });
+		const held = heldCount();
+		hung.kept.count = () => held.handle;
+		void hung.service.start();
+		await hung.clock.advance(5000);
+		hung.obs.silent = true;
+		const from = hung.clock.now;
+		await hung.clock.drive(hung.service.settle());
+		expect(hung.clock.now - from).toBeLessThan(4000);
+	});
+
+	it('waits for a look at OBS under way at quitting, which has the plugin’s scene on air', async () => {
+		const { clock, obs, service } = rig({ preferences: { tool: 'obs' } });
+		const before = obs.borrowable();
+		obs.holdNext('GetSourceScreenshot');
+		const looking = service.testObs();
+		await clock.advance(1000);
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		let settled = false;
+		const settling = service.settle().then(() => {
+			settled = true;
+		});
+		await clock.settle();
+		expect(settled).toBe(false);
+		obs.release();
+		await clock.drive(settling);
+		expect(obs.borrowable()).toEqual(before);
+		expect(obs.scenes.map((scene) => scene.name)).toEqual(['Scene']);
+		expect((await clock.drive(looking)).ok).toBe(true);
+		// With no look and no start under way, a quit waits for nothing.
+		const from = clock.now;
+		await service.settle();
+		expect(clock.now).toBe(from);
+	});
+
+	it('lets an OBS start under way give everything back when the plugin goes this instant', async () => {
+		const { clock, obs, kept, service } = rig({ preferences: { tool: 'obs', quality: '1080p' } });
+		const before = obs.borrowable();
+		const count = heldCount();
+		kept.count = () => count.handle;
+		void service.start();
+		await clock.advance(5000);
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		service.dispose();
+		expect(count.cancelled()).toBe(1);
+		await clock.advance(2000);
+		expect(obs.types()).not.toContain('StartRecord');
+		expect(obs.borrowable()).toEqual(before);
+		expect(obs.scenes.map((scene) => scene.name)).toEqual(['Scene']);
+		expect(kept.journal).toBeNull();
+	});
+
 	it('does not hold a quitting Obsidian up for a recorder still moving its file', async () => {
 		const { clock, kept, service, recorder } = rig();
 		await clock.drive(service.start());

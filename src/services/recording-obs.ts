@@ -253,6 +253,8 @@ export class ObsRecorder {
 	private followTimer: unknown = null;
 	/** The run whose source is being pointed anew, while it is. */
 	private turning: number | null = null;
+	/** The plugin is going away: whatever is under way ends at its next step and begins nothing more. */
+	private left = false;
 
 	constructor(private readonly deps: ObsRecorderDeps) {
 		this.loans = readObsJournal(deps.journal.load())?.loans ?? [];
@@ -270,7 +272,14 @@ export class ObsRecorder {
 		this.hooks = hooks;
 		this.stopping = false;
 		try {
-			return await this.begin(request, hooks);
+			const outcome = await this.begin(request, hooks);
+			// The plugin went away while OBS was being asked: a recording that
+			// began all the same has nobody left to end it, so it ends here.
+			if (outcome.ok && this.left) {
+				await this.end(SETTLE_SECONDS);
+				return { ok: false, code: 'cancelled', detail: null };
+			}
+			return outcome;
 		} finally {
 			this.working = false;
 		}
@@ -287,17 +296,22 @@ export class ObsRecorder {
 	}
 
 	/**
-	 * The plugin is going away this instant: OBS is asked to stop and not
-	 * waited for. What was borrowed stays in the ledger for the next
-	 * conversation.
+	 * The plugin is going away this instant. A recording is asked to stop
+	 * and not waited for, and what it borrowed stays in the ledger for the
+	 * next conversation. A start or a look still under way is left to end
+	 * by itself at its next step, the conversation open until then: OBS is
+	 * not recording yet, so it takes back everything that was borrowed.
 	 */
 	abandon(): void {
+		this.left = true;
 		if (this.recording) {
 			void this.ask('StopRecord');
 			// Its scene goes too, unwaited for, or its source would capture on with nobody to end it.
 			void this.tidy();
+			this.finish();
+			return;
 		}
-		this.finish();
+		if (!this.working) this.finish();
 	}
 
 	/**
@@ -335,13 +349,14 @@ export class ObsRecorder {
 		try {
 			const link = await this.reach(request.port, request.password, request.mayOpen, {
 				opening: onOpening,
-				cancelled: () => false,
+				// A look goes on until it has its answer, unless the plugin itself goes away.
+				cancelled: () => this.left,
 			});
 			if (!link.ok) return { ok: false, code: link.reason === 'cancelled' ? 'obs-closed' : connectionError(link.reason) };
 			const greeted = await this.greet();
-			if (!greeted.ok) {
+			if (!greeted.ok || this.left) {
 				this.hangUp();
-				return { ok: false, code: greeted.code };
+				return { ok: false, code: greeted.ok ? 'obs-closed' : greeted.code };
 			}
 			let problem: RecordingErrorCode | null = null;
 			let picture: string | null = null;
