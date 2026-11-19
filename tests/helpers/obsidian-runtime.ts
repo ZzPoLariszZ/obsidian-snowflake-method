@@ -23,6 +23,8 @@ export class App {}
 export class PluginSettingTab {
 	constructor(..._arguments: unknown[]) {}
 	update(): void {}
+	/** The page is left. The real one clears its own ground here. */
+	hide(): void {}
 }
 
 /**

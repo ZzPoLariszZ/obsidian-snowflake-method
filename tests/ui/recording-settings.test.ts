@@ -275,7 +275,7 @@ describe('the screen recording’s rows in the settings', () => {
 			refused: false,
 		};
 		const empty = new Row();
-		describeRecordingVaultFolder(empty.setting, bridge, t, 'en');
+		describeRecordingVaultFolder(empty.setting, bridge, t, 'en', freshRecordingSettingsMemory());
 		const words = [
 			['Vault folder where recordings are saved.', false],
 			['Empty means "Snowflake Recordings".', false],
@@ -290,12 +290,12 @@ describe('the screen recording’s rows in the settings', () => {
 
 		held.figures = { files: 2, bytes: 1_500_000_000 };
 		const some = new Row();
-		describeRecordingVaultFolder(some.setting, bridge, t, 'en');
+		describeRecordingVaultFolder(some.setting, bridge, t, 'en', freshRecordingSettingsMemory());
 		await settle();
 		expect(some.said()).toEqual([...words, ['2 recordings, 1.5 GB.', false]]);
 		held.figures = { files: 1, bytes: 420_000_000 };
 		const one = new Row();
-		describeRecordingVaultFolder(one.setting, bridge, t, 'en');
+		describeRecordingVaultFolder(one.setting, bridge, t, 'en', freshRecordingSettingsMemory());
 		await settle();
 		expect(one.said()[2]).toEqual(['1 recording, 420 MB.', false]);
 	});
@@ -304,7 +304,7 @@ describe('the screen recording’s rows in the settings', () => {
 		const { bridge, held, calls } = rig();
 		held.storage = { mode: 'vault', path: '/Users/ada/Vault/Novels/Demo', vaultPath: 'Novels/Demo', refused: true };
 		const refused = new Row();
-		describeRecordingVaultFolder(refused.setting, bridge, t, 'en');
+		describeRecordingVaultFolder(refused.setting, bridge, t, 'en', freshRecordingSettingsMemory());
 		expect(refused.said()[2]).toEqual(['This folder belongs to a project. Choose another one.', true]);
 		await settle();
 		expect(calls).toEqual([]);
@@ -312,10 +312,53 @@ describe('the screen recording’s rows in the settings', () => {
 		held.storage = { mode: 'vault', path: '/Users/ada/Vault/Proof', vaultPath: 'Proof', refused: false };
 		held.figures = { files: 3, bytes: 9_000_000_000 };
 		const gone = new Row();
-		const release = describeRecordingVaultFolder(gone.setting, bridge, t, 'en');
+		const release = describeRecordingVaultFolder(gone.setting, bridge, t, 'en', freshRecordingSettingsMemory());
 		release();
 		await settle();
 		expect(gone.said()).toHaveLength(2);
+	});
+
+	it('counts the folder once for as many drawings as the page makes, and again only for cause', async () => {
+		const { bridge, held, calls } = rig();
+		held.storage = { mode: 'vault', path: '/Users/ada/Vault/Proof', vaultPath: 'Proof', refused: false };
+		held.figures = { files: 2, bytes: 1_500_000_000 };
+		const memory = freshRecordingSettingsMemory();
+		const draw = async (): Promise<Row> => {
+			const row = new Row();
+			describeRecordingVaultFolder(row.setting, bridge, t, 'en', memory);
+			await settle();
+			return row;
+		};
+		// The page draws every row again at each change of any row: the count is made for the first drawing alone.
+		const first = await draw();
+		const second = await draw();
+		const third = await draw();
+		expect(calls).toEqual(['figures']);
+		for (const row of [first, second, third]) expect(row.said()[2]).toEqual(['2 recordings, 1.5 GB.', false]);
+		// Two drawings before the count is back share the one count.
+		const hurried = freshRecordingSettingsMemory();
+		const one = new Row();
+		const two = new Row();
+		describeRecordingVaultFolder(one.setting, bridge, t, 'en', hurried);
+		describeRecordingVaultFolder(two.setting, bridge, t, 'en', hurried);
+		await settle();
+		expect(calls).toEqual(['figures', 'figures']);
+		expect([one.said()[2]?.[0], two.said()[2]?.[0]]).toEqual(['2 recordings, 1.5 GB.', '2 recordings, 1.5 GB.']);
+
+		// Another folder is counted for itself.
+		held.storage = { mode: 'vault', path: '/Users/ada/Vault/Other', vaultPath: 'Other', refused: false };
+		held.figures = { files: 1, bytes: 420_000_000 };
+		expect((await draw()).said()[2]).toEqual(['1 recording, 420 MB.', false]);
+		expect(calls).toHaveLength(3);
+		// So is the same folder after a recording has ended: it holds one more.
+		held.state = { ...held.state, last: { path: '/Users/ada/Vault/Other/a.mov', endedAt: 5, reason: 'stopped' } };
+		held.figures = { files: 2, bytes: 840_000_000 };
+		expect((await draw()).said()[2]).toEqual(['2 recordings, 840 MB.', false]);
+		expect(calls).toHaveLength(4);
+		// And when the page is opened again, which lets the count go.
+		memory.figures = null;
+		await draw();
+		expect(calls).toHaveLength(5);
 	});
 
 	it('folds OBS’s guide, sets OBS’s own names apart, and remembers whether it stood open', () => {

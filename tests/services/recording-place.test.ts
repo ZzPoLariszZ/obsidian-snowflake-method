@@ -163,6 +163,30 @@ describe('where a recording goes', () => {
 		expect(await recordingFigures(inVault(), deps)).toEqual({ files: 2, bytes: 1_500_000_000 });
 	});
 
+	it('asks every recording’s size at once, and counts one that went meanwhile as one fewer', async () => {
+		const { deps, folders, files, asked } = vault();
+		folders.add('Novels/Snowflake Recordings');
+		for (const name of ['a.mov', 'b.mov', 'c.mp4']) files.set(`Novels/Snowflake Recordings/${name}`, 1_000_000);
+		// Each answer comes only when a test lets it: a count that asked one by one would have asked once by now.
+		const waiting: (() => void)[] = [];
+		const size = deps.size.bind(deps);
+		deps.size = (path) =>
+			new Promise((resolve, reject) => {
+				waiting.push(() => {
+					// One of them was deleted between the list and the look.
+					if (path.endsWith('b.mov')) reject(new Error('ENOENT'));
+					else void size(path).then(resolve);
+				});
+			});
+		const counting = recordingFigures(inVault(), deps);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(waiting).toHaveLength(3);
+		for (const answer of waiting) answer();
+		expect(await counting).toEqual({ files: 2, bytes: 2_000_000 });
+		expect(asked.filter((line) => line.startsWith('size'))).toHaveLength(2);
+	});
+
 	it('counts nothing in a folder not yet made', async () => {
 		const { deps } = vault();
 		expect(await recordingFigures(inVault(), deps)).toEqual({ files: 0, bytes: 0 });

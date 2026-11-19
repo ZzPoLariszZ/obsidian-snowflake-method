@@ -26,7 +26,7 @@ import {
 
 type Tone = RecordingNoticeTone;
 
-/** What the page keeps of the OBS rows from one drawing to the next. */
+/** What the page keeps of the section's rows from one drawing to the next. */
 export interface RecordingSettingsMemory {
 	/** A look at OBS is under way. */
 	testing: boolean;
@@ -38,6 +38,8 @@ export interface RecordingSettingsMemory {
 	stamp: number;
 	/** The setup guide stands open. */
 	guideOpen: boolean;
+	/** What the vault's folder was last counted to hold, and what it was counted for. Counted once, not at every drawing. */
+	figures: { key: string; counted: Promise<{ files: number; bytes: number } | null> } | null;
 }
 
 export const freshRecordingSettingsMemory = (): RecordingSettingsMemory => ({
@@ -46,6 +48,7 @@ export const freshRecordingSettingsMemory = (): RecordingSettingsMemory => ({
 	probe: null,
 	stamp: 0,
 	guideOpen: false,
+	figures: null,
 });
 
 /**
@@ -228,12 +231,17 @@ export function renderRecordingOutsideFolder(
  * no way into the folder here: a folder of the vault is a click away in the
  * file explorer. Returns the release: a count that comes back to a row no
  * longer there writes nothing.
+ *
+ * The page draws this row again at every change of any row, so the count
+ * is kept: it is made anew only for another folder, after a recording has
+ * ended, and when the page is opened again.
  */
 export function describeRecordingVaultFolder(
 	setting: Setting,
 	bridge: RecordingSettingsBridge,
 	t: Translate,
 	locale: string,
+	memory: RecordingSettingsMemory,
 ): () => void {
 	const place = bridge.storage();
 	const refused = place.mode === 'vault' && place.refused;
@@ -245,7 +253,9 @@ export function describeRecordingVaultFolder(
 	describe(setting, said);
 	let live = true;
 	if (!refused) {
-		void bridge.figures().then(
+		const key = `${place.mode === 'vault' ? place.vaultPath : ''}\n${String(bridge.state().last?.endedAt ?? 0)}`;
+		if (memory.figures?.key !== key) memory.figures = { key, counted: bridge.figures() };
+		void memory.figures.counted.then(
 			(counted) => {
 				if (!live || counted === null || counted.files === 0) return;
 				describe(setting, [

@@ -1378,6 +1378,8 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		// shares: when another tab takes the pane, the cloth leaves with us
 		// rather than dressing whoever renders there next.
 		this.containerEl.removeClass('snowflake-method-settings');
+		// What the recordings' folder holds is counted afresh the next time the page is opened.
+		this.recordingMemory.figures = null;
 		super.hide();
 	}
 
@@ -2825,6 +2827,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			bridge,
 			(key, vars) => this.t(key, vars),
 			this.locale(),
+			this.recordingMemory,
 		);
 		return () => {
 			releaseField();

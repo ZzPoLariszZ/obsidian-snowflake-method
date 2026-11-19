@@ -145,12 +145,16 @@ export async function recordingFigures(
 	if (refused(at.vaultPath, deps.projectRoots())) return null;
 	const listed = await deps.list(at.vaultPath);
 	if (listed === null) return { files: 0, bytes: 0 };
+	const videos = listed.files.filter((file) => {
+		const lower = file.toLowerCase();
+		return VIDEO_ENDINGS.some((ending) => lower.endsWith(ending));
+	});
+	// Asked together, so a folder of some hundred recordings is counted in
+	// the time of one. A file that went meanwhile is one recording fewer.
+	const sizes = await Promise.all(videos.map((file) => deps.size(file).catch(() => null)));
 	let files = 0;
 	let bytes = 0;
-	for (const file of listed.files) {
-		const lower = file.toLowerCase();
-		if (!VIDEO_ENDINGS.some((ending) => lower.endsWith(ending))) continue;
-		const size = await deps.size(file);
+	for (const size of sizes) {
 		if (size === null) continue;
 		files += 1;
 		bytes += size;

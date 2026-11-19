@@ -1371,6 +1371,17 @@ describe('the screen recording’s section of the settings', () => {
 		expect([memory.probe, updates()]).toEqual([answer, 2]);
 	});
 
+	it('counts what the recordings’ folder holds afresh each time the page is opened', () => {
+		const { tab } = recordingTab('mac', { location: 'vault' });
+		const memory = (tab as unknown as { recordingMemory: RecordingSettingsMemory }).recordingMemory;
+		memory.figures = { key: 'Proof\n0', counted: Promise.resolve({ files: 2, bytes: 5 }) };
+		// The page is left: the count is let go with it.
+		const page = tab as unknown as { containerEl: unknown; hide: () => void };
+		page.containerEl = { win: { clearTimeout: () => {} }, removeClass: () => {} };
+		page.hide();
+		expect(memory.figures).toBeNull();
+	});
+
 	it('names a port out of range in the row itself', () => {
 		const { row } = recordingTab('mac', { tool: 'obs' });
 		const validate = row('Port').control?.validate;
