@@ -42,8 +42,11 @@ export interface FakeObsCall {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** A small bitmap as OBS returns one, flat or with one bright corner. */
-function bitmapUrl(blank: boolean): string {
+/**
+ * A small bitmap as OBS returns one: black all over, as its picture of
+ * nothing is, or one flat shade, or black with one bright corner.
+ */
+function bitmapUrl(blank: boolean, flat: number | null): string {
 	const width = 32;
 	const height = 18;
 	const row = width * 3;
@@ -55,7 +58,8 @@ function bitmapUrl(blank: boolean): string {
 	view.setInt32(18, width, true);
 	view.setInt32(22, height, true);
 	view.setUint16(28, 24, true);
-	if (!blank) bytes[54] = 200;
+	if (!blank && flat !== null) bytes.fill(flat, 54);
+	else if (!blank) bytes[54] = 200;
 	let binary = '';
 	for (const byte of bytes) binary += String.fromCharCode(byte);
 	return `data:image/bmp;base64,${btoa(binary)}`;
@@ -107,8 +111,10 @@ export class FakeObs {
 	version = '33.0.1';
 	kinds = ['scene', 'screen_capture', 'coreaudio_input_capture'];
 	formats = ['bmp', 'jpg', 'png'];
-	/** The picture OBS takes of a scene is one flat color. */
+	/** The picture OBS takes of a scene is black all over: it shows nothing. */
 	blank = false;
+	/** The picture OBS takes of a scene is this one shade all over: a bare page, with nothing on it to tell it by. */
+	flat: number | null = null;
 	/** OBS is streaming. The stream shows the scene on air and hears what OBS hears. */
 	streaming = false;
 	/** OBS's virtual camera is on, which shows the scene on air too. */
@@ -640,7 +646,7 @@ export class FakeObs {
 				return ok({
 					imageData:
 						data.imageFormat === 'bmp'
-							? bitmapUrl(this.blank || (this.scene(data.sourceName)?.items.length ?? 0) === 0)
+							? bitmapUrl(this.blank || (this.scene(data.sourceName)?.items.length ?? 0) === 0, this.flat)
 							: `data:image/${String(data.imageFormat)};base64,AAAA`,
 				});
 			case 'StartRecord':

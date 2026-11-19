@@ -743,13 +743,15 @@ export function obsLoanStands(loan: ObsLoan, current: unknown): boolean {
 
 // ---- Telling a blank picture ----
 
-/** How far two shades may differ and still be the same blank. */
+/** How far from black a shade may be and still be the black of a picture of nothing: the grain a compressed black carries. */
 const BLANK_TOLERANCE = 6;
 
 /**
- * Whether a small bitmap from OBS is one flat color: a scene with nothing
+ * Whether a small bitmap from OBS is black all over: a scene with nothing
  * in it, a source that captures nothing, an OBS the system has not let
- * see the screen. A screen with anything on it never is. Null where the
+ * see the screen. OBS draws nothing as black, so only black is blank. A
+ * picture of one other colour is a page with little on it, a new note in
+ * a window with nothing round it, and that is recorded. Null where the
  * bytes are not a bitmap this reads.
  */
 export function isBlankBitmap(bytes: Uint8Array): boolean | null {
@@ -763,13 +765,11 @@ export function isBlankBitmap(bytes: Uint8Array): boolean | null {
 	const step = bits / 8;
 	const row = Math.floor((bits * width + 31) / 32) * 4;
 	if (offset + row * height > bytes.length) return null;
-	const first = [bytes[offset] ?? 0, bytes[offset + 1] ?? 0, bytes[offset + 2] ?? 0];
 	for (let y = 0; y < height; y += 1) {
 		for (let x = 0; x < width; x += 1) {
 			const at = offset + y * row + x * step;
 			for (let channel = 0; channel < 3; channel += 1) {
-				const shade = bytes[at + channel] ?? 0;
-				if (Math.abs(shade - (first[channel] ?? 0)) > BLANK_TOLERANCE) return false;
+				if ((bytes[at + channel] ?? 0) > BLANK_TOLERANCE) return false;
 			}
 		}
 	}

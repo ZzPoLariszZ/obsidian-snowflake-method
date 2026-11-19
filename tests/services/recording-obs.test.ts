@@ -808,7 +808,7 @@ describe('recording through OBS', () => {
 		expect(ledger.value).toBeNull();
 	});
 
-	it('refuses to record a picture that is one flat color', async () => {
+	it('refuses to record a picture that is black all over', async () => {
 		const { obs, clock, recorder, hooks } = rig();
 		const before = obs.borrowable();
 		obs.blank = true;
@@ -819,6 +819,17 @@ describe('recording through OBS', () => {
 		});
 		expect(obs.types()).not.toContain('StartRecord');
 		expect(obs.borrowable()).toEqual(before);
+	});
+
+	it('records a bare page of one flat colour: only black is a picture of nothing', async () => {
+		const { obs, clock, recorder, hooks } = rig();
+		// A new note in a window with nothing round it, in the dark theme's own ground.
+		obs.flat = 30;
+		expect((await clock.drive(recorder.start(request({ scope: 'obsidian' }), hooks))).ok).toBe(true);
+		expect(obs.recording).toBe(true);
+		// The look is fine enough to find what little a bare page shows.
+		const shot = obs.calls.find((call) => call.type === 'GetSourceScreenshot');
+		expect([shot?.data.imageWidth, shot?.data.imageHeight]).toEqual([64, 36]);
 	});
 
 	it('gives a source new on air a few looks to find its first frame', async () => {

@@ -163,6 +163,9 @@ const RECONNECTS = 5;
 const RECONNECT_MS = 3000;
 const BLANK_TRIES = 6;
 const BLANK_WAIT_MS = 500;
+/** How large the picture is that tells a blank scene: small, and still fine enough to find what little a bare page shows. */
+const BLANK_WIDTH = 64;
+const BLANK_HEIGHT = 36;
 /** How many times in a row OBS may say nothing to a look at its recording before the look is given up. */
 const SILENT_TRIES = 2;
 /** A source new in OBS has no size until its first picture comes: it is asked again for a while. */
@@ -926,15 +929,15 @@ export class ObsRecorder {
 		if (this.aimed !== null) this.aimed = { ...this.aimed, region: whole };
 	}
 
-	/** Whether the scene's picture is one flat color, asked a few times while a source new on air finds its first frame. */
+	/** Whether the scene's picture is black all over, asked a few times while a source new on air finds its first frame. */
 	private async blank(scene: string): Promise<boolean> {
 		if (!this.formats.includes('bmp')) return false;
 		for (let attempt = 0; attempt < BLANK_TRIES; attempt += 1) {
 			const shot = await this.ask('GetSourceScreenshot', {
 				sourceName: scene,
 				imageFormat: 'bmp',
-				imageWidth: 32,
-				imageHeight: 18,
+				imageWidth: BLANK_WIDTH,
+				imageHeight: BLANK_HEIGHT,
 			});
 			if (!shot.ok) return false;
 			const bytes = dataUrlBytes(text(shot.data.imageData) ?? '');

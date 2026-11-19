@@ -673,10 +673,21 @@ describe('the ledger of what is borrowed from OBS', () => {
 });
 
 describe('telling a blank picture', () => {
-	it('calls a flat picture blank, black or any other shade', () => {
+	it('calls a picture that is black all over blank, at any size and depth', () => {
 		expect(isBlankBitmap(bitmap(32, 18, 24, () => 0))).toBe(true);
 		expect(isBlankBitmap(bitmap(32, 18, 32, () => 0))).toBe(true);
-		expect(isBlankBitmap(bitmap(31, 18, 24, () => 200))).toBe(true);
+		expect(isBlankBitmap(bitmap(64, 36, 24, () => 0))).toBe(true);
+		expect(isBlankBitmap(bitmap(31, 18, 24, () => 0))).toBe(true);
+	});
+
+	it('takes a picture of one flat colour that is not black for a page with little on it', () => {
+		// Measured on OBS 33: a scene with nothing in it comes back as 0,0,0, and one
+		// filled with the dark theme's own ground as 30,30,30.
+		expect(isBlankBitmap(bitmap(64, 36, 24, () => 30))).toBe(false);
+		expect(isBlankBitmap(bitmap(31, 18, 24, () => 200))).toBe(false);
+		expect(isBlankBitmap(bitmap(32, 18, 32, () => 255))).toBe(false);
+		// Just past the grain a compressed black may carry.
+		expect(isBlankBitmap(bitmap(32, 18, 24, () => 7))).toBe(false);
 	});
 
 	it('calls a picture with anything on it not blank', () => {
