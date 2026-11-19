@@ -997,6 +997,33 @@ describe('the screen recording service', () => {
 		expect(kept.journal).toBeNull();
 	});
 
+	it('leaves the telling to a recording that is already ending by itself when stop is pressed', async () => {
+		const { clock, runner, kept, service, events } = rig({ preferences: { scope: 'all' } });
+		kept.displays = [
+			{ frame: { x: 0, y: 0, width: 2560, height: 1440 }, id: 3 },
+			{ frame: { x: -1440, y: -690, width: 1440, height: 2560 }, id: 2 },
+		];
+		await clock.drive(service.start());
+		const [first, second] = runner.of(NATIVE_RECORDER);
+		// The Mac ends one screen's recorder. The other takes its stop and is slow to put its file in place.
+		if (first !== undefined) first.onSignal = {};
+		second?.end(0);
+		await clock.settle();
+		await service.stop();
+		// Nothing is said yet, and nothing is forgotten: the files are still on their way.
+		expect(service.state().phase).toBe('stopping');
+		expect(events.filter((event) => event.kind === 'ended')).toEqual([]);
+		expect(await clock.drive(service.start())).toBeNull();
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(2);
+		first?.end(0);
+		await clock.settle();
+		const path = '/Users/ada/Movies/2026-11-19 14.30.05 (1).mov';
+		expect(service.state()).toMatchObject({ phase: 'idle', last: { path, more: 1, reason: 'external' }, error: null });
+		expect(events.filter((event) => event.kind === 'ended')).toEqual([
+			{ kind: 'ended', path, reason: 'external', more: 1 },
+		]);
+	});
+
 	it('does not hold a quitting Obsidian up for a recorder still moving its file', async () => {
 		const { clock, kept, service, recorder } = rig();
 		await clock.drive(service.start());

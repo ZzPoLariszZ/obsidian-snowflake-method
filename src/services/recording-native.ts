@@ -230,9 +230,10 @@ export class NativeRecorder {
 	/**
 	 * Stops the recorders with an interrupt and waits for their files. Only
 	 * one that has not ended long after is sent harder signals, which end
-	 * it with nothing saved.
+	 * it with nothing saved. Null where the recording is already ending by
+	 * itself: that end is on its way, and names the files itself.
 	 */
-	async stop(): Promise<RecorderStop> {
+	async stop(): Promise<RecorderStop | null> {
 		return this.end(NATIVE_SAVE_MS, true);
 	}
 
@@ -241,7 +242,7 @@ export class NativeRecorder {
 	 * recorder still moving its file is left to finish alone: it needs no
 	 * Obsidian for that.
 	 */
-	async settle(): Promise<RecorderStop> {
+	async settle(): Promise<RecorderStop | null> {
 		return this.end(SETTLE_MS, false);
 	}
 
@@ -397,9 +398,13 @@ export class NativeRecorder {
 		return { ...kept(saved), error: null };
 	}
 
-	private async end(waitMs: number, force: boolean): Promise<RecorderStop> {
+	private async end(waitMs: number, force: boolean): Promise<RecorderStop | null> {
 		const takes = this.takes;
-		if (takes.length === 0 || !this.recording || this.stopAsked) return { path: null, error: null };
+		if (takes.length === 0 || !this.recording) return { path: null, error: null };
+		// Already ending: the Mac ended a recorder, and the rest are putting
+		// their files in place. That end names the files once they are
+		// there, and a second one would only answer before it with nothing.
+		if (this.stopAsked) return null;
 		this.stopAsked = true;
 		this.deps.timers.clear(this.cap);
 		this.interrupt(takes);

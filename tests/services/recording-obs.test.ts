@@ -1735,6 +1735,22 @@ describe('a stop OBS may not have heard', () => {
 		// Its picture is of no use any more: the scene went with the stop.
 		expect(obs.scenes.map((scene) => scene.name)).toEqual(['Scene']);
 	});
+
+	it('answers nothing to a stop while the recording is already ending by itself, and lets that end name the file', async () => {
+		const { obs, clock, recorder, hooks, seen } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		// OBS is slow to answer while the plugin gives back what it borrowed.
+		obs.holdNext('GetProfileList');
+		obs.stopFromInside();
+		await clock.settle();
+		expect(seen.ended).toEqual([]);
+		// The author presses stop in that moment: there is nothing left to stop, and nothing to say yet.
+		expect(await recorder.stop()).toBeNull();
+		obs.release();
+		await clock.settle();
+		expect(seen.ended).toEqual([{ reason: 'external', path: obs.recordPath, error: null }]);
+		expect(obs.scenes.map((scene) => scene.name)).toEqual(['Scene']);
+	});
 });
 
 describe('a plugin that goes while OBS is being asked', () => {

@@ -299,13 +299,17 @@ export class ObsRecorder {
 		}
 	}
 
-	/** Stops the recording, waits for OBS to close the file, and gives back what was borrowed. */
-	async stop(): Promise<RecorderStop> {
+	/**
+	 * Stops the recording, waits for OBS to close the file, and gives back
+	 * what was borrowed. Null where the recording is already ending by
+	 * itself: that end is on its way, and tells of itself.
+	 */
+	async stop(): Promise<RecorderStop | null> {
 		return this.end(STOP_SECONDS);
 	}
 
 	/** The same for an Obsidian that is quitting and cannot wait long: what is not given back stays in the ledger. */
-	async settle(): Promise<RecorderStop> {
+	async settle(): Promise<RecorderStop | null> {
 		return this.end(SETTLE_SECONDS);
 	}
 
@@ -1311,8 +1315,12 @@ export class ObsRecorder {
 
 	// ---- A stop ----
 
-	private async end(seconds: number): Promise<RecorderStop> {
-		if (!this.recording || this.stopping) return { path: null, error: null };
+	private async end(seconds: number): Promise<RecorderStop | null> {
+		if (!this.recording) return { path: null, error: null };
+		// Already ending by itself, stopped in OBS or found over there: that
+		// end gives back and tells of the file, and a second one would only
+		// answer before it with nothing to say.
+		if (this.stopping) return null;
 		this.stopping = true;
 		this.deps.timers.clear(this.heartbeat);
 		const hooks = this.hooks;

@@ -472,6 +472,28 @@ describe('every screen at once, a recorder for each', () => {
 		expect(seen.kept).toBeNull();
 	});
 
+	it('answers nothing to a stop while the recorders are already ending by themselves, and names the files once', async () => {
+		const { clock, runner, recorder, seen, begin } = rig();
+		await begin({ takes: BOTH_SCREENS });
+		const [first, second] = runner.of(NATIVE_RECORDER);
+		// The Mac ended one screen's recorder. The other takes its stop and is slow to put its file in place.
+		if (first !== undefined) first.onSignal = {};
+		second?.end(0);
+		await clock.settle();
+		expect(first?.signals).toEqual(['SIGINT']);
+		expect(seen.ended).toEqual([]);
+		// The author presses stop in that while: there is nothing left to stop, and nothing to say yet.
+		expect(await recorder.stop()).toBeNull();
+		expect(await recorder.settle()).toBeNull();
+		// No second interrupt, which could cost the file, and nothing told twice.
+		expect(first?.signals).toEqual(['SIGINT']);
+		first?.end(0);
+		await clock.settle();
+		expect(seen.ended).toEqual([{ reason: 'external', path: SCREEN_1, more: 1, error: null }]);
+		// With nothing recording, a stop has nothing to answer for, as before.
+		expect(await recorder.stop()).toEqual({ path: null, error: null });
+	});
+
 	it('takes one recorder that never recorded as no recording at all, and throws the other’s moment away', async () => {
 		const { clock, runner, recorder, hooks, seen } = rig();
 		runner.onRun = (process) => {

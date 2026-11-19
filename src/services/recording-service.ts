@@ -268,7 +268,8 @@ export class ScreenRecordingService {
 		const run = this.run;
 		this.move({ phase: 'stopping' });
 		const stopped = this.current.tool === 'obs' ? await this.obs.stop() : await this.native.stop();
-		if (run !== this.run) return;
+		// Already ending by itself: that end is on its way, and is the one that names the file.
+		if (run !== this.run || stopped === null) return;
 		this.finish({ reason: 'stopped', ...stopped });
 	}
 
@@ -359,7 +360,7 @@ export class ScreenRecordingService {
 		const run = this.run;
 		this.move({ phase: 'stopping' });
 		const stopped = this.current.tool === 'obs' ? await this.obs.settle() : await this.native.settle();
-		if (run !== this.run) return;
+		if (run !== this.run || stopped === null) return;
 		this.finish({ reason: 'stopped', ...stopped });
 	}
 
