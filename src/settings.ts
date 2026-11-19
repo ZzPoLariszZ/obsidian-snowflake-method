@@ -715,6 +715,16 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		}
 	}
 
+	// All of them off is how dialogue reading is turned off, and a file from
+	// before the three later quote styles could switch off only the four it
+	// knew. Where it did, the three start off as well, or the update would
+	// turn the reading back on.
+	const dialogueReadingOff =
+		raw.dialogueQuotesCurly === false &&
+		raw.dialogueQuotesStraight === false &&
+		raw.dialogueQuotesCorner === false &&
+		raw.dialogueQuotesWhite === false;
+
 	return {
 		settingsSchemaVersion: 6,
 		projectRoot,
@@ -884,15 +894,15 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		dialogueQuotesLowHigh:
 			typeof raw.dialogueQuotesLowHigh === 'boolean'
 				? raw.dialogueQuotesLowHigh
-				: DEFAULT_SETTINGS.dialogueQuotesLowHigh,
+				: DEFAULT_SETTINGS.dialogueQuotesLowHigh && !dialogueReadingOff,
 		dialogueQuotesGuillemets:
 			typeof raw.dialogueQuotesGuillemets === 'boolean'
 				? raw.dialogueQuotesGuillemets
-				: DEFAULT_SETTINGS.dialogueQuotesGuillemets,
+				: DEFAULT_SETTINGS.dialogueQuotesGuillemets && !dialogueReadingOff,
 		dialogueQuotesInwardGuillemets:
 			typeof raw.dialogueQuotesInwardGuillemets === 'boolean'
 				? raw.dialogueQuotesInwardGuillemets
-				: DEFAULT_SETTINGS.dialogueQuotesInwardGuillemets,
+				: DEFAULT_SETTINGS.dialogueQuotesInwardGuillemets && !dialogueReadingOff,
 		dialogueQuotesCorner:
 			typeof raw.dialogueQuotesCorner === 'boolean'
 				? raw.dialogueQuotesCorner

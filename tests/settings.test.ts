@@ -810,6 +810,28 @@ describe('manuscript analysis settings', () => {
 		).toEqual([]);
 	});
 
+	it('starts the later quote styles off where dialogue reading was turned off', () => {
+		const later = (settings: SnowflakeSettings): boolean[] => [
+			settings.dialogueQuotesLowHigh,
+			settings.dialogueQuotesGuillemets,
+			settings.dialogueQuotesInwardGuillemets,
+		];
+		const four = (on: boolean): Record<string, boolean> => ({
+			dialogueQuotesCurly: on,
+			dialogueQuotesStraight: on,
+			dialogueQuotesCorner: on,
+			dialogueQuotesWhite: on,
+		});
+		// A file from before the three, with all it knew switched off.
+		expect(later(sanitizeSettings(four(false)))).toEqual([false, false, false]);
+		// One style left on, or a file that never said, and they start on.
+		expect(later(sanitizeSettings({ ...four(false), dialogueQuotesCorner: true }))).toEqual([true, true, true]);
+		expect(later(sanitizeSettings({}))).toEqual([true, true, true]);
+		// A choice made since is kept either way.
+		expect(later(sanitizeSettings({ ...four(false), dialogueQuotesGuillemets: true }))).toEqual([false, true, false]);
+		expect(later(stored({ dialogueQuotesLowHigh: false }))).toEqual([false, true, true]);
+	});
+
 	it('clamps the reading speeds and falls back only from junk', () => {
 		expect(stored({ readingWordsPerMinute: 100000 }).readingWordsPerMinute).toBe(
 			2000,
