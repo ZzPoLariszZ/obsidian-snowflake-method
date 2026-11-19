@@ -39,6 +39,7 @@ import {
   isNameTaken,
   isProgressStatus,
   isProjectLanguage,
+  FIRST_PROJECT_LANGUAGES,
   PROJECT_LANGUAGES,
   isScenePovMode,
   isStepStatus,
@@ -7183,7 +7184,12 @@ export class SnowflakeProjectService {
     const kinds = WORLDBUILDING_KINDS.map((kind) =>
       describe(kind, layout.worldbuildingKinds[kind], false),
     );
-    const taken = new Set(reservedKindFolds());
+    // Read against the names this project could have met as its kinds were
+    // registered, its own language's and the first two's, and not every
+    // language's, as a new name is checked: a kind registered before a
+    // language was added may wear one of that language's names, and it is
+    // still the kind it was.
+    const taken = new Set(reservedKindFolds([...FIRST_PROJECT_LANGUAGES, locale]));
     const invalidEntries: string[] = [];
     const stored = frontmatter[FRONTMATTER_KEYS.worldbuildingKinds];
     for (const value of Array.isArray(stored) ? stored : []) {
@@ -9408,15 +9414,18 @@ function compareTaxonomyPaths(left: string, right: string): number {
  * scene are members before they are kinds, so their ids and folder names are
  * reserved the same way — a kind called character would answer for both
  * namespaces at once — and the two ids the pickers split time into go with
- * them, or a kind so named would stand in for one half of time.
+ * them, or a kind so named would stand in for one half of time. A caller
+ * reading a registry already written names the languages it is read against.
  */
-function reservedKindFolds(): Set<string> {
+function reservedKindFolds(
+  languages: readonly ProjectLanguage[] = PROJECT_LANGUAGES,
+): Set<string> {
   const folds = new Set<string>();
   for (const kind of WORLDBUILDING_KINDS) folds.add(foldName(kind));
   for (const id of ["character", "scene", "time-point", "time-period"]) {
     folds.add(foldName(id));
   }
-  for (const language of PROJECT_LANGUAGES) {
+  for (const language of languages) {
     const layout = getProjectPathLayout(language);
     for (const kind of WORLDBUILDING_KINDS) {
       folds.add(foldName(kindIdFromFolderName(layout.worldbuildingKinds[kind])));

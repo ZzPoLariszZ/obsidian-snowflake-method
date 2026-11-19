@@ -5031,6 +5031,11 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				description: descriptor.description ?? '',
 			},
 			objection: (name) => {
+				// The name it has is its own to keep, whatever has been
+				// reserved since: a kind older than a language may wear a
+				// name that language's folders took, and its looks are
+				// still changed in this form.
+				if (name.trim() === kind) return null;
 				const code = validateKindName(name, others);
 				return code === null ? null : this.kindRefusal(code, name);
 			},

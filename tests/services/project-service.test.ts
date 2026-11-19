@@ -6438,6 +6438,51 @@ describe("SnowflakeProjectService", () => {
       expect(metadataRegistry(project.projectFile)).toEqual(["64_Faction"]);
     });
 
+    it("keeps a kind registered under a name a later language's folder took", async () => {
+      const project = await service.createProject({ name: "Older Kinds" });
+      await service.createWorldbuildingKind(project, "Faction");
+      // Ort is German for a location. No new kind may take the name, but one
+      // registered before German was a language is the kind it always was.
+      expect(await service.createWorldbuildingKind(project, "Ort")).toEqual({
+        ok: false,
+        code: "taken",
+      });
+      fakeVault.contents.set(
+        project.projectFile,
+        (fakeVault.contents.get(project.projectFile) ?? "").replace(
+          '"snowflake-worldbuilding-kinds": [\n    "64_Faction"\n  ]',
+          '"snowflake-worldbuilding-kinds": [\n    "64_Faction",\n    "65_Ort"\n  ]',
+        ),
+      );
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuildingKinds
+          .filter((kind) => kind.custom)
+          .map((kind) => kind.folderName),
+      ).toEqual(["64_Faction", "65_Ort"]);
+      expect(
+        snapshot.structureIssues.some(
+          (candidate) =>
+            candidate.code === "invalid-metadata-field" &&
+            candidate.field === "snowflake-worldbuilding-kinds",
+        ),
+      ).toBe(false);
+      // In a German project the name is the built-in folder's own.
+      const german = await service.createProject({ name: "Deutsche Arten", locale: "de" });
+      fakeVault.contents.set(
+        german.projectFile,
+        (fakeVault.contents.get(german.projectFile) ?? "").replace(
+          '"snowflake-worldbuilding-kinds": []',
+          '"snowflake-worldbuilding-kinds": [\n    "65_Ort"\n  ]',
+        ),
+      );
+      expect(
+        (await service.loadProject(german.projectFile)).worldbuildingKinds.filter(
+          (kind) => kind.custom,
+        ),
+      ).toHaveLength(0);
+    });
+
     it("renames a kind through folder, stamps, links, and base", async () => {
       const project = await service.createProject({ name: "Kind Rename" });
       await service.createWorldbuildingKind(project, "Faction");
