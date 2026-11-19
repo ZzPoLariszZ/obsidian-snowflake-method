@@ -764,18 +764,25 @@ export class ObsRecorder {
 	): Promise<number | null> {
 		const there = await this.sceneItem(scene, name);
 		if (there !== null) return there;
-		const made = await this.ask('CreateInput', {
-			sceneName: scene,
-			inputName: name,
-			inputKind: kind,
-			inputSettings: settings,
-			sceneItemEnabled: true,
-		});
-		if (made.ok) return figure(made.data.sceneItemId);
-		if (made.code !== ALREADY_EXISTS) return null;
-		// The source outlived its scene: it is put back into the scene rather than made twice.
-		const placed = await this.ask('CreateSceneItem', { sceneName: scene, sourceName: name });
-		return placed.ok ? figure(placed.data.sceneItemId) : null;
+		for (let attempt = 0; attempt < SWAP_TRIES; attempt += 1) {
+			const made = await this.ask('CreateInput', {
+				sceneName: scene,
+				inputName: name,
+				inputKind: kind,
+				inputSettings: settings,
+				sceneItemEnabled: true,
+			});
+			if (made.ok) return figure(made.data.sceneItemId);
+			if (made.code !== ALREADY_EXISTS) return null;
+			// The source outlived its scene: it is put back into the scene rather than made twice.
+			const placed = await this.ask('CreateSceneItem', { sceneName: scene, sourceName: name });
+			if (placed.ok) return figure(placed.data.sceneItemId);
+			// Neither made nor put back: the source by that name has just been
+			// taken away, what a lost recording left of it, and OBS keeps the
+			// name a moment longer than the source. It is asked for again.
+			await waitOn(this.deps.timers, SWAP_WAIT_MS);
+		}
+		return null;
 	}
 
 	/** Puts a source into a part of the canvas, whole and unstretched. */

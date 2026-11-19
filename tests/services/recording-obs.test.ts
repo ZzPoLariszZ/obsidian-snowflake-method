@@ -775,6 +775,35 @@ describe('recording through OBS', () => {
 		expect(seen.notices).toEqual([]);
 	});
 
+	it('asks again for a name OBS has not let go of yet, after taking away what a lost recording left', async () => {
+		// As a real OBS came back after it was ended under a recording: the plugin's scene on air, its source in it.
+		const { obs, clock, recorder, hooks } = rig({ ledger: { version: 1, loans: [], recording: true } });
+		obs.scenes.push({ name: OBS_SCENES.screen.scene, items: [{ id: 90, source: OBS_SCENES.screen.input }] });
+		obs.inputs[OBS_SCENES.screen.input] = { kind: 'screen_capture', settings: {}, muted: true };
+		obs.program = OBS_SCENES.screen.scene;
+		// OBS keeps the name of the source a moment longer than the source.
+		obs.lingers = 3;
+		const started = await clock.drive(recorder.start(request(), hooks));
+		// The first start after such an end is a start like any other, with no word of a source that could not be made.
+		expect(started).toMatchObject({ ok: true });
+		expect(obs.types().filter((type) => type === 'CreateInput')).toHaveLength(4);
+		expect(obs.inputs[OBS_SCENES.screen.input]?.settings).toMatchObject({ type: 0 });
+		await clock.drive(recorder.stop());
+		expect([obs.scenes.map((scene) => scene.name), obs.capturing()]).toEqual([['Scene'], []]);
+
+		// A name OBS never lets go of is given up after a short while, and the start says so.
+		const stuck = rig();
+		stuck.obs.scenes.push({ name: OBS_SCENES.screen.scene, items: [{ id: 90, source: OBS_SCENES.screen.input }] });
+		stuck.obs.inputs[OBS_SCENES.screen.input] = { kind: 'screen_capture', settings: {}, muted: true };
+		stuck.obs.lingers = 99;
+		const from = stuck.clock.now;
+		expect(await stuck.clock.drive(stuck.recorder.start(request(), stuck.hooks))).toMatchObject({
+			ok: false,
+			code: 'obs-scene',
+		});
+		expect(stuck.clock.now - from).toBeLessThan(3000);
+	});
+
 	it('uses a source it could not take away rather than making it twice', async () => {
 		const { obs, clock, recorder, hooks } = rig();
 		obs.inputs[OBS_SCENES.screen.input] = { kind: 'screen_capture', settings: {}, muted: false };
