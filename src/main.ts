@@ -1856,13 +1856,7 @@ export default class SnowflakeMethodPlugin
 	async openProjectManager(
 		projectLocale: ProjectLanguage | null,
 	): Promise<void> {
-		const locale = resolveLocale(
-			this.settings.uiLocale,
-			moment.locale(),
-			projectLocale ??
-				this.currentProjectLocale ??
-				this.resolvedDefaultProjectLocale(),
-		);
+		const locale = this.localeForProject(projectLocale);
 		const managerT: Translate = (key, vars) => translate(locale, key, vars);
 		const { projects, archived } = await this.manageProjectLists();
 		new ManageProjectsModal(
