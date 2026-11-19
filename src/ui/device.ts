@@ -45,6 +45,21 @@ export function coarsePointer(win: MediaWindow): boolean {
 	return win.matchMedia('(pointer: coarse)').matches;
 }
 
+/** The three desktop systems the app runs on. */
+export type DesktopSystem = 'mac' | 'win' | 'linux';
+
+/**
+ * The desktop system the app runs on, or null on a phone or a tablet and
+ * on a desktop the app does not name. Read here so a test flips a single
+ * switch.
+ */
+export function desktopSystem(): DesktopSystem | null {
+	if (isMobileDevice()) return null;
+	if (Platform.isMacOS) return 'mac';
+	if (Platform.isWin) return 'win';
+	return Platform.isLinux ? 'linux' : null;
+}
+
 /** Obsidian hides the status bar on mobile, so an item added there is never seen. */
 export function statusBarShown(): boolean {
 	return !isMobileDevice();

@@ -104,6 +104,13 @@ import {
 	isProjectLanguage,
 	PROJECT_LANGUAGES,
 	type ProjectLanguage,
+	RECORDING_LOCATIONS,
+	RECORDING_QUALITIES,
+	defaultRecordingPreferences,
+	recordingScopes,
+	recordingTools,
+	recordingVaultFolder,
+	type RecordingPreferences,
 } from './domain';
 import {
 	isSupportedLocale,
@@ -121,6 +128,20 @@ import {
 } from './project-root';
 import { isExplorerScope, type ExplorerScope } from './services';
 import { isMobileDevice } from './ui/device';
+import type { RecordingSettingsBridge } from './ui/recording-bridge';
+import {
+	describeRecordingVaultFolder,
+	freshRecordingSettingsMemory,
+	recordingScopeHint,
+	renderObsGuide,
+	renderObsPassword,
+	renderObsTest,
+	renderRecordingNotes,
+	renderRecordingOutsideFolder,
+	renderRecordingScope,
+	renderRecordingPermission,
+} from './ui/recording-settings';
+import { RECORDING_NOTES } from './ui/recording-rows';
 import { wireCardDrag } from './ui/entity-form';
 import { SnowflakeModal } from './ui/dialog-base';
 import { addMoveNeighbourItems, wireGripMenu } from './ui/order-menu';
@@ -1162,6 +1183,16 @@ function isDefaultProjectLocale(value: unknown): value is DefaultProjectLocale {
  */
 const PRESENTATION_SYNC_MS = 150;
 
+/**
+ * What the screen recording's rows are declared under. Their values are
+ * the device's and not the vault's, so they are none of the settings' own
+ * keys: the page reads and writes them through the plugin.
+ */
+const RECORDING_CONTROL = 'recording.';
+
+const isOneOf = <T extends string>(allowed: readonly T[], value: unknown): value is T =>
+	typeof value === 'string' && (allowed as readonly string[]).includes(value);
+
 /** Every count the window slider offers, nought to twenty-five: the
  *  typography sliders' own dress, worn by the one behaviour slider. */
 const MANUSCRIPT_WINDOW_STOPS: readonly number[] = Array.from(
@@ -1388,6 +1419,20 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	 *  dashboard's kind sections do, and a closed section's rows are not
 	 *  rendered at all -- the ledger lives for the app session. */
 	private readonly openSections = new Set<string>();
+	/** A section asked for from outside the page, to be opened and brought into sight when it is next drawn. */
+	private wantedSection: string | null = null;
+	/** What the screen recording's OBS rows keep from one drawing of the page to the next. */
+	private readonly recordingMemory = freshRecordingSettingsMemory();
+
+	/**
+	 * Opens one section and brings it into sight the next time the page is
+	 * drawn: the way in from a command or a menu that means that section,
+	 * on a page that otherwise rests folded.
+	 */
+	revealSection(key: string): void {
+		this.openSections.add(key);
+		this.wantedSection = key;
+	}
 
 	/**
 	 * Rides first among every section's items and never shows: its render is
@@ -1441,6 +1486,13 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					});
 				}
 				apply();
+				if (this.wantedSection === key) {
+					this.wantedSection = null;
+					// Once the page has its height: a row asked into sight before then goes nowhere.
+					card.win.setTimeout(() => {
+						card.scrollIntoView({ block: 'start' });
+					}, 0);
+				}
 			},
 		};
 	}
@@ -2521,7 +2573,316 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			...this.recordingSection(),
 		];
+	}
+
+	/**
+	 * The screen recording, where there is a screen to record: nothing on a
+	 * phone or a tablet. A recording is no project's, so its choices stand
+	 * here and in no project's panes. They are the device's all the same,
+	 * kept beside the vault's settings and never in them: the rows read and
+	 * write them through the plugin, under keys of their own.
+	 *
+	 * What an author is told before recording comes first, with the switch
+	 * for the dialog that says the same before each start. Then the recorder
+	 * is chosen, then where recordings go and what they show. What only one
+	 * recorder needs comes after, under that recorder's name: what macOS
+	 * allows, or OBS's guide, port, password and picture.
+	 * Every row stands still while a recording runs, since the recorder that
+	 * runs was started with the choices as they stood.
+	 */
+	private recordingSection(): SettingDefinitionItem[] {
+		const bridge = this.owner.recordingSettings();
+		if (bridge === null) return [];
+		const t = (key: string, vars?: Record<string, string | number>): string => this.t(key, vars);
+		const system = bridge.system();
+		const defaults = defaultRecordingPreferences(system);
+		const choices = (): RecordingPreferences => bridge.preferences();
+		const busy = (): boolean => bridge.state().phase !== 'idle';
+		const withMac = (): boolean => choices().tool === 'native';
+		const withObs = (): boolean => choices().tool === 'obs';
+		const refresh = (): void => {
+			this.update();
+		};
+		return [
+			{
+				type: 'group',
+				heading: this.t('settings.section.recording'),
+				items: [
+					this.sectionDress('recording'),
+					{
+						name: this.t('recording.notes.title'),
+						desc: RECORDING_NOTES.map((note) => this.t(note.key)).join(' '),
+						render: (setting) => {
+							renderRecordingNotes(setting, t);
+						},
+					},
+					{
+						name: this.t('recording.confirm.name'),
+						desc: this.t('recording.confirm.desc'),
+						// Right under the notes it shows before a recording. The dialog's own box
+						// turns this off, and here it is turned on again.
+						control: {
+							type: 'toggle',
+							key: `${RECORDING_CONTROL}confirm`,
+							defaultValue: defaults.confirm,
+						},
+					},
+					{
+						name: this.t('recording.tool'),
+						desc: this.lines('recording.tool.desc'),
+						// Off a Mac there is one recorder, and nothing to choose.
+						visible: () => recordingTools(system).length > 1,
+						control: {
+							type: 'dropdown',
+							key: `${RECORDING_CONTROL}tool`,
+							defaultValue: defaults.tool,
+							disabled: busy,
+							options: Object.fromEntries(
+								recordingTools(system).map((tool) => [tool, this.t(`recording.tool.${tool}`)]),
+							),
+						},
+					},
+					{
+						name: this.t('recording.folder'),
+						desc: this.lines('recording.location.desc'),
+						control: {
+							type: 'dropdown',
+							key: `${RECORDING_CONTROL}location`,
+							defaultValue: defaults.location,
+							disabled: busy,
+							options: Object.fromEntries(
+								RECORDING_LOCATIONS.map((location) => [location, this.t(`recording.location.${location}`)]),
+							),
+						},
+					},
+					{
+						name: this.t('recording.outsideFolder.name'),
+						visible: () => choices().location === 'outside',
+						render: (setting) => {
+							renderRecordingOutsideFolder(setting, bridge, t, refresh);
+						},
+					},
+					{
+						name: this.t('recording.vaultFolder.name'),
+						desc: this.lines('recording.vaultFolder.desc'),
+						visible: () => choices().location === 'vault',
+						// The project root's own field, as the export folder's row has it.
+						render: (setting) => this.renderRecordingVaultFolder(setting, bridge),
+					},
+					{
+						name: this.t('recording.scope'),
+						// What the choice that stands comes to with the recorder chosen.
+						desc: recordingScopeHint(t, choices().scope, choices().tool, system),
+						// Drawn by hand: a declared dropdown is never drawn again while it
+						// holds the keyboard, and this line would not follow its own choice.
+						render: (setting) => {
+							renderRecordingScope(
+								setting,
+								recordingScopes(choices().tool).map((scope) => ({
+									value: scope,
+									label: this.t(`recording.scope.${scope}`),
+								})),
+								choices().scope,
+								busy(),
+								(value) => {
+									this.setRecordingControlValue('scope', value);
+								},
+							);
+						},
+					},
+					// What only the Mac's own recorder needs.
+					{
+						name: this.t('recording.tool.native'),
+						visible: withMac,
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+					{
+						name: this.t('recording.permission.open'),
+						desc: this.t('recording.permission.denied'),
+						visible: () => withMac() && bridge.screenAccess() !== 'granted',
+						render: (setting) => renderRecordingPermission(setting, bridge, t, refresh),
+					},
+					{
+						name: this.t('recording.quality'),
+						desc: this.t('recording.quality.native'),
+						visible: withMac,
+					},
+					// What only OBS needs.
+					{
+						name: this.t('recording.tool.obs'),
+						visible: withObs,
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+					{
+						name: this.t('recording.guide.title'),
+						desc: this.t('recording.guide.install'),
+						visible: withObs,
+						render: (setting) => {
+							renderObsGuide(setting, bridge, t, this.recordingMemory);
+						},
+					},
+					{
+						name: this.t('recording.obs.port'),
+						desc: this.lines('recording.obs.portHint'),
+						visible: withObs,
+						control: {
+							type: 'number',
+							key: `${RECORDING_CONTROL}obsPort`,
+							defaultValue: defaults.obsPort,
+							disabled: busy,
+							min: 1,
+							max: 65535,
+							step: 1,
+							validate: (value) =>
+								Number.isInteger(value) && value >= 1 && value <= 65535
+									? undefined
+									: this.t('recording.obs.portInvalid'),
+						},
+					},
+					{
+						name: this.t('recording.obs.password'),
+						desc: this.lines('recording.obs.passwordHint'),
+						visible: withObs,
+						render: (setting) => {
+							renderObsPassword(setting, bridge);
+						},
+					},
+					{
+						name: this.t('recording.quality'),
+						desc: this.t('recording.quality.desc'),
+						visible: withObs,
+						control: {
+							type: 'dropdown',
+							key: `${RECORDING_CONTROL}quality`,
+							defaultValue: defaults.quality,
+							disabled: busy,
+							options: Object.fromEntries(
+								RECORDING_QUALITIES.map((quality) => [
+									quality,
+									this.t(quality === 'original' ? 'recording.quality.obs' : `recording.quality.${quality}`),
+								]),
+							),
+						},
+					},
+					{
+						name: this.t('recording.obs.test'),
+						desc: this.t('recording.obs.testHint'),
+						visible: withObs,
+						render: (setting) => {
+							renderObsTest(setting, bridge, t, this.recordingMemory, refresh);
+						},
+					},
+				],
+			},
+		];
+	}
+
+	/**
+	 * The vault folder recordings go under, asked for with the project
+	 * root's field as the export folder is. An empty box is the folder
+	 * beside the projects, which the placeholder names.
+	 */
+	private renderRecordingVaultFolder(setting: Setting, bridge: RecordingSettingsBridge): () => void {
+		const standing = (): string => bridge.preferences().vaultFolder;
+		const releaseField = this.renderFolderField(setting, {
+			label: this.t('recording.vaultFolder.name'),
+			placeholder: bridge.defaultVaultFolder(),
+			current: standing,
+			display: (root) => normalizeProjectRoot(root),
+			offerVaultRoot: false,
+			commit: (value, field) => {
+				if (bridge.state().phase !== 'idle') {
+					field.showValue(standing());
+					return Promise.resolve();
+				}
+				if (!isValidProjectRoot(value)) {
+					new Notice(this.t('settings.exportFolder.invalid'));
+					field.showValue(standing());
+					return Promise.resolve();
+				}
+				const folder = recordingVaultFolder(normalizeProjectRoot(value));
+				if (folder === standing()) {
+					field.showValue(standing());
+					return Promise.resolve();
+				}
+				bridge.update({ vaultFolder: folder });
+				// What the row says of the folder follows the folder.
+				this.update();
+				return Promise.resolve();
+			},
+		});
+		const releaseWords = describeRecordingVaultFolder(
+			setting,
+			bridge,
+			(key, vars) => this.t(key, vars),
+			this.locale(),
+		);
+		return () => {
+			releaseField();
+			releaseWords();
+		};
+	}
+
+	/** One of the screen recording's choices, by the name its row declares it under. */
+	private recordingControlValue(name: string): unknown {
+		const bridge = this.owner.recordingSettings();
+		if (bridge === null) return undefined;
+		const choices = bridge.preferences();
+		if (name === 'tool') return choices.tool;
+		if (name === 'location') return choices.location;
+		if (name === 'scope') return choices.scope;
+		if (name === 'quality') return choices.quality;
+		if (name === 'confirm') return choices.confirm;
+		return name === 'obsPort' ? choices.obsPort : undefined;
+	}
+
+	/**
+	 * Keeps one of the screen recording's choices. A recorder brings its own
+	 * answers for what to record, so a scope the new recorder has not falls
+	 * back to the screen. A look at OBS stands for the choices it was made
+	 * with: it is forgotten when one of them changes.
+	 */
+	private setRecordingControlValue(name: string, value: unknown): void {
+		const bridge = this.owner.recordingSettings();
+		if (bridge === null) return;
+		// Being asked before a recording is no choice the recorder was started with: it may change while one runs.
+		if (name === 'confirm') {
+			if (typeof value === 'boolean') bridge.update({ confirm: value });
+			return;
+		}
+		if (bridge.state().phase !== 'idle') return;
+		if (name === 'quality') {
+			if (isOneOf(RECORDING_QUALITIES, value)) bridge.update({ quality: value });
+			return;
+		}
+		if (name === 'obsPort') {
+			if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 65535) return;
+			bridge.update({ obsPort: value });
+			this.recordingMemory.probe = null;
+			return;
+		}
+		if (name === 'tool' && isOneOf(recordingTools(bridge.system()), value)) {
+			const scope = bridge.preferences().scope;
+			bridge.update({
+				tool: value,
+				scope: (recordingScopes(value) as readonly string[]).includes(scope)
+					? scope
+					: defaultRecordingPreferences(bridge.system()).scope,
+			});
+		} else if (name === 'location' && isOneOf(RECORDING_LOCATIONS, value)) {
+			bridge.update({ location: value });
+		} else if (name === 'scope' && isOneOf(recordingScopes(bridge.preferences().tool), value)) {
+			bridge.update({ scope: value });
+		} else return;
+		this.recordingMemory.probe = null;
+		// The rows under a choice follow it at once.
+		this.update();
 	}
 
 	private customRuleKindLabel(kind: CustomHighlightRule['kind']): string {
@@ -3289,6 +3650,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	}
 
 	getControlValue(key: string): unknown {
+		if (key.startsWith(RECORDING_CONTROL)) {
+			return this.recordingControlValue(key.slice(RECORDING_CONTROL.length));
+		}
 		if (!SETTINGS_KEYS.has(key as keyof SnowflakeSettings)) {
 			return undefined;
 		}
@@ -3299,6 +3663,10 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	}
 
 	async setControlValue(key: string, value: unknown): Promise<void> {
+		if (key.startsWith(RECORDING_CONTROL)) {
+			this.setRecordingControlValue(key.slice(RECORDING_CONTROL.length), value);
+			return;
+		}
 		if (!SETTINGS_KEYS.has(key as keyof SnowflakeSettings)) {
 			return;
 		}

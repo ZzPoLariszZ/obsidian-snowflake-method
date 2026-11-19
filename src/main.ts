@@ -2,12 +2,16 @@ import {
 	addIcon,
 	Component,
 	editorInfoField,
+	FileSystemAdapter,
 	MarkdownView,
 	Menu,
+	Scope,
 	moment,
 	normalizePath,
 	Notice,
 	Plugin,
+	SecretComponent,
+	setIcon,
 	TFile,
 	TFolder,
 	type Editor,
@@ -142,6 +146,12 @@ import {
 	type NoteStanding,
 	type GraphMemberGroup,
 	type ProjectLanguage,
+	nativeWindowId,
+	recordingPlace,
+	sanitizeRecordingPreferences,
+	type DesktopWindow,
+	type RecordingPreferences,
+	OBS_DOWNLOAD_PAGE,
 } from './domain';
 import { intlLocaleOf, resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import { numberFormat } from './i18n/numbers';
@@ -262,7 +272,14 @@ import {
 	type StartWritingSessionOptions,
 	type WritingSessionEvent,
 	projectArchiveRoot,
+	projectRecordingRoot,
 	getProjectPathLayout,
+	ScreenRecordingService,
+	desktopProcessRunner,
+	desktopShell,
+	windowSocket,
+	type DesktopShell,
+	type RecordingEvent,
 } from './services';
 import {
 	isPathAtOrBelow,
@@ -510,8 +527,25 @@ import type {
 } from './ui/view-model';
 import type { EntityGroupId, PickedEntity } from './ui/entity-form';
 import { ManuscriptSaveConflict, kindEntities, nextFocusLevel } from './ui/view-model';
-import { deviceClass, isMobileDevice, isPhoneBody, statusBarShown, watchDeviceClass } from './ui/device';
+import {
+	desktopSystem,
+	deviceClass,
+	isMobileDevice,
+	isPhoneBody,
+	statusBarShown,
+	watchDeviceClass,
+} from './ui/device';
 import { TOOLBAR_FACES_CLASS, WritingFaces } from './ui/writing-faces';
+import type { RecordingSettingsBridge } from './ui/recording-bridge';
+import { countRecordingIn } from './ui/recording-countdown';
+import { confirmRecordingStart } from './ui/recording-dialogs';
+import {
+	RECORDING_RIBBON_CLASS,
+	mountRecordingFace,
+	placeRibbonButtonUnder,
+	recordingRibbonFace,
+} from './ui/recording-face';
+import { recordingErrorText, recordingFileName, recordingNoticeKey } from './ui/recording-rows';
 import { floatPolicy } from './ui/sticky-note-layout';
 import { MobileDiagnosticsModal } from './ui/mobile-diagnostics';
 import { relabelsHeader } from './ui/leaf-header';
@@ -626,6 +660,14 @@ const UNTIMED_RECOVERY_KEY = 'snowflake-method-untimed-recovery';
 const HISTORY_HARVEST_KEY = 'snowflake-method-history-harvest';
 const HISTORY_LEDGER_PENDING_KEY = 'snowflake-method-history-ledger-pending';
 const CORKBOARD_PREFERENCES_KEY = 'snowflake-method-corkboard-preferences';
+/** The screen recording's choices: a folder and a recorder of this computer mean nothing on another. */
+const SCREEN_RECORDING_KEY = 'snowflake-method-screen-recording';
+/** Whether the recording's ribbon button was put in its place on this device, which is done once. */
+const SCREEN_RECORDING_RIBBON_KEY = 'snowflake-method-screen-recording-ribbon';
+/** The ledger of what a recording borrowed from OBS and has yet to give back. */
+const SCREEN_RECORDING_LEDGER_KEY = 'snowflake-method-screen-recording-obs';
+/** The Mac's own recorder that runs, kept on the device so one left going by a crash is found and ended. */
+const SCREEN_RECORDING_NATIVE_KEY = 'snowflake-method-screen-recording-native';
 
 /**
  * The pomodoro's tomato, drawn here because lucide has none: a round body,
@@ -752,6 +794,8 @@ export default class SnowflakeMethodPlugin
 	projects!: SnowflakeProjectService;
 	/** The settings page, kept so a value changed elsewhere can reach its rows. */
 	private settingTab: SnowflakeSettingTab | null = null;
+	/** The sticky note's button in the ribbon, which the recording's button stands under. */
+	private stickyRibbon: HTMLElement | null = null;
 	/** The bell between the manuscript streams and the margin card sidebar. */
 	readonly marginCards = new MarginCardsHub();
 	/** The bell between the streams and the contents sidebar. */
@@ -829,6 +873,11 @@ export default class SnowflakeMethodPlugin
 	});
 	sessions!: WritingSessionService;
 	history!: ModificationHistoryService;
+	/** The screen recording, on the desktop alone: null on a phone or a tablet, where nothing records. */
+	private recording: ScreenRecordingService | null = null;
+	/** The recording's choices as last read from the device, and who repaints when they change. */
+	private recordingChoices: RecordingPreferences | null = null;
+	private readonly recordingChoiceListeners = new Set<() => void>();
 	/** What every sticky-note surface shares: claims, the device's memory of the panels, the bell. */
 	stickyNoteHub!: StickyNoteHub;
 	/** The floating sticky notes, one layer per window, made when a window first floats one. */
@@ -1034,7 +1083,10 @@ export default class SnowflakeMethodPlugin
 				this.publishScrollbarWidthToDocument(targetWindow.document);
 				this.registerDomEvent(targetWindow, 'focus', () => {
 					this.publishScrollbarWidthToDocument(targetWindow.document);
+					this.tellRecording('focused', targetWindow);
 				});
+				// A recording of Obsidian alone takes the new window in.
+				this.tellRecording('opened', targetWindow);
 				// A popout carries writing surfaces of its own, and a session
 				// must hear the typing in them.
 				this.registerWritingSurfaceWatch(targetWindow.document);
@@ -1064,6 +1116,8 @@ export default class SnowflakeMethodPlugin
 				// The popout's floating notes go with it, their memory kept.
 				this.stickyLayers.get(targetWindow.document)?.destroy();
 				this.stickyLayers.delete(targetWindow.document);
+				// A recording lets go of a window that is no longer there.
+				this.recording?.windowClosed(targetWindow);
 			}),
 		);
 		this.applyBodyPreferences();
@@ -1197,6 +1251,7 @@ export default class SnowflakeMethodPlugin
 		// only when it moved.
 		this.registerDomEvent(window, 'focus', () => {
 			this.publishScrollbarWidth();
+			this.tellRecording('focused', window);
 		});
 		this.publishScrollbarWidth();
 		// Again once there is a workspace to measure against. The load above runs
@@ -1418,6 +1473,10 @@ export default class SnowflakeMethodPlugin
 		this.projects.repository.onBodyWrite = (path, before, after, userInput) => {
 			this.sessions.notePersistedByPlugin(path, before, after, userInput);
 		};
+		// The screen recording belongs to the device and to no project. It is
+		// made only where there is a desktop to record: a phone or a tablet has
+		// neither the Mac's recorder nor OBS, and never reaches for Node.
+		this.recording = desktopSystem() === null ? null : this.createScreenRecording();
 		// And the history hears what the plugin itself made: a note created,
 		// and every task, foreshadowing and revision the services write.
 		this.projects.repository.onManagedFileCreated = (path, content, userInput) => {
@@ -1592,7 +1651,7 @@ export default class SnowflakeMethodPlugin
 				this.showError(error);
 			});
 		}).addClass('snowflake-method-workspace-ribbon');
-		this.addLabelledRibbonIcon('sticker', 'commands.newStickyNote', () => {
+		this.stickyRibbon = this.addLabelledRibbonIcon('sticker', 'commands.newStickyNote', () => {
 			void this.createStickyNoteAndFloat().catch((error: unknown) => {
 				this.showError(error);
 			});
@@ -1602,6 +1661,7 @@ export default class SnowflakeMethodPlugin
 		this.registerWritingCount();
 		addIcon(POMODORO_ICON, POMODORO_SVG);
 		this.registerWritingSessions();
+		this.registerScreenRecording();
 		this.settingTab = new SnowflakeSettingTab(this.app, this);
 		this.addSettingTab(this.settingTab);
 		this.registerEvent(
@@ -1743,6 +1803,10 @@ export default class SnowflakeMethodPlugin
 		// can close the session out instead of losing it.
 		this.sessions.markShutdown();
 		this.unloading = true;
+		// A recording is told to stop while there is still someone to tell it:
+		// the Mac's recorder cannot be taken up again by the next load, and
+		// what OBS lent stays in the ledger for it.
+		this.recording?.dispose();
 		// Ask for final workspace drafts now, before the plugin's services go,
 		// and mark refusals as recovery text rather than dialogs after unload.
 		for (const leaf of this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)) {
@@ -5361,6 +5425,484 @@ export default class SnowflakeMethodPlugin
 	async openModificationHistory(): Promise<void> {
 		const view = await this.revealDashboard();
 		await view?.showStatisticsTab('history');
+	}
+
+	// ---- Screen recording ----
+
+	/** The desktop's own parts as the main window reaches them, or null where it has none. */
+	private desktopParts(): DesktopShell | null {
+		return desktopShell(this.app.workspace.containerEl.win);
+	}
+
+	/**
+	 * One of Obsidian's windows as a recording is told of it. Every window
+	 * reaches the desktop's parts for itself, so each names its own number.
+	 */
+	private desktopWindow(target: Window): DesktopWindow {
+		return {
+			key: target,
+			id: nativeWindowId(desktopShell(target)?.windowSource() ?? null),
+			title: target.document.title,
+		};
+	}
+
+	/**
+	 * Tells a recording that runs of a window that opened or came forward.
+	 * While none runs nothing is asked of the desktop: naming a window is a
+	 * word with Obsidian's main process each time, and windows come forward
+	 * all day.
+	 */
+	private tellRecording(what: 'opened' | 'focused', target: Window): void {
+		const service = this.recording;
+		if (service === null || service.state().phase !== 'recording') return;
+		const told = this.desktopWindow(target);
+		if (what === 'opened') service.windowOpened(told);
+		else service.windowFocused(told);
+	}
+
+	/**
+	 * Obsidian's own windows: the main one first, then each a tab was moved
+	 * out into, found by the leaves they hold, and the one in use.
+	 */
+	private desktopWindows(): { all: DesktopWindow[]; active: DesktopWindow | null } {
+		const main = this.app.workspace.containerEl.win;
+		const found = new Set<Window>([main]);
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			found.add(leaf.view.containerEl.win);
+		});
+		const front = main.activeWindow;
+		return {
+			all: [...found].map((target) => this.desktopWindow(target)),
+			active: found.has(front) ? this.desktopWindow(front) : null,
+		};
+	}
+
+	/**
+	 * The recording service, with everything it may reach handed in: the
+	 * vault for a folder inside it, the desktop's shell and runner for what
+	 * is outside, the device's own storage for the choices and the ledger,
+	 * and Obsidian's secrets for OBS's password.
+	 */
+	private createScreenRecording(): ScreenRecordingService {
+		const adapter = (): FileSystemAdapter | null => {
+			const found = this.app.vault.adapter;
+			return found instanceof FileSystemAdapter ? found : null;
+		};
+		return new ScreenRecordingService({
+			system: () => desktopSystem(),
+			preferences: () => this.recordingPreferences(),
+			savePreferences: (next) => {
+				this.saveRecordingPreferences(next);
+			},
+			secret: (name) => this.app.secretStorage.getSecret(name),
+			place: {
+				system: () => desktopSystem() ?? 'mac',
+				vaultBase: () => adapter()?.getBasePath() ?? null,
+				videosFolder: () => this.desktopParts()?.videosFolder() ?? null,
+				// Beside the projects, where the archive and the exports stand too.
+				defaultVaultFolder: () => projectRecordingRoot(this.settings.projectRoot),
+				projectRoots: () => [...this.knownProjectsByRoot.keys()],
+				fullPath: (path) => adapter()?.getFullPath(normalizePath(path)) ?? path,
+				mkdir: (path) => this.app.vault.adapter.mkdir(normalizePath(path)),
+				list: async (path) => {
+					const folder = normalizePath(path);
+					if (!(await this.app.vault.adapter.exists(folder))) return null;
+					return { files: (await this.app.vault.adapter.list(folder)).files };
+				},
+				size: async (path) => (await this.app.vault.adapter.stat(normalizePath(path)))?.size ?? null,
+			},
+			processes: () => desktopProcessRunner(),
+			shell: () => this.desktopParts(),
+			windows: () => this.desktopWindows(),
+			openSocket: (url) => windowSocket(url),
+			journal: {
+				load: () => this.app.loadLocalStorage(SCREEN_RECORDING_LEDGER_KEY) as unknown,
+				save: (journal) => {
+					this.app.saveLocalStorage(SCREEN_RECORDING_LEDGER_KEY, journal);
+				},
+			},
+			nativeLedger: {
+				load: () => this.app.loadLocalStorage(SCREEN_RECORDING_NATIVE_KEY) as unknown,
+				save: (entry) => {
+					this.app.saveLocalStorage(SCREEN_RECORDING_NATIVE_KEY, entry);
+				},
+			},
+			// The main window's clock, so a popout closing never takes a
+			// recording's timers with it.
+			timers: {
+				set: (handler, ms) => window.setTimeout(handler, ms),
+				clear: (handle) => {
+					if (typeof handle === 'number') window.clearTimeout(handle);
+				},
+			},
+			now: () => Date.now(),
+			mint: () => crypto.randomUUID(),
+			// Shown in the window in use, and counted on the main window's clock.
+			countIn: () =>
+				countRecordingIn({
+					host: activeDocument.body,
+					t: this.globalT,
+					timers: {
+						set: (handler, ms) => window.setTimeout(handler, ms),
+						clear: (handle) => {
+							if (typeof handle === 'number') window.clearTimeout(handle);
+						},
+					},
+					onEscape: (handler) => {
+						// Escape is the count's while it runs, and every other key goes on to the app as before.
+						const scope = new Scope(this.app.scope);
+						scope.register([], 'Escape', (event) => {
+							// One that only ends a composition is the input method's, as in the dialogs.
+							if (!event.isComposing) handler();
+							return false;
+						});
+						this.app.keymap.pushScope(scope);
+						return () => {
+							this.app.keymap.popScope(scope);
+						};
+					},
+				}),
+		});
+	}
+
+	private registerScreenRecording(): void {
+		const service = this.recording;
+		if (service === null) return;
+		this.register(service.subscribe((event) => this.handleRecordingEvent(event)));
+		// A recorder an earlier run left going is ended, and its file named.
+		void service.mend();
+		// A window that was open before the plugin loaded never fires
+		// `window-open` again, so its coming forward is listened for here.
+		// Later windows are heard through that event, and none twice.
+		const heard = new Set<Window>([this.app.workspace.containerEl.win]);
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const target = leaf.view.containerEl.win;
+			if (heard.has(target)) return;
+			heard.add(target);
+			this.registerDomEvent(target, 'focus', () => {
+				this.tellRecording('focused', target);
+			});
+		});
+		// Obsidian quitting stops the recording as far as a short wait allows.
+		this.registerEvent(
+			this.app.workspace.on('quit', (tasks) => {
+				tasks.add(() => service.settle());
+			}),
+		);
+		// The ribbon's button starts a recording and ends it, and wears which
+		// of the two a press will do. Its right-click stays the app's own,
+		// which arranges the ribbon.
+		const ribbon = this.addLabelledRibbonIcon('video', 'commands.startScreenRecording', () => {
+			this.toggleScreenRecording();
+		});
+		ribbon.addClass(RECORDING_RIBBON_CLASS);
+		// It stands under the sticky note's button. The app sorts a button its
+		// saved order does not know above every other once the layout loads,
+		// so the button is put in its place after that, once on a device:
+		// from then on its place is the author's to drag.
+		this.app.workspace.onLayoutReady(() => {
+			const sticky = this.stickyRibbon;
+			if (sticky === null || this.app.loadLocalStorage(SCREEN_RECORDING_RIBBON_KEY) === true) return;
+			if (placeRibbonButtonUnder(this.app.workspace.leftRibbon, ribbon, sticky)) {
+				this.app.saveLocalStorage(SCREEN_RECORDING_RIBBON_KEY, true);
+			}
+		});
+		// The settings page locks its recording rows while one runs, and
+		// frees them when it ends: told only as that changes, never on a
+		// recording's every word, which would rebuild the page under a hand.
+		let idle = service.state().phase === 'idle';
+		const dress = (): void => {
+			const face = recordingRibbonFace(service.state().phase);
+			const entry = this.ribbonLabels.find((label) => label.el === ribbon);
+			if (entry !== undefined) entry.key = face.key;
+			if (ribbon.dataset.icon !== face.icon) {
+				ribbon.dataset.icon = face.icon;
+				setIcon(ribbon, face.icon);
+			}
+			ribbon.setAttribute('aria-label', this.globalT(face.key));
+			ribbon.toggleClass('is-recording', face.recording);
+			ribbon.toggleClass('is-busy', face.busy);
+			const nowIdle = service.state().phase === 'idle';
+			if (nowIdle !== idle) {
+				idle = nowIdle;
+				this.settingTab?.refreshRows();
+			}
+		};
+		this.register(
+			service.subscribe((event) => {
+				if (event.kind === 'changed') dress();
+			}),
+		);
+		dress();
+		// The mark shows only while a recording runs, where there is a bar to show it on.
+		if (statusBarShown()) {
+			this.register(
+				mountRecordingFace(this.addStatusBarItem(), {
+					t: this.globalT,
+					state: () => service.state(),
+					subscribe: (listener) =>
+						service.subscribe((event) => {
+							if (event.kind === 'changed') listener();
+						}),
+					openMenu: (event) => {
+						this.openScreenRecordingMenu(event);
+					},
+				}),
+			);
+		}
+	}
+
+	/** What a recording has to say to an author who may be anywhere in the app. */
+	private handleRecordingEvent(event: RecordingEvent): void {
+		// A recording is no project's, so it speaks the app's language, as the ribbon and the settings do.
+		if (event.kind === 'failed') {
+			new Notice(recordingErrorText(this.globalT, event));
+		} else if (event.kind === 'ended') {
+			if (event.path !== null) {
+				const name = recordingFileName(event.path);
+				const more = event.more ?? 0;
+				new Notice(
+					more > 0
+						? this.globalT('recording.notice.savedMore', { name, count: more })
+						: this.globalT('recording.notice.saved', { name }),
+				);
+			}
+		} else if (event.kind === 'notice') {
+			new Notice(this.globalT(recordingNoticeKey(event.code)));
+		}
+	}
+
+	/** The choices as the device keeps them, read once and kept until they change. */
+	private recordingPreferences(): RecordingPreferences {
+		this.recordingChoices ??= sanitizeRecordingPreferences(
+			this.app.loadLocalStorage(SCREEN_RECORDING_KEY) as unknown,
+			desktopSystem() ?? 'mac',
+		);
+		return this.recordingChoices;
+	}
+
+	private saveRecordingPreferences(next: RecordingPreferences): void {
+		const kept = sanitizeRecordingPreferences(next, desktopSystem() ?? 'mac');
+		this.recordingChoices = kept;
+		this.app.saveLocalStorage(SCREEN_RECORDING_KEY, kept);
+		for (const listener of [...this.recordingChoiceListeners]) listener();
+	}
+
+	/** The vault's own folder on the disk, or null where the vault is not on one. */
+	private vaultBasePath(): string | null {
+		const found = this.app.vault.adapter;
+		return found instanceof FileSystemAdapter ? found.getBasePath() : null;
+	}
+
+	/**
+	 * Starts a recording. It is the device's and no project's, and its file
+	 * is named by the moment alone. It asks first, with what the settings
+	 * say of a recording: a recording shows everything on the screen, and
+	 * that is the author's to agree to. The author may say not to be asked
+	 * again, and the settings can have them asked once more.
+	 */
+	async startScreenRecording(): Promise<void> {
+		const service = this.recording;
+		if (service === null || service.state().phase !== 'idle') return;
+		if (this.recordingPreferences().confirm) {
+			const answer = await confirmRecordingStart(this.app, this.globalT);
+			if (!answer.confirmed) return;
+			if (answer.skip) {
+				this.saveRecordingPreferences({ ...this.recordingPreferences(), confirm: false });
+				// The settings' own switch for the dialog follows.
+				this.settingTab?.refreshRows();
+			}
+			if (service.state().phase !== 'idle') return;
+		}
+		await service.start();
+	}
+
+	async stopScreenRecording(): Promise<void> {
+		await this.recording?.stop();
+	}
+
+	/** The ribbon's one press: a recording begins where none runs, and ends where one does. */
+	private toggleScreenRecording(): void {
+		const service = this.recording;
+		if (service === null) return;
+		const phase = service.state().phase;
+		if (phase === 'stopping') return;
+		const work = phase === 'idle' ? this.startScreenRecording() : this.stopScreenRecording();
+		void work.catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
+	/** The plugin's settings opened on the screen recording's section. */
+	openScreenRecordingSettings(): void {
+		this.settingTab?.revealSection('recording');
+		openSettingsTab(this.app, this.manifest.id);
+	}
+
+	/**
+	 * What the status bar's mark offers while a recording runs: the stop,
+	 * the last recording in its folder, the folder recordings go to, and
+	 * the settings.
+	 */
+	private openScreenRecordingMenu(event: MouseEvent): void {
+		const service = this.recording;
+		if (service === null) return;
+		const state = service.state();
+		const menu = new Menu();
+		if (state.phase === 'idle') {
+			menu.addItem((entry) =>
+				entry
+					.setTitle(this.globalT('recording.action.start'))
+					.setIcon('video')
+					.onClick(() => {
+						this.toggleScreenRecording();
+					}),
+			);
+		} else {
+			menu.addItem((entry) =>
+				entry
+					.setTitle(this.globalT('recording.action.stop'))
+					.setIcon('square')
+					.setDisabled(state.phase === 'stopping')
+					.onClick(() => {
+						this.toggleScreenRecording();
+					}),
+			);
+		}
+		menu.addSeparator();
+		const last = state.last?.path ?? null;
+		menu.addItem((entry) =>
+			entry
+				.setTitle(this.globalT('recording.action.reveal'))
+				.setIcon('file-video')
+				.setDisabled(last === null)
+				.onClick(() => {
+					if (last !== null) this.desktopParts()?.reveal(last);
+				}),
+		);
+		const standing = service.storage();
+		menu.addItem((entry) =>
+			entry
+				.setTitle(this.globalT('recording.folder.open'))
+				.setIcon('folder-open')
+				.setDisabled(standing.mode === 'none' || (standing.mode === 'vault' && standing.refused))
+				.onClick(() => {
+					this.openRecordingFolder();
+				}),
+		);
+		menu.addSeparator();
+		menu.addItem((entry) =>
+			entry
+				.setTitle(this.globalT('commands.openScreenRecording'))
+				.setIcon('settings')
+				.onClick(() => {
+					this.openScreenRecordingSettings();
+				}),
+		);
+		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * Opens the folder recordings go to in the system's file manager. The
+	 * vault's folder is made first where it is not there yet: nothing has
+	 * been recorded into it, and a folder that is not there cannot be shown.
+	 */
+	private openRecordingFolder(): void {
+		const service = this.recording;
+		if (service === null) return;
+		const standing = service.storage();
+		if (standing.mode === 'none') return;
+		if (standing.mode !== 'vault') {
+			this.desktopParts()?.openFolder(standing.path);
+			return;
+		}
+		if (standing.refused) return;
+		const folder = normalizePath(standing.vaultPath);
+		void (async () => {
+			if (standing.vaultPath.length > 0 && !(await this.app.vault.adapter.exists(folder))) {
+				await this.app.vault.adapter.mkdir(folder);
+			}
+			this.desktopParts()?.openFolder(standing.path);
+		})().catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
+	/**
+	 * The bridge the settings page reads the screen recording through, or
+	 * null where nothing records: a phone, a tablet. The recording and its
+	 * choices are the device's, so they stand in the plugin's settings and
+	 * in no project's panes.
+	 */
+	recordingSettings(): RecordingSettingsBridge | null {
+		const service = this.recording;
+		const system = desktopSystem();
+		if (service === null || system === null) return null;
+		const update = (patch: Partial<RecordingPreferences>): void => {
+			// The recorder that runs was started with the choices as they stood.
+			// Whether to ask before the next recording is none of those.
+			const asking = Object.keys(patch).every((key) => key === 'confirm');
+			if (service.state().phase !== 'idle' && !asking) return;
+			this.saveRecordingPreferences({ ...this.recordingPreferences(), ...patch });
+		};
+		return {
+			system: () => system,
+			state: () => service.state(),
+			preferences: () => this.recordingPreferences(),
+			update,
+			subscribe: (listener) => {
+				let idle = service.state().phase === 'idle';
+				const release = service.subscribe((event) => {
+					if (event.kind !== 'changed') return;
+					const nowIdle = service.state().phase === 'idle';
+					if (nowIdle === idle) return;
+					idle = nowIdle;
+					listener();
+				});
+				this.recordingChoiceListeners.add(listener);
+				return () => {
+					release();
+					this.recordingChoiceListeners.delete(listener);
+				};
+			},
+			storage: () => service.storage(),
+			defaultVaultFolder: () => projectRecordingRoot(this.settings.projectRoot),
+			figures: () => service.figures(),
+			chooseFolder: async () => {
+				const shell = this.desktopParts();
+				if (shell === null) return;
+				const standing = service.storage();
+				const picked = await shell.pickFolder(standing.mode === 'none' ? null : standing.path);
+				if (picked === null) return;
+				// A folder picked inside the vault is the vault's to keep: the
+				// choice follows it there, so the page never says outside for
+				// a folder that is not.
+				const found = recordingPlace(picked, this.vaultBasePath(), system);
+				if (found.kind === 'vault' && found.vaultPath.length > 0) {
+					update({ location: 'vault', vaultFolder: found.vaultPath });
+				} else update({ location: 'outside', folder: picked });
+			},
+			openFolder: () => {
+				this.openRecordingFolder();
+			},
+			screenAccess: () => this.desktopParts()?.screenAccess() ?? 'unknown',
+			openScreenPrivacy: () => {
+				this.desktopParts()?.openScreenPrivacy();
+			},
+			testObs: (onOpening) => service.testObs(onOpening),
+			mountSecret: (host) => {
+				// Obsidian's own field: the author picks or makes a secret there,
+				// and the choices keep its name, never the password.
+				new SecretComponent(this.app, host)
+					.setValue(this.recordingPreferences().obsSecret)
+					.onChange((name) => {
+						update({ obsSecret: name });
+					});
+			},
+			openObsDownload: () => {
+				this.app.workspace.containerEl.win.open(OBS_DOWNLOAD_PAGE);
+			},
+		};
 	}
 
 	async openStickyNotesView(): Promise<void> {
@@ -10454,6 +10996,49 @@ export default class SnowflakeMethodPlugin
 				void this.openModificationHistory().catch((error: unknown) => {
 					this.showError(error);
 				});
+			},
+		});
+		// The screen is recorded on the desktop alone, so its commands are
+		// offered there alone: a start while nothing records, a stop while
+		// something does or is about to.
+		this.addCommand({
+			id: 'start-screen-recording',
+			name: this.globalT('commands.startScreenRecording'),
+			checkCallback: (checking) => {
+				const service = this.recording;
+				if (service === null || isMobileDevice()) return false;
+				if (service.state().phase !== 'idle') return false;
+				if (!checking) {
+					void this.startScreenRecording().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'stop-screen-recording',
+			name: this.globalT('commands.stopScreenRecording'),
+			checkCallback: (checking) => {
+				const service = this.recording;
+				if (service === null || isMobileDevice()) return false;
+				const phase = service.state().phase;
+				if (phase === 'idle' || phase === 'stopping') return false;
+				if (!checking) {
+					void this.stopScreenRecording().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'open-screen-recording-settings',
+			name: this.globalT('commands.openScreenRecording'),
+			checkCallback: (checking) => {
+				if (this.recording === null || isMobileDevice()) return false;
+				if (!checking) this.openScreenRecordingSettings();
+				return true;
 			},
 		});
 		this.addCommand({

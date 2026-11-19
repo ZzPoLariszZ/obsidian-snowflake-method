@@ -33,6 +33,12 @@ const context = await esbuild.context({
 	],
 	format: 'cjs',
 	target: 'es2021',
+	// The one Node module the plugin reaches, on the desktop alone, is asked
+	// for with a dynamic import behind `Platform.isDesktop`. Left as it is, the
+	// bundle would hand that import to the page's own loader, which knows no
+	// bare module name, so it is lowered to the `require` Obsidian gives a
+	// plugin. Nothing else in the bundle is a native import.
+	supported: { 'dynamic-import': false },
 	jsx: 'automatic',
 	// React reads the first to choose its production build, and a library it
 	// stands on reads the second, which a CommonJS bundle has no `import.meta`

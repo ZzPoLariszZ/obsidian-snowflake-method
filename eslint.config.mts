@@ -72,6 +72,7 @@ export default defineConfig(
 						'Lucide',
 						'MS Word',
 						'NovelBuddy',
+						'OBS Studio',
 						'Qidian',
 						'Qidian / NovelBuddy',
 						'Markdown',
@@ -80,10 +81,18 @@ export default defineConfig(
 						'Snowflake',
 						'Snowflake Archive',
 						'Snowflake Export',
+						'Snowflake Recordings',
 						'Snowflake Method',
 					],
-					acronyms: ['CJK', 'H1', 'ID', 'JSON', 'POV', '6Z'],
+					acronyms: ['AI', 'CJK', 'H1', 'ID', 'JSON', 'OBS', 'POV', '6Z'],
 					ignoreRegex: [
+						// The recording's choice quoted as it is written, its closing
+						// mark against the recorder's name.
+						'“As set in OBS Studio”',
+						// A secret's name as Obsidian's keychain takes one: lowercase.
+						'obs-studio',
+						// The key as its cap is marked.
+						'^Press Esc to cancel$',
 						// The examples name folders as they are written on disk.
 						'50_Manuscript as Manuscript',
 						'80_Material',
@@ -125,6 +134,14 @@ export default defineConfig(
 						// A count of one, written as the figure, then its unit.
 						'^1 version$',
 						'^1 note$',
+						// The screen recording's setup guide quotes OBS's menus and
+						// boxes as OBS itself writes them, capitals and all, so the
+						// author finds the same words on the screen.
+						'^(WebSocket Server Settings|Enable WebSocket server|Show Connect Info|Server Password|Server Port|Audio Mixer|Recording Quality)$',
+						// A picture's height as it is always written, and an option
+						// quoted by its own name in the middle of a sentence.
+						'^(1080|720)p$',
+						'“As set in OBS”',
 					],
 				},
 			],

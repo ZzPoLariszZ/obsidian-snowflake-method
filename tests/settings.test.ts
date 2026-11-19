@@ -22,13 +22,24 @@ import {
 	type SnowflakeSettings,
 } from '../src/settings';
 import type SnowflakeMethodPlugin from '../src/main';
+import {
+	IDLE_RECORDING_STATE,
+	defaultRecordingPreferences,
+	sanitizeRecordingPreferences,
+	type RecordingPreferences,
+	type RecordingState,
+	type RecordingSystem,
+} from '../src/domain';
+import type { RecordingSettingsBridge } from '../src/ui/recording-bridge';
 
 function settingTabFor(
 	uiLocale: SnowflakeSettings['uiLocale'],
 ): SnowflakeSettingTab {
 	const plugin = {
 		settings: { ...DEFAULT_SETTINGS, uiLocale },
-	} as SnowflakeMethodPlugin;
+		// Nothing records where these pages are drawn: the section stands only where something does.
+		recordingSettings: () => null,
+	} as unknown as SnowflakeMethodPlugin;
 	return new SnowflakeSettingTab({} as never, plugin);
 }
 
@@ -86,6 +97,7 @@ function writableSettingTab(): {
 		saveSettingsSoon: () => undefined,
 		handleSettingsChanged: async () => undefined,
 		confirmBoundaryProtectionOff: async () => true,
+		recordingSettings: () => null,
 	} as unknown as SnowflakeMethodPlugin;
 	return { tab: new SnowflakeSettingTab({} as never, plugin), settings };
 }
@@ -892,7 +904,8 @@ describe('highlight rule rows', () => {
 					},
 				] satisfies CustomHighlightRule[],
 			},
-		} as SnowflakeMethodPlugin;
+			recordingSettings: () => null,
+		} as unknown as SnowflakeMethodPlugin;
 		return new SnowflakeSettingTab({} as never, plugin);
 	};
 
@@ -1045,5 +1058,349 @@ describe('export settings', () => {
 		expect(DEFAULT_SETTINGS.explorerImmersive).toBe(false);
 		expect(sanitizeSettings(undefined).explorerImmersive).toBe(false);
 		expect(sanitizeSettings({ explorerImmersive: true }).explorerImmersive).toBe(true);
+	});
+});
+
+describe('the screen recording’s section of the settings', () => {
+	type Row = {
+		name: string;
+		desc?: unknown;
+		visible?: boolean | (() => boolean);
+		render?: unknown;
+		control?: {
+			type: string;
+			key: string;
+			options?: Record<string, string>;
+			disabled?: boolean | (() => boolean);
+			validate?: (value: number) => unknown;
+		};
+	};
+
+	/** What a row drawn by hand asked of its dropdown: its answers, the one that stands, and whether it is locked. */
+	function drawnDropdown(row: Row) {
+		const drawn: { options: Record<string, string>; value: string; disabled: boolean; choose: (value: string) => void } = {
+			options: {},
+			value: '',
+			disabled: false,
+			choose: () => {},
+		};
+		const dropdown = {
+			addOption: (value: string, label: string) => {
+				drawn.options[value] = label;
+				return dropdown;
+			},
+			setValue: (value: string) => {
+				drawn.value = value;
+				return dropdown;
+			},
+			setDisabled: (disabled: boolean) => {
+				drawn.disabled = disabled;
+				return dropdown;
+			},
+			onChange: (choose: (value: string) => void) => {
+				drawn.choose = choose;
+				return dropdown;
+			},
+		};
+		const setting = {
+			addDropdown: (build: (made: typeof dropdown) => unknown) => {
+				build(dropdown);
+				return setting;
+			},
+		};
+		(row.render as (given: typeof setting) => void)(setting);
+		return drawn;
+	}
+
+	function recordingTab(system: RecordingSystem = 'mac', patch: Partial<RecordingPreferences> = {}) {
+		const held: { preferences: RecordingPreferences; state: RecordingState; access: 'granted' | 'denied' | 'unknown' } = {
+			// The choices most of these rows are tested with: a folder outside the vault, the screen
+			// Obsidian is on, OBS's own size. What a device starts on has a test of its own.
+			preferences: {
+				...defaultRecordingPreferences(system),
+				location: 'outside',
+				scope: 'screen',
+				quality: 'original',
+				...patch,
+			},
+			state: { ...IDLE_RECORDING_STATE },
+			access: 'granted',
+		};
+		const bridge: RecordingSettingsBridge = {
+			system: () => system,
+			state: () => held.state,
+			preferences: () => held.preferences,
+			update: (next) => {
+				// As the plugin's own does: the choices a recorder runs on stand still while it runs.
+				const asking = Object.keys(next).every((key) => key === 'confirm');
+				if (held.state.phase !== 'idle' && !asking) return;
+				held.preferences = sanitizeRecordingPreferences({ ...held.preferences, ...next }, system);
+			},
+			subscribe: () => () => {},
+			storage: () => ({ mode: 'default', path: '/Users/ada/Movies' }),
+			defaultVaultFolder: () => 'Snowflake Projects/Snowflake Recordings',
+			figures: () => Promise.resolve(null),
+			chooseFolder: () => Promise.resolve(),
+			openFolder: () => {},
+			screenAccess: () => held.access,
+			openScreenPrivacy: () => {},
+			testObs: () => Promise.resolve({ ok: false, code: 'obs-closed' }),
+			mountSecret: () => {},
+			openObsDownload: () => {},
+		};
+		const plugin = {
+			settings: { ...DEFAULT_SETTINGS, uiLocale: 'en' },
+			recordingSettings: () => bridge,
+		} as unknown as SnowflakeMethodPlugin;
+		const tab = new SnowflakeSettingTab({} as never, plugin);
+		let updates = 0;
+		(tab as unknown as { update: () => void }).update = () => {
+			updates += 1;
+		};
+		/** The section's rows as they stand now, the ones a choice hides left out. */
+		const rows = (): Row[] => {
+			const groups = tab.getSettingDefinitions() as { heading?: string; items?: Row[] }[];
+			const section = groups[groups.length - 1];
+			return (section?.items ?? []).filter((row) =>
+				typeof row.visible === 'function' ? row.visible() : row.visible !== false,
+			);
+		};
+		const names = (): string[] => rows().map((row) => row.name).filter((name) => name.length > 0);
+		const row = (name: string): Row => {
+			const found = rows().find((entry) => entry.name === name);
+			if (found === undefined) throw new Error(`No row is named ${name}.`);
+			return found;
+		};
+		return { tab, held, rows, names, row, updates: () => updates };
+	}
+
+	it('stands last on the page, and not at all where nothing records', () => {
+		const headings = (tab: SnowflakeSettingTab): (string | undefined)[] =>
+			tab.getSettingDefinitions().map((group) => (group as { heading?: string }).heading);
+		expect(headings(recordingTab().tab).slice(-2)).toEqual(['Export', 'Screen recording']);
+		// A phone or a tablet has no bridge to read through.
+		expect(headings(settingTabFor('en'))).not.toContain('Screen recording');
+	});
+
+	it('says the notes and their switch first, then asks for the recorder, where recordings go and what they show, then what only that recorder needs', () => {
+		const { names, held } = recordingTab();
+		expect(names()).toEqual([
+			'Before you record',
+			// The switch for the dialog that says the notes stands right under them.
+			'Confirm before recording',
+			'Recording tool',
+			'Save recordings to',
+			'Folder outside the vault',
+			'What to record',
+			'macOS native',
+			'Video quality',
+		]);
+		held.preferences = { ...held.preferences, tool: 'obs' };
+		expect(names()).toEqual([
+			'Before you record',
+			'Confirm before recording',
+			'Recording tool',
+			'Save recordings to',
+			'Folder outside the vault',
+			'What to record',
+			'OBS Studio',
+			'Set up OBS Studio',
+			'Port',
+			'Password',
+			'Video quality',
+			'Test connection',
+		]);
+	});
+
+	it('shows the folder’s row for the place chosen, the vault’s or the one outside it', () => {
+		const { names, tab, held, updates } = recordingTab();
+		expect(names()).toContain('Folder outside the vault');
+		expect(names()).not.toContain('Folder in the vault');
+		void tab.setControlValue('recording.location', 'vault');
+		expect(held.preferences.location).toBe('vault');
+		expect(names()).toContain('Folder in the vault');
+		expect(names()).not.toContain('Folder outside the vault');
+		// The rows under a choice follow it at once.
+		expect(updates()).toBe(1);
+		void tab.setControlValue('recording.location', 'elsewhere');
+		expect([held.preferences.location, updates()]).toEqual(['vault', 1]);
+	});
+
+	it('offers the Mac’s recorder on a Mac alone, and no choice of recorder where there is one', () => {
+		const mac = recordingTab('mac');
+		expect(mac.row('Recording tool').control?.options).toEqual({
+			native: 'macOS native',
+			obs: 'OBS Studio',
+		});
+		const windows = recordingTab('win');
+		expect(windows.names()).not.toContain('Recording tool');
+		expect(windows.names()).toContain('OBS Studio');
+		expect(windows.names()).not.toContain('macOS native');
+	});
+
+	it('starts a device on recordings in the vault, of Obsidian alone, at 1080 lines', () => {
+		const { tab, names, row } = recordingTab('mac', { ...defaultRecordingPreferences('mac'), tool: 'obs' });
+		expect(tab.getControlValue('recording.location')).toBe('vault');
+		expect(names()).toContain('Folder in the vault');
+		expect(names()).not.toContain('Folder outside the vault');
+		expect(drawnDropdown(row('What to record')).value).toBe('obsidian');
+		expect(row('What to record').desc).toBe('The video shows the Obsidian window you are working in.');
+		expect(tab.getControlValue('recording.quality')).toBe('1080p');
+		// What each declared row goes back to is the same.
+		expect(row('Save recordings to').control).toMatchObject({ defaultValue: 'vault' });
+		expect(row('Video quality').control).toMatchObject({ defaultValue: '1080p' });
+	});
+
+	it('offers what the recorder can show, and falls back to what a device starts on with the recorder that had the choice', () => {
+		const { tab, held, row } = recordingTab('mac', { tool: 'obs', scope: 'obs' });
+		const withObs = drawnDropdown(row('What to record'));
+		expect(withObs.options).toEqual({
+			screen: 'Current screen',
+			all: 'All screens',
+			obsidian: 'Obsidian only',
+			obs: 'As set in OBS Studio',
+		});
+		expect(withObs.value).toBe('obs');
+		expect(tab.getControlValue('recording.scope')).toBe('obs');
+		void tab.setControlValue('recording.tool', 'native');
+		// A scope only OBS has goes back with it to the one a device starts on: Obsidian alone.
+		expect([held.preferences.tool, held.preferences.scope]).toEqual(['native', 'obsidian']);
+		const withMac = drawnDropdown(row('What to record'));
+		expect(withMac.options).toEqual({
+			screen: 'Current screen',
+			all: 'All screens',
+			obsidian: 'Obsidian only',
+		});
+		expect(withMac.value).toBe('obsidian');
+		void tab.setControlValue('recording.scope', 'obs');
+		expect(held.preferences.scope).toBe('obsidian');
+	});
+
+	it('draws what to record by hand, so the line under it follows the choice made in it', () => {
+		// The page never draws a declared control again while it holds the
+		// keyboard, and this row's line speaks of its own choice.
+		const { held, row, updates } = recordingTab();
+		const scope = row('What to record');
+		expect(scope.control).toBeUndefined();
+		expect(scope.desc).toBe('Records the screen Obsidian is on.');
+		drawnDropdown(scope).choose('all');
+		expect(held.preferences.scope).toBe('all');
+		// The page is asked to draw again, and the row's new words are ready for it.
+		expect(updates()).toBe(1);
+		expect(row('What to record').desc).toBe('Each screen is saved as a file of its own.');
+		// An answer the recorder has not is not kept.
+		drawnDropdown(row('What to record')).choose('obs');
+		expect([held.preferences.scope, updates()]).toEqual(['all', 1]);
+	});
+
+	it('says under the choice what it comes to with the recorder chosen', () => {
+		const { tab, row } = recordingTab();
+		expect(row('What to record').desc).toBe('Records the screen Obsidian is on.');
+		void tab.setControlValue('recording.scope', 'all');
+		expect(row('What to record').desc).toBe('Each screen is saved as a file of its own.');
+		void tab.setControlValue('recording.scope', 'obsidian');
+		expect(row('What to record').desc).toBe('Each Obsidian window is saved as a file of its own.');
+		void tab.setControlValue('recording.tool', 'obs');
+		expect(row('What to record').desc).toBe('The video shows the Obsidian window you are working in.');
+		// A choice only OBS has is spoken of too, never the screen's line in its place.
+		void tab.setControlValue('recording.scope', 'obs');
+		expect(row('What to record').desc).toBe('Records what OBS Studio’s current scene shows.');
+	});
+
+	it('says what macOS has not allowed only with the Mac’s recorder, and only until it is', () => {
+		const { names, held } = recordingTab();
+		expect(names()).not.toContain('Open system settings');
+		held.access = 'denied';
+		expect(names()).toContain('Open system settings');
+		held.preferences = { ...held.preferences, tool: 'obs' };
+		// With OBS it is OBS that macOS must allow, and OBS asks for itself.
+		expect(names()).not.toContain('Open system settings');
+	});
+
+	it('reads and keeps each choice through the plugin, never in the vault’s own settings', () => {
+		const { tab, held } = recordingTab('mac', { tool: 'obs' });
+		expect(tab.getControlValue('recording.tool')).toBe('obs');
+		expect(tab.getControlValue('recording.location')).toBe('outside');
+		expect(tab.getControlValue('recording.quality')).toBe('original');
+		expect(tab.getControlValue('recording.obsPort')).toBe(4455);
+		expect(tab.getControlValue('recording.nothing')).toBeUndefined();
+		void tab.setControlValue('recording.quality', '720p');
+		void tab.setControlValue('recording.obsPort', 4460);
+		expect([held.preferences.quality, held.preferences.obsPort]).toEqual(['720p', 4460]);
+		// Nothing out of range is kept.
+		for (const port of [0, 70000, 4455.5, '4460']) void tab.setControlValue('recording.obsPort', port);
+		void tab.setControlValue('recording.quality', '4k');
+		expect([held.preferences.quality, held.preferences.obsPort]).toEqual(['720p', 4460]);
+		// None of it is one of the settings that travel with the vault.
+		expect(Object.keys(DEFAULT_SETTINGS).some((key) => key.toLowerCase().includes('record'))).toBe(false);
+	});
+
+	it('names a port out of range in the row itself', () => {
+		const { row } = recordingTab('mac', { tool: 'obs' });
+		const validate = row('Port').control?.validate;
+		expect(validate?.(4455)).toBeUndefined();
+		for (const port of [0, 65536, 4455.5]) expect(validate?.(port), String(port)).toBe('Enter a port between 1 and 65535.');
+	});
+
+	it('holds every choice still while a recording runs', () => {
+		const { tab, held, rows } = recordingTab('mac', { tool: 'obs' });
+		// Every choice the recorder is started with. Whether to be asked first is no such choice.
+		const locked = (): boolean[] =>
+			rows()
+				.filter((row) => row.control !== undefined && row.name !== 'Confirm before recording')
+				.map((row) => (typeof row.control?.disabled === 'function' ? row.control.disabled() : row.control?.disabled === true));
+		const scope = (): boolean => drawnDropdown(rows().find((row) => row.name === 'What to record') as Row).disabled;
+		expect([...locked(), scope()]).toEqual([false, false, false, false, false]);
+		held.state = { ...held.state, phase: 'recording' };
+		expect([...locked(), scope()]).toEqual([true, true, true, true, true]);
+		// And a change that reaches the page all the same is not kept.
+		void tab.setControlValue('recording.tool', 'native');
+		void tab.setControlValue('recording.location', 'vault');
+		expect([held.preferences.tool, held.preferences.location]).toEqual(['obs', 'outside']);
+	});
+
+	it('offers OBS’s own size first, then the full size and the three it can be held to', () => {
+		const { row, tab, held } = recordingTab('mac', { tool: 'obs' });
+		expect(row('Video quality').control?.options).toEqual({
+			original: 'As set in OBS Studio',
+			full: 'Native',
+			'1440p': '2K',
+			'1080p': '1080p',
+			'720p': '720p',
+		});
+		expect(Object.keys(row('Video quality').control?.options ?? {})).toEqual(['original', 'full', '1440p', '1080p', '720p']);
+		for (const quality of ['full', '1440p'] as const) {
+			void tab.setControlValue('recording.quality', quality);
+			expect(held.preferences.quality).toBe(quality);
+		}
+	});
+
+	it('has a switch for the dialog before a recording, which the dialog’s own box turns off', () => {
+		const { row, tab, held } = recordingTab();
+		const asked = row('Confirm before recording');
+		expect(asked.control).toMatchObject({ type: 'toggle', key: 'recording.confirm' });
+		expect(asked.desc).toBe('Show these notes before each recording starts.');
+		expect(tab.getControlValue('recording.confirm')).toBe(true);
+		// The box in the dialog, ticked: the choices no longer ask, and the switch shows it.
+		held.preferences = { ...held.preferences, confirm: false };
+		expect(tab.getControlValue('recording.confirm')).toBe(false);
+		// Turned on again here, and only by a plain yes or no.
+		void tab.setControlValue('recording.confirm', true);
+		expect(held.preferences.confirm).toBe(true);
+		void tab.setControlValue('recording.confirm', 'no');
+		expect(held.preferences.confirm).toBe(true);
+		// It is no choice the recorder runs on: it may change while one records.
+		held.state = { ...held.state, phase: 'recording' };
+		void tab.setControlValue('recording.confirm', false);
+		expect(held.preferences.confirm).toBe(false);
+		expect(asked.control?.disabled).toBeUndefined();
+	});
+
+	it('finds the notes when the page is searched, though the row draws them itself', () => {
+		const { row } = recordingTab();
+		const notes = row('Before you record');
+		expect(typeof notes.render).toBe('function');
+		expect(String(notes.desc)).toContain('claims AI wrote your novel');
+		expect(String(notes.desc)).toContain('Watch it yourself before you share it.');
 	});
 });

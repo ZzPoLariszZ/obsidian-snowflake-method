@@ -9,12 +9,20 @@ import {
 	OCCURRENCE_ROLES,
 	PROJECT_LANGUAGES,
 	READING_MEASURES,
+	RECORDING_ERROR_CODES,
+	RECORDING_LOCATIONS,
+	RECORDING_NOTICE_CODES,
+	RECORDING_PHASES,
+	RECORDING_QUALITIES,
+	RECORDING_SCOPES,
+	RECORDING_TOOLS,
 	WRITING_MODES,
 	STICKY_NOTE_COLORS,
 	TASK_PRIORITIES,
 	TASK_STATUSES,
 } from '../../src/domain';
 import { STATISTICS_TABS, TASKS_TABS } from '../../src/ui/dashboard-state';
+import { OBS_GUIDE_STEPS, OBS_TERMS, RECORDING_NOTES } from '../../src/ui/recording-rows';
 import { ENTITY_GROUP_FIELDS } from '../../src/ui/entity-filters';
 import {
 	CORKBOARD_GROUP_FIELDS,
@@ -1768,12 +1776,21 @@ describe('every interface language', () => {
 	});
 
 	it('keeps the English placeholders and line breaks in every translation', () => {
+		// These break where a line of the settings page would otherwise wrap,
+		// and a language's lines are as long as its own words.
+		const fitted = new Set([
+			'recording.tool.desc',
+			'recording.obs.portHint',
+			'recording.obs.passwordHint',
+			'recording.guide.server',
+			'recording.guide.password',
+		]);
 		for (const [locale, table] of Object.entries(locales)) {
 			if (locale === 'zh-CN') continue;
 			for (const [key, value] of Object.entries(table)) {
 				const source = en[key as keyof typeof en];
 				expect(placeholders(value), `${locale} ${key}`).toBe(placeholders(source));
-				expect(breaks(value), `${locale} ${key}`).toBe(breaks(source));
+				if (!fitted.has(key)) expect(breaks(value), `${locale} ${key}`).toBe(breaks(source));
 			}
 		}
 	});
@@ -1833,6 +1850,169 @@ describe('every interface language', () => {
 			expect(keys.length).toBeGreaterThan(0);
 			for (const key of keys) {
 				expect(locales[locale][key as keyof typeof en].toLowerCase(), `${locale} ${key}`).toContain(vault[locale].toLowerCase());
+			}
+		}
+	});
+});
+
+describe('the screen recording’s words', () => {
+	const locales = { en, 'zh-CN': zhCN, 'zh-TW': zhTW(), ja: ja(), ko: ko(), fr: fr(), de: de(), es: es() } as const;
+	const keys = new Set(Object.keys(en));
+
+	it('names its three commands plainly, in Obsidian’s own manner', () => {
+		expect(en['commands.startScreenRecording']).toBe('Start screen recording');
+		expect(en['commands.stopScreenRecording']).toBe('Stop screen recording');
+		expect(en['commands.openScreenRecording']).toBe('Open screen recording settings');
+		expect(zhCN['commands.startScreenRecording']).toBe('开始屏幕录制');
+		expect(zhCN['commands.stopScreenRecording']).toBe('停止屏幕录制');
+		expect(zhCN['commands.openScreenRecording']).toBe('打开屏幕录制设置');
+	});
+
+	it('names its section of the settings, and is no tab of the statistics pane', () => {
+		expect(en['settings.section.recording']).toBe('Screen recording');
+		expect(zhCN['settings.section.recording']).toBe('屏幕录制');
+		for (const [locale, table] of Object.entries(locales)) {
+			expect(Object.keys(table), locale).not.toContain('statistics.tab.recording');
+		}
+	});
+
+	it('names the folder beside the projects as it is written on the disk, in every language', () => {
+		for (const [locale, table] of Object.entries(locales)) {
+			expect(table['recording.vaultFolder.desc'], locale).toContain('Snowflake Recordings');
+		}
+	});
+
+	it('has words for every state, choice, failure and notice the code can name', () => {
+		// Each of these keys is built from a value, so the type checker never
+		// sees one: a value added without its words would show as a raw key.
+		const built = [
+			...RECORDING_PHASES.map((phase) => `recording.phase.${phase}`),
+			...RECORDING_TOOLS.map((tool) => `recording.tool.${tool}`),
+			...RECORDING_LOCATIONS.map((location) => `recording.location.${location}`),
+			...RECORDING_SCOPES.map((scope) => `recording.scope.${scope}`),
+			// The first quality leaves the picture as OBS has it, and is worded so.
+			...RECORDING_QUALITIES.map((quality) =>
+				quality === 'original' ? 'recording.quality.obs' : `recording.quality.${quality}`,
+			),
+			// With the Mac's own recorder there is no choice, and the row says why.
+			'recording.quality.native',
+			...RECORDING_ERROR_CODES.map((code) => `recording.error.${code}`),
+			...RECORDING_NOTICE_CODES.map((code) => `recording.notice.${code}`),
+			...OBS_TERMS.map((term) => `recording.obs.term.${term}`),
+			...OBS_GUIDE_STEPS,
+			...RECORDING_NOTES.map((note) => note.key),
+		];
+		for (const key of built) expect(keys.has(key), key).toBe(true);
+	});
+
+	it('has every key the sources name between quotes', () => {
+		const sources = import.meta.glob<string>('../../src/**/*.{ts,tsx}', {
+			query: '?raw',
+			import: 'default',
+			eager: true,
+		});
+		const named = new Set<string>();
+		for (const [path, text] of Object.entries(sources)) {
+			if (path.includes('/i18n/')) continue;
+			for (const match of text.matchAll(/'((?:recording|commands)\.[A-Za-z0-9.-]*[A-Za-z0-9])'/gu)) {
+				const key = match[1] ?? '';
+				if (key.startsWith('recording.') || key.endsWith('ScreenRecording')) named.add(key);
+			}
+		}
+		expect(named.size).toBeGreaterThan(40);
+		for (const key of named) expect(keys.has(key), key).toBe(true);
+	});
+
+	it('says the notes as they were asked for: what a recording is for, then one warning of two lines', () => {
+		expect(RECORDING_NOTES.map((note) => en[note.key])).toEqual([
+			'When someone claims AI wrote your novel, answer with the record of how you wrote it!',
+			'A recording shows everything on the screen. Watch it yourself before you share it.\nRecording may slow the computer, and the video files take a lot of disk space.',
+		]);
+		expect(RECORDING_NOTES.map((note) => zhCN[note.key])).toEqual([
+			'当有人质疑你的小说是 AI 生成的，用记录下的创作过程回应吧！',
+			'录屏会记录屏幕上的一切，分享之前最好先自己检查一遍。\n录屏可能会降低电脑性能，视频文件会占用大量硬盘空间。',
+		]);
+		// The warning is two lines in every language, and nothing else of the notes breaks.
+		for (const [locale, table] of Object.entries(locales)) {
+			expect(table['recording.note.caution'].split('\n'), locale).toHaveLength(2);
+			expect(table['recording.note.purpose'], locale).not.toContain('\n');
+		}
+	});
+
+	it('writes the guide in Chinese as it was asked for', () => {
+		expect([zhCN['recording.guide.title'], ...OBS_GUIDE_STEPS.map((step) => zhCN[step])]).toEqual([
+			'配置 OBS Studio',
+			'安装 {obs}（首次设置需手动打开）。',
+			'打开 {tools} > {serverSettings}，勾选 {enableServer}。',
+			'点击 {connectInfo}，复制 {serverPort} 和 {serverPassword}，并填写下方插件设置。',
+			'测试连接通过后，后续开启屏幕录制时，插件会自动开启软件（无需手动打开）。',
+			'选择 {ownScope} 时，请自行配置好软件内的相关设置。',
+		]);
+		// A secret's name takes lowercase letters, digits and dashes alone, so the one suggested is such a name.
+		for (const [locale, table] of Object.entries(locales)) {
+			expect(table['recording.obs.passwordHint'], locale).toContain('obs-studio');
+		}
+	});
+
+	it('names the recorder in full wherever a recording speaks of it', () => {
+		for (const [locale, table] of Object.entries(locales)) {
+			for (const [key, value] of Object.entries(table)) {
+				if (!key.startsWith('recording.')) continue;
+				expect(/OBS(?! Studio)/u.test(value), `${locale} ${key}`).toBe(false);
+			}
+		}
+		expect(en['recording.obs.connected']).toBe('Connected to OBS Studio {version}.');
+		expect(zhCN['recording.obs.connected']).toBe('已连接到 OBS Studio {version}。');
+	});
+
+	it('says not to ask again in Obsidian’s own words, and counts in with a word for Escape', () => {
+		// Read from Obsidian 1.15's own tables: the box under its confirmations.
+		const own: Record<keyof typeof locales, string> = {
+			en: 'Don’t ask again',
+			'zh-CN': '不再询问',
+			'zh-TW': '不再過問',
+			ja: '次からは確認しない',
+			ko: '다시 묻지 않기',
+			fr: 'Ne pas redemander',
+			de: 'Nicht erneut fragen',
+			es: 'No preguntar de nuevo',
+		};
+		for (const [locale, table] of Object.entries(locales)) {
+			expect(table['recording.confirm.skip'], locale).toBe(own[locale as keyof typeof locales]);
+			expect(table['recording.countdown.hint'], locale).toMatch(/Esc|Échap/u);
+		}
+		expect(zhCN['recording.quality.full']).toBe('原生');
+		for (const table of Object.values(locales)) expect(table['recording.quality.1440p']).toBe('2K');
+	});
+
+	it('quotes OBS’s menus and boxes as OBS itself writes them in each language', () => {
+		// Read from OBS Studio 33's own locale files, its shortcut marks taken out.
+		const own: Record<keyof typeof locales, string[]> = {
+			en: ['Tools', 'WebSocket Server Settings', 'Enable WebSocket server', 'Show Connect Info', 'Server Password', 'Server Port'],
+			'zh-CN': ['工具', 'WebSocket 服务器设置', '开启 WebSocket 服务器', '显示连接信息', '服务器密码', '服务器端口'],
+			'zh-TW': ['工具', 'WebSocket 伺服器設定', '啟用 WebSocket 伺服器', '顯示連線資訊', '伺服器密碼', '伺服器連線埠'],
+			ja: ['ツール', 'WebSocket サーバー設定', 'WebSocketサーバーを有効にする', '接続情報を表示', 'サーバーパスワード', 'サーバーポート'],
+			ko: ['도구', 'WebSocket 서버 설정', 'WebSocket 서버 사용', '서버 정보 표시', '서버 비밀번호', '서버 포트'],
+			fr: ['Outils', 'Paramètres du serveur WebSocket', 'Activer le serveur WebSocket', 'Afficher les informations de connexion', 'Mot de passe du serveur', 'Port du serveur'],
+			de: ['Werkzeuge', 'WebSocket-Servereinstellungen', 'WebSocket-Server aktivieren', 'Verbindungsinformationen anzeigen', 'Serverpasswort', 'Serverport'],
+			es: ['Herramientas', 'Ajustes del servidor WebSocket', 'Habilitar servidor WebSocket', 'Mostrar información de conexión', 'Contraseña del servidor', 'Puerto del servidor'],
+		};
+		for (const [locale, table] of Object.entries(locales)) {
+			expect(
+				OBS_TERMS.map((term) => table[`recording.obs.term.${term}`]),
+				locale,
+			).toEqual(own[locale as keyof typeof locales]);
+		}
+	});
+
+	it('fills every name the guide quotes, in every language', () => {
+		// Two braces are the plugin's own: the recorder's name as a link, and the choice that leaves all to OBS.
+		const terms = new Set<string>([...OBS_TERMS, 'obs', 'ownScope']);
+		for (const [locale, table] of Object.entries(locales)) {
+			for (const step of OBS_GUIDE_STEPS) {
+				for (const match of table[step].matchAll(/\{([a-zA-Z]+)\}/gu)) {
+					expect(terms.has(match[1] ?? ''), `${locale} ${step}`).toBe(true);
+				}
 			}
 		}
 	});

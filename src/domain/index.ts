@@ -30,6 +30,8 @@ export * from './project-import';
 export * from './project-import-kinds';
 export * from './project-import-provenance';
 export * from './rank';
+export * from './recording';
+export * from './recording-obs';
 export * from './revisions';
 export * from './scene';
 export * from './scene-rows';

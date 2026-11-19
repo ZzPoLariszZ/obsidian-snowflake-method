@@ -68,6 +68,44 @@ describe('styles.css', () => {
 	 * back by 0.8.1, because nothing was watching. A class the plugin puts on
 	 * the element says the same thing and costs nothing to check.
 	 */
+	it('keeps the screen recording to theme tokens, with marks that never blink', () => {
+		const recording = section('Screen recording');
+		expect(recording.includes('!important')).toBe(false);
+		expect(recording.includes(':has(')).toBe(false);
+		expect(recording).not.toMatch(/column-(gap|count|width)/u);
+		expect(recording).not.toMatch(/text-indent|text-decoration/u);
+		// No color of its own: the theme's, in both of its looks.
+		expect(recording.replace(/\/\*[\s\S]*?\*\//g, ' ')).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/iu);
+		// The ribbon's button and the status bar's dot are the theme's red
+		// while something records, and nothing in the section moves: the
+		// page beside them is being written on.
+		expect(
+			declarations('.side-dock-ribbon-action.snowflake-method-recording-ribbon.is-recording'),
+		).toContain('color: var(--text-error)');
+		expect(
+			declarations('.snowflake-method-recording-face.is-recording .snowflake-method-recording-dot'),
+		).toContain('background: var(--text-error)');
+		expect(recording).not.toMatch(/animation|transition|@keyframes/u);
+		// A row drawn by hand folds with its section, one class deeper than its own display.
+		expect(
+			declarations(
+				'.snowflake-method-settings .snowflake-method-settings-section.is-collapsed .setting-item.snowflake-method-settings-recording-bare',
+			),
+		).toContain('display: none');
+		// The count's figure is said in the accent, as the note that invites is.
+		expect(declarations('.snowflake-method-recording-countdown-number')).toContain('color: var(--interactive-accent)');
+		expect(declarations('.snowflake-method-recording-countdown')).toContain('pointer-events: none');
+		// Of Obsidian's field for a secret the password's row shows the button alone.
+		expect(
+			declarations(
+				'.snowflake-method-settings .setting-item.snowflake-method-settings-recording-secret .setting-secret-value',
+			),
+		).toContain('display: none');
+		// The tab is gone, and what was only its own went with it.
+		expect(styles).not.toContain('snowflake-method-recording-panel');
+		expect(styles).not.toContain('snowflake-method-tabs.is-crowded');
+	});
+
 	it('asks nothing about what an element contains', () => {
 		const offenders = styles
 			.split('\n')

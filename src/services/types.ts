@@ -51,6 +51,21 @@ export function projectExportRoot(rootPath: string): string {
     : `${rootPath}/${PROJECT_EXPORT_FOLDER}`;
 }
 
+/**
+ * Where screen recordings go when the author keeps them in the Vault: beside
+ * the projects, like the archive and the exports, and unlocalized for the
+ * same reason. A recording belongs to no project, so there is one folder
+ * for all of them.
+ */
+export const PROJECT_RECORDING_FOLDER = "Snowflake Recordings";
+
+/** The recordings folder under one configured project root. */
+export function projectRecordingRoot(rootPath: string): string {
+  return rootPath.length === 0
+    ? PROJECT_RECORDING_FOLDER
+    : `${rootPath}/${PROJECT_RECORDING_FOLDER}`;
+}
+
 export const PROJECT_DIRECTORY_KEYS = [
   "system",
   "summaries",

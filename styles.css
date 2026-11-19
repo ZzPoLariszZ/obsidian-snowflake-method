@@ -13599,6 +13599,13 @@ button.snowflake-method-kind-options {
 	color: var(--text-warning);
 }
 
+/* The one notice that invites and does not warn: said in the accent, as a
+   hint's key words are. */
+.snowflake-method-history-notice[data-tone='accent'] {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
 .snowflake-method-history-notice-icon {
 	display: flex;
 	flex: 0 0 auto;
@@ -13754,6 +13761,191 @@ col.snowflake-method-history-column-actions {
 	tr.snowflake-method-history-day
 	> td::before {
 	content: none;
+}
+
+/* == Screen recording ====================================================== */
+
+/* A recording is no project's, so it has no pane of its own: a button in
+   the ribbon starts it and ends it, a mark in the status bar says it runs,
+   and its choices stand in the plugin's settings. */
+
+/* The ribbon's button wears the theme's red while a recording runs. It
+   never blinks: the page beside it is being written on. On its way in or
+   out it rests fainter, as a button that is at work. */
+.side-dock-ribbon-action.snowflake-method-recording-ribbon.is-recording,
+.side-dock-ribbon-action.snowflake-method-recording-ribbon.is-recording:hover {
+	color: var(--text-error);
+}
+
+.side-dock-ribbon-action.snowflake-method-recording-ribbon.is-busy {
+	opacity: 0.6;
+}
+
+/* The recording's mark in the status bar: a dot and the running clock.
+   The dot is faint on the way in or out and red while a recording runs. */
+.status-bar-item.snowflake-method-recording-face {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-recording-dot {
+	flex: 0 0 auto;
+	width: 0.625rem;
+	height: 0.625rem;
+	border-radius: 50%;
+	background: var(--text-faint);
+}
+
+.snowflake-method-recording-face.is-recording .snowflake-method-recording-dot {
+	background: var(--text-error);
+}
+
+/* The dialog before a start says what the settings say, drawn as they draw
+   it: what a recording is for in the accent, then the warning. */
+.snowflake-method-recording-confirm-notes {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+/* The box that says not to ask again stands at the head of the buttons, as
+   in Obsidian's own confirmations. */
+.snowflake-method-recording-confirm-skip {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+
+/* The count before a recording begins: one large figure in the accent, in
+   the middle of the window, over everything and in nobody's way. It takes no click, so
+   the page under it can still be put as it should be seen, and it does not
+   move: the figure changes once a second and that is all. */
+.snowflake-method-recording-countdown {
+	position: fixed;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	z-index: var(--layer-notice);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-width: 9rem;
+	padding: var(--size-4-6) var(--size-4-8);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-xl);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-l);
+	translate: -50% -50%;
+	pointer-events: none;
+}
+
+.snowflake-method-recording-countdown-number {
+	color: var(--interactive-accent);
+	font-size: 6rem;
+	font-weight: var(--font-bold);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+
+.snowflake-method-recording-countdown-hint {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+}
+
+/* A row of the settings section that is not a name beside a control: the
+   three notes, what macOS allows, OBS's folded guide. What it holds carries
+   its own frame, so the row sheds the soft block the other rows wear and
+   stacks its lines, as the highlight rules' shelf does. */
+.snowflake-method-settings
+	.setting-group
+	.setting-item.snowflake-method-settings-recording-bare {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--size-4-2);
+	padding: 0;
+	background: transparent;
+}
+
+/* Folded, the row folds with its section: said one class deeper than the
+   row's own display, so the fold outranks it whatever their order. */
+.snowflake-method-settings
+	.snowflake-method-settings-section.is-collapsed
+	.setting-item.snowflake-method-settings-recording-bare {
+	display: none;
+}
+
+/* The app parts a row's first child from its control column. This row is a
+   stack, not two columns, so the part would only narrow its lines. */
+.snowflake-method-settings
+	.setting-item.snowflake-method-settings-recording-bare
+	> :first-child {
+	margin-inline-end: 0;
+}
+
+/* The folded guide is the row itself, with no gap owed to anything after it. */
+.snowflake-method-settings-recording-guide .snowflake-method-writing-hints {
+	margin: 0;
+}
+
+/* The recorder's name in the guide is the way to its page: the accent, a
+   dashed line under the name and the sign of a link after it, as the
+   dashboard's hints draw theirs. */
+.snowflake-method-recording-link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	color: var(--interactive-accent);
+	font-weight: var(--font-semibold);
+	vertical-align: baseline;
+	cursor: var(--cursor-link);
+}
+
+@media (hover: hover) {
+	.snowflake-method-recording-link:hover {
+		color: var(--interactive-accent-hover);
+	}
+}
+
+.snowflake-method-recording-link:focus-visible {
+	border-radius: var(--radius-s);
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+/* A folder's whole path is long and has nowhere to break: it breaks
+   anywhere rather than widen its row. */
+.snowflake-method-settings-recording-path {
+	overflow-wrap: anywhere;
+	font-family: var(--font-monospace);
+}
+
+/* A line of a row's description that warns: a vault that syncs, a folder
+   that is a project's, an OBS that did not answer. */
+.snowflake-method-settings-recording-warning {
+	color: var(--text-warning);
+}
+
+/* Of Obsidian's field for a secret the row shows its button alone: the
+   button reads as the way to choose a secret, then as the way to change
+   it, and the masked chip beside it told the author nothing more. */
+.snowflake-method-settings
+	.setting-item.snowflake-method-settings-recording-secret
+	.setting-secret-value {
+	display: none;
+}
+
+/* What OBS would record, small: enough to tell a screen from a blank. */
+.snowflake-method-recording-preview {
+	display: block;
+	width: 100%;
+	max-width: 30rem;
+	margin-block-start: var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
 }
 
 /* == Sticky notes ========================================================== */
