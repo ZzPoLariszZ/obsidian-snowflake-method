@@ -478,11 +478,11 @@ export interface ManuscriptHost {
 		vars?: Record<string, string | number>,
 	): string;
 	/**
-	 * The language the interface speaks to a project in that language, as
-	 * `translateForProject` resolves it: what the stream's words were written
-	 * in, to tell when the setting has moved under them.
+	 * The language `translateForProject` speaks for a project in that
+	 * language: what the stream's words were written in, to tell when the
+	 * setting has moved under them, and what its numbers are written in.
 	 */
-	interfaceLocale(locale: ProjectLanguage | null): ProjectLanguage;
+	localeForProject(locale: ProjectLanguage | null): ProjectLanguage;
 	manuscriptWindowSettings(): ManuscriptWindowSettings;
 	/**
 	 * The writing count and session faces on the stream's bar, where the
@@ -870,7 +870,7 @@ export interface DashboardHost {
 	 * `translateForProject` resolves it: half of what a kept panel was built
 	 * for, since the setting can move it while the project stays put.
 	 */
-	interfaceLocale(locale: ProjectLanguage | null): ProjectLanguage;
+	localeForProject(locale: ProjectLanguage | null): ProjectLanguage;
 	getRecentStep(): StepId;
 	isReduceMotionEnabled(): boolean;
 	/** True while the tables write each note's progress status under its name. */

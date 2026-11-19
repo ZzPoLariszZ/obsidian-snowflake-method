@@ -41,6 +41,7 @@ import {
 	renameInOrders,
 	type ExplorerOrders,
 } from '../domain';
+import { numberFormat } from '../i18n/numbers';
 import {
 	builtinRuleFor,
 	compileHiddenList,
@@ -1118,7 +1119,8 @@ export class ExplorerEnhancer {
 	}
 
 	private fill(badge: HTMLElement, total: number | null): void {
-		const text = total === null ? '' : total.toLocaleString(this.deps.locale());
+		const text =
+			total === null ? '' : numberFormat(this.deps.locale()).grouped(total);
 		if (badge.textContent !== text) badge.setText(text);
 	}
 

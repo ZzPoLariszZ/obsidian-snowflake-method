@@ -102,14 +102,6 @@ export function renderSplitButton(
 }
 
 /**
- * A count as a reader groups it. Both languages this plugin speaks group by
- * threes with a comma, so one grouping serves them both.
- */
-export function grouped(value: number): string {
-	return value.toLocaleString('en-US');
-}
-
-/**
  * A count in one of the circles the panes keep: the figures, and how many
  * there are, which the stylesheet reads to draw three or four of them small
  * enough to stand inside the circle. Four is where its steps stop.

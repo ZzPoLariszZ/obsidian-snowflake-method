@@ -113,6 +113,7 @@ import {
 	t as translate,
 	type UiLocalePreference,
 } from './i18n';
+import { numberFormat } from './i18n/numbers';
 import {
 	displayProjectRoot,
 	isValidProjectRoot,
@@ -1773,7 +1774,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 								(value) =>
 									value === 0
 										? this.t('settings.manuscriptAppearance.themeDefault')
-										: String(value),
+										: numberFormat(this.locale()).decimal(value),
 								PRESENTATION_THEME_VARS.lineHeight,
 							),
 					},
@@ -1805,7 +1806,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 										value === 1
 											? 'settings.manuscriptParagraphSpacing.line'
 											: 'settings.manuscriptParagraphSpacing.lines',
-										{ value },
+										{ value: numberFormat(this.locale()).decimal(value) },
 									),
 							),
 					},
@@ -1820,7 +1821,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 								(value) =>
 									value === 0
 										? this.t('settings.manuscriptFirstLineIndent.none')
-										: this.t('settings.manuscriptFirstLineIndent.value', { value }),
+										: this.t('settings.manuscriptFirstLineIndent.value', {
+												value: numberFormat(this.locale()).decimal(value),
+											}),
 							),
 					},
 					{

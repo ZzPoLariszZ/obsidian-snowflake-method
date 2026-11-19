@@ -5,6 +5,7 @@
  */
 
 import type { FrequencyRow } from '../domain';
+import type { NumberFormat } from '../i18n/numbers';
 import type {
 	ManuscriptProseRow,
 	ManuscriptProseStatistics,
@@ -60,19 +61,22 @@ export function dialoguePercent(
 	return (stats.dialogueCounted / stats.counted) * 100;
 }
 
-/** How every derived figure is written: two decimals, always both. */
-export function formatDecimal(value: number): string {
-	return value.toFixed(2);
+/**
+ * How every derived figure is written: two decimals, always both, behind the
+ * decimal sign of the language the panel speaks.
+ */
+export function formatDecimal(value: number, numbers: NumberFormat): string {
+	return numbers.fixed(value, 2);
 }
 
 /**
  * How every percent is written: two decimals and at least two whole digits,
  * a single one fed with a leading zero, so shares stacked in a column hold
- * one width -- 09.39 under 34.07 -- and only a full hundred runs longer.
+ * one width -- 09.39% under 34.07% -- and only a full hundred runs longer.
+ * The sign is the language's own, spaced from the figure where it is spaced.
  */
-export function formatPercent(value: number): string {
-	const text = formatDecimal(value);
-	return text.length < 5 ? `0${text}` : text;
+export function formatPercent(value: number, numbers: NumberFormat): string {
+	return numbers.percent(value, 2, 2);
 }
 
 /**
@@ -83,9 +87,10 @@ export function formatPercent(value: number): string {
 export function frequencySharePercent(
 	count: number,
 	total: number,
+	numbers: NumberFormat,
 ): string | null {
 	if (total <= 0) return null;
-	return formatPercent((count / total) * 100);
+	return formatPercent((count / total) * 100, numbers);
 }
 
 export interface ProseSummary {

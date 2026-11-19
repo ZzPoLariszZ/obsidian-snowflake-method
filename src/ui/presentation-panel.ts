@@ -16,6 +16,7 @@ import {
 	PRESENTATION_THEME_VARS,
 	type ManuscriptPresentation,
 } from '../domain';
+import { numberFormat } from '../i18n/numbers';
 import {
 	addChoicePicker,
 	addFontFamilyPicker,
@@ -37,6 +38,8 @@ export interface PresentationPanelDeps {
 	/** The button the panel hangs under. */
 	anchor: HTMLElement;
 	t: (key: string, vars?: Record<string, string | number>) => string;
+	/** The language the panel speaks, which its measures are written in too. */
+	locale: () => string;
 	look: () => ManuscriptPresentation;
 	set: (patch: Partial<ManuscriptPresentation>) => Promise<void>;
 	/** The faces set lately, newest first, offered at the top of the font list. */
@@ -124,6 +127,7 @@ export function openPresentationPanel(
 	const row = (name: string): Setting => new Setting(body).setName(name);
 	const look = deps.look();
 	const themeDefault = t('settings.manuscriptAppearance.themeDefault');
+	const numbers = numberFormat(deps.locale());
 	const resetLabel = t('settings.manuscriptAppearance.reset');
 	const fallback = DEFAULT_MANUSCRIPT_PRESENTATION;
 	const pixels = (value: number): string =>
@@ -167,7 +171,7 @@ export function openPresentationPanel(
 		resetValue: fallback.lineHeight,
 		resetLabel,
 		themeVar: PRESENTATION_THEME_VARS.lineHeight,
-		format: (value) => (value === 0 ? themeDefault : String(value)),
+		format: (value) => (value === 0 ? themeDefault : numbers.decimal(value)),
 		onPick: (value) => {
 			write({ lineHeight: value });
 		},
@@ -195,7 +199,7 @@ export function openPresentationPanel(
 					value === 1
 						? 'settings.manuscriptParagraphSpacing.line'
 						: 'settings.manuscriptParagraphSpacing.lines',
-					{ value },
+					{ value: numbers.decimal(value) },
 				),
 			onPick: (value) => {
 				write({ paragraphSpacing: value });
@@ -210,7 +214,9 @@ export function openPresentationPanel(
 		format: (value) =>
 			value === 0
 				? t('settings.manuscriptFirstLineIndent.none')
-				: t('settings.manuscriptFirstLineIndent.value', { value }),
+				: t('settings.manuscriptFirstLineIndent.value', {
+						value: numbers.decimal(value),
+					}),
 		onPick: (value) => {
 			write({ firstLineIndent: value });
 		},

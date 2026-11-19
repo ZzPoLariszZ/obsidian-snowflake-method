@@ -16,6 +16,7 @@ import cloud from 'd3-cloud';
 import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import type { FrequencyRow } from '../domain';
+import { numberFormat, type NumberFormat } from '../i18n/numbers';
 import type { ManuscriptProseStatistics, ManuscriptProseRow } from '../services';
 import { hangPanel } from './anchored-panel';
 import type { Translate } from './modals';
@@ -39,6 +40,8 @@ import { VirtualTable, buildTableFrame } from './virtual-table';
 
 export interface ProsePanelBridge {
 	t: Translate;
+	/** The language the panel speaks, which its figures are written in too. */
+	locale(): string;
 	statistics(): Promise<ManuscriptProseStatistics | null>;
 	frequency(options: {
 		includeStopwords: boolean;
@@ -91,6 +94,8 @@ export function renderProsePanel(
 	filters: ProseFilterMemory,
 ): ProsePanelHandle {
 	const t = bridge.t;
+	// Asked at every paint, the way the words are, so the two never part.
+	const numbers = (): NumberFormat => numberFormat(bridge.locale());
 	const root = container.createDiv({ cls: 'snowflake-method-prose-panel' });
 	let statistics: ManuscriptProseStatistics | null = null;
 	let entries: ManuscriptProseRow[] = [];
@@ -274,6 +279,7 @@ export function renderProsePanel(
 			const row = entries[index];
 			if (row === undefined) return;
 			const speeds = bridge.readingSpeeds();
+			const figures = numbers();
 			const tr = body.createEl('tr', {
 				cls: 'snowflake-method-prose-row',
 			});
@@ -301,7 +307,10 @@ export function renderProsePanel(
 			cell('readingTime', formatReadingTime(readingMinutes(row, speeds), t));
 			cell('sentences', String(row.sentences));
 			const average = averageSentenceLength(row, row.sentences);
-			cell('averageSentence', average === null ? '' : formatDecimal(average));
+			cell(
+				'averageSentence',
+				average === null ? '' : formatDecimal(average, figures),
+			);
 			const share = dialoguePercent(row);
 			// The count first and the share after it in brackets, the way the
 			// frequency rows say their numbers: how much, then how much of it.
@@ -309,7 +318,7 @@ export function renderProsePanel(
 				'dialogue',
 				share === null
 					? ''
-					: `${String(row.dialogueCounted)} (${formatPercent(share)}%)`,
+					: `${String(row.dialogueCounted)} (${formatPercent(share, figures)})`,
 			);
 		},
 		renderTail: () => undefined,
@@ -433,6 +442,7 @@ export function renderProsePanel(
 		summaryEl.empty();
 		if (statistics === null) return;
 		const summary = proseSummary(statistics, bridge.readingSpeeds(), t);
+		const figures = numbers();
 		// The widget cards' own order: the muted title above, the figure below.
 		const item = (label: string, value: string): void => {
 			const box = summaryEl.createDiv({
@@ -454,19 +464,19 @@ export function renderProsePanel(
 		if (summary.sentencesPerChapter !== null) {
 			item(
 				t('prose.summary.sentencesPerChapter'),
-				formatDecimal(summary.sentencesPerChapter),
+				formatDecimal(summary.sentencesPerChapter, figures),
 			);
 		}
 		if (summary.averageSentence !== null) {
 			item(
 				t('prose.summary.averageSentence'),
-				formatDecimal(summary.averageSentence),
+				formatDecimal(summary.averageSentence, figures),
 			);
 		}
 		if (summary.dialoguePercent !== null) {
 			item(
 				t('prose.summary.dialogueShare'),
-				`${formatPercent(summary.dialoguePercent)}%`,
+				formatPercent(summary.dialoguePercent, figures),
 			);
 		}
 	};
@@ -476,6 +486,7 @@ export function renderProsePanel(
 		// An empty answer keeps an empty frame: whether nothing matched the
 		// search or nothing has been counted, the silence says it.
 		const filtered = filterFrequencyRows(frequency, frequencyQuery);
+		const figures = numbers();
 		for (const row of filtered.slice(0, MAX_FREQUENCY_ROWS)) {
 			const line = frequencyList.createDiv({
 				cls: 'snowflake-method-prose-frequency-row',
@@ -492,15 +503,15 @@ export function renderProsePanel(
 				cls: 'snowflake-method-prose-frequency-term',
 				text: row.term,
 			});
-			const numbers = line.createSpan({
+			const counted = line.createSpan({
 				cls: 'snowflake-method-prose-frequency-count',
 				text: String(row.count),
 			});
-			const share = frequencySharePercent(row.count, frequencyTotal);
+			const share = frequencySharePercent(row.count, frequencyTotal, figures);
 			if (share !== null) {
-				numbers.createSpan({
+				counted.createSpan({
 					cls: 'snowflake-method-prose-frequency-share',
-					text: `(${share}%)`,
+					text: `(${share})`,
 				});
 			}
 		}
@@ -658,12 +669,16 @@ export function renderProsePanel(
 						},
 					});
 					el.textContent = word.text;
-					const share = frequencySharePercent(word.count, frequencyTotal);
+					const share = frequencySharePercent(
+						word.count,
+						frequencyTotal,
+						numbers(),
+					);
 					setTooltip(
 						el as unknown as HTMLElement,
 						share === null
 							? String(word.count)
-							: `${String(word.count)} (${share}%)`,
+							: `${String(word.count)} (${share})`,
 					);
 				}
 			});

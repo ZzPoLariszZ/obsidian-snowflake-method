@@ -143,6 +143,7 @@ import {
 	type ProjectLanguage,
 } from './domain';
 import { intlLocaleOf, resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
+import { numberFormat } from './i18n/numbers';
 import {
 	areManagedBoundariesUnlocked,
 	caretParagraphWhen,
@@ -1007,10 +1008,17 @@ export default class SnowflakeMethodPlugin
 		locale: ProjectLanguage | null,
 		key: string,
 		vars?: Record<string, string | number>,
-	): string => translate(this.interfaceLocale(locale), key, vars);
+	): string => translate(this.localeForProject(locale), key, vars);
 
-	/** The language the interface speaks to a project in this language, or to the current one for null. */
-	readonly interfaceLocale = (locale: ProjectLanguage | null): ProjectLanguage =>
+	/**
+	 * The language a surface for a project speaks: the one the settings name,
+	 * else that project's own, else the language of the project being worked
+	 * in. Its words are read in it and its numbers written in it, so the one
+	 * answer serves both and the two never part.
+	 */
+	readonly localeForProject = (
+		locale: ProjectLanguage | null,
+	): ProjectLanguage =>
 		resolveLocale(
 			this.settings.uiLocale,
 			moment.locale(),
@@ -1081,6 +1089,10 @@ export default class SnowflakeMethodPlugin
 					path === null ? null : this.noteStanding(path).locale,
 					key,
 					vars,
+				),
+			locale: (path) =>
+				this.localeForProject(
+					path === null ? null : this.noteStanding(path).locale,
 				),
 			wears: (path) => this.notePresentation?.wears(path) === true,
 			notes: () => this.openNotes(),
@@ -6147,6 +6159,7 @@ export default class SnowflakeMethodPlugin
 			context.projectPath ?? this.settings.recentProjectPath;
 		return {
 			t,
+			locale: () => this.localeForProject(projectLocale),
 			read: async () => {
 				const project = await this.resolveProject(panelProject());
 				if (project === null) return null;
@@ -6463,6 +6476,7 @@ export default class SnowflakeMethodPlugin
 		};
 		return {
 			t,
+			locale: () => this.localeForProject(projectLocale),
 			statistics: async () =>
 				read(async (project) =>
 					this.projects.analysis.statistics(
@@ -6695,14 +6709,7 @@ export default class SnowflakeMethodPlugin
 		};
 		return {
 			t,
-			locale: () =>
-				resolveLocale(
-					this.settings.uiLocale,
-					moment.locale(),
-					projectLocale ??
-						this.currentProjectLocale ??
-						this.resolvedDefaultProjectLocale(),
-				),
+			locale: () => this.localeForProject(projectLocale),
 			weekStart: () => this.settings.sessionWeekStart,
 			dateFormat: () => this.settings.sessionDateFormat,
 			today: () => this.sessions.today(),
@@ -6765,14 +6772,7 @@ export default class SnowflakeMethodPlugin
 		};
 		return {
 			t,
-			locale: () =>
-				resolveLocale(
-					this.settings.uiLocale,
-					moment.locale(),
-					projectLocale ??
-						this.currentProjectLocale ??
-						this.resolvedDefaultProjectLocale(),
-				),
+			locale: () => this.localeForProject(projectLocale),
 			weekStart: () => this.settings.sessionWeekStart,
 			dateFormat: () => this.settings.sessionDateFormat,
 			today: () => this.sessions.today(),
@@ -6899,10 +6899,12 @@ export default class SnowflakeMethodPlugin
 		this.sessions.noteChanged(path, () => body);
 	}
 
-	/** A number as the reader's own locale groups it. */
+	/**
+	 * A count as the words around it group one. The status bar and its menus
+	 * speak the project's language, so their numbers are written in it too.
+	 */
 	private grouped(value: number): string {
-		const locale = resolveGlobalLocale(this.settings.uiLocale, moment.locale());
-		return value.toLocaleString(intlLocaleOf(locale));
+		return numberFormat(this.currentLocale()).grouped(value);
 	}
 
 	/**
@@ -12758,7 +12760,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private currentLocale(): ProjectLanguage {
-		return this.interfaceLocale(null);
+		return this.localeForProject(null);
 	}
 
 	private resolvedDefaultProjectLocale(): ProjectLanguage {

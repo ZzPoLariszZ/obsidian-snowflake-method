@@ -50,6 +50,12 @@ export interface TaskBoardReading {
 
 export interface TaskBoardBridge {
 	t: Translate;
+	/**
+	 * The language the board speaks, which its numbers are written in too.
+	 * Not the reading's `locale`, which is the project's and stays so while
+	 * the settings have the interface speak another.
+	 */
+	locale: () => string;
 	/** Everything, freshly derived; null while no project stands. */
 	read: () => Promise<TaskBoardReading | null>;
 	/** Fires when the tasks or any source of a derived card changed. */

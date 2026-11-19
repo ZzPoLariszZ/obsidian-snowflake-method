@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { t as translate } from '../../src/i18n';
+import { numberFormat } from '../../src/i18n/numbers';
 import type { ManuscriptProseStatistics } from '../../src/services';
 import {
 	averageSentenceLength,
@@ -22,6 +23,9 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
 	translate('en', key, vars);
 
 const speeds: ReadingSpeeds = { wordsPerMinute: 250, cjkPerMinute: 400 };
+
+const english = numberFormat('en');
+const german = numberFormat('de');
 
 describe('reading time', () => {
 	it('reads each script at its own speed and sums the minutes', () => {
@@ -58,22 +62,27 @@ describe('averages and shares', () => {
 	});
 
 	it('writes every derived figure with both decimals', () => {
-		expect(formatDecimal(12.5)).toBe('12.50');
-		expect(formatDecimal(100 / 3)).toBe('33.33');
-		expect(formatDecimal(0)).toBe('0.00');
+		expect(formatDecimal(12.5, english)).toBe('12.50');
+		expect(formatDecimal(100 / 3, english)).toBe('33.33');
+		expect(formatDecimal(0, english)).toBe('0.00');
+		// The figures stay; the decimal sign is the language's.
+		expect(formatDecimal(133, german)).toBe('133,00');
+		expect(formatDecimal(11.58, german)).toBe('11,58');
 	});
 
 	it('writes every percent at one width, a lone digit fed a zero', () => {
-		expect(formatPercent(9.39)).toBe('09.39');
-		expect(formatPercent(34.07)).toBe('34.07');
-		expect(formatPercent(0)).toBe('00.00');
-		expect(formatPercent(100)).toBe('100.00');
+		expect(formatPercent(9.39, english)).toBe('09.39%');
+		expect(formatPercent(34.07, english)).toBe('34.07%');
+		expect(formatPercent(0, english)).toBe('00.00%');
+		expect(formatPercent(100, english)).toBe('100.00%');
+		// German keeps the width and spaces its sign with a space that holds.
+		expect(formatPercent(7.79, german)).toBe('07,79\u00a0%');
 	});
 
 	it('says a share of the whole vocabulary, or nothing off nothing', () => {
-		expect(frequencySharePercent(135, 3100)).toBe('04.35');
-		expect(frequencySharePercent(1, 3100)).toBe('00.03');
-		expect(frequencySharePercent(9, 0)).toBeNull();
+		expect(frequencySharePercent(135, 3100, english)).toBe('04.35%');
+		expect(frequencySharePercent(1, 3100, english)).toBe('00.03%');
+		expect(frequencySharePercent(9, 0, english)).toBeNull();
 	});
 
 	it('folds the totals into one summary strip', () => {

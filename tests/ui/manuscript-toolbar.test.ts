@@ -184,7 +184,7 @@ const standing = () => {
 		searchBar: { relabel: () => asked.push('find bar') },
 		t: (key: string) => `${language}:${key}`,
 		host: {
-			interfaceLocale: () => language,
+			localeForProject: () => language,
 			mountWritingFaces: (bar: HTMLElement) => {
 				bar.createDiv({ cls: 'snowflake-method-toolbar-faces' });
 				return () => {

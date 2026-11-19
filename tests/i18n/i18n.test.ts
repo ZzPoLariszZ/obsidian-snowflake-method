@@ -1072,10 +1072,8 @@ describe('translation resources', () => {
 			'sessionWidget.bands.title',
 			'sessionWidget.bands.span',
 			'sessionWidget.bands.measure',
-			'sessionWidget.bands.share',
 			'sessionWidget.modes.title',
 			'sessionWidget.modes.focus',
-			'sessionWidget.modes.share',
 		];
 		for (const key of keys) {
 			expect(Object.keys(en), key).toContain(key);
@@ -1091,9 +1089,6 @@ describe('translation resources', () => {
 			expect(Object.keys(en)).toContain(`session.mode.${mode}`);
 			expect(Object.keys(zhCN)).toContain(`session.mode.${mode}`);
 		}
-		expect(t('en', 'sessionWidget.bands.share', { share: '32.1' })).toBe(
-			'32.1%',
-		);
 		// The gauges name the scope they are measuring, so a goal on the
 		// project beside a day read as the manuscript reads as two questions.
 		expect(en['sessionWidget.week.title']).toBe('Weekly goal ({scope})');

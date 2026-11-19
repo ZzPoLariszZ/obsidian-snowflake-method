@@ -40,6 +40,7 @@ async function setup() {
 	};
 	const bridge: TaskBoardBridge = {
 		t: (key) => key,
+		locale: () => 'en',
 		read: async () => ({
 			projectPath: 'Novel/Project.md', locale: 'en', readOnly: false,
 			today: '2026-09-08', week: { from: '2026-09-07', to: '2026-09-13' },

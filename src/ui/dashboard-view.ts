@@ -1200,7 +1200,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		return keptPanelKey(
 			this.projectPath,
 			this.projectLocale,
-			this.host.interfaceLocale(this.projectLocale),
+			this.host.localeForProject(this.projectLocale),
 		);
 	}
 

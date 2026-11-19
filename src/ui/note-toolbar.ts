@@ -77,6 +77,8 @@ export interface NoteToolbarDeps {
 	app: App;
 	/** The words for a note's bar, in the tongue of the project the note is in. */
 	t(path: string | null): (key: string, vars?: Record<string, string | number>) => string;
+	/** The language those words are in, which the bar's numbers are written in too. */
+	locale(path: string | null): string;
 	/** Whether a note at a path is one the dress, and so the bar, reaches. */
 	wears(path: string): boolean;
 	/** Every note view open anywhere, popouts included. */
@@ -438,6 +440,7 @@ export class NoteToolbars {
 			app: this.deps.app,
 			anchor,
 			t: this.deps.t(note.path),
+			locale: () => this.deps.locale(note.path),
 			look: () => this.deps.settings().presentation,
 			set: (patch) => this.deps.setPresentation(patch),
 			recentFonts: () => this.deps.settings().recentFonts,

@@ -28,6 +28,7 @@ import {
 	type StickyNoteColor,
 	type StickyNoteMode,
 } from '../domain';
+import { numberFormat } from '../i18n/numbers';
 import type { StickyNoteRecord } from '../services';
 import { hangPanel, placePanel } from './anchored-panel';
 import { clickedWords, type ClickedWords } from './clicked-words';
@@ -54,6 +55,7 @@ export interface StickyNoteCardDeps {
 	component: Component;
 	/** The surface's editor backend; one editor per note is the hub's rule, not this one's. */
 	backend: SegmentEditorBackend;
+	/** The language the card's dates are read in and its numbers written in. */
 	locale: string;
 	/** The project may not be written to: every control that writes is off. */
 	readOnly: boolean;
@@ -866,14 +868,15 @@ class StickyNoteCard implements StickyNoteCardHandle {
 				},
 			});
 			input.value = String(this.alpha);
+			const numbers = numberFormat(this.deps.locale);
 			const value = panel.createSpan({
 				cls: 'snowflake-method-sticky-alpha-value',
-				text: `${String(this.alpha)}%`,
+				text: numbers.percent(this.alpha),
 			});
 			input.addEventListener('input', () => {
 				const next = stepStickyNoteAlpha(Number(input.value));
 				this.setAlpha(next);
-				value.setText(`${String(next)}%`);
+				value.setText(numbers.percent(next));
 				floating.onAlpha(next);
 			});
 			this.alphaInput = input;

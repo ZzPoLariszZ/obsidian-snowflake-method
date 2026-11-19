@@ -47,7 +47,7 @@ function dashboard(): {
 	const host = {
 		getRecentStep: () => 1,
 		isFreeformModeEnabled: () => false,
-		interfaceLocale: () => language,
+		localeForProject: () => language,
 		translateForProject: (_locale: string | null, key: string) => `${language}:${key}`,
 		writingSessions: () => ({ t: (key: string) => `${language}:${key}` }),
 	} as unknown as DashboardHost;

@@ -36,6 +36,7 @@ async function board(memory: TaskBoardMemory = taskBoardMemory()) {
 	const panel = new FilterPanel({} as App, (key) => key);
 	const bridge: TaskBoardBridge = {
 		t: (key) => key,
+		locale: () => 'en',
 		read: async () => ({
 			projectPath: 'Novel/Project.md', locale: 'en', readOnly: false,
 			today: '2026-09-08', week: { from: '2026-09-07', to: '2026-09-13' },
@@ -100,6 +101,7 @@ describe('a reveal asked for before the board has read', () => {
 		let land: (reading: Awaited<ReturnType<TaskBoardBridge['read']>>) => void = () => undefined;
 		const bridge: TaskBoardBridge = {
 			t: (key) => key,
+			locale: () => 'en',
 			read: () => new Promise((resolve) => { land = resolve; }),
 			subscribe: () => () => undefined,
 			today: () => '2026-09-08',

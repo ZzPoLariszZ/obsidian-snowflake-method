@@ -657,7 +657,7 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 
 	/** The language the interface speaks to the project on the page. */
 	private language(): ProjectLanguage {
-		return this.host.interfaceLocale(this.model?.locale ?? null);
+		return this.host.localeForProject(this.model?.locale ?? null);
 	}
 
 	getState(): Record<string, unknown> {
@@ -1670,6 +1670,7 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 			app: this.app,
 			anchor,
 			t: this.t,
+			locale: () => this.host.localeForProject(this.model?.locale ?? null),
 			look: () => this.host.manuscriptWindowSettings().presentation,
 			set: (patch) => this.host.setManuscriptPresentation(patch),
 			recentFonts: () => this.host.manuscriptWindowSettings().recentFonts,

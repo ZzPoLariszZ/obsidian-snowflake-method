@@ -44,6 +44,7 @@ import {
 	type WritingSessionType,
 	type ProjectLanguage,
 } from '../domain';
+import { numberFormat, type NumberFormat } from '../i18n/numbers';
 import { sessionClockMs } from '../services';
 import type {
 	LiveWritingSession,
@@ -51,7 +52,6 @@ import type {
 	WritingDayTotals,
 	WritingSpread,
 } from '../services';
-import { grouped } from './pane-parts';
 
 /**
  * Which project a session panel is for, and how it should speak. Both are
@@ -113,7 +113,7 @@ export interface SessionSetup {
  */
 export interface SessionPanelBridge {
 	t: (key: string, vars?: Record<string, string | number>) => string;
-	/** The language the panel's calendar names are read in. */
+	/** The language the panel speaks: its calendar names are read in it and its numbers written in it. */
 	locale(): string;
 	/** The day the author draws a week from. */
 	weekStart(): WeekStartDay;
@@ -198,6 +198,14 @@ const DAY_REREAD_MS = 10_000;
  * morning still calling yesterday today.
  */
 const DAY_WATCH_MS = 60_000;
+
+/**
+ * How the panel writes its numbers: in the language its words are in, and
+ * asked again at every paint the way its words are, so the two never part.
+ */
+function numbersOf(bridge: SessionPanelBridge): NumberFormat {
+	return numberFormat(bridge.locale());
+}
 
 /**
  * Renders the three session widgets into `container` and keeps them current:
@@ -433,8 +441,9 @@ type SpanGoal = (typeof SPAN_GOALS)[number];
  */
 function createGauge(
 	frame: WidgetFrame,
-	t: SessionPanelBridge['t'],
+	bridge: SessionPanelBridge,
 ): (net: number, target: number) => void {
+	const t = bridge.t;
 	const gauge = frame.body.createDiv({ cls: 'snowflake-method-gauge' });
 	const svg = frame.body.doc.createElementNS(SVG_NS, 'svg');
 	svg.setAttribute('viewBox', '0 0 120 66');
@@ -475,11 +484,12 @@ function createGauge(
 		// went. The arc is what the dial can hold: words lost leave it at
 		// nothing rather than behind it, and anything beyond 120% fills it.
 		const drawn = Math.min(GAUGE_CEILING, Math.max(0, share));
-		percent.setText(`${Math.round(share * 100)}%`);
+		const numbers = numbersOf(bridge);
+		percent.setText(numbers.percent(Math.round(share * 100)));
 		caption.setText(
 			t('sessionWidget.goal.progress', {
-				net: grouped(net),
-				goal: grouped(target),
+				net: numbers.grouped(net),
+				goal: numbers.grouped(target),
 			}),
 		);
 		fill.setAttribute(
@@ -505,7 +515,7 @@ function renderGoalWidget(
 			},
 		},
 	});
-	const show = createGauge(frame, t);
+	const show = createGauge(frame, bridge);
 	return {
 		update: (summary) => {
 			frame.title.setText(goalTitle(bridge, 'goal'));
@@ -537,7 +547,7 @@ function renderSpanGoalWidget(
 			},
 		},
 	});
-	const show = createGauge(frame, t);
+	const show = createGauge(frame, bridge);
 	return {
 		update: (history) => {
 			frame.title.setText(goalTitle(bridge, span));
@@ -745,12 +755,13 @@ function renderTodayWidget(
 				timedNet: 0,
 				goalNet: 0,
 			};
+			const numbers = numbersOf(bridge);
 			sessions.setText(`${day.sessions}`);
 			total.setText(formatClock(day.totalMs));
 			focus.setText(formatClock(day.focusMs));
 			idle.setText(formatClock(day.idleMs));
-			added.setText(`+${grouped(day.added)}`);
-			deleted.setText(`-${grouped(day.deleted)}`);
+			added.setText(`+${numbers.grouped(day.added)}`);
+			deleted.setText(`-${numbers.grouped(day.deleted)}`);
 			// Pace is words over focus, and only sessions have focus: the
 			// day's untimed words stay out of it by reading the timed net.
 			const speed = sessionPace(day.timedNet, day.focusMs);
@@ -918,8 +929,11 @@ function renderTrendWidget(
 			const sum = totals.reduce((carried, one) => carried + one, 0);
 			const top = Math.max(0, ...totals.map(Math.abs));
 			const words = view.measure !== 'time';
+			const numbers = numbersOf(bridge);
 			const say = (value: number): string =>
-				words ? grouped(Math.round(value)) : formatClock(Math.round(value));
+				words
+					? numbers.grouped(Math.round(value))
+					: formatClock(Math.round(value));
 			average.setText(say(days.length === 0 ? 0 : sum / days.length));
 			highest.setText(say(top));
 			cumulative.setText(say(sum));
@@ -943,6 +957,7 @@ function dayDetail(
 	day: WritingDayTotals,
 	measure: ReadingMeasure,
 ): string[] {
+	const numbers = numbersOf(bridge);
 	return [
 		formatDay(day.day, bridge.dateFormat()),
 		measure === 'time'
@@ -952,9 +967,9 @@ function dayDetail(
 					total: formatClock(day.totalMs),
 				})
 			: bridge.t('sessionWidget.trend.wordsDetail', {
-					added: grouped(day.added),
-					deleted: grouped(day.deleted),
-					net: grouped(day.trackedNet),
+					added: numbers.grouped(day.added),
+					deleted: numbers.grouped(day.deleted),
+					net: numbers.grouped(day.trackedNet),
 				}),
 	];
 }
@@ -1049,6 +1064,7 @@ function drawTrend(
 		? Math.max(0, ...days.map((day) => Math.abs(readingValue(day, measure))))
 		: Math.max(0, ...days.map((day) => day.totalMs));
 	const scale = axisScale(top, measure);
+	const numbers = numbersOf(bridge);
 	const ceiling = scale.top;
 	const height = plot.bottom - plot.top;
 	const rise = (value: number): number =>
@@ -1076,9 +1092,10 @@ function drawTrend(
 			class: 'snowflake-method-trend-scale',
 		});
 		label.textContent = words
-			? grouped(value)
+			? numbers.grouped(value)
 			: t('sessionWidget.trend.hours', {
-					hours: (value / 3_600_000).toFixed(
+					hours: numbers.fixed(
+						value / 3_600_000,
 						scale.step % 3_600_000 === 0 ? 0 : 1,
 					),
 				});
@@ -1320,14 +1337,18 @@ function heatDetail(
 					)
 			: // Every other reading names itself and says its number, so the
 				// card reads the same whichever of them the grid is on.
-				`${t(`sessionWidget.measure.${measure}`)} ${dayReading(day, measure)}`;
+				`${t(`sessionWidget.measure.${measure}`)} ${dayReading(day, measure, numbersOf(bridge))}`;
 	return [formatDay(day.day, bridge.dateFormat()), said];
 }
 
 /** What one day comes to under a measure, written the way that measure reads. */
-function dayReading(day: WritingDayTotals, measure: ReadingMeasure): string {
+function dayReading(
+	day: WritingDayTotals,
+	measure: ReadingMeasure,
+	numbers: NumberFormat,
+): string {
 	if (measure === 'time') return formatClock(day.focusMs);
-	return grouped(readingValue(day, measure));
+	return numbers.grouped(readingValue(day, measure));
 }
 
 /** The grid itself: weeks across, days down, from the week's chosen start. */
@@ -1460,6 +1481,7 @@ function renderCalendarWidget(
 	const paint = (): void => {
 		const chosen = bridge.view().measure;
 		const locale = bridge.locale();
+		const numbers = numberFormat(locale);
 		const start = bridge.weekStart();
 		const today = bridge.today();
 		measure.value = chosen;
@@ -1529,7 +1551,7 @@ function renderCalendarWidget(
 					setIcon(met, 'badge-check');
 				}
 				const value = readingValue(totals, chosen);
-				reading.setText(dayReading(totals, chosen));
+				reading.setText(dayReading(totals, chosen, numbers));
 				// Words gained and words lost read the way they do everywhere
 				// else here, and time takes the accent the rest of the panel
 				// measures time in. Nothing at all is coloured as nothing:
@@ -1654,6 +1676,7 @@ function renderBandsWidget(
 			measure.value = view.measure;
 			const chosen = view.measure;
 			const words = chosen !== 'time';
+			const numbers = numbersOf(bridge);
 			const value = (band: BandTotals): number => readingValue(band, chosen);
 			// A share is of the work that happened, whichever way a part of it
 			// went: a morning that lost two hundred words was as much of the
@@ -1669,11 +1692,7 @@ function renderBandsWidget(
 				row.fill.style.width = `${(share * 100).toFixed(1)}%`;
 				row.fill.dataset.tone = words ? trendTone(chosen, value(band)) : 'focus';
 				row.share.setText(
-					whole === 0
-						? '—'
-						: t('sessionWidget.bands.share', {
-								share: (share * 100).toFixed(1),
-							}),
+					whole === 0 ? '—' : numbers.percent(share * 100, 1),
 				);
 				// The number the share is of, for a reader who wants it: a
 				// percentage says how the day divided, not how much it came to.
@@ -1681,7 +1700,7 @@ function renderBandsWidget(
 					row.row,
 					`${bandLabel(at)} · ${
 						words
-							? grouped(Math.round(value(band)))
+							? numbers.grouped(Math.round(value(band)))
 							: formatClock(value(band))
 					}`,
 				);
@@ -1871,9 +1890,9 @@ function renderModesWidget(
 		note.setText(
 			chosen === undefined || whole === 0
 				? t('sessionWidget.modes.focus')
-				: t('sessionWidget.modes.share', {
-						share: Math.round((chosen.focusMs / whole) * 100),
-					}),
+				: numbersOf(bridge).percent(
+						Math.round((chosen.focusMs / whole) * 100),
+					),
 		);
 	};
 	frame.body.addEventListener('click', (event) => {

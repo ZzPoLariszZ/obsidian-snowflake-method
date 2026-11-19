@@ -9,9 +9,10 @@ import {
 	type Task,
 	type TaskStatus,
 } from '../domain';
+import { numberFormat } from '../i18n/numbers';
 import { watchDragPress } from './drag-press';
 import type { FilterRow } from './filter-rows';
-import { grouped, paintCount, renderEmptyLine } from './pane-parts';
+import { paintCount, renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import { paintTaskMeta } from './task-card-parts';
@@ -614,11 +615,12 @@ export function renderTaskBoard(
 		if (card.origin === 'derived') {
 			const derived = card.derived;
 			if (derived.progress !== null) {
+				const numbers = numberFormat(bridge.locale());
 				badge.className = 'snowflake-method-task-progress';
 				badge.setText(
 					t('tasks.derived.progress', {
-						net: grouped(derived.progress.net),
-						goal: grouped(derived.progress.goal),
+						net: numbers.grouped(derived.progress.net),
+						goal: numbers.grouped(derived.progress.goal),
 					}),
 				);
 			} else if (derived.count !== null) {

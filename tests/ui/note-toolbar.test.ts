@@ -133,6 +133,7 @@ describe('NoteToolbars', () => {
 		const toolbars = new NoteToolbars({
 			app: new App(),
 			t: (path) => (key) => `${speaks(path)}${key}`,
+			locale: () => 'en',
 			wears: dressed,
 			notes: () => notes,
 			settings: () => ({
