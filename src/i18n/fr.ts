@@ -1,6 +1,6 @@
 import type { TranslationKey } from './en';
 
-export const fr: Readonly<Record<TranslationKey, string>> = {
+export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 	'plugin.name': 'Méthode Flocon de neige',
 	'common.cancel': 'Annuler',
 	'common.close': 'Fermer',
@@ -2461,4 +2461,4 @@ export const fr: Readonly<Record<TranslationKey, string>> = {
 	'diagnostics.recordingNotice': 'Enregistrement des interactions tactiles pendant {seconds} s. Touchez l\'interface du module maintenant. Le rapport réapparaîtra ensuite.',
 	'diagnostics.recorded': 'Enregistrement tactile',
 	'diagnostics.noTouches': 'Aucune interaction tactile pendant ce délai.',
-};
+});

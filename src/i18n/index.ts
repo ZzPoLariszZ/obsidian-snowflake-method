@@ -15,11 +15,18 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 export type UiLocalePreference = 'project' | 'system' | SupportedLocale;
 export type TranslationVariables = Readonly<Record<string, string | number>>;
 
-const TRANSLATIONS: Readonly<
-	Record<SupportedLocale, Readonly<Record<TranslationKey, string>>>
-> = {
-	en,
-	'zh-CN': zhCN,
+type Translations = Readonly<Record<TranslationKey, string>>;
+
+/**
+ * English, which every language falls back to, and Simplified Chinese stand
+ * ready as they always have. Each of the other six is made the first time it
+ * is spoken and kept from then on: a session speaks one or two of them, and
+ * a table made at every start is held for as long as the app is open,
+ * whether or not a word of it is ever read.
+ */
+const TABLES: Readonly<Record<SupportedLocale, () => Translations>> = {
+	en: () => en,
+	'zh-CN': () => zhCN,
 	'zh-TW': zhTW,
 	ja,
 	ko,
@@ -27,6 +34,17 @@ const TRANSLATIONS: Readonly<
 	de,
 	es,
 };
+
+const made = new Map<SupportedLocale, Translations>();
+
+function tableOf(locale: SupportedLocale): Translations {
+	let table = made.get(locale);
+	if (table === undefined) {
+		table = TABLES[locale]();
+		made.set(locale, table);
+	}
+	return table;
+}
 
 /**
  * Each language in its own words, the way a language menu names it whatever
@@ -126,7 +144,7 @@ export function t(
 	key: string,
 	variables?: TranslationVariables,
 ): string {
-	const localized = TRANSLATIONS[locale][key as TranslationKey];
+	const localized = tableOf(locale)[key as TranslationKey];
 	const fallback = en[key as TranslationKey];
 	return interpolate(localized ?? fallback ?? key, variables);
 }

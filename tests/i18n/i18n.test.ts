@@ -1745,7 +1745,8 @@ describe('story structure copy', () => {
 });
 
 describe('every interface language', () => {
-	const locales = { en, 'zh-CN': zhCN, 'zh-TW': zhTW, ja, ko, fr, de, es } as const;
+	// The six later tables are made when first spoken, so each is asked for here.
+	const locales = { en, 'zh-CN': zhCN, 'zh-TW': zhTW(), ja: ja(), ko: ko(), fr: fr(), de: de(), es: es() } as const;
 	const placeholders = (text: string): string =>
 		(text.match(/\{[^{}\s]+\}/gu) ?? []).sort().join(' ');
 	const breaks = (text: string): number => (text.match(/\n/gu) ?? []).length;
@@ -1808,18 +1809,18 @@ describe('every interface language', () => {
 	});
 
 	it('names the plugin in each language', () => {
-		expect(zhTW['plugin.name']).toBe('雪花寫作法');
-		expect(ja['plugin.name']).toBe('スノーフレーク・メソッド');
-		expect(ko['plugin.name']).toBe('스노우플레이크 기법');
-		expect(fr['plugin.name']).toBe('Méthode Flocon de neige');
-		expect(de['plugin.name']).toBe('Schneeflocken-Methode');
-		expect(es['plugin.name']).toBe('Método del copo de nieve');
+		expect(locales['zh-TW']['plugin.name']).toBe('雪花寫作法');
+		expect(locales.ja['plugin.name']).toBe('スノーフレーク・メソッド');
+		expect(locales.ko['plugin.name']).toBe('스노우플레이크 기법');
+		expect(locales.fr['plugin.name']).toBe('Méthode Flocon de neige');
+		expect(locales.de['plugin.name']).toBe('Schneeflocken-Methode');
+		expect(locales.es['plugin.name']).toBe('Método del copo de nieve');
 	});
 
 	it('writes Traditional Chinese in traditional characters and Taiwan words', () => {
 		const simplified = /[们这个来说时为会对发过还没进见现无与开关门问题设项数据库标签页实体称录载输处总选择节务笔记让试读写错误显动态应该经将运头长从业东两]/u;
 		const mainland = /文件夹|设置|設置|默認|默认|菜單|导入|導入|导出|導出|插件|鼠標|屏幕/u;
-		for (const [key, value] of Object.entries(zhTW)) {
+		for (const [key, value] of Object.entries(locales['zh-TW'])) {
 			expect(value, key).not.toMatch(simplified);
 			expect(value, key).not.toMatch(mainland);
 		}

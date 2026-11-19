@@ -1,6 +1,6 @@
 import type { TranslationKey } from './en';
 
-export const ja: Readonly<Record<TranslationKey, string>> = {
+export const ja = (): Readonly<Record<TranslationKey, string>> => ({
 	'plugin.name': 'スノーフレーク・メソッド',
 	'common.cancel': 'キャンセル',
 	'common.close': '閉じる',
@@ -2461,4 +2461,4 @@ export const ja: Readonly<Record<TranslationKey, string>> = {
 	'diagnostics.recordingNotice': '{seconds}秒間タッチを記録します。今すぐプラグインの画面をタッチしてください。記録が終わるとレポートに戻ります。',
 	'diagnostics.recorded': 'タッチの記録',
 	'diagnostics.noTouches': '記録時間内にタッチはありませんでした。',
-};
+});

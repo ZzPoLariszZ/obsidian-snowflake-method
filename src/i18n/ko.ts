@@ -1,6 +1,6 @@
 import type { TranslationKey } from './en';
 
-export const ko: Readonly<Record<TranslationKey, string>> = {
+export const ko = (): Readonly<Record<TranslationKey, string>> => ({
 	'plugin.name': '스노우플레이크 기법',
 	'common.cancel': '취소',
 	'common.close': '닫기',
@@ -2461,4 +2461,4 @@ export const ko: Readonly<Record<TranslationKey, string>> = {
 	'diagnostics.recordingNotice': '{seconds}초 동안 터치를 기록합니다. 지금 플러그인 화면을 터치하세요. 기록이 끝나면 보고서가 다시 표시됩니다.',
 	'diagnostics.recorded': '기록된 터치',
 	'diagnostics.noTouches': '기록 시간 동안 터치가 없었습니다.',
-};
+});

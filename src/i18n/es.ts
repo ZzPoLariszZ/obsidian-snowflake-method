@@ -1,6 +1,6 @@
 import type { TranslationKey } from './en';
 
-export const es: Readonly<Record<TranslationKey, string>> = {
+export const es = (): Readonly<Record<TranslationKey, string>> => ({
 	'plugin.name': 'Método del copo de nieve',
 	'common.cancel': 'Cancelar',
 	'common.close': 'Cerrar',
@@ -2461,4 +2461,4 @@ export const es: Readonly<Record<TranslationKey, string>> = {
 	'diagnostics.recordingNotice': 'Registrando toques durante {seconds} s. Toca ahora el complemento. Después volverás al informe.',
 	'diagnostics.recorded': 'Registro de toques',
 	'diagnostics.noTouches': 'No hubo toques en ese intervalo.',
-};
+});

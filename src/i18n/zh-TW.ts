@@ -1,6 +1,6 @@
 import type { TranslationKey } from './en';
 
-export const zhTW: Readonly<Record<TranslationKey, string>> = {
+export const zhTW = (): Readonly<Record<TranslationKey, string>> => ({
 	'plugin.name': '雪花寫作法',
 	'common.cancel': '取消',
 	'common.close': '關閉',
@@ -2461,4 +2461,4 @@ export const zhTW: Readonly<Record<TranslationKey, string>> = {
 	'diagnostics.recordingNotice': '正在記錄觸控，持續 {seconds} 秒。請現在觸碰外掛程式介面，之後會回到報告。',
 	'diagnostics.recorded': '觸控記錄',
 	'diagnostics.noTouches': '時限內沒有觸控。',
-};
+});

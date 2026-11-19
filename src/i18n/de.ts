@@ -1,6 +1,6 @@
 import type { TranslationKey } from './en';
 
-export const de: Readonly<Record<TranslationKey, string>> = {
+export const de = (): Readonly<Record<TranslationKey, string>> => ({
 	'plugin.name': 'Schneeflocken-Methode',
 	'common.cancel': 'Abbrechen',
 	'common.close': 'Schließen',
@@ -2461,4 +2461,4 @@ export const de: Readonly<Record<TranslationKey, string>> = {
 	'diagnostics.recordingNotice': 'Berührungen werden {seconds} s lang aufgezeichnet. Berühre jetzt die Oberfläche der Erweiterung. Danach erscheint wieder der Bericht.',
 	'diagnostics.recorded': 'Berührungsaufzeichnung',
 	'diagnostics.noTouches': 'Keine Berührungen im Zeitfenster.',
-};
+});
