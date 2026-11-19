@@ -94,14 +94,41 @@ function themeVarValue(el: HTMLElement, name: string): number | null {
 	return width > 0 ? width : null;
 }
 
+/**
+ * Where a control's answer in words is written: a box as wide as the widest
+ * answer the control can give, in whatever language the page speaks. Every
+ * answer is laid unseen in the one cell the answer on show stands in, so the
+ * words never run out of their box into the button and the rail beside it,
+ * and nothing beside it moves as the handle goes from a short answer to a
+ * long one. Hands back the element the answer on show is written into.
+ */
+export function answerBox(
+	host: HTMLElement,
+	cls: string,
+	answers: readonly string[],
+): HTMLElement {
+	const box = host.createSpan({ cls: `${cls} snowflake-method-answer-box` });
+	for (const answer of new Set(answers)) {
+		box.createSpan({
+			cls: 'snowflake-method-answer-room',
+			text: answer,
+			attr: { 'aria-hidden': 'true' },
+		});
+	}
+	return box.createSpan({ cls: 'snowflake-method-answer' });
+}
+
 export function addStopSlider(
 	setting: Setting,
 	spec: StopSliderSpec,
 ): ControlHandle<number> {
 	setting.settingEl.addClass('snowflake-method-presentation-row');
-	const value = (spec.valueHost ?? setting.controlEl).createSpan({
-		cls: 'snowflake-method-presentation-value',
-	});
+	setting.settingEl.addClass('snowflake-method-stop-slider-row');
+	// What the theme would do reads as the button's answer, every stop as its own.
+	const value = answerBox(spec.valueHost ?? setting.controlEl, 'snowflake-method-presentation-value', [
+		spec.format(spec.resetValue),
+		...spec.stops.map((stop) => spec.format(stop)),
+	]);
 	const first = spec.stops[0] ?? 0;
 	// A setting of zero is the theme's own wherever zero is not itself a stop:
 	// no indent is a real value, no font size is not.

@@ -33,10 +33,10 @@ function rail(value: number, rest?: () => number) {
 	const [reset, slider] = setting.components as unknown as Moved[];
 	if (reset === undefined || slider === undefined) throw new Error('the row has no rail');
 	const words = (): string | null => {
-		const written: CorkboardElement | null = name.querySelector('.snowflake-method-presentation-value');
+		const written: CorkboardElement | null = name.querySelector('.snowflake-method-answer');
 		return written === null ? null : written.textContent;
 	};
-	return { handle, onPick, reset, slider, words, row: host };
+	return { handle, onPick, reset, slider, words, row: host, name };
 }
 
 describe('a slider over a list of stops', () => {
@@ -75,6 +75,20 @@ describe('a slider over a list of stops', () => {
 		// Nothing to put back twice.
 		view.reset.click();
 		expect(view.onPick).toHaveBeenCalledOnce();
+	});
+
+	it('keeps room for its longest answer, whichever answer is on show', () => {
+		const view = rail(256);
+		const box = view.name.querySelector('.snowflake-method-presentation-value');
+		expect(box?.classList.contains('snowflake-method-answer-box')).toBe(true);
+		// Every answer the rail can give, the theme's own first, stands unseen in the box.
+		const rooms = view.name.querySelectorAll('.snowflake-method-answer-room');
+		expect(rooms.map((room) => room.textContent)).toEqual(['Automatic', '208 px', '256 px', '320 px']);
+		expect(rooms.every((room) => room.getAttribute('aria-hidden') === 'true')).toBe(true);
+		// The answer on show is written beside them, never over them.
+		view.slider.change(2);
+		expect(view.words()).toBe('320 px');
+		expect(view.name.querySelectorAll('.snowflake-method-answer-room')).toHaveLength(4);
 	});
 
 	it('shows a measure that changed elsewhere without taking it for a pick', () => {

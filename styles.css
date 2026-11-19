@@ -2822,6 +2822,14 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	padding-inline: var(--size-4-2);
 }
 
+/* The delete button keeps its own least width in the column too. */
+.snowflake-method-table.has-actions-column
+	td:last-child
+	> .snowflake-method-table-actions
+	button.snowflake-method-character-delete {
+	min-width: 4rem;
+}
+
 /* The button is the row, so the cell gives up its padding and lets the button
    carry it -- otherwise the two stack up and the row stands half again as tall
    as the ones above it. The selector has to outweigh the shared cell padding
@@ -3139,9 +3147,12 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	color: var(--text-error);
 }
 
+/* Four rems at least, and as wide as its word beyond that: the French word
+   ran past a button held to four rems, and the German and Spanish ones met
+   its edges with nothing to spare. */
 .snowflake-method-character-delete {
-	flex: 0 0 4rem;
-	width: 4rem;
+	flex: 0 0 auto;
+	width: auto;
 	min-width: 4rem;
 }
 
@@ -3241,6 +3252,18 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	justify-content: flex-end;
 	gap: var(--size-4-2);
 	flex-wrap: wrap;
+}
+
+/* A label longer than the pane is wide wraps inside its button instead of
+   running past the pane's edges: one language's words for an action can run
+   to twice another's, and the French for discarding a draft stood wider than
+   a phone. A label that fits keeps its one line and the app's height. */
+.snowflake-method-actions > button {
+	max-width: 100%;
+	height: auto;
+	min-height: var(--input-height);
+	white-space: normal;
+	text-align: center;
 }
 
 .snowflake-method-character-empty {
@@ -6755,6 +6778,32 @@ body {
 	justify-content: flex-end;
 }
 
+/* A slider's row keeps its name whole. The name takes what the rail, its
+   button and its answer leave, and never less than its longest word, a name
+   in a script written without spaces counting as one word; where even that
+   cannot stand beside them -- a long word for the measure, a long answer for
+   the theme's own -- the controls go under the name, at the row's end. Cut
+   to fit, German names read Sc… and Zeil…, and Japanese ones broke between
+   any two characters. */
+.snowflake-method-presentation-panel .snowflake-method-stop-slider-row {
+	flex-wrap: wrap;
+	row-gap: var(--size-4-2);
+}
+
+.snowflake-method-presentation-panel .snowflake-method-stop-slider-row .setting-item-info {
+	flex: 1 1 0;
+	min-width: min-content;
+}
+
+.snowflake-method-presentation-panel .snowflake-method-stop-slider-row .setting-item-name {
+	word-break: keep-all;
+}
+
+.snowflake-method-presentation-panel .snowflake-method-stop-slider-row .setting-item-control {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+}
+
 .snowflake-method-presentation-panel input[type='text'] {
 	width: 100%;
 	max-width: 14rem;
@@ -8849,7 +8898,9 @@ col.snowflake-method-foreshadowing-column-actions {
    the widgets' own title size, the figure centred under it in the accent
    ink and the monospaced tabular face every dashboard reading wears. */
 .snowflake-method-prose-summary-item {
+	display: flex;
 	flex: 1 1 9rem;
+	flex-direction: column;
 	min-width: 9rem;
 	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
@@ -8857,15 +8908,22 @@ col.snowflake-method-foreshadowing-column-actions {
 	background: var(--background-primary);
 }
 
+/* A title too long for its card wraps rather than trailing off: two cards
+   to a row on a phone cut every title in English, and in French and Spanish
+   both reading times read Temps de lectur… alike. The title takes the room
+   above the figure and stands in its middle, so the figures of one row stay
+   level however many lines each title runs to. */
 .snowflake-method-prose-summary-label {
+	display: flex;
+	flex: 1 0 auto;
+	align-items: center;
+	justify-content: center;
 	color: var(--text-muted);
 	text-align: center;
+	text-wrap: balance;
 	margin-block-end: var(--size-4-3);
 	font-size: var(--font-ui-medium);
 	font-weight: var(--font-semibold);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .snowflake-method-prose-summary-value {
@@ -9875,14 +9933,32 @@ body.snowflake-method-reduce-motion.snowflake-method-focus-app.snowflake-method-
 	transition: none;
 }
 
-/* The level named where an ordinary slider shows its number. Held to a width
-   so the slider does not shuffle sideways as one name gives way to another
-   mid-drag. */
+/* The level named where an ordinary slider shows its number. Its box is as
+   wide as the longest level's name (see the answer box below), so the slider
+   does not shuffle sideways as one name gives way to another mid-drag. */
 .snowflake-method-focus-value {
 	font-size: var(--font-ui-small);
 	white-space: nowrap;
 	min-width: 3.5em;
 	text-align: right;
+}
+
+/* The box a slider's answer in words is written in. Every answer the slider
+   can give stands in its one cell, unseen but for the one on show, so the box
+   is as wide as the widest of them in the language the page speaks, and it
+   never gives up that width to the rail beside it: a longer language's words
+   ran out of a box held to a few ems, under the reset button and the rail. */
+.snowflake-method-answer-box {
+	display: inline-grid;
+	flex: 0 0 auto;
+}
+
+.snowflake-method-answer-box > * {
+	grid-area: 1 / 1;
+}
+
+.snowflake-method-answer-room {
+	visibility: hidden;
 }
 
 /* The slider's own number, which the name beside it replaces. */
@@ -21581,6 +21657,19 @@ body.is-phone .modal.snowflake-method-dialog:not(.snowflake-method-form-modal) .
 	padding-inline: 0;
 }
 
+/* The app sets a dialog's title on one line on a phone, cut where it meets
+   seven tenths of the screen. A confirmation asks its question there, and the
+   question is what the dialog is for: the English boundary question lost its
+   last word, the French and German ones half of theirs. Here the title runs
+   on to a second line instead, balanced and centred within the same seven
+   tenths, so it still stands clear of the close button. */
+body.is-phone .modal.snowflake-method-dialog .modal-title {
+	overflow: visible;
+	text-overflow: clip;
+	white-space: normal;
+	text-wrap: balance;
+}
+
 /* The two that fill a window on the desktop fill the screen here. */
 body.is-phone .modal.snowflake-method-dialog.snowflake-method-project-manager-modal,
 body.is-phone .modal.snowflake-method-dialog.snowflake-method-import-modal {
@@ -21630,6 +21719,14 @@ body.is-phone .snowflake-method-presentation-panel {
 	border-width: 0;
 	border-radius: var(--touch-radius-s, var(--radius-l)) var(--touch-radius-s, var(--radius-l)) 0 0;
 	box-shadow: var(--shadow-l);
+}
+
+/* The font field takes the sheet's width beside its short name. Held to
+   fourteen rems, it cut its own answer short wherever the theme's face is
+   named at length: Text-Schriftart des Ther, Police de texte du thèm. */
+body.is-phone .snowflake-method-presentation-panel .snowflake-method-font-picker,
+body.is-phone .snowflake-method-presentation-panel input[type='text'] {
+	max-width: none;
 }
 
 /* The button beside a panel's rail, which puts the measure back, takes a

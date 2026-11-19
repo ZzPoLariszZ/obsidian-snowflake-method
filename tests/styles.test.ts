@@ -2015,6 +2015,64 @@ describe('styles.css', () => {
 	 * not name; the one rule the section reveals on a phone, the rail's
 	 * stand-in, is hidden where it is drawn.
 	 */
+	/**
+	 * Eight interface languages say the same thing at different lengths: the
+	 * French for discarding a draft ran wider than a phone, Supprimer past a
+	 * delete button held to four rems, German slider answers under their
+	 * rails, and a phone cut every dialog title at one line.
+	 */
+	it('gives a longer language room to say its words whole', () => {
+		// An action's label wraps inside its button before it runs past the pane.
+		const action = declarations('.snowflake-method-actions > button');
+		expect(action).toContain('max-width: 100%');
+		expect(action).toContain('white-space: normal');
+		expect(action).toContain('height: auto');
+		expect(action).toContain('min-height: var(--input-height)');
+		// The delete button is as wide as its word, and four rems at least, in a column too.
+		const remove = declarations('.snowflake-method-character-delete');
+		expect(remove).toContain('width: auto');
+		expect(remove).toContain('min-width: 4rem');
+		expect(
+			declarations(
+				'.snowflake-method-table.has-actions-column td:last-child > .snowflake-method-table-actions button.snowflake-method-character-delete',
+			),
+		).toContain('min-width: 4rem');
+		// A slider's answer box is as wide as its widest answer, and never gives that up.
+		const box = declarations('.snowflake-method-answer-box');
+		expect(box).toContain('display: inline-grid');
+		expect(box).toContain('flex: 0 0 auto');
+		expect(declarations('.snowflake-method-answer-box > *')).toContain('grid-area: 1 / 1');
+		expect(declarations('.snowflake-method-answer-room')).toContain('visibility: hidden');
+		// The typography panel's slider rows keep the name whole and wrap the controls under it.
+		expect(
+			declarations('.snowflake-method-presentation-panel .snowflake-method-stop-slider-row'),
+		).toContain('flex-wrap: wrap');
+		const name = declarations(
+			'.snowflake-method-presentation-panel .snowflake-method-stop-slider-row .setting-item-info',
+		);
+		expect(name).toContain('flex: 1 1 0');
+		expect(name).toContain('min-width: min-content');
+		expect(
+			declarations('.snowflake-method-presentation-panel .snowflake-method-stop-slider-row .setting-item-name'),
+		).toContain('word-break: keep-all');
+		expect(
+			declarations('.snowflake-method-presentation-panel .snowflake-method-stop-slider-row .setting-item-control'),
+		).toContain('margin-inline-start: auto');
+		expect(
+			declarations('body.is-phone .snowflake-method-presentation-panel .snowflake-method-font-picker'),
+		).toContain('max-width: none');
+		// A dialog's title runs on to a second line on a phone instead of being cut.
+		const title = declarations('body.is-phone .modal.snowflake-method-dialog .modal-title');
+		expect(title).toContain('white-space: normal');
+		expect(title).toContain('text-overflow: clip');
+		// The prose cards' titles wrap, with the figures of a row kept level.
+		const label = declarations('.snowflake-method-prose-summary-label');
+		expect(label).not.toContain('nowrap');
+		expect(label).not.toContain('ellipsis');
+		expect(label).toContain('flex: 1 0 auto');
+		expect(declarations('.snowflake-method-prose-summary-item')).toContain('flex-direction: column');
+	});
+
 	it('keeps the mobile rules to their section, rooted at the app’s body classes', () => {
 		const mobile = section('Mobile').replace(/\/\*[\s\S]*?\*\//gu, ' ');
 		const from = styles.indexOf('/* == Mobile ');

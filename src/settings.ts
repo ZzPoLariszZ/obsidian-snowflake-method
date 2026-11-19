@@ -128,6 +128,7 @@ import {
 	addFontFamilyPicker,
 	addStopSlider,
 	addTintSwatches,
+	answerBox,
 } from './ui/presentation-controls';
 import {
 	buildProjectRootField,
@@ -2933,9 +2934,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		setting.setName(this.t('settings.manuscriptFocus.name'));
 		// Where an ordinary slider shows its number, this one names the level —
 		// a number would only be the same fact in a language nobody chose.
-		const value = setting.controlEl.createSpan({
-			cls: 'snowflake-method-focus-value',
-		});
+		const value = answerBox(
+			setting.controlEl,
+			'snowflake-method-focus-value',
+			levels.map((level) => this.t(labelKeys[level])),
+		);
 		let reset: ExtraButtonComponent | null = null;
 		let slider: SliderComponent | null = null;
 		const dress = (): void => {
