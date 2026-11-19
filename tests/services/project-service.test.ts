@@ -1420,6 +1420,18 @@ describe("SnowflakeProjectService", () => {
     expect(fakeVault.processCalls).toHaveLength(processCount);
   });
 
+  it("reads a project that lost its language by its metadata note's own name", async () => {
+    // German calls its system folder what English calls it, so the folder
+    // alone cannot say which of the two a project is.
+    for (const locale of ["en", "de", "zh-CN"] as const) {
+      const project = await service.createProject({ name: `Lost language ${locale}`, locale });
+      await fakeFileManager.processFrontMatter(fakeVault.getFileByPath(project.projectFile)!, (frontmatter) => {
+        delete frontmatter[FRONTMATTER_KEYS.projectLanguage];
+      });
+      expect((await service.loadProject(project.projectFile)).locale).toBe(locale);
+    }
+  });
+
   it("repairs present-but-invalid project, character, and scene metadata", async () => {
     const project = await service.createProject({ name: "Damaged metadata", locale: "zh-CN" });
     const character = await service.createCharacter(project, { name: "Ada", type: "major" });

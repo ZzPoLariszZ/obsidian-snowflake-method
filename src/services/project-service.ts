@@ -7213,14 +7213,19 @@ export class SnowflakeProjectService {
       (await this.recoverProjectId(rootPath)) ??
       `damaged-${fingerprint(rootPath)}`;
     const rawLocale = record.frontmatter[FRONTMATTER_KEYS.projectLanguage];
+    // A note that cannot say its language is read by where it stands: by its
+    // own name first, which no two languages share, and only then by the
+    // system folder over it, which German calls what English calls it.
+    // English is asked first there, the answer it was before German was one.
     const locale: ProjectLanguage = isProjectLanguage(rawLocale)
       ? rawLocale
-      : (PROJECT_LANGUAGES.find(
-          (language) =>
-            language !== "en" &&
-            (record.path.endsWith(`/${PROJECT_PATH_LAYOUTS[language].projectFileName}`) ||
-              record.path.includes(`/${PROJECT_PATH_LAYOUTS[language].directories.system}/`)),
-        ) ?? "en");
+      : (PROJECT_LANGUAGES.find((language) =>
+          record.path.endsWith(`/${PROJECT_PATH_LAYOUTS[language].projectFileName}`),
+        ) ??
+        PROJECT_LANGUAGES.find((language) =>
+          record.path.includes(`/${PROJECT_PATH_LAYOUTS[language].directories.system}/`),
+        ) ??
+        "en");
     return {
       projectFile: record.path,
       rootPath,
