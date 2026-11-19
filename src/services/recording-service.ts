@@ -110,6 +110,18 @@ export type RecordingEvent =
 const LAUNCH_WATCH_MS = 500;
 /** How long a quitting Obsidian waits for a start that was given up, or a look at OBS, to end and give back. */
 const SETTLE_WAIT_MS = 3000;
+/** A window just opened may not have its number yet: it is asked for again this often, this many times. */
+const WINDOW_RETRY_MS = 400;
+const WINDOW_TRIES = 3;
+
+/** A recording of Obsidian's windows by the Mac's recorder: where a window's file goes, how many there are, and which windows have one. */
+interface WindowedRecording {
+	folder: string;
+	stem: string;
+	system: RecordingSystem;
+	files: number;
+	keys: Set<object>;
+}
 
 export class ScreenRecordingService {
 	private current: RecordingState = { ...IDLE_RECORDING_STATE };
@@ -125,8 +137,8 @@ export class ScreenRecordingService {
 	/** The start under way and the look at OBS under way, while there is one: a quitting Obsidian waits for them a short while. */
 	private beginning: Promise<void> | null = null;
 	private looking: Promise<void> | null = null;
-	/** Where a window that opens under a recording of Obsidian's windows is recorded to, and how many files there are so far. */
-	private windowed: { folder: string; stem: string; system: RecordingSystem; files: number } | null = null;
+	/** The recording of Obsidian's windows that runs, while one does. */
+	private windowed: WindowedRecording | null = null;
 
 	constructor(private readonly deps: RecordingServiceDeps) {
 		this.native = new NativeRecorder({
@@ -309,12 +321,33 @@ export class ScreenRecordingService {
 	 */
 	windowOpened(window: DesktopWindow): void {
 		const windowed = this.windowed;
-		if (windowed === null || this.current.phase !== 'recording' || window.id === null) return;
+		if (windowed === null || this.current.phase !== 'recording') return;
+		this.join(windowed, window, 0);
+	}
+
+	/**
+	 * Gives one of Obsidian's windows a recorder and a file of its own,
+	 * once. A window just opened may not have its number yet, so it is
+	 * looked at again a few times before it is left out.
+	 */
+	private join(windowed: WindowedRecording, window: DesktopWindow, tries: number): void {
+		if (this.windowed !== windowed || windowed.keys.has(window.key)) return;
+		const id = window.id;
+		if (id === null) {
+			if (tries >= WINDOW_TRIES) return;
+			this.deps.timers.set(() => {
+				const again = this.deps.windows().all.find((entry) => entry.key === window.key);
+				// Gone again meanwhile: there is nothing to record.
+				if (again !== undefined) this.join(windowed, again, tries + 1);
+			}, WINDOW_RETRY_MS);
+			return;
+		}
+		windowed.keys.add(window.key);
 		windowed.files += 1;
 		const name = recordingLaterFileName(windowed.stem, windowed.files);
 		void this.native.add({
 			file: systemChild(windowed.folder, name, windowed.system),
-			target: { kind: 'window', id: window.id },
+			target: { kind: 'window', id },
 			window: window.key,
 		});
 	}
@@ -418,8 +451,18 @@ export class ScreenRecordingService {
 			});
 			const started = await this.native.start({ folder: place.folder, takes }, hooks);
 			// A window that opens from here on joins the recording under the next number.
-			if (started.ok && preferences.scope === 'obsidian') {
-				this.windowed = { folder: place.folder, stem, system, files: takes.length };
+			if (started.ok && preferences.scope === 'obsidian' && !this.gone(run)) {
+				const windowed: WindowedRecording = {
+					folder: place.folder,
+					stem,
+					system,
+					files: takes.length,
+					keys: new Set(takes.flatMap((take) => (take.window === undefined ? [] : [take.window]))),
+				};
+				this.windowed = windowed;
+				// The recorders were chosen before the author was counted in. A
+				// window that opened since then was in nobody's list, and joins now.
+				for (const window of this.deps.windows().all) this.join(windowed, window, 0);
 			}
 			return started;
 		}

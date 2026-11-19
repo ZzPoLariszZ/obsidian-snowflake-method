@@ -344,6 +344,58 @@ describe('the screen recording service', () => {
 		expect(unnamed.runner.of(NATIVE_RECORDER)).toHaveLength(1);
 	});
 
+	it('takes in a window that opened while the author was counted in, once the recording stands', async () => {
+		const { clock, runner, kept, service } = rig({ preferences: { scope: 'obsidian' } });
+		const count = heldCount();
+		kept.count = () => count.handle;
+		const starting = service.start();
+		await clock.advance(300);
+		// A tab is moved out into a window of its own during the count, and the plugin says so as at any time.
+		kept.windows = [MAIN_WINDOW, SIDE_WINDOW];
+		service.windowOpened(SIDE_WINDOW);
+		await clock.settle();
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(0);
+		count.finish(true);
+		expect(await clock.drive(starting)).toBeNull();
+		await clock.settle();
+		const stem = '/Users/ada/Movies/2026-11-19 14.30.05';
+		expect(runner.of(NATIVE_RECORDER).map((process) => process.args)).toEqual([
+			['-v', '-x', '-o', '-l', '4321', `${stem}.mov`],
+			['-v', '-x', '-o', '-l', '4399', `${stem} (2).mov`],
+		]);
+		// Told of once more by the window's own event, it gets no second recorder.
+		service.windowOpened(SIDE_WINDOW);
+		await clock.settle();
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(2);
+		await clock.drive(service.stop());
+		expect(service.state().last).toMatchObject({ path: `${stem}.mov`, more: 1 });
+	});
+
+	it('asks again for the number of a window that has none yet, and leaves out one that never gets it', async () => {
+		const { clock, runner, kept, service } = rig({ preferences: { scope: 'obsidian' } });
+		await clock.drive(service.start());
+		const unnamed = { ...SIDE_WINDOW, id: null };
+		kept.windows = [MAIN_WINDOW, unnamed];
+		service.windowOpened(unnamed);
+		await clock.advance(450);
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(1);
+		// By the second look the window has its number.
+		kept.windows = [MAIN_WINDOW, SIDE_WINDOW];
+		await clock.advance(450);
+		expect(runner.of(NATIVE_RECORDER).map((process) => process.args[4])).toEqual(['4321', '4399']);
+		// One that never gets a number is looked at a few times and then left out.
+		const never = { ...LATER_WINDOW, id: null };
+		kept.windows = [MAIN_WINDOW, SIDE_WINDOW, never];
+		service.windowOpened(never);
+		await clock.advance(5000);
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(2);
+		// And one that closed again before it had a number is not looked for any longer.
+		const gone = { key: { window: 'gone' }, id: null, title: 'Gone' };
+		service.windowOpened(gone);
+		await clock.advance(5000);
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(2);
+	});
+
 	it('begins OBS on the window in use and follows the author from window to window', async () => {
 		const { clock, obs, runner, kept, service } = rig({ preferences: { tool: 'obs', scope: 'obsidian' } });
 		kept.windows = [MAIN_WINDOW, SIDE_WINDOW];
