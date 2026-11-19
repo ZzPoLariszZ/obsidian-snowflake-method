@@ -206,3 +206,39 @@ describe('chordLabel', () => {
 		expect(chordLabel([], 'F3', false)).toBe('F3');
 	});
 });
+
+describe('the find bar through a change of language', () => {
+	it('says its words again where it stands, keeping what is typed and its options', () => {
+		let language = 'en';
+		const parent = document.body.createDiv();
+		const bar = new StreamSearchBar(parent, new Scope() as never, {
+			t: (key: string) => `${language}:${key}`,
+			onQuery: vi.fn(),
+			onStep: vi.fn(),
+			onReplace: vi.fn(),
+			onReplaceAll: vi.fn(),
+			onClose: vi.fn(),
+			escapeOutside: vi.fn(() => false),
+		});
+		const find = bar.containerEl.querySelector<HTMLInputElement>('.document-search-input input');
+		const replace = bar.containerEl.querySelector<HTMLInputElement>('.document-replace-input');
+		const count = bar.containerEl.querySelector<HTMLElement>('.document-search-count');
+		if (find === null || replace === null || count === null) throw new Error('the bar has no boxes');
+		bar.open(true, 'Jon');
+		bar.containerEl.querySelectorAll<HTMLElement>('.snowflake-method-search-option')[0]?.click();
+		bar.showCount({ kind: 'error', message: 'unbalanced' });
+		expect(find.placeholder).toBe('en:manuscript.search.find');
+		expect(count.textContent).toBe('en:manuscript.search.invalid');
+
+		language = 'fr';
+		bar.relabel();
+
+		expect(find.placeholder).toBe('fr:manuscript.search.find');
+		expect(replace.placeholder).toBe('fr:manuscript.search.replacePlaceholder');
+		expect(count.textContent).toBe('fr:manuscript.search.invalid');
+		expect(find.value).toBe('Jon');
+		expect(bar.searchOptions().caseSensitive).toBe(true);
+		expect(bar.isReplaceMode()).toBe(true);
+	});
+});
+

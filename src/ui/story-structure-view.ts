@@ -38,6 +38,7 @@ import type {
 } from './freeform-bridge';
 import type { MountFreeformCanvas } from './freeform-canvas-port';
 import { FULL_SCREEN_CLASS, FULL_SCREEN_GROUP_CLASS, type FullScreenControl } from './full-screen';
+import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import type { Translate } from './modals';
 import { renderNoticePane, renderTabStrip } from './pane-parts';
 import type {
@@ -119,7 +120,7 @@ export interface StoryStructureViewDeps {
 	phone?(): boolean;
 }
 
-export class SnowflakeStoryStructureView extends ItemView {
+export class SnowflakeStoryStructureView extends ItemView implements RelabelsHeader {
 	private state: StoryStructureViewStateSnapshot = defaultStoryStructureState();
 	/** The scene view's memory, which the pools of the other workspaces deal from too. */
 	private readonly memory: CorkboardMemory = corkboardMemory();
@@ -1006,12 +1007,18 @@ export class SnowflakeStoryStructureView extends ItemView {
 		console.error('Snowflake: story structure could not be loaded', error);
 	}
 
+	/**
+	 * The title said again in the language now spoken, at once: the tab
+	 * shows while a workspace put away waits for its reveal to be drawn.
+	 */
+	relabelHeader(): void {
+		this.updateHeader();
+	}
+
 	private updateHeader(): void {
-		const leaf = this.leaf as WorkspaceLeaf & { updateHeader?: () => void };
-		leaf.updateHeader?.();
 		// Obsidian initializes the view title before our project is loaded;
-		// updateHeader refreshes the tab label, but leaves that title unchanged.
-		this.containerEl.querySelector<HTMLElement>('.view-header-title')
-			?.setText(this.getDisplayText());
+		// the leaf's own update refreshes the tab label, and the title is set
+		// beside it.
+		relabelLeafHeader(this);
 	}
 }

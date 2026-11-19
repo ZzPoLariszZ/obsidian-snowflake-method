@@ -88,6 +88,7 @@ import {
 	dashboardPaneKey,
 	dashboardRenderContinuity,
 	isFreeformStep,
+	keptPanelKey,
 	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
@@ -170,6 +171,7 @@ import {
 } from './story-structure-state';
 import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
+import type { RelabelsHeader } from './leaf-header';
 import { paintCount, renderSplitButton, renderTabStrip } from './pane-parts';
 import {
 	renderStickyNoteBoard,
@@ -410,7 +412,7 @@ function holdStepPanel(panel: StepPanel, held: boolean): void {
 	panel.save.disabled = off;
 }
 
-export class SnowflakeDashboardView extends ItemView {
+export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	private readonly host: DashboardHost;
 	private selectedStep: StepId;
 	/** What the main panel shows: the selected step, or a worldbuilding kind. */
@@ -1189,9 +1191,17 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
-	/** What a kept panel is built for: its project and its language. */
+	/**
+	 * What a kept panel is built for: its project, the project's language,
+	 * and the language the panel speaks, which a change of the interface
+	 * language setting moves while the project stays as it was.
+	 */
 	private panelKey(): string {
-		return `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
+		return keptPanelKey(
+			this.projectPath,
+			this.projectLocale,
+			this.host.interfaceLocale(this.projectLocale),
+		);
 	}
 
 	/**
@@ -1743,6 +1753,14 @@ export class SnowflakeDashboardView extends ItemView {
 		setIcon(icon, 'snowflake');
 		title.prepend(icon);
 		this.viewTitleIconEl = icon;
+	}
+
+	/**
+	 * The title said again in the language now spoken, at once: the tab
+	 * shows while a dashboard put away waits for its reveal to be drawn.
+	 */
+	relabelHeader(): void {
+		this.updateViewTitle();
 	}
 
 	private updateViewTitle(): void {

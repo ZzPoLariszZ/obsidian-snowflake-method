@@ -9,6 +9,7 @@ import {
 	dashboardRenderContinuity,
 	isFreeformStep,
 	isStatisticsTab,
+	keptPanelKey,
 	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
@@ -564,5 +565,22 @@ describe('the statistics tabs', () => {
 	it('count the modification history among them', () => {
 		expect(STATISTICS_TABS).toEqual(['sessions', 'prose', 'entities', 'history']);
 		expect(isStatisticsTab('history')).toBe(true);
+	});
+});
+
+describe('the key a kept panel is built for', () => {
+	it('names the project, its language and the language the panel speaks', () => {
+		const path = 'Novel/00_System/001_Project_Metadata.md';
+		expect(keptPanelKey(path, 'en', 'es')).toBe(keptPanelKey(path, 'en', 'es'));
+		// The setting moved the interface while the project stayed put.
+		expect(keptPanelKey(path, 'en', 'es')).not.toBe(keptPanelKey(path, 'en', 'de'));
+		// Another project, or the same project in another language.
+		expect(keptPanelKey(path, 'en', 'en')).not.toBe(keptPanelKey('Other/00_System/001_Project_Metadata.md', 'en', 'en'));
+		expect(keptPanelKey(path, 'en', 'en')).not.toBe(keptPanelKey(path, 'de', 'en'));
+	});
+
+	it('stands for a dashboard with no project yet', () => {
+		expect(keptPanelKey(null, null, 'ja')).toBe(keptPanelKey(null, null, 'ja'));
+		expect(keptPanelKey(null, null, 'ja')).not.toBe(keptPanelKey(null, null, 'ko'));
 	});
 });

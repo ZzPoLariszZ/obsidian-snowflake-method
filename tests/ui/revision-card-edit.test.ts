@@ -65,3 +65,72 @@ describe('a standing card with its form open', () => {
 		rail.dispose();
 	});
 });
+
+/**
+ * A change of the interface language finds the margin's cards standing, one
+ * of them perhaps with a form open and words typed into it.
+ */
+describe('the rail through a change of language', () => {
+	beforeAll(() => {
+		installObsidianDom(window);
+	});
+
+	it('draws its resting cards again in the new words and leaves an open form as typed', () => {
+		let language = 'en';
+		const segment = document.body.createDiv({ cls: 'snowflake-method-segment' });
+		const body = 'The grey heron stood in the shallows, watching the water.';
+		const open = captureRevision('50/one.md', body, 'replace', 4, 14, 'x', 'why', 'rev-1', 7);
+		const resting = captureRevision('50/one.md', body, 'replace', 27, 35, 'y', '', 'rev-2', 8);
+		const rail = renderRevisionRail(segment, {
+			t: (key: string) => `${language}:${key}`,
+			onAccept: () => undefined,
+			onRetire: () => undefined,
+			onEditSave: () => Promise.resolve(true),
+			onDraftSave: () => Promise.resolve(true),
+			onDraftCancel: () => undefined,
+			hasNeighbour: () => false,
+			onJump: () => undefined,
+			foreshadowing: {
+				onEditSave: () => Promise.resolve(true),
+				onDelete: () => undefined,
+				onOpen: () => undefined,
+				hasNeighbour: () => false,
+				onJump: () => undefined,
+			},
+		});
+		rail.sync({
+			entries: [
+				{ revision: open, top: 10 },
+				{ revision: resting, top: 200 },
+			],
+			conflicts: [],
+			draft: null,
+			readOnly: false,
+			foreshadowing: { entries: [], unresolved: [] },
+		});
+		const words = (card: HTMLElement | null): string[] =>
+			Array.from(card?.querySelectorAll('button') ?? []).map((button) => button.textContent ?? '');
+		const editing = rail.cardFor('rev-1') as HTMLElement;
+		Array.from(editing.querySelectorAll('button')).find((one) => one.textContent === 'en:actions.edit')?.click();
+		const box = editing.querySelector<HTMLTextAreaElement>('textarea');
+		if (box === null) throw new Error('the form has no box');
+		box.value = 'half a thought';
+		const standing = rail.cardFor('rev-2');
+		expect(words(standing)).toContain('en:actions.edit');
+
+		language = 'fr';
+		rail.relabel();
+
+		// The resting card is the same card, saying its words in French.
+		expect(rail.cardFor('rev-2')).toBe(standing);
+		expect(words(standing)).toContain('fr:actions.edit');
+		expect(words(standing)).not.toContain('en:actions.edit');
+		// The open form holds the only copy of what was typed: left whole.
+		expect(rail.editing()).toBe(true);
+		expect(rail.cardFor('rev-1')).toBe(editing);
+		expect(editing.querySelector('textarea')).toBe(box);
+		expect(box.value).toBe('half a thought');
+		rail.dispose();
+	});
+});
+

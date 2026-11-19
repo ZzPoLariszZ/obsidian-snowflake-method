@@ -2,10 +2,26 @@ import {
 	isDefinitionFileId,
 	isStepId,
 	type DefinitionFileId,
+	type ProjectLanguage,
 	type StepId,
 	type WorldbuildingKindId,
 } from '../domain';
 import type { ManagedSectionIssueViewModel } from './view-model';
+
+/**
+ * What a panel the dashboard keeps across its rebuilds was built for: the
+ * project, the project's language, and the language the interface speaks
+ * to it, which the interface language setting can move while the project
+ * stays put. A panel writes its labels once, so a frame for another key
+ * builds a panel of its own rather than taking the standing one back.
+ */
+export function keptPanelKey(
+	projectPath: string | null,
+	projectLocale: ProjectLanguage | null,
+	interfaceLocale: ProjectLanguage,
+): string {
+	return `${projectPath ?? ''}|${projectLocale ?? ''}|${interfaceLocale}`;
+}
 
 /** The faces of the Data statistics pane, in the order the strip draws. */
 export const STATISTICS_TABS = ['sessions', 'prose', 'entities', 'history'] as const;

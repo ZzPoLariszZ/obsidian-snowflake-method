@@ -112,6 +112,12 @@ export interface RevisionRail {
 	editing(): boolean;
 	/** Visits every standing card with the key the rail knows it by. */
 	each(visit: (key: string, card: HTMLElement) => void): void;
+	/**
+	 * Draws every resting card again, where it stands, for a change of the
+	 * language its words were written in. A card with a form open is left
+	 * whole, as a sync leaves it: the form holds what is being typed.
+	 */
+	relabel(): void;
 	dispose(): void;
 }
 
@@ -919,6 +925,13 @@ export function renderRevisionRail(
 		editing: () => [...cards.values()].some((state) => state.editing),
 		each: (visit) => {
 			for (const [key, state] of cards) visit(key, state.el);
+		},
+		relabel: () => {
+			// A print no card was drawn from: the pass below draws each again.
+			for (const state of cards.values()) {
+				if (!state.editing) state.print = '';
+			}
+			restack();
 		},
 		dispose: () => {
 			rail.remove();

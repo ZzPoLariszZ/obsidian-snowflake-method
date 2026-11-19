@@ -56,6 +56,8 @@ interface FloatingPanel {
 	state: StickyNoteFloatState;
 	/** The project the note belongs to; a switch to another suspends the panel. */
 	projectPath: string;
+	/** Whether the plugin may write in that project, as the panel was opened with. */
+	readOnly: boolean;
 	persistTimer: number | null;
 }
 
@@ -108,6 +110,8 @@ export class StickyNoteFloatLayer {
 		note: StickyNoteRecord,
 		project: StickyNoteFloatProject,
 		options: StickyNoteFloatOptions = {},
+		/** Where and how the panel stood, for one drawn again in place. */
+		carried?: StickyNoteFloatState,
 	): void {
 		if (this.destroyed) return;
 		const standing = this.panels.get(note.id);
@@ -120,7 +124,7 @@ export class StickyNoteFloatLayer {
 			}
 			return;
 		}
-		const remembered = this.deps.bridge.hub.floatState(note.id);
+		const remembered = carried ?? this.deps.bridge.hub.floatState(note.id);
 		const geometry =
 			remembered === null
 				? defaultFloatGeometry(this.viewport(), this.panels.size, this.remPx(), this.insets())
@@ -133,6 +137,7 @@ export class StickyNoteFloatLayer {
 		const panel: Partial<FloatingPanel> & { state: StickyNoteFloatState } = {
 			state,
 			projectPath: project.path,
+			readOnly: project.readOnly,
 			persistTimer: null,
 		};
 		const card = renderStickyNoteCard(
@@ -195,6 +200,35 @@ export class StickyNoteFloatLayer {
 		if (options.focus === true && state.mode !== 'editing') card.el.focus();
 		// The boards' float buttons show whether a note stands here.
 		this.deps.bridge.hub.notify();
+	}
+
+	/**
+	 * Draws every panel again where it stands, for a change of language: a
+	 * card writes its words once, as it is made. What was typed in one is
+	 * written down first, and each comes back in the mode, place and size it
+	 * stood in, stacked as they stood.
+	 */
+	async relabel(): Promise<void> {
+		const depth = (panel: FloatingPanel): number =>
+			Number(panel.card.el.style.getPropertyValue('--snowflake-method-sticky-z')) || 0;
+		const standing = [...this.panels].sort(([, a], [, b]) => depth(a) - depth(b));
+		for (const [id, panel] of standing) {
+			await panel.card.flush();
+			if (this.destroyed) return;
+			// Closed, or drawn again by another call, while the words were written.
+			if (this.panels.get(id) !== panel) continue;
+			const note = panel.card.note;
+			const state = { ...panel.state };
+			this.panels.delete(id);
+			if (panel.persistTimer !== null) {
+				this.root.win.clearTimeout(panel.persistTimer);
+				panel.persistTimer = null;
+			}
+			// Down before the new card stands: the two share the note's editor.
+			await panel.card.dispose();
+			if (this.destroyed || this.panels.has(id)) continue;
+			this.open(note, { path: panel.projectPath, readOnly: panel.readOnly }, { mode: state.mode }, state);
+		}
 	}
 
 	/** The author put the panel away, or the note was set aside: remembered as closed. */

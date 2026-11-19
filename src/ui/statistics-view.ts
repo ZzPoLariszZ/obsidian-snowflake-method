@@ -1,6 +1,7 @@
 import { ItemView, type WorkspaceLeaf } from 'obsidian';
 
 import { keepEscapeInView } from './escape-key';
+import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import { renderSessionPanel, type SessionPanelBridge } from './session-panel';
 
 export const STATISTICS_VIEW_TYPE = 'snowflake-method-statistics';
@@ -10,7 +11,7 @@ export const STATISTICS_VIEW_TYPE = 'snowflake-method-statistics';
  * the live session and today's totals can stand beside whatever is being
  * written instead of underneath it.
  */
-export class SnowflakeStatisticsView extends ItemView {
+export class SnowflakeStatisticsView extends ItemView implements RelabelsHeader {
 	private dispose: (() => void) | null = null;
 	private shownFingerprint: string | null = null;
 
@@ -60,6 +61,13 @@ export class SnowflakeStatisticsView extends ItemView {
 		this.dispose = null;
 		this.contentEl.empty();
 		this.mount();
+		// The title speaks the same language, and stays in the tab until told.
+		this.relabelHeader();
+	}
+
+	/** The title said again, in the language the sidebar speaks now. */
+	relabelHeader(): void {
+		relabelLeafHeader(this);
 	}
 
 	private mount(): void {

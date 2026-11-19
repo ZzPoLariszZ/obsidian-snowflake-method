@@ -58,6 +58,7 @@ import {
 	type ForeshadowingPlan,
 	type OccurrencePlacement,
 	type OccurrenceRole,
+	type ProjectLanguage,
 	type Revision,
 	type RevisionPlan,
 	type SensitiveMatcher,
@@ -149,6 +150,7 @@ import { wireCaretKeepingPress } from './caret-press';
 import { isMobileDevice } from './device';
 import { pressYieldsToSelection } from './selection-press';
 import { keepEscapeInView } from './escape-key';
+import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 
 export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
 
@@ -307,7 +309,7 @@ function sameKeys(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
 	return a.size === b.size && [...a].every((key) => b.has(key));
 }
 
-export class SnowflakeManuscriptView extends ItemView {
+export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader {
 	/** The page-preview popover over this view's links, held as HoverParent. */
 	hoverPopover: HoverPopover | null = null;
 	private readonly host: ManuscriptHost;
@@ -346,6 +348,15 @@ export class SnowflakeManuscriptView extends ItemView {
 	private toolbarButtons: HTMLButtonElement[] = [];
 	/** The count of cards on the stream's door to the sidebar. */
 	private toolbarCardCount: HTMLElement | null = null;
+	/**
+	 * The language the page's chrome was written in: the bar, the headers,
+	 * the rules, the margin's cards, the wheel and the find bar each write
+	 * their words once, as they are made, so a refresh that finds the
+	 * interface speaking another says them again where they stand.
+	 */
+	private drawnLanguage: ProjectLanguage | null = null;
+	/** The title the tab and the bar over the view were last told. */
+	private shownTitle: string | null = null;
 	/** The card whose words hold the caret, as last told to the sidebar. */
 	private caretCard: string | null = null;
 	/** The frame owed to the sidebar after a scroll, while one is pending. */
@@ -634,6 +645,21 @@ export class SnowflakeManuscriptView extends ItemView {
 		return 'scroll-text';
 	}
 
+	/**
+	 * The title said again where the app shows it: in the tab, and in the bar
+	 * over the view, which the app wrote once, as the leaf opened, before the
+	 * stream knew its project.
+	 */
+	relabelHeader(): void {
+		this.shownTitle = this.getDisplayText();
+		relabelLeafHeader(this, this.shownTitle);
+	}
+
+	/** The language the interface speaks to the project on the page. */
+	private language(): ProjectLanguage {
+		return this.host.interfaceLocale(this.model?.locale ?? null);
+	}
+
 	getState(): Record<string, unknown> {
 		return { projectPath: this.projectPath, anchorPath: this.anchorPath };
 	}
@@ -897,6 +923,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		// is half of that context: a count taken while it was still loading
 		// spoke for the wrong project, and nothing else would correct it.
 		this.host.manuscriptWritingChanged();
+		// The title names the project, and speaks the interface's language.
+		if (this.getDisplayText() !== this.shownTitle) this.relabelHeader();
 		// The modes are classes and nothing else, so flipping one moves nothing.
 		this.contentEl.toggleClass(
 			'snowflake-method-typewriter',
@@ -939,12 +967,21 @@ export class SnowflakeManuscriptView extends ItemView {
 			// added one — and rendered every note in the window to do it, when
 			// planWindow already knows which have arrived and which have gone.
 			// A setting they just flipped is no reason to move them either, so
-			// the chrome is redrawn where it stands.
+			// the chrome is redrawn where it stands. Nor is a change of the
+			// interface language, which leaves every word the chrome was drawn
+			// with in the old one.
 			const reshaped = this.shape !== previousShape;
-			if (reshaped) this.redrawBoundaries();
-			if (reshaped || this.headerShape !== previousHeaders) {
+			const relabel = this.drawnLanguage !== this.language();
+			// A label in another language can be longer: the bar may wrap, and
+			// a button at the head of the book take another line above the
+			// reader. The page is held where it stood through the redraw.
+			const release = relabel ? this.holdView() : null;
+			if (reshaped || relabel) this.redrawBoundaries();
+			if (reshaped || relabel || this.headerShape !== previousHeaders) {
 				this.redrawHeaders();
 			}
+			if (relabel) this.relabelChrome();
+			release?.();
 			await this.applyWindow();
 			await this.refreshMountedBodies();
 			if (lost || carried.active !== null || carried.place !== null) {
@@ -1331,6 +1368,11 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (!this.placeOwed) this.place = null;
 		const model = this.model;
 		this.renderedProject = model?.projectPath ?? null;
+		// Everything below is drawn afresh in the language spoken now, but the
+		// find bar outlives the page it searched, words and all.
+		const language = this.language();
+		if (language !== this.drawnLanguage) this.searchBar?.relabel();
+		this.drawnLanguage = language;
 		if (model === null || model.segments.length === 0) {
 			// Nothing left to search: the bar goes with the page it searched.
 			this.closeSearch();
@@ -1397,9 +1439,71 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * editor would bounce the whole page under the reader every toggle.
 	 */
 	private renderToolbar(): void {
+		this.fillToolbar(
+			this.contentEl.createDiv({ cls: 'snowflake-method-manuscript-toolbar' }),
+		);
+	}
+
+	/**
+	 * The bar drawn again where it stands, in the language now spoken: its
+	 * buttons' words are written once, as they are made. The writing faces
+	 * ride it and go and come back with it, and the dress popover hangs off
+	 * one of its buttons, so it is opened again on the new one.
+	 */
+	private redrawToolbar(): void {
+		const old = this.contentEl.querySelector<HTMLElement>(
+			':scope > .snowflake-method-manuscript-toolbar',
+		);
+		if (old === null) return;
+		const dressed = this.presentationPanel !== null;
+		// As a click elsewhere closes it: the author is not at the words, and
+		// the caret is not sent back to them.
+		this.presentationPanel?.close('pointer');
+		this.releaseWritingFaces?.();
+		this.releaseWritingFaces = null;
 		const bar = this.contentEl.createDiv({
 			cls: 'snowflake-method-manuscript-toolbar',
 		});
+		old.replaceWith(bar);
+		this.fillToolbar(bar);
+		// The count on the door to the sidebar is the stream's to say.
+		this.publishMarginCards();
+		const dress = bar.querySelector<HTMLElement>(
+			'.snowflake-method-toolbar-presentation',
+		);
+		if (dressed && dress !== null) this.togglePresentationPanel(dress);
+	}
+
+	/**
+	 * Says the page's chrome again in the language now spoken, where it
+	 * stands: the tab's title, the bar, the buttons at the ends of the book,
+	 * the cards in the margin, the wheel of chapters and the find bar.
+	 * Nothing is mounted again, so the page keeps its place and a note being
+	 * written keeps its editor; a card with a form open keeps the form, which
+	 * holds the only copy of what is being typed. The chapters' headers and
+	 * rules are the caller's to redraw, beside its own reasons to, and the
+	 * milestones' words come with the dress it puts on after.
+	 */
+	private relabelChrome(): void {
+		this.drawnLanguage = this.language();
+		if (this.getDisplayText() !== this.shownTitle) this.relabelHeader();
+		this.redrawToolbar();
+		// The buttons at the head and the foot of the book, where the window
+		// reaches them.
+		const stream = this.streamEl;
+		if (stream !== null) {
+			const end = (side: 'start' | 'end'): boolean =>
+				stream.querySelector(`:scope > .snowflake-method-manuscript-end.is-${side}`) !== null;
+			const atStart = end('start');
+			const atEnd = end('end');
+			if (atStart || atEnd) this.renderEnds(atStart, atEnd);
+		}
+		for (const entry of this.mounted.values()) entry.rail?.relabel();
+		this.contents?.relabel();
+		this.searchBar?.relabel();
+	}
+
+	private fillToolbar(bar: HTMLElement): void {
 		this.toolbarButtons = [];
 		const button = (
 			icon: string,

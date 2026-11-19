@@ -1077,3 +1077,34 @@ describe('the wheel of chapters', () => {
 		expect(wheel.el.isConnected).toBe(false);
 	});
 });
+
+describe('the wheel through a change of language', () => {
+	beforeAll(() => {
+		installObsidianDom(window);
+	});
+
+	it('says its name again, the rows and the page’s chapter left as they stand', () => {
+		let language = 'en';
+		const host = document.body.createDiv();
+		const wheel = renderContentsWheel(host, {
+			t: (key) => `${language}:${key}`,
+			go: () => undefined,
+			still: () => true,
+		});
+		const rows = chapters(3);
+		wheel.sync({ rows, active: rows[1]?.path ?? null, reach: 2, editable: true });
+		const name = (): string | null =>
+			document.getElementById(wheel.el.getAttribute('aria-labelledby') ?? '')?.textContent ?? null;
+		const buttons = Array.from(wheel.el.querySelectorAll('button'));
+		expect(name()).toBe('en:contents.viewTitle');
+
+		language = 'ko';
+		wheel.relabel();
+
+		expect(name()).toBe('ko:contents.viewTitle');
+		expect(Array.from(wheel.el.querySelectorAll('button'))).toEqual(buttons);
+		expect(buttons.map((button) => button.textContent)).toEqual(rows.map((row) => row.title));
+		wheel.dispose();
+	});
+});
+

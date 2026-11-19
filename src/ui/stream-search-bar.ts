@@ -81,6 +81,14 @@ export class StreamSearchBar {
 	private replaceMode = false;
 	private replaceAllowed = true;
 	private queryTimer: number | null = null;
+	/** What the count says now, to say it again in another language. */
+	private count: StreamSearchCount = { kind: 'none' };
+	/**
+	 * Each of the bar's own words, written as it is made and kept here to be
+	 * written again: a change of language finds the bar standing, with a
+	 * query in it, and says them in the new one where they stand.
+	 */
+	private readonly labels: (() => void)[] = [];
 
 	constructor(
 		parent: HTMLElement,
@@ -96,7 +104,7 @@ export class StreamSearchBar {
 		const button = (
 			holder: HTMLElement,
 			icon: string,
-			label: string,
+			label: () => string,
 			act: () => void,
 		): HTMLElement => {
 			const el = holder.createEl('button', {
@@ -104,7 +112,9 @@ export class StreamSearchBar {
 				attr: { type: 'button' },
 			});
 			setIcon(el, icon);
-			setTooltip(el, label, { placement: 'top' });
+			this.say(() => {
+				setTooltip(el, label(), { placement: 'top' });
+			});
 			// The caret stays in the box it was in, as it does on the app's bar.
 			wireCaretKeepingPress(el, (event) => {
 				event.preventDefault();
@@ -113,7 +123,7 @@ export class StreamSearchBar {
 			return el;
 		};
 
-		this.toggleEl = button(row, 'chevron-right', t('manuscript.search.showReplace'), () => {
+		this.toggleEl = button(row, 'chevron-right', () => t('manuscript.search.showReplace'), () => {
 			if (!this.replaceAllowed) return;
 			this.setReplaceMode(!this.replaceMode);
 			if (this.replaceMode) this.replaceInput.focus();
@@ -124,7 +134,10 @@ export class StreamSearchBar {
 
 		this.inputBox = row.createDiv({ cls: 'search-input-container document-search-input' });
 		this.findInput = this.inputBox.createEl('input', {
-			attr: { type: 'text', placeholder: t('manuscript.search.find'), spellcheck: 'false' },
+			attr: { type: 'text', spellcheck: 'false' },
+		});
+		this.say(() => {
+			this.findInput.setAttribute('placeholder', t('manuscript.search.find'));
 		});
 		this.countEl = this.inputBox.createDiv({ cls: 'document-search-count' });
 		this.countEl.hide();
@@ -135,11 +148,13 @@ export class StreamSearchBar {
 				attr: { type: 'button', 'aria-pressed': 'false' },
 			});
 			setIcon(el, option.icon);
-			setTooltip(
-				el,
-				`${t(option.label)}\n${chordLabel(mac ? ['Mod', 'Alt'] : ['Alt'], option.key, mac)}`,
-				{ placement: 'top' },
-			);
+			this.say(() => {
+				setTooltip(
+					el,
+					`${t(option.label)}\n${chordLabel(mac ? ['Mod', 'Alt'] : ['Alt'], option.key, mac)}`,
+					{ placement: 'top' },
+				);
+			});
 			wireCaretKeepingPress(el, (event) => {
 				event.preventDefault();
 				this.flip(option.name);
@@ -159,15 +174,17 @@ export class StreamSearchBar {
 		// The close stands in the same group as the arrows, so the three sit
 		// side by side as the buttons in a chapter's header do, in its columns.
 		const walk = row.createDiv({ cls: 'document-search-buttons' });
-		button(walk, 'arrow-up', `${t('manuscript.search.previous')}\n${chordLabel(['Shift'], 'F3', mac)}`, () => {
+		button(walk, 'arrow-up', () => `${t('manuscript.search.previous')}\n${chordLabel(['Shift'], 'F3', mac)}`, () => {
 			this.step(-1);
 		});
-		button(walk, 'arrow-down', `${t('manuscript.search.next')}\n${chordLabel([], 'F3', mac)}`, () => {
+		button(walk, 'arrow-down', () => `${t('manuscript.search.next')}\n${chordLabel([], 'F3', mac)}`, () => {
 			this.step(1);
 		});
 		const close = walk.createDiv({ cls: 'clickable-icon document-search-close-button' });
 		setIcon(close, 'x');
-		setTooltip(close, t('manuscript.search.close'), { placement: 'top' });
+		this.say(() => {
+			setTooltip(close, t('manuscript.search.close'), { placement: 'top' });
+		});
 		close.addEventListener('click', (event) => {
 			event.preventDefault();
 			hooks.onClose();
@@ -187,17 +204,20 @@ export class StreamSearchBar {
 		});
 		this.replaceInput = replaceBox.createEl('input', {
 			cls: 'document-replace-input',
-			attr: { type: 'text', placeholder: t('manuscript.search.replacePlaceholder'), spellcheck: 'false' },
+			attr: { type: 'text', spellcheck: 'false' },
+		});
+		this.say(() => {
+			this.replaceInput.setAttribute('placeholder', t('manuscript.search.replacePlaceholder'));
 		});
 		const replacing = replaceRow.createDiv({ cls: 'document-replace-buttons' });
-		button(replacing, 'replace', `${t('manuscript.search.replace')}\n${chordLabel([], 'Enter', mac)}`, () => {
+		button(replacing, 'replace', () => `${t('manuscript.search.replace')}\n${chordLabel([], 'Enter', mac)}`, () => {
 			this.flushQuery();
 			hooks.onReplace();
 		});
 		button(
 			replacing,
 			'replace-all',
-			`${t('manuscript.search.replaceAll')}\n${chordLabel(['Mod', 'Alt'], 'Enter', mac)}`,
+			() => `${t('manuscript.search.replaceAll')}\n${chordLabel(['Mod', 'Alt'], 'Enter', mac)}`,
 			() => {
 				this.flushQuery();
 				hooks.onReplaceAll();
@@ -264,7 +284,18 @@ export class StreamSearchBar {
 		this.paintReplaceMode();
 	}
 
+	/**
+	 * Says the bar's words again in the language now spoken, where it
+	 * stands: what is typed in it, its options and its count are kept.
+	 */
+	relabel(): void {
+		for (const label of this.labels) label();
+		this.paintReplaceMode();
+		this.showCount(this.count);
+	}
+
 	showCount(count: StreamSearchCount): void {
+		this.count = count;
 		const { t } = this.hooks;
 		this.inputBox.toggleClass(
 			'mod-no-match',
@@ -303,6 +334,12 @@ export class StreamSearchBar {
 		const count = this.countEl.isShown() ? this.countEl.getBoundingClientRect().width : 0;
 		this.inputBox.style.setProperty('--snowflake-method-search-options-width', `${String(Math.ceil(options))}px`);
 		this.inputBox.style.setProperty('--snowflake-method-search-count-width', `${String(Math.ceil(count))}px`);
+	}
+
+	/** Writes one of the bar's words now, and keeps it to be written again. */
+	private say(label: () => void): void {
+		label();
+		this.labels.push(label);
 	}
 
 	private paintReplaceMode(): void {

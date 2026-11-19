@@ -6,6 +6,7 @@ import {
 	type StickyNoteBoardHandle,
 } from './sticky-note-board';
 import { keepEscapeInView } from './escape-key';
+import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import type { StickyNoteBridge } from './sticky-note-bridge';
 
 export const STICKY_NOTES_VIEW_TYPE = 'snowflake-method-sticky-notes';
@@ -27,7 +28,7 @@ export interface StickyNotesViewDeps {
  * reminder can stand beside whatever is being written instead of under it.
  * It follows the current project the way the statistics sidebar does.
  */
-export class SnowflakeStickyNotesView extends ItemView {
+export class SnowflakeStickyNotesView extends ItemView implements RelabelsHeader {
 	private handle: StickyNoteBoardHandle | null = null;
 	private shownFingerprint: string | null = null;
 	private readonly memory = stickyBoardMemory();
@@ -66,6 +67,13 @@ export class SnowflakeStickyNotesView extends ItemView {
 		this.handle = null;
 		this.contentEl.empty();
 		this.mount();
+		// The title speaks the same language, and stays in the tab until told.
+		this.relabelHeader();
+	}
+
+	/** The title said again, in the language the sidebar speaks now. */
+	relabelHeader(): void {
+		relabelLeafHeader(this);
 	}
 
 	private mount(): void {

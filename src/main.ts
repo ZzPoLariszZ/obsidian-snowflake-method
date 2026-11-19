@@ -512,6 +512,18 @@ import { deviceClass, isMobileDevice, isPhoneBody, statusBarShown, watchDeviceCl
 import { TOOLBAR_FACES_CLASS, WritingFaces } from './ui/writing-faces';
 import { floatPolicy } from './ui/sticky-note-layout';
 import { MobileDiagnosticsModal } from './ui/mobile-diagnostics';
+import { relabelsHeader } from './ui/leaf-header';
+
+/** Every kind of leaf the plugin draws, each saying its title in the plugin's language. */
+const PLUGIN_VIEW_TYPES: ReadonlySet<string> = new Set([
+	DASHBOARD_VIEW_TYPE,
+	MANUSCRIPT_VIEW_TYPE,
+	STORY_STRUCTURE_VIEW_TYPE,
+	STATISTICS_VIEW_TYPE,
+	STICKY_NOTES_VIEW_TYPE,
+	MARGIN_CARDS_VIEW_TYPE,
+	CONTENTS_VIEW_TYPE,
+]);
 
 const REFRESH_DELAY_MS = 250;
 /**
@@ -819,6 +831,8 @@ export default class SnowflakeMethodPlugin
 	stickyNoteHub!: StickyNoteHub;
 	/** The floating sticky notes, one layer per window, made when a window first floats one. */
 	private readonly stickyLayers = new Map<Document, StickyNoteFloatLayer>();
+	/** The ribbon's buttons with the key each tooltip is said by, to say them again in another language. */
+	private readonly ribbonLabels: { el: HTMLElement; key: string }[] = [];
 	/** The project the layers were last reconciled to; undefined before the first pass. */
 	private stickyFloatsProject: string | null | undefined = undefined;
 	/** The chapters the relink sweep read, each under the stamp it was read at. */
@@ -993,17 +1007,14 @@ export default class SnowflakeMethodPlugin
 		locale: ProjectLanguage | null,
 		key: string,
 		vars?: Record<string, string | number>,
-	): string =>
-		translate(
-			resolveLocale(
-				this.settings.uiLocale,
-				moment.locale(),
-				locale ??
-					this.currentProjectLocale ??
-					this.resolvedDefaultProjectLocale(),
-			),
-			key,
-			vars,
+	): string => translate(this.interfaceLocale(locale), key, vars);
+
+	/** The language the interface speaks to a project in this language, or to the current one for null. */
+	readonly interfaceLocale = (locale: ProjectLanguage | null): ProjectLanguage =>
+		resolveLocale(
+			this.settings.uiLocale,
+			moment.locale(),
+			locale ?? this.currentProjectLocale ?? this.resolvedDefaultProjectLocale(),
 		);
 
 	async onload(): Promise<void> {
@@ -1554,25 +1565,21 @@ export default class SnowflakeMethodPlugin
 			display: this.globalT('stickyNotes.viewTitle'),
 			defaultMod: true,
 		});
-		this.addRibbonIcon('snowflake', this.globalT('commands.openDashboard'), () => {
+		this.addLabelledRibbonIcon('snowflake', 'commands.openDashboard', () => {
 			void this.openDashboard();
 		});
-		this.addRibbonIcon(
-			'scroll-text',
-			this.globalT('commands.openManuscriptStream'),
-			() => {
-				void this.openCurrentManuscript();
-			},
-		);
+		this.addLabelledRibbonIcon('scroll-text', 'commands.openManuscriptStream', () => {
+			void this.openCurrentManuscript();
+		});
 		// The workspace is not offered on a phone (workspaceOffered): the
 		// stylesheet puts its ribbon action away there, following the body's
 		// class as an iPad splits and widens.
-		this.addRibbonIcon('orbit', this.globalT('commands.openStoryStructure'), () => {
+		this.addLabelledRibbonIcon('orbit', 'commands.openStoryStructure', () => {
 			void this.openStoryStructure().catch((error: unknown) => {
 				this.showError(error);
 			});
 		}).addClass('snowflake-method-workspace-ribbon');
-		this.addRibbonIcon('sticker', this.globalT('commands.newStickyNote'), () => {
+		this.addLabelledRibbonIcon('sticker', 'commands.newStickyNote', () => {
 			void this.createStickyNoteAndFloat().catch((error: unknown) => {
 				this.showError(error);
 			});
@@ -4174,8 +4181,14 @@ export default class SnowflakeMethodPlugin
 					this.settings.protectManagedBoundaries,
 			);
 		}
-		// The bars over notes are drawn in the language the plugin speaks.
-		if (key === 'uiLocale') this.noteToolbars?.apply();
+		// The bars over notes are drawn in the language the plugin speaks, and
+		// so is everything else the plugin drew: what stands outside the views
+		// and every leaf's title at once, and the views' own content with the
+		// refresh below -- or, for a view put away, at its reveal.
+		if (key === 'uiLocale') {
+			this.noteToolbars?.apply();
+			this.relabelSurfaces();
+		}
 		// The palette's toggle writes it too, and the settings page shows it.
 		if (key === 'protectManagedBoundaries') this.settingTab?.refreshRows();
 		if (key === 'projectRoot') await this.syncCurrentProjectLocale();
@@ -12745,11 +12758,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private currentLocale(): ProjectLanguage {
-		return resolveLocale(
-			this.settings.uiLocale,
-			moment.locale(),
-			this.currentProjectLocale ?? this.resolvedDefaultProjectLocale(),
-		);
+		return this.interfaceLocale(null);
 	}
 
 	private resolvedDefaultProjectLocale(): ProjectLanguage {
@@ -12781,6 +12790,53 @@ export default class SnowflakeMethodPlugin
 	 */
 	private statisticsFingerprint(): string {
 		return `${this.currentLocale()}|${this.settings.recentProjectPath ?? ''}`;
+	}
+
+	/**
+	 * A ribbon button whose tooltip is one of the plugin's strings, kept with
+	 * its key: the app writes the tooltip once, and a change of language says
+	 * it again.
+	 */
+	private addLabelledRibbonIcon(
+		icon: string,
+		key: string,
+		callback: (event: MouseEvent) => unknown,
+	): HTMLElement {
+		const el = this.addRibbonIcon(icon, this.globalT(key), callback);
+		this.ribbonLabels.push({ el, key });
+		return el;
+	}
+
+	/**
+	 * What the plugin drew outside its views' content, said again in the
+	 * language now spoken: the ribbon's tooltips, the explorer's buttons, the
+	 * notes floating over the workspace, and every leaf's title -- in the tab
+	 * too, which stands in the tab bar while its view is put away and waits
+	 * for its reveal to be drawn again. A tab the app has not loaded yet keeps
+	 * the title the layout saved it with until it is opened: loading it here
+	 * would draw a stream with no layout to measure, which is why a hidden
+	 * stream is never loaded for a refresh either.
+	 */
+	private relabelSurfaces(): void {
+		for (const { el, key } of this.ribbonLabels) {
+			// The tooltip's place and delay are the app's, on the same element.
+			el.setAttribute('aria-label', this.globalT(key));
+		}
+		this.explorer?.settingsChanged('uiLocale');
+		for (const layer of this.stickyLayers.values()) {
+			void layer.relabel().catch((error: unknown) => {
+				this.showError(error);
+			});
+		}
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const view = leaf.view;
+			if (PLUGIN_VIEW_TYPES.has(view.getViewType()) && relabelsHeader(view)) {
+				view.relabelHeader();
+			}
+		});
+		// The layout keeps each tab's title for the next start, when the tabs
+		// not yet opened show it.
+		this.app.workspace.requestSaveLayout();
 	}
 
 	private rerenderStatisticsViews(): void {

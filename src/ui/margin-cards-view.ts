@@ -2,6 +2,7 @@ import { ItemView, type WorkspaceLeaf } from 'obsidian';
 
 import { keepEscapeInView } from './escape-key';
 import { FilterPanel } from './filter-panel';
+import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import {
 	marginCardsLens,
 	renderMarginCardsList,
@@ -31,7 +32,7 @@ export interface MarginCardsViewDeps extends Omit<MarginCardsListDeps, 'popover'
  * column that scrolls on its own. It speaks the current project's language,
  * labels included, as the statistics and sticky notes sidebars do.
  */
-export class SnowflakeMarginCardsView extends ItemView {
+export class SnowflakeMarginCardsView extends ItemView implements RelabelsHeader {
 	private list: MarginCardsList | null = null;
 	/** The funnel popover the column asks its questions in, one for the view. */
 	private popover: FilterPanel | null = null;
@@ -75,6 +76,13 @@ export class SnowflakeMarginCardsView extends ItemView {
 		this.list = null;
 		this.contentEl.empty();
 		this.mount();
+		// The title speaks the same language, and stays in the tab until told.
+		this.relabelHeader();
+	}
+
+	/** The title said again, in the language the sidebar speaks now. */
+	relabelHeader(): void {
+		relabelLeafHeader(this);
 	}
 
 	/** A drawer opening shows the column: a card named meanwhile is scrolled to. */

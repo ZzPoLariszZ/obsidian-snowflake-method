@@ -3,6 +3,7 @@ import { ItemView, Scope, type WorkspaceLeaf } from 'obsidian';
 import type { ContentsHub } from './contents-hub';
 import { renderContentsWheel, type ContentsWheel } from './contents-wheel';
 import { keepEscapeInView } from './escape-key';
+import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import type { Translate } from './modals';
 import { renderEmptyLine } from './pane-parts';
 
@@ -35,7 +36,7 @@ export interface ContentsViewDeps {
  * and a press on a row brings that chapter up there. It speaks the current
  * project's language, as the margin cards sidebar does.
  */
-export class SnowflakeContentsView extends ItemView {
+export class SnowflakeContentsView extends ItemView implements RelabelsHeader {
 	private wheel: ContentsWheel | null = null;
 	private release: (() => void) | null = null;
 	private shownFingerprint: string | null = null;
@@ -84,6 +85,13 @@ export class SnowflakeContentsView extends ItemView {
 		if (this.deps.fingerprint() === this.shownFingerprint) return;
 		this.unmount();
 		this.mount();
+		// The title speaks the same language, and stays in the tab until told.
+		this.relabelHeader();
+	}
+
+	/** The title said again, in the language the sidebar speaks now. */
+	relabelHeader(): void {
+		relabelLeafHeader(this);
 	}
 
 	/**

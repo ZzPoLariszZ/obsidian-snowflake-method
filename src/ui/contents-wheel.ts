@@ -68,6 +68,8 @@ export interface ContentsWheel {
 	 * of the view the wheel stands in.
 	 */
 	held(): string | null;
+	/** Says the wheel's own words again, for a change of language: its name and its dots' name. */
+	relabel(): void;
 	dispose(): void;
 }
 
@@ -406,13 +408,12 @@ export function renderContentsWheel(
 					cls: 'clickable-icon snowflake-method-contents-more',
 					attr: { type: 'button', tabindex: '-1', 'aria-haspopup': 'menu' },
 				});
-	if (more !== null) {
-		setIcon(more, 'ellipsis');
-		more.createSpan({
+	if (more !== null) setIcon(more, 'ellipsis');
+	const moreName =
+		more?.createSpan({
 			cls: 'snowflake-method-contents-unseen',
 			text: deps.t('table.actions'),
-		});
-	}
+		}) ?? null;
 
 	/** Stands the dots in a row, or takes them off the wheel where there is no such row. */
 	const offer = (at: number): void => {
@@ -767,6 +768,10 @@ export function renderContentsWheel(
 			const focused = nav.doc.activeElement;
 			const at = items.findIndex((button) => button === focused);
 			return rows[at]?.path ?? null;
+		},
+		relabel: () => {
+			name.setText(deps.t('contents.viewTitle'));
+			moreName?.setText(deps.t('table.actions'));
 		},
 		dispose: () => {
 			disarm();

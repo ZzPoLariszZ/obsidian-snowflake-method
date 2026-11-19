@@ -300,3 +300,83 @@ describe('the contents sidebar', () => {
 		expect(contentEl.childElementCount).toBe(0);
 	});
 });
+
+/**
+ * The sidebar in a leaf as the app builds one: the bar over the view with
+ * its title, the content below it, and a tab the app writes the title into
+ * when the leaf is told to update its header.
+ */
+const inLeaf = (): {
+	view: SnowflakeContentsView;
+	title: HTMLElement;
+	tab: { title: string; updates: number };
+	speak: (language: string) => void;
+} => {
+	let language = 'en';
+	const containerEl = document.body.createDiv({ cls: 'workspace-leaf-content' });
+	const title = containerEl
+		.createDiv({ cls: 'view-header' })
+		.createDiv({ cls: 'view-header-title', text: 'en:contents.viewTitle' });
+	const contentEl = containerEl.createDiv({ cls: 'view-content' });
+	const view = Object.create(SnowflakeContentsView.prototype) as SnowflakeContentsView;
+	const tab = { title: 'en:contents.viewTitle', updates: 0 };
+	Object.assign(view, {
+		app: {},
+		leaf: {
+			updateHeader: () => {
+				tab.updates += 1;
+				tab.title = view.getDisplayText();
+			},
+		},
+		containerEl,
+		contentEl,
+		registerDomEvent: () => undefined,
+		deps: {
+			hub: new ContentsHub(),
+			t: (key: string) => `${language}:${key}`,
+			still: () => false,
+			stepAside: () => undefined,
+			fingerprint: () => `${language}|Demo`,
+		},
+		wheel: null,
+		release: null,
+		shownFingerprint: null,
+	});
+	return {
+		view,
+		title,
+		tab,
+		speak: (next) => {
+			language = next;
+		},
+	};
+};
+
+describe('the contents sidebar’s title through a change of language', () => {
+	beforeAll(() => {
+		installObsidianDom(window);
+	});
+
+	beforeEach(() => {
+		document.body.replaceChildren();
+	});
+
+	it('is said again in the tab and in the bar over the view', async () => {
+		const { view, title, tab, speak } = inLeaf();
+		await view.onOpen();
+		speak('zh-TW');
+		view.rerender();
+		expect(tab.updates).toBe(1);
+		expect(tab.title).toBe('zh-TW:contents.viewTitle');
+		expect(title.textContent).toBe('zh-TW:contents.viewTitle');
+	});
+
+	it('is left alone by a rerender that finds nothing moved', async () => {
+		const { view, title, tab } = inLeaf();
+		await view.onOpen();
+		view.rerender();
+		expect(tab.updates).toBe(0);
+		expect(title.textContent).toBe('en:contents.viewTitle');
+	});
+});
+
