@@ -171,7 +171,7 @@ import {
 } from './story-structure-state';
 import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
-import type { RelabelsHeader } from './leaf-header';
+import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import { paintCount, renderSplitButton, renderTabStrip } from './pane-parts';
 import {
 	renderStickyNoteBoard,
@@ -1764,16 +1764,10 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	}
 
 	private updateViewTitle(): void {
-		const leaf = this.leaf as WorkspaceLeaf & {
-			updateHeader?: () => void;
-			tabHeaderEl?: HTMLElement;
-		};
-		leaf.updateHeader?.();
 		const fullTitle = this.getFullDisplayText();
+		relabelLeafHeader(this, fullTitle);
+		const leaf = this.leaf as WorkspaceLeaf & { tabHeaderEl?: HTMLElement };
 		if (leaf.tabHeaderEl !== undefined) setTooltip(leaf.tabHeaderEl, fullTitle);
-		this.containerEl
-			.querySelector<HTMLElement>('.view-header-title')
-			?.setText(fullTitle);
 		this.viewTitleIconEl = null;
 		this.decorateViewTitle();
 	}
