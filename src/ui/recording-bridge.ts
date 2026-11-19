@@ -20,8 +20,6 @@ export interface RecordingSettingsBridge {
 	preferences(): RecordingPreferences;
 	/** Keeps a change to the choices. Refused while a recording runs. */
 	update(patch: Partial<RecordingPreferences>): void;
-	/** Fires when the choices moved, or a recording began or ended. Never on a clock tick. */
-	subscribe(listener: () => void): () => void;
 	/** Where a recording would go. */
 	storage(): RecordingStorage;
 	/** The vault folder recordings go under where the author names none. */
@@ -36,8 +34,11 @@ export interface RecordingSettingsBridge {
 	screenAccess(): 'granted' | 'denied' | 'unknown';
 	/** Opens the system's own page on what may record the screen. */
 	openScreenPrivacy(): void;
-	/** Looks at OBS without recording: whether it answers and what it would record. */
-	/** Looks at OBS. `onOpening` is told where OBS was closed and is being opened for the look. */
+	/**
+	 * Looks at OBS without recording: whether it answers and what it would
+	 * record. `onOpening` is told where OBS was closed and is being opened
+	 * for the look.
+	 */
 	testObs(onOpening?: () => void): Promise<ObsProbe>;
 	/** Draws Obsidian's own field for a secret into a host, for OBS's password. `changed` is told when another secret is chosen. */
 	mountSecret(host: HTMLElement, changed: () => void): void;

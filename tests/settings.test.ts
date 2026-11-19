@@ -1145,7 +1145,6 @@ describe('the screen recording’s section of the settings', () => {
 				if (held.state.phase !== 'idle' && !asking) return;
 				held.preferences = sanitizeRecordingPreferences({ ...held.preferences, ...next }, system);
 			},
-			subscribe: () => () => {},
 			storage: () => ({ mode: 'default', path: '/Users/ada/Movies' }),
 			defaultVaultFolder: () => 'Snowflake Projects/Snowflake Recordings',
 			figures: () => Promise.resolve(null),

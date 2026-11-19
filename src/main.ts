@@ -875,9 +875,8 @@ export default class SnowflakeMethodPlugin
 	history!: ModificationHistoryService;
 	/** The screen recording, on the desktop alone: null on a phone or a tablet, where nothing records. */
 	private recording: ScreenRecordingService | null = null;
-	/** The recording's choices as last read from the device, and who repaints when they change. */
+	/** The recording's choices as last read from the device. */
 	private recordingChoices: RecordingPreferences | null = null;
-	private readonly recordingChoiceListeners = new Set<() => void>();
 	/** What every sticky-note surface shares: claims, the device's memory of the panels, the bell. */
 	stickyNoteHub!: StickyNoteHub;
 	/** The floating sticky notes, one layer per window, made when a window first floats one. */
@@ -5685,7 +5684,6 @@ export default class SnowflakeMethodPlugin
 		const kept = sanitizeRecordingPreferences(next, desktopSystem() ?? 'mac');
 		this.recordingChoices = kept;
 		this.app.saveLocalStorage(SCREEN_RECORDING_KEY, kept);
-		for (const listener of [...this.recordingChoiceListeners]) listener();
 	}
 
 	/** The vault's own folder on the disk, or null where the vault is not on one. */
@@ -5850,21 +5848,6 @@ export default class SnowflakeMethodPlugin
 			state: () => service.state(),
 			preferences: () => this.recordingPreferences(),
 			update,
-			subscribe: (listener) => {
-				let idle = service.state().phase === 'idle';
-				const release = service.subscribe((event) => {
-					if (event.kind !== 'changed') return;
-					const nowIdle = service.state().phase === 'idle';
-					if (nowIdle === idle) return;
-					idle = nowIdle;
-					listener();
-				});
-				this.recordingChoiceListeners.add(listener);
-				return () => {
-					release();
-					this.recordingChoiceListeners.delete(listener);
-				};
-			},
 			storage: () => service.storage(),
 			defaultVaultFolder: () => projectRecordingRoot(this.settings.projectRoot),
 			figures: () => service.figures(),

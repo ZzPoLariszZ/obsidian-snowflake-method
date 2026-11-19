@@ -105,7 +105,6 @@ function rig(system: RecordingSystem = 'mac') {
 		update: (patch) => {
 			held.preferences = { ...held.preferences, ...patch };
 		},
-		subscribe: () => () => {},
 		storage: () => held.storage,
 		defaultVaultFolder: () => 'Novels/Snowflake Recordings',
 		figures: () => {
