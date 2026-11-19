@@ -346,6 +346,16 @@ describe('the actions column of a frame', () => {
 		expect(written()).toEqual([grown, grown]);
 	});
 
+	it('fits to the first row laid out, past one a search has hidden', () => {
+		const { frame, row, written } = fitting(1000);
+		// The first row is hidden, so its buttons measure nothing; the next shows.
+		row(0, 0);
+		row(...FRENCH);
+		frame.fitActions();
+		expect(written()[1]?.['--snowflake-method-table-actions-width']).toBe('205px');
+		expect(written()[1]?.['--snowflake-method-table-floor']).toBe('861px');
+	});
+
 	it('tries again when a row drawn in a hidden frame comes to be laid out', () => {
 		const { dom, frame, row, written, stacked } = fitting(850);
 		const group = row(0, 0);

@@ -420,7 +420,7 @@ export interface TableFrame {
 	/** The body the rows are drawn into. */
 	body: HTMLElement;
 	/**
-	 * Fits the actions column to the buttons of the first row drawn with
+	 * Fits the actions column to the buttons of the first row laid out with
 	 * them, for a caller to say once it has drawn a row. The column takes
 	 * what they need, so they stand the cell's padding from either edge, and
 	 * a column wider than the stylesheet's grows the floor with it (see
@@ -554,7 +554,7 @@ function stackWhenNarrow(
  * were four places for either to drift. A frame too narrow for its table
  * lays it out as cards.
  *
- * The actions column is as wide as the first row drawn with buttons needs,
+ * The actions column is as wide as the first row laid out with buttons needs,
  * so they stand the cell's padding from the rule before them and from the
  * frame after them alike, in every language. The stylesheet's width for it
  * holds only until then: kept where the buttons needed less, it left the
@@ -613,11 +613,17 @@ export function buildTableFrame(
 	/** True when it moved the floor, which the stacking is read against. */
 	const fit = (): boolean => {
 		if (!asked || fitted) return false;
-		const group = body.querySelector<HTMLElement>('.snowflake-method-table-actions');
-		if (group === null) return false;
-		// Up to the next of the layout's own sixty-fourths, so the buttons
-		// are never a sliver short of their room.
-		const need = Math.ceil(actionsWidth(group) * 64) / 64;
+		// The first row laid out: one a search has hidden measures nothing,
+		// and would keep the column from the rows that show.
+		let need = 0;
+		for (const group of Array.from(
+			body.querySelectorAll<HTMLElement>('.snowflake-method-table-actions'),
+		)) {
+			// Up to the next of the layout's own sixty-fourths, so the buttons
+			// are never a sliver short of their room.
+			need = Math.ceil(actionsWidth(group) * 64) / 64;
+			if (need > 0) break;
+		}
 		if (need === 0) return false;
 		fitted = true;
 		const width = tableLength(bodyTable, ACTIONS_WIDTH);
