@@ -100,7 +100,8 @@ import {
  * says, is. While OBS streams, or feeds its virtual camera or a replay
  * buffer, no scene of the plugin's is put on air and nothing is muted,
  * since that output shows the same picture and hears the same sound a
- * recording does.
+ * recording does. Where OBS will not say whether it is busy, it is taken
+ * to be: nothing of its is moved on a guess.
  */
 
 export interface ObsRecorderDeps {
@@ -359,7 +360,8 @@ export class ObsRecorder {
 	 * author had not opened OBS by hand would say nothing of a recording,
 	 * which never asks that of them. OBS is left open after the look.
 	 * An OBS that records or is live on another output is looked at as it
-	 * stands, and nothing in it is moved.
+	 * stands, and nothing in it is moved. Neither is anything in one that
+	 * will not say whether it does.
 	 */
 	async probe(
 		request: { port: number; password: string | null; scope: RecordingScope; mayOpen: boolean },
@@ -382,16 +384,25 @@ export class ObsRecorder {
 			let problem: RecordingErrorCode | null = null;
 			let picture: string | null = null;
 			const status = await this.ask('GetRecordStatus');
-			if (status.ok && status.data.outputActive === true) {
+			// Whether another output runs is asked only where a scene of the plugin's would go on air.
+			const others =
+				status.ok && status.data.outputActive !== true && request.scope !== 'obs' ? await this.otherOutputs() : 'none';
+			if (!status.ok) {
+				// OBS would not say whether it records: nothing in it is moved on a guess.
+				problem = unanswered(status) ? 'obs-closed' : 'obs-refused';
+			} else if (status.data.outputActive === true) {
 				// Something records already: OBS is looked at as it stands and nothing in it is moved.
 				problem = this.owns(status) ? null : 'obs-recording';
 				picture = await this.picture(await this.programScene());
-			} else if (request.scope !== 'obs' && (await this.otherOutputRuns())) {
+			} else if (others === 'running') {
 				// OBS is live elsewhere: the plugin's scene put on air for a look would be seen there.
 				problem = 'obs-live';
+			} else if (others === 'unknown') {
+				// OBS would not say whether it is: the same holds.
+				problem = 'obs-closed';
 			} else {
 				// Nothing records: a recording the plugin once asked for is over.
-				if (status.ok) this.mark(null);
+				this.mark(null);
 				await this.giveBack();
 				await this.tidy();
 				let scene = await this.programScene();
@@ -479,7 +490,12 @@ export class ObsRecorder {
 		// A stream, the virtual camera or a replay buffer shows the scene on
 		// air and hears what OBS hears. A scene of the plugin's would take
 		// both over, so none is made, and nothing of OBS's is moved at all.
-		if (request.scope !== 'obs' && (await this.otherOutputRuns())) return this.leave('obs-live');
+		// The same holds where OBS would not say whether one runs.
+		if (request.scope !== 'obs') {
+			const others = await this.otherOutputs();
+			if (others === 'running') return this.leave('obs-live');
+			if (others === 'unknown') return this.leave('obs-closed');
+		}
 		// Whatever an earlier run left borrowed goes back first, and whatever
 		// it left of its own in OBS is taken away.
 		await this.giveBack();
@@ -573,9 +589,9 @@ export class ObsRecorder {
 
 	/**
 	 * A start OBS is too busy for: it records something of the author's
-	 * own, or it is live on another output. Nothing of OBS's is touched,
-	 * not even to give back what an earlier run borrowed, and the
-	 * conversation ends.
+	 * own, it is live on another output, or it would not say. Nothing of
+	 * OBS's is touched, not even to give back what an earlier run borrowed,
+	 * and the conversation ends.
 	 */
 	private leave(code: RecordingErrorCode): RecorderStart {
 		this.finish();
@@ -610,16 +626,18 @@ export class ObsRecorder {
 	/**
 	 * Whether another output of OBS's runs: its stream, its virtual camera,
 	 * its replay buffer. Each is asked of by its own name, and one OBS has
-	 * none of answers that it has none.
+	 * none of answers that it has none. One OBS said nothing of at all may
+	 * be the one that runs, so OBS is then not known to be quiet.
 	 *
 	 * OBS is never asked for the list of its outputs. Once its video has
 	 * been set anew, which the plugin does for every recording that borrows
 	 * a size, OBS 33 falls over as it reads that list out: it asks an output
 	 * for a width through a picture that is no longer there.
 	 */
-	private async otherOutputRuns(): Promise<boolean> {
+	private async otherOutputs(): Promise<'none' | 'running' | 'unknown'> {
 		const answers = await Promise.all(OTHER_OUTPUTS.map((type) => this.ask(type)));
-		return answers.some((answer) => answer.ok && answer.data.outputActive === true);
+		if (answers.some((answer) => answer.ok && answer.data.outputActive === true)) return 'running';
+		return answers.some(unanswered) ? 'unknown' : 'none';
 	}
 
 	/**

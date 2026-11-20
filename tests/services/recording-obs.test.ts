@@ -2182,3 +2182,48 @@ describe('a recording nobody saw begin or end', () => {
 		expect(ledger.value?.loans.length).toBeGreaterThan(0);
 	});
 });
+
+describe('an OBS that will not say what it is doing', () => {
+	it('moves nothing for a look where OBS will not say whether it records', async () => {
+		const silent = rig();
+		// The author records, and OBS never answers the question.
+		silent.obs.recording = true;
+		silent.obs.holdNext('GetRecordStatus');
+		expect(await silent.clock.drive(silent.recorder.probe(LOOK))).toEqual({
+			ok: true,
+			version: '33.0.1',
+			picture: null,
+			problem: 'obs-closed',
+		});
+		expect(silent.obs.writes()).toEqual([]);
+		// One that answers with a refusal is left alone the same way.
+		const refusing = rig();
+		refusing.obs.recording = true;
+		refusing.obs.failNext('GetRecordStatus', 702);
+		expect(await refusing.clock.drive(refusing.recorder.probe(LOOK))).toMatchObject({ ok: true, problem: 'obs-refused' });
+		expect(refusing.obs.writes()).toEqual([]);
+	});
+
+	it('takes OBS for live where it will not say whether another output runs', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		obs.replayBuffer = true;
+		const before = obs.borrowable();
+		// The one output that runs is the one OBS says nothing of.
+		obs.holdNext('GetReplayBufferStatus');
+		expect(await clock.drive(recorder.start(request({ quality: '1080p' }), hooks))).toEqual({
+			ok: false,
+			code: 'obs-closed',
+			detail: null,
+		});
+		obs.holdNext('GetReplayBufferStatus');
+		expect(await clock.drive(recorder.probe(LOOK))).toMatchObject({ ok: true, picture: null, problem: 'obs-closed' });
+		// Nothing was changed, made or muted under whatever runs there.
+		expect(obs.writes()).toEqual([]);
+		expect(obs.borrowable()).toEqual(before);
+		expect(ledger.value).toBeNull();
+		// OBS's own scene needs no such answer: nothing of the plugin's goes on air for it.
+		obs.scenes[0]?.items.push({ id: 7, source: 'The author’s own capture' });
+		expect((await clock.drive(recorder.start(request({ scope: 'obs' }), hooks))).ok).toBe(true);
+		expect(obs.types().filter((type) => type === 'GetReplayBufferStatus')).toHaveLength(2);
+	});
+});
