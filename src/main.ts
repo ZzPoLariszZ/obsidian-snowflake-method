@@ -437,7 +437,7 @@ import {
 	SceneManuscriptGraphKeeper,
 	type SceneManuscriptProject,
 } from './ui/scene-manuscript-graph';
-import { holdQuit, writeUnderWay, writesUnderWay } from './ui/pending-writes';
+import { QUIT_QUIET_MS, holdQuit, writeUnderWay, writesUnderWay } from './ui/pending-writes';
 import { freeformCanvasMount } from './ui/freeform-canvas';
 import { renderTimeline } from './ui/timeline';
 import type {
@@ -3271,13 +3271,20 @@ export default class SnowflakeMethodPlugin
 			).open();
 		});
 		if (!confirmed) return;
-		// trashFile honours the same trash preference the prompt would have, so
-		// replacing that dialog does not quietly change where the note goes.
-		await this.projects.repository.trashFile(member.path);
-		// After the delete, so a failure here leaves links the health check can
-		// still report rather than lists edited for a deletion that never landed.
-		await this.projects.removeMemberReferences(project, member.path);
-		await this.tidyGallery(project, member);
+		// Noted as one write on its way from here, the answer once given: the
+		// lists are edited only after the project has been read again without
+		// the note, and a quit in that reading must not leave them naming it.
+		await writeUnderWay(
+			(async () => {
+				// trashFile honours the same trash preference the prompt would have, so
+				// replacing that dialog does not quietly change where the note goes.
+				await this.projects.repository.trashFile(member.path);
+				// After the delete, so a failure here leaves links the health check can
+				// still report rather than lists edited for a deletion that never landed.
+				await this.projects.removeMemberReferences(project, member.path);
+				await this.tidyGallery(project, member);
+			})(),
+		);
 		new Notice(deleted);
 	}
 
@@ -6868,17 +6875,24 @@ export default class SnowflakeMethodPlugin
 	 * written, and announced on the document's bell when the file moved. The
 	 * tasks, the timelines and the beat sheets all change through it.
 	 */
-	private async mutateDocument<T>(
+	private mutateDocument<T>(
 		bell: DocumentBell,
 		projectPath: string | null,
 		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
 		refused: T,
 	): Promise<T> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return refused;
-		const { result, changed } = await work(project);
-		if (changed) bell.ring();
-		return result;
+		// Noted as a write on its way from the fetching of its project on. The
+		// board that asked does not wait for the answer, and a quit must: the
+		// change is nowhere but here until its file is written.
+		return writeUnderWay(
+			(async () => {
+				const project = await this.writableProject(projectPath);
+				if (project === null) return refused;
+				const { result, changed } = await work(project);
+				if (changed) bell.ring();
+				return result;
+			})(),
+		);
 	}
 
 	/**
@@ -9172,7 +9186,7 @@ export default class SnowflakeMethodPlugin
 	private async writableProject(
 		projectPath: string | null,
 	): Promise<ProjectSnapshot | null> {
-		const project = await this.resolveProject(projectPath);
+		const project = await this.fetchedForChange(this.resolveProject(projectPath));
 		if (project === null || project.readOnly) return null;
 		return project;
 	}
@@ -9188,11 +9202,17 @@ export default class SnowflakeMethodPlugin
 		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
 		refused: T,
 	): Promise<T> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return refused;
-		const { result, changed } = await work(project);
-		if (changed) await this.announceMarginRecordsChanged();
-		return result;
+		// The change is noted as a write on its way. The reading that follows
+		// it is not: a quit waits for what must reach the disk and no longer.
+		const outcome = await writeUnderWay(
+			(async () => {
+				const project = await this.writableProject(projectPath);
+				return project === null ? null : work(project);
+			})(),
+		);
+		if (outcome === null) return refused;
+		if (outcome.changed) await this.announceMarginRecordsChanged();
+		return outcome.result;
 	}
 
 	/**
@@ -9205,11 +9225,16 @@ export default class SnowflakeMethodPlugin
 		projectPath: string | null,
 		work: (project: ProjectSnapshot) => Promise<void>,
 	): Promise<boolean> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return false;
-		await work(project);
-		this.stickyNoteHub.notify();
-		return true;
+		const took = await writeUnderWay(
+			(async () => {
+				const project = await this.writableProject(projectPath);
+				if (project === null) return false;
+				await work(project);
+				return true;
+			})(),
+		);
+		if (took) this.stickyNoteHub.notify();
+		return took;
 	}
 
 	private async createStickyNote(
@@ -12493,40 +12518,76 @@ export default class SnowflakeMethodPlugin
 			if (view instanceof SnowflakeStoryStructureView) owe(() => view.settleForUnload());
 		}
 		owe(() => this.settleWriting());
-		owe(() => this.settleSettings());
-		owe(() => {
-			if (this.fieldsReconcileTimer === null) return null;
-			window.clearTimeout(this.fieldsReconcileTimer);
-			this.fieldsReconcileTimer = null;
-			return this.drainFieldsBlockReconciles();
-		});
 		owe(() => (this.recording?.holdsQuit() === true ? this.recording.settle() : null));
 		owe(() => this.sceneManuscriptGraph.settleForQuit());
-		owe(() => this.writesStillLanding());
+		owe(() => this.owedNow());
 		if (work.length === 0) return null;
 		return (async () => {
 			await Promise.allSettled(work);
-			// What those set going in their turn: a save is followed by the
-			// levelling of its margin records, a commit by the write behind
-			// it. Asked again until a round finds nothing on its way; the hold
-			// itself gives up before the app does.
-			for (let round = 0; round < 50; round += 1) {
-				const more = this.writesStillLanding();
-				if (more === null) return;
-				await more;
-			}
+			await this.untilNothingIsOwed();
 		})();
 	}
 
-	/** Every write on its way that nothing is waiting for, as one promise; null where there is none. */
-	private writesStillLanding(): Promise<void> | null {
+	/**
+	 * Waits until nothing is on its way and nothing has been for a moment.
+	 *
+	 * What a quit first sends sets more going in its turn: a save is followed
+	 * by the levelling of its margin records, a commit by the write behind
+	 * it, a note's write by the reconcile of its fields block. And a change
+	 * made of several writes stands between two of them with nothing counted
+	 * at all, which is how a quit used to be let go with a note half saved.
+	 * So a look that finds nothing is not believed at once: it is taken again
+	 * after a short rest, and only two in a row end the wait. The hold itself
+	 * gives up before the app does.
+	 */
+	private async untilNothingIsOwed(): Promise<void> {
+		let rested = false;
+		for (let look = 0; look < 400; look += 1) {
+			const owed = this.owedNow();
+			if (owed !== null) {
+				rested = false;
+				await owed;
+				continue;
+			}
+			if (rested) return;
+			rested = true;
+			await new Promise<void>((resolve) => {
+				window.setTimeout(resolve, QUIT_QUIET_MS);
+			});
+		}
+	}
+
+	/**
+	 * What is on its way to the disk at this very moment, as one promise, and
+	 * null where there is nothing. What was still waiting on a timer is sent
+	 * on first: a setting saved a moment ago, and the reconcile a note's own
+	 * write asks for a second later, neither of which a closing window would
+	 * live to see fire.
+	 */
+	private owedNow(): Promise<void> | null {
 		const landing: Promise<unknown>[] = [];
-		const queued = writesUnderWay();
-		if (queued !== null) landing.push(queued);
-		if (this.projects.repository.writing) landing.push(this.projects.repository.whenWritten());
-		if (this.settingsWrites > 0) landing.push(this.settingsSaveQueue.catch(() => undefined));
+		const ask = (settle: () => Promise<unknown> | null): void => {
+			try {
+				const pending = settle();
+				if (pending !== null) landing.push(pending);
+			} catch (error) {
+				console.error('Snowflake: a write could not be sent on its way', error);
+			}
+		};
+		ask(() => this.settleSettings());
+		ask(() => this.settleFieldsReconcile());
+		ask(() => writesUnderWay());
+		ask(() => (this.projects.repository.writing ? this.projects.repository.whenWritten() : null));
 		if (landing.length === 0) return null;
 		return Promise.allSettled(landing).then(() => undefined);
+	}
+
+	/** The fields-block reconcile still waiting on its timer, run now: null where none waits. */
+	private settleFieldsReconcile(): Promise<void> | null {
+		if (this.fieldsReconcileTimer === null) return null;
+		window.clearTimeout(this.fieldsReconcileTimer);
+		this.fieldsReconcileTimer = null;
+		return this.drainFieldsBlockReconciles();
 	}
 
 	private registerVaultListeners(): void {
@@ -13737,9 +13798,32 @@ export default class SnowflakeMethodPlugin
 
 	/** A captured form or queued action never changes the selected project. */
 	private requireProject(projectPath?: string): Promise<ProjectSnapshot> {
-		return projectPath === undefined
-			? this.requireCurrentProject()
-			: this.projects.loadProject(projectPath);
+		return this.fetchedForChange(
+			projectPath === undefined
+				? this.requireCurrentProject()
+				: this.projects.loadProject(projectPath),
+		);
+	}
+
+	/**
+	 * A project fetched so that it can be changed. The change is on its way
+	 * from this moment, though nothing of it has reached the disk: after any
+	 * other change a large project takes a second to fetch, and a quit in
+	 * that second used to find nothing owed and let the save go unwritten.
+	 * Noted until the fetch lands and the write behind it has had a turn of
+	 * the clock to begin, from where the write is counted for itself.
+	 */
+	private fetchedForChange<T>(fetch: Promise<T>): Promise<T> {
+		void writeUnderWay(
+			fetch.then(
+				() =>
+					new Promise<void>((resolve) => {
+						window.setTimeout(resolve, 0);
+					}),
+				() => undefined,
+			),
+		);
+		return fetch;
 	}
 
 	private async resolveStepArtifactPath(

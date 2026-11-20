@@ -36,6 +36,13 @@ interface Host {
 	scanProjects(): Promise<unknown[]>;
 	settleForQuit(): Promise<void> | null;
 	settleOutOfSight(): void;
+	requireProject(projectPath?: string): Promise<unknown>;
+	mutateDocument<T>(
+		bell: { ring(): void },
+		projectPath: string | null,
+		work: (project: unknown) => Promise<{ result: T; changed: boolean }>,
+		refused: T,
+	): Promise<T>;
 	scheduleRefresh(): void;
 	refreshTimer: number | null;
 	rosterSignature: string | null;
@@ -51,6 +58,15 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 async function microtasks(): Promise<void> {
 	for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+}
+
+/**
+ * Lets a held quit run to its end. A hold believes nothing more is coming
+ * only after a rest on the clock, and these tests hold the clock still.
+ */
+async function ended(settling: Promise<void> | null): Promise<void> {
+	await vi.advanceTimersByTimeAsync(200);
+	await settling;
 }
 
 async function host() {
@@ -274,7 +290,7 @@ describe('what a quit waits for', () => {
 		expect(saved[0]?.recentStep).toBe(7);
 		expect(over).toBe(false);
 		landed();
-		await settling;
+		await ended(settling);
 		expect(over).toBe(true);
 		// The timer that was waiting is gone: nothing is written twice.
 		await vi.advanceTimersByTimeAsync(1000);
@@ -297,7 +313,7 @@ describe('what a quit waits for', () => {
 		await microtasks();
 		expect(over).toBe(false);
 		landed();
-		await settling;
+		await ended(settling);
 		expect(over).toBe(true);
 		stop();
 	});
@@ -326,7 +342,7 @@ describe('what a quit waits for', () => {
 		expect(over).toBe(false);
 		settleAll.mockReturnValue(null);
 		noteWrite.resolve();
-		await settling;
+		await ended(settling);
 		expect(over).toBe(true);
 		stop();
 	});
@@ -352,7 +368,7 @@ describe('what a quit waits for', () => {
 		await microtasks();
 		expect(over).toBe(false);
 		queued.resolve();
-		await settling;
+		await ended(settling);
 		expect(over).toBe(true);
 		stop();
 	});
@@ -390,7 +406,7 @@ describe('what a quit waits for', () => {
 		await microtasks();
 		expect(saved).toHaveLength(1);
 		streamWrite.resolve();
-		await settling;
+		await ended(settling);
 		expect(said).toHaveBeenCalledTimes(3);
 		said.mockRestore();
 		stop();
@@ -409,24 +425,157 @@ describe('what a quit waits for', () => {
 		await microtasks();
 		expect(over).toBe(false);
 		write.resolve();
-		await settling;
+		await ended(settling);
 		expect(over).toBe(true);
 		stop();
 	});
 
-	it('waits for a write the repository has on its way, and for one that follows it', async () => {
+	it('waits for a write the repository has on its way', async () => {
 		const { plugin, service, env, stop } = await host();
 		await env.fakeVault.seedFile('Novels/Loose.md', 'a note');
-		const first = service.repository.updatePlainFile('Novels/Loose.md', (text) => `${text}!`);
+		const landing = deferred();
+		const process = env.fakeVault.process.bind(env.fakeVault);
+		env.fakeVault.process = async (file, callback) => {
+			await landing.promise;
+			return process(file, callback);
+		};
+		const write = service.repository.updatePlainFile('Novels/Loose.md', (text) => `${text}!`);
 		expect(service.repository.writing).toBe(true);
 		const settling = plugin.settleForQuit();
 		expect(settling).not.toBeNull();
-		// A write set going by the first one's landing, as a save sets its levelling going.
-		const second = first.then(() => service.repository.updatePlainFile('Novels/Loose.md', (text) => `${text}?`));
-		await settling;
-		await second;
-		expect(env.fakeVault.contents.get('Novels/Loose.md')).toBe('a note!?');
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		// Still out: the hold stands however long the clock runs.
+		expect(over).toBe(false);
+		expect(env.fakeVault.contents.get('Novels/Loose.md')).toBe('a note');
+		landing.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
+		expect(env.fakeVault.contents.get('Novels/Loose.md')).toBe('a note!');
+		await write;
+		stop();
+	});
+
+	it('does not let go between two writes of one change', async () => {
+		const { plugin, service, env, stop } = await host();
+		await env.fakeVault.seedFile('Novels/Loose.md', 'a note');
+		const second = deferred();
+		const process = env.fakeVault.process.bind(env.fakeVault);
+		let writes = 0;
+		env.fakeVault.process = async (file, callback) => {
+			writes += 1;
+			if (writes === 2) await second.promise;
+			return process(file, callback);
+		};
+		// One change of two writes, nobody having said it is under way, with
+		// the note read back from the disk between them as a save reads it.
+		const change = (async () => {
+			await service.repository.updatePlainFile('Novels/Loose.md', (text) => `${text}!`);
+			await new Promise<void>((resolve) => {
+				window.setTimeout(resolve, 10);
+			});
+			await service.repository.updatePlainFile('Novels/Loose.md', (text) => `${text}?`);
+		})();
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		// The first write has landed and nothing is counted: the hold stands.
+		await vi.advanceTimersByTimeAsync(9);
+		expect(env.fakeVault.contents.get('Novels/Loose.md')).toBe('a note!');
 		expect(service.repository.writing).toBe(false);
+		expect(over).toBe(false);
+		// The second is out now and held open, and so is the quit.
+		await vi.advanceTimersByTimeAsync(500);
+		expect(service.repository.writing).toBe(true);
+		expect(over).toBe(false);
+		second.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
+		expect(env.fakeVault.contents.get('Novels/Loose.md')).toBe('a note!?');
+		await change;
+		stop();
+	});
+
+	it('holds a change from the fetching of its project, before anything is written', async () => {
+		const { plugin, service, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		const fetched = deferred();
+		const load = service.loadProject.bind(service);
+		const loading = vi.spyOn(service, 'loadProject').mockImplementationOnce(async (locator) => {
+			await fetched.promise;
+			return load(locator);
+		});
+		// A save begins by fetching the project it is to change.
+		const fetching = plugin.requireProject(alpha.projectFile);
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		fetched.resolve();
+		await fetching;
+		await ended(settling);
+		expect(over).toBe(true);
+		loading.mockRestore();
+		stop();
+	});
+
+	it('holds a change made through a document’s gate for all of it', async () => {
+		const { plugin, service, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		const written = deferred();
+		const bell = { ring: vi.fn() };
+		// The board that asks does not wait for the answer.
+		const answer = plugin.mutateDocument(
+			bell,
+			alpha.projectFile,
+			async () => {
+				await written.promise;
+				return { result: 'took', changed: true };
+			},
+			'refused',
+		);
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		// Its project is fetched and its write is not out yet: still held.
+		expect(over).toBe(false);
+		written.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
+		expect(await answer).toBe('took');
+		expect(bell.ring).toHaveBeenCalledTimes(1);
+		stop();
+	});
+
+	it('drains a fields reconcile that the hold’s own writes ask for', async () => {
+		const { plugin, stop } = await host();
+		const drained = vi.fn(async () => undefined);
+		Object.assign(plugin, { drainFieldsBlockReconciles: drained });
+		// A write the quit sent rings for the reconcile a second later, which
+		// a closing window would not live to see.
+		const queued = deferred();
+		void writeUnderWay(queued.promise);
+		const settling = plugin.settleForQuit();
+		expect(drained).not.toHaveBeenCalled();
+		Object.assign(plugin, { fieldsReconcileTimer: window.setTimeout(() => undefined, 1000) });
+		queued.resolve();
+		await ended(settling);
+		expect(drained).toHaveBeenCalledTimes(1);
+		expect((plugin as unknown as { fieldsReconcileTimer: number | null }).fieldsReconcileTimer).toBeNull();
 		stop();
 	});
 });

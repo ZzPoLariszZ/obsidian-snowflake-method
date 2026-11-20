@@ -101,6 +101,7 @@ import {
 	type PickerOption,
 } from './option-picker';
 import { paintCount } from './pane-parts';
+import { writeUnderWay } from './pending-writes';
 import { wholeManuscriptDestination } from './linked-manuscript';
 import {
 	buildProjectRootField,
@@ -861,7 +862,10 @@ export abstract class SnowflakeFormModal<T> extends SnowflakeModal {
 		this.submitButton.disabled = true;
 		this.submitButton.setText(this.t('common.working'));
 		try {
-			await this.submitHandler(value);
+			// Noted as a write on its way for as long as the handler runs: a
+			// save is several writes with the note read back between them, and
+			// a quit that waited for one write alone left the rest unwritten.
+			await writeUnderWay(Promise.resolve(this.submitHandler(value)));
 			this.close();
 			return true;
 		} catch (error) {

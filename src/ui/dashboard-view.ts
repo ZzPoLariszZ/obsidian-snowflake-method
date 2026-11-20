@@ -173,6 +173,7 @@ import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
 import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import { paintCount, renderSplitButton, renderTabStrip } from './pane-parts';
+import { writeUnderWay } from './pending-writes';
 import {
 	renderStickyNoteBoard,
 	stickyBoardMemory,
@@ -3874,7 +3875,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				this.templateNameObjection(model, kind, name, null),
 		});
 		if (result === null) return;
-		await this.runAndRefresh(async () => {
+		await this.saveAndRefresh(async () => {
 			const outcome = await this.host.saveCustomFieldTemplate(kind, result, undefined, model.path);
 			if (!outcome.ok) {
 				new Notice(this.templateRefusal(outcome.code, result.name));
@@ -3903,7 +3904,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				this.templateNameObjection(model, kind, name, template.name),
 		});
 		if (result === null) return;
-		await this.runAndRefresh(async () => {
+		await this.saveAndRefresh(async () => {
 			const outcome = await this.host.saveCustomFieldTemplate(kind, result, {
 				previousName: template.name,
 			}, model.path);
@@ -3924,7 +3925,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			template.name,
 		);
 		if (!confirmed) return;
-		await this.runAndRefresh(() =>
+		await this.saveAndRefresh(() =>
 			this.host.deleteCustomFieldTemplate(kind, template.name, projectPath),
 		);
 	}
@@ -3998,7 +3999,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				void this.addDefinitionEntry(id, kind, `${node.taxonomyPath}/`, model.path);
 			},
 			create: () => {
-				void this.runAndRefresh(async () => {
+				void this.saveAndRefresh(async () => {
 					const result = await this.host.addDefinitionPath(
 						kind,
 						id,
@@ -4483,7 +4484,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			prefill,
 		);
 		if (created === null) return;
-		await this.runAndRefresh(async () => {
+		await this.saveAndRefresh(async () => {
 			const result = await this.host.addDefinitionPath(
 				kind,
 				id,
@@ -4514,7 +4515,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			node.description,
 		);
 		if (settled === null) return;
-		await this.runAndRefresh(async () => {
+		await this.saveAndRefresh(async () => {
 			let taxonomyPath = node.taxonomyPath;
 			if (settled.name !== node.name) {
 				const renamed = await this.host.renameDefinitionNode(
@@ -4606,7 +4607,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				) {
 					this.definitionSelection.delete(id);
 				}
-				void this.runAndRefresh(() =>
+				void this.saveAndRefresh(() =>
 					this.host.deleteDefinitionNode(kind, id, node.taxonomyPath, model.path),
 				);
 			},
@@ -5047,7 +5048,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			},
 		}).then(async (result) => {
 			if (result === null) return;
-			await this.runAndRefresh(async () => {
+			await this.saveAndRefresh(async () => {
 				const made = await this.host.createWorldbuildingKind(result.name, {
 					icon: result.icon,
 					description: result.description,
@@ -5101,7 +5102,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			},
 		}).then(async (result) => {
 			if (result === null) return;
-			await this.runAndRefresh(async () => {
+			await this.saveAndRefresh(async () => {
 				let settledId = kind;
 				if (result.name !== kind) {
 					const renamed = await this.host.renameWorldbuildingKind(
@@ -5165,7 +5166,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			).open();
 		});
 		if (!confirmed) return;
-		await this.runAndRefresh(async () => {
+		await this.saveAndRefresh(async () => {
 			await this.host.deleteWorldbuildingKind(kind);
 			if (
 				this.selectedPane.kind === 'worldbuilding' &&
@@ -6227,7 +6228,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		}
 		status.disabled = readOnly;
 		status.addEventListener('change', () => {
-			void this.runAndRefresh(() =>
+			void this.saveAndRefresh(() =>
 				this.host.setStepStatus(step.id, status.value as StepStatus),
 			);
 		});
@@ -6647,7 +6648,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 						.onClick(() => {
 							new ConfirmRestoreBaseModal(this.app, this.t, (confirmed) => {
 								if (!confirmed) return;
-								void this.runAndRefresh(() =>
+								void this.saveAndRefresh(() =>
 									this.host.restoreProjectBase(id),
 								);
 							}).open();
@@ -8148,7 +8149,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		});
 		save.disabled = readOnly;
 		save.addEventListener('click', () => {
-			void this.runAndRefresh(async () => {
+			void this.saveAndRefresh(async () => {
 				await onSave();
 				// Said once the words are written; a save that failed says why instead.
 				new Notice(this.t('messages.stepSaved', { step }));
@@ -8345,7 +8346,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			const dragged = event.dataTransfer?.getData(dragType) ?? '';
 			if (dragged.length === 0 || !isOwnId(dragged)) return;
 			event.preventDefault();
-			void this.runAndRefresh(() => reorder(dragged, index));
+			void this.saveAndRefresh(() => reorder(dragged, index));
 		});
 	}
 
@@ -8354,7 +8355,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		return {
 			app: this.app,
 			t: this.t,
-			run: (action) => this.runAndRefresh(action),
+			run: (action) => this.saveAndRefresh(action),
 			refresh: () => this.refresh(),
 		};
 	}
@@ -8368,6 +8369,19 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				error instanceof Error ? error.message : this.t('errors.unknown'),
 			);
 		}
+	}
+
+	/**
+	 * Runs a change to the project and then reads again. The change is noted
+	 * as a write on its way for as long as it runs, so that a quit waits for
+	 * all of it: for the project it fetches first, and for every write it
+	 * makes, not only for whichever one happens to be out. The reading after
+	 * it is nobody's to wait for. A change that asks the author something
+	 * first goes through `runAndRefresh`, and is noted by the host once they
+	 * have answered.
+	 */
+	private saveAndRefresh(action: () => Promise<void>): Promise<void> {
+		return this.runAndRefresh(() => writeUnderWay(action()));
 	}
 }
 

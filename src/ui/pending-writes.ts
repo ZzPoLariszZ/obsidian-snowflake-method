@@ -55,6 +55,16 @@ export interface QuitTimers {
 export const QUIT_HOLD_MS = 2500;
 
 /**
+ * How long nothing must be on its way before a quit believes nothing more
+ * is coming. A change made of several writes stands between two of them for
+ * a moment with nothing counted at all: the next write begins a few turns
+ * of the event loop later, or once the note has been read back from the
+ * disk. So a look that finds nothing is taken again after this rest, and
+ * only two such looks in a row end the hold.
+ */
+export const QUIT_QUIET_MS = 30;
+
+/**
  * Holds the app's quit for `work`, and for nothing where there is none.
  *
  * Both halves matter. The app shows its saving screen whenever a listener
