@@ -390,7 +390,10 @@ describe('changing pane on the dashboard', () => {
 		expect(mounted.shown().pane).toBe('Step 4');
 	});
 
-	it('says a failure to remember the step, and keeps the pane it drew', async () => {
+	it('says so where a host fails to remember the step, and keeps the pane it drew', async () => {
+		// The plugin's own host does not fail here: it notes the step and
+		// writes it a moment later, on a timer nothing waits for. This holds
+		// the view to its side of the bargain for a host that does.
 		const mounted = mount();
 		await mounted.view.refresh();
 		mounted.selectStep.mockImplementationOnce(() => Promise.reject(new Error('the settings would not save')));

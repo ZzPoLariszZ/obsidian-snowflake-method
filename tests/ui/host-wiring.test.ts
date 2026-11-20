@@ -1,0 +1,31 @@
+import { describe, expect, it } from 'vitest';
+
+import main from '../../src/main.ts?raw';
+
+/**
+ * What the plugin's start-up wires, read off its source. The hooks
+ * themselves are tested where they can be called; that they are hung on
+ * the app at all is only said here, and a hook left unwired fails nothing
+ * else: every typed word waiting on a timer would be lost at a quit with
+ * the rest of the suite green.
+ */
+describe('what the plugin hangs on the app as it starts', () => {
+	it('settles for a quit and for going out of sight once the layout is ready', () => {
+		expect(main).toContain('\t\t\tthis.registerVaultListeners();\n\t\t\tthis.registerSettling();\n');
+		expect(main).toContain("this.app.workspace.on('quit', (tasks) => {\n\t\t\t\tholdQuit(tasks, this.settleForQuit(), window);");
+		expect(main).toContain("this.registerDomEvent(this.app.workspace.containerEl.win, 'pagehide', (event) => {");
+		expect(main).toContain('if (doc.hidden && !this.pageLeaving) this.settleOutOfSight();');
+	});
+
+	it('counts the vault\u2019s changes from the moment the project service is made', () => {
+		expect(main).toContain('this.register(this.projects.repository.watch());');
+	});
+
+	it('hears the index read a note again, for the snapshots and for the dashboards', () => {
+		for (const event of ['changed', 'deleted']) {
+			expect(main).toContain(
+				`this.app.metadataCache.on('${event}', (file) => {\n\t\t\t\tthis.projects.indexMoved(file.path);\n\t\t\t\tthis.touchDashboardData();`,
+			);
+		}
+	});
+});

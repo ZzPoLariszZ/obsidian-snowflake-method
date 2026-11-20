@@ -869,10 +869,78 @@ describe("VaultRepository", () => {
     const reread = await repository.readManaged(created.path);
     expect(repository.isCurrent(reread)).toBe(true);
     expect(repository.isCurrent(record)).toBe(false);
-    repository.forget(created.path);
-    expect(repository.isCurrent(reread)).toBe(false);
+    // A note that has gone is not current, though its record is still kept.
     fakeVault.delete(created.path);
     expect(repository.isCurrent(reread)).toBe(false);
+    repository.forget(created.path);
+    expect(repository.isCurrent(reread)).toBe(false);
+  });
+
+  it("counts every kind of change it makes for as long as that change is out", async () => {
+    const made = await repository.createManagedFile({
+      userInput: false,
+      path: "Projects/Novel/40_Scene/Held.md",
+      template: { body: "# Held\n", sections: [] },
+      frontmatter: { "snowflake-document": "scene", "snowflake-project-id": "project-1" },
+    });
+    await fakeVault.seedFile("Projects/Novel/Plain.md", "plain");
+    await fakeVault.createFolder("Projects/Novel/Kept");
+    await fakeVault.createFolder("Projects/Novel/Going");
+
+    /** Holds the next call of one of the fake's writes open until released. */
+    const hold = (target: object, method: string) => {
+      const real = (target as Record<string, (...args: unknown[]) => Promise<unknown>>)[method]!;
+      let reach = (): void => undefined;
+      let release = (): void => undefined;
+      const reached = new Promise<void>((resolve) => {
+        reach = resolve;
+      });
+      const let_go = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      (target as Record<string, unknown>)[method] = async (...args: unknown[]) => {
+        (target as Record<string, unknown>)[method] = real;
+        reach();
+        await let_go;
+        return real.apply(target, args);
+      };
+      return { reached, release };
+    };
+
+    const kinds: Array<[string, object, string, () => Promise<unknown>]> = [
+      ["a note's properties", fakeFileManager, "processFrontMatter", () => repository.updateFrontmatter(made.path, { "snowflake-rank": 2048 })],
+      ["a note's first heading", fakeVault, "process", () => repository.updateFirstHeading(made.path, "Held, renamed", { userInput: false })],
+      ["a plain file's text", fakeVault, "process", () => repository.updatePlainFile("Projects/Novel/Plain.md", (text) => `${text}!`)],
+      ["a plain file made", fakeVault, "create", () => repository.createPlainFile("Projects/Novel/Kept/New.md", "new")],
+      ["a managed note made", fakeVault, "create", () => repository.createManagedFile({
+        userInput: false,
+        path: "Projects/Novel/40_Scene/Another.md",
+        template: { body: "# Another\n", sections: [] },
+        frontmatter: { "snowflake-document": "scene", "snowflake-project-id": "project-1" },
+      })],
+      ["a folder made", fakeVault, "createFolder", () => repository.ensureFolder("Projects/Novel/Fresh")],
+      ["a note renamed", fakeFileManager, "renameFile", () => repository.renameFile("Projects/Novel/Plain.md", "Projects/Novel/Kept/Plain.md")],
+      ["a folder renamed", fakeFileManager, "renameFile", () => repository.renameFolder("Projects/Novel/Going", "Projects/Novel/Gone")],
+      ["a note sent to the trash", fakeFileManager, "trashFile", () => repository.trashFile("Projects/Novel/Kept/Plain.md")],
+      ["a folder sent to the trash", fakeFileManager, "trashFile", () => repository.trashFolder("Projects/Novel/Gone")],
+    ];
+    for (const [what, target, method, change] of kinds) {
+      expect(repository.writing, what).toBe(false);
+      const held = hold(target, method);
+      const changing = change();
+      await held.reached;
+      expect(repository.writing, what).toBe(true);
+      let landed = false;
+      const waited = repository.whenWritten().then(() => {
+        landed = true;
+      });
+      for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+      expect(landed, what).toBe(false);
+      held.release();
+      await changing;
+      await waited;
+      expect(repository.writing, what).toBe(false);
+    }
   });
 
   it("keeps one entry for a note while the index keeps one parse of it", async () => {

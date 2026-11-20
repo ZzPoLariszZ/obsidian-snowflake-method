@@ -76,9 +76,23 @@ describe('stable content fingerprints', () => {
 			'x'.repeat(70_000),
 		];
 		for (const value of values) expect(fingerprint(value)).toBe(twoPasses(value));
-		// Pinned as well, so a change to the serialization shows up here too.
-		expect(fingerprint('')).toBe(twoPasses(''));
-		expect(fingerprint({ a: 1 })).toMatch(/^fp1-[0-9a-f]{16}$/u);
+	});
+
+	it('gives the fingerprints notes were reviewed at', () => {
+		// Held as written values, where a comparison against another run of
+		// the same code would not see it: notes keep the fingerprints they
+		// were reviewed at, and a change to the hashing or to how a value is
+		// written out would call every one of them outdated.
+		expect(fingerprint('')).toBe('fp1-c29654da2ba376c6');
+		expect(fingerprint({ a: 1 })).toBe('fp1-5877acaf91114433');
+		// Nested, so the order of keys and the marks between them are held too.
+		expect(
+			fingerprint({ step: 3, character: { name: 'Lin', goal: 'Return home' }, tags: ['lead', 'pov'] }),
+		).toBe('fp1-f9da533b62036237');
+		// Written with its keys another way round, it is the same value.
+		expect(
+			fingerprint({ tags: ['lead', 'pov'], character: { goal: 'Return home', name: 'Lin' }, step: 3 }),
+		).toBe('fp1-f9da533b62036237');
 	});
 
 	it('rejects circular or non-data values', () => {

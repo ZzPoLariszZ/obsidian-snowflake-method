@@ -294,6 +294,19 @@ describe('what the host counts as a change to what a dashboard draws', () => {
 		stop();
 	});
 
+	it('remembers a step whether or not the settings can be written, and says a failure in the console', async () => {
+		const { plugin, stop } = await host();
+		const said = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		Object.assign(plugin, { saveData: () => Promise.reject(new Error('the disk said no')) });
+		// The tap is answered at once and never fails: nothing drawn waits on the disk.
+		await expect(plugin.selectStep(9)).resolves.toBeUndefined();
+		expect(plugin.settings.recentStep).toBe(9);
+		await vi.advanceTimersByTimeAsync(400);
+		expect(said).toHaveBeenCalledTimes(1);
+		said.mockRestore();
+		stop();
+	});
+
 	it('tells the roster’s followers only when the roster moved', async () => {
 		const { plugin, service, env, explorer, dressNotes, refreshParagraphLineEditors, stop } = await host();
 		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
@@ -688,6 +701,33 @@ describe('what a quit waits for', () => {
 		stop();
 	});
 
+	it('asks the recorder only while it has something for a quit to wait for', async () => {
+		const idle = await host();
+		const settleIdle = vi.fn(() => Promise.resolve());
+		Object.assign(idle.plugin, { recording: { holdsQuit: () => false, settle: settleIdle } });
+		expect(idle.plugin.settleForQuit()).toBeNull();
+		expect(settleIdle).not.toHaveBeenCalled();
+		idle.stop();
+
+		const { plugin, stop } = await host();
+		const stopped = deferred();
+		const settle = vi.fn(() => stopped.promise);
+		Object.assign(plugin, { recording: { holdsQuit: () => true, settle } });
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		expect(settle).toHaveBeenCalledTimes(1);
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		stopped.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
+		stop();
+	});
+
 	it('holds while a project’s folder is being moved, and for the name written after it', async () => {
 		const { plugin, service, env, stop } = await host();
 		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
@@ -943,6 +983,36 @@ describe('what the host hears of the page going out of sight, and of its going f
 		made.plugin.registerSettling();
 		return { ...made, settleSaves };
 	}
+
+	it('adds no task to a quit that owes nothing, and one that lasts as long as what is owed', async () => {
+		const made = await host();
+		made.plugin.registerSettling();
+		// Nothing to save: no task, so the app shows no saving screen at all.
+		expect(made.quit()).toHaveLength(0);
+		expect(made.sessions.markShutdown).toHaveBeenCalledTimes(1);
+		made.unhook();
+		made.stop();
+
+		const owed = await host();
+		const landed = owed.holdSaves();
+		await owed.plugin.selectStep(4);
+		owed.plugin.registerSettling();
+		const tasks = owed.quit();
+		expect(tasks).toHaveLength(1);
+		let over = false;
+		void tasks[0]?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(1000);
+		// The settings write is still out: the window is held.
+		expect(owed.saved).toHaveLength(1);
+		expect(over).toBe(false);
+		landed();
+		await vi.advanceTimersByTimeAsync(200);
+		expect(over).toBe(true);
+		owed.unhook();
+		owed.stop();
+	});
 
 	it('settles what was typed when the page is hidden, and not when it is shown again', async () => {
 		const { settleSaves, saved, unhook, stop } = await owing();

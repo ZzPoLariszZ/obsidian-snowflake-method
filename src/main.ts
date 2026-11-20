@@ -4206,7 +4206,11 @@ export default class SnowflakeMethodPlugin
 		}
 		this.settingsSaveTimer = window.setTimeout(() => {
 			this.settingsSaveTimer = null;
-			void this.writeSettings();
+			// Nobody waits on this write, so a failure of it has nobody to
+			// tell but the console.
+			void this.writeSettings().catch((error: unknown) => {
+				console.error('Snowflake: the settings could not be saved', error);
+			});
 		}, SETTINGS_SAVE_DELAY_MS);
 	}
 
