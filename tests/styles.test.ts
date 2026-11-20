@@ -7,6 +7,93 @@ import { TINT_REACH_CLASSES } from '../src/domain';
 import { RAIL_FLOOR, RAIL_ROOM, RAIL_TIGHT_MARGIN, RAIL_WIDTH } from '../src/ui/margin-room';
 import { scopeCss } from './helpers/scope-css';
 
+const SIDE = '(?:top|right|bottom|left)';
+
+/**
+ * The shorthands and what each one sets: a line of one of the names on the
+ * right, after its shorthand in the same rule, changes part of what the
+ * shorthand set. The physical names only. A logical one (`-inline`,
+ * `-block`, `-start`, `-end`) is a property of its own in the rule and
+ * changes nothing the shorthand wrote.
+ */
+const SHORTHAND_PARTS: Readonly<Record<string, RegExp>> = {
+	border: new RegExp(`^border-(?:${SIDE}(?:-(?:width|style|color))?|width|style|color|image(?:-.+)?)$`, 'u'),
+	'border-width': new RegExp(`^border-${SIDE}-width$`, 'u'),
+	'border-style': new RegExp(`^border-${SIDE}-style$`, 'u'),
+	'border-color': new RegExp(`^border-${SIDE}-color$`, 'u'),
+	'border-top': /^border-top-(?:width|style|color)$/u,
+	'border-right': /^border-right-(?:width|style|color)$/u,
+	'border-bottom': /^border-bottom-(?:width|style|color)$/u,
+	'border-left': /^border-left-(?:width|style|color)$/u,
+	'border-radius': /^border-(?:top|bottom)-(?:left|right)-radius$/u,
+	'border-image': /^border-image-.+$/u,
+	margin: new RegExp(`^margin-${SIDE}$`, 'u'),
+	padding: new RegExp(`^padding-${SIDE}$`, 'u'),
+	inset: new RegExp(`^${SIDE}$`, 'u'),
+	background: /^background-(?:color|image|position(?:-[xy])?|size|repeat|attachment|origin|clip)$/u,
+	font: /^(?:font-(?:style|variant(?:-.+)?|weight|stretch|width|size|family)|line-height)$/u,
+	animation: /^animation-.+$/u,
+	transition: /^transition-.+$/u,
+	outline: /^outline-(?:color|style|width)$/u,
+	flex: /^flex-(?:grow|shrink|basis)$/u,
+	'flex-flow': /^flex-(?:direction|wrap)$/u,
+	gap: /^(?:row|column)-gap$/u,
+	overflow: /^overflow-[xy]$/u,
+	'text-decoration': /^text-decoration-(?:line|style|color|thickness)$/u,
+	'list-style': /^list-style-(?:type|position|image)$/u,
+	'grid-template': /^grid-template-(?:rows|columns|areas)$/u,
+	'grid-area': /^grid-(?:row|column)(?:-(?:start|end))?$/u,
+	'grid-row': /^grid-row-(?:start|end)$/u,
+	'grid-column': /^grid-column-(?:start|end)$/u,
+	'place-items': /^(?:align|justify)-items$/u,
+	'place-content': /^(?:align|justify)-content$/u,
+	'place-self': /^(?:align|justify)-self$/u,
+	columns: /^column-(?:width|count)$/u,
+	'column-rule': /^column-rule-(?:width|style|color)$/u,
+	mask: /^mask-(?:image|mode|position|size|repeat|origin|clip|composite)$/u,
+	'text-emphasis': /^text-emphasis-(?:style|color)$/u,
+	container: /^container-(?:name|type)$/u,
+	'scroll-margin': new RegExp(`^scroll-margin-${SIDE}$`, 'u'),
+	'scroll-padding': new RegExp(`^scroll-padding-${SIDE}$`, 'u'),
+};
+
+/**
+ * The rules that set a shorthand through a variable and then change part of
+ * it, each told as its selector and the two lines at odds. Such a rule
+ * cannot be written out again: the parts the shorthand still holds have no
+ * value of their own until the variable is read, so the browser writes them
+ * empty (`border-top-width: ;`) and they are dropped when the text is read
+ * back.
+ */
+function lostWhenWrittenOut(css: string): string[] {
+	const found: string[] = [];
+	const bare = css.replace(/\/\*[\s\S]*?\*\//gu, ' ');
+	// Every innermost block: a rule's own lines, however deep it is nested.
+	for (const [, prelude = '', body = ''] of bare.matchAll(/([^{}]*)\{([^{}]*)\}/gu)) {
+		const declared: [property: string, value: string][] = [];
+		let depth = 0;
+		let from = 0;
+		for (let at = 0; at <= body.length; at += 1) {
+			const character = body[at];
+			if (character === '(') depth += 1;
+			else if (character === ')') depth -= 1;
+			if (at < body.length && (character !== ';' || depth !== 0)) continue;
+			const line = body.slice(from, at);
+			from = at + 1;
+			const colon = line.indexOf(':');
+			if (colon !== -1) declared.push([line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim()]);
+		}
+		declared.forEach(([whole, value], index) => {
+			const parts = SHORTHAND_PARTS[whole];
+			if (parts === undefined || !value.includes('var(')) return;
+			for (const [part] of declared.slice(index + 1)) {
+				if (parts.test(part)) found.push(`${prelude.trim().replace(/\s+/gu, ' ')} { ${whole}, then ${part} }`);
+			}
+		});
+	}
+	return found;
+}
+
 /**
  * What the shipped stylesheet may not contain. Nothing lints CSS here, so the
  * rules the plugin review holds this file to are kept by these tests.
@@ -37,6 +124,47 @@ describe('styles.css', () => {
 		const next = styles.indexOf('/* == ', from + 1);
 		return next === -1 ? styles.slice(from) : styles.slice(from, next);
 	};
+
+	/**
+	 * From 1.15.1 the app starts under a picture of the workspace as it last
+	 * stood, and makes the picture by writing every rule of every stylesheet
+	 * out again. Ten rules here set a border or an animation whole through a
+	 * variable and then changed one part of it, which is a rule that cannot
+	 * be written out, so the picture drew them without it: the dashboard's
+	 * rail with no border, its rows a pixel out until the picture was lifted,
+	 * and the task lanes, the margin cards and the tab on show likewise.
+	 */
+	it('sets no shorthand through a variable and then part of it, which the app’s picture of the workspace cannot keep', () => {
+		expect(lostWhenWrittenOut(styles)).toEqual([]);
+		// The check itself, on the two shapes that were written and on what replaced them.
+		expect(
+			lostWhenWrittenOut(`
+				.rail { border: 1px solid var(--edge); border-bottom: 0; }
+				@media (prefers-reduced-motion: no-preference) {
+					.spark { animation: spark var(--time, 3s) ease infinite; animation-delay: var(--wait, 0s); }
+				}
+				.tab { border-color: var(--edge); /* the accent */ border-top-color: var(--accent); }
+			`),
+		).toEqual([
+			'.rail { border, then border-bottom }',
+			'.spark { animation, then animation-delay }',
+			'.tab { border-color, then border-top-color }',
+		]);
+		expect(
+			lostWhenWrittenOut(`
+				.rail { border-top: 1px solid var(--edge); border-right: 1px solid var(--edge); border-bottom: 0; border-left: 1px solid var(--edge); }
+				.spark { animation: spark var(--time, 3s) ease var(--wait, 0s) infinite; }
+				.tab { border-color: var(--accent) var(--edge) var(--edge); }
+				.lane { border-width: 3px 1px 1px; border-style: solid; border-color: var(--status) var(--edge) var(--edge); }
+				/* A shorthand with no variable keeps its parts, and one set last keeps all of its own. */
+				.plain { border: 1px solid red; border-bottom: 0; }
+				.last { border-left-color: red; border: 1px solid var(--edge); }
+				/* A logical side is a property of its own, and a corner is no part of a border. */
+				.logical { border: 1px solid var(--edge); border-inline-start-width: 3px; border-radius: 4px; }
+				.corner { border-radius: var(--radius-m); border-end-start-radius: 0; }
+			`),
+		).toEqual([]);
+	});
 
 	it('keeps the modification history to theme tokens, and lets a day keep its one cell', () => {
 		const history = section('Modification history');

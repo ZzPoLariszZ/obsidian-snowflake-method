@@ -901,7 +901,17 @@
 }
 
 /* The rail keeps the same padding on both sides whether a scrollbar shows or
-   not: its scrollbar stands outside it (see the scroller below). */
+   not: its scrollbar stands outside it (see the scroller below).
+
+   Its border is written a side at a time. From 1.15.1 the app starts under a
+   picture of the workspace as it last stood, made by writing every rule of
+   every stylesheet out again, and a rule cannot be written out once it has
+   set a shorthand through a variable and then changed part of it: the
+   browser has nothing to say for the parts left, and they are dropped. The
+   whole border here, cut at the bottom, left the rail in the picture with no
+   border at all, and its rows moved a pixel as the picture was lifted. No
+   rule sets a shorthand through a variable and then part of it, here or
+   anywhere in this sheet. */
 .snowflake-method-step-nav {
 	--snowflake-method-rail-header-height: max(
 		2.75rem,
@@ -912,8 +922,10 @@
 	min-width: 0;
 	min-height: 0;
 	padding: var(--size-4-2) var(--size-4-2) 0;
-	border: 1px solid var(--background-modifier-border);
+	border-top: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
 	border-bottom: 0;
+	border-left: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	border-end-start-radius: 0;
 	border-end-end-radius: 0;
@@ -1360,10 +1372,12 @@
 		display: block;
 	}
 
+	/* The delay is the shorthand's second time, not a line of its own: see
+	   the rail's border for why. */
 	.snowflake-method-workspace-sparkle {
 		animation: snowflake-method-workspace-sparkle
-			var(--snowflake-method-sparkle-duration, 3.6s) ease-in-out infinite;
-		animation-delay: var(--snowflake-method-sparkle-delay, 0s);
+			var(--snowflake-method-sparkle-duration, 3.6s) ease-in-out
+			var(--snowflake-method-sparkle-delay, 0s) infinite;
 	}
 }
 
@@ -1537,8 +1551,8 @@
 }
 
 .snowflake-method-tabs button.snowflake-method-tab.is-active {
-	border-color: var(--background-modifier-border);
-	border-top-color: var(--interactive-accent);
+	border-color: var(--interactive-accent) var(--background-modifier-border)
+		var(--background-modifier-border);
 	background: var(--background-primary);
 	color: var(--text-normal);
 	cursor: default;
@@ -7502,8 +7516,9 @@ body {
 	right: 0;
 	left: 0;
 	padding: var(--size-4-2) var(--size-4-3);
-	border: 1px solid var(--background-modifier-border);
-	border-left: 3px solid var(--background-modifier-border);
+	border-width: 1px 1px 1px 3px;
+	border-style: solid;
+	border-color: var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background-color: var(--background-primary);
 	box-shadow: var(--shadow-s);
@@ -7538,8 +7553,10 @@ body {
 
 /* The card being written stands out from the ones already made. */
 .snowflake-method-revision-card.is-draft {
-	border-color: color-mix(in srgb, var(--color-yellow) 45%, transparent);
-	border-left-color: var(--color-yellow);
+	border-color: color-mix(in srgb, var(--color-yellow) 45%, transparent)
+		color-mix(in srgb, var(--color-yellow) 45%, transparent)
+		color-mix(in srgb, var(--color-yellow) 45%, transparent)
+		var(--color-yellow);
 	box-shadow: var(--shadow-l);
 }
 
@@ -7557,13 +7574,15 @@ body {
    unresolved -- is framed in the warning colour whichever family it is.
    After the family stripes, so it wins by order. */
 .snowflake-method-rail-card.is-conflict {
-	border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
-	border-left-color: var(--color-red);
+	border-color: color-mix(in srgb, var(--color-red) 45%, transparent)
+		color-mix(in srgb, var(--color-red) 45%, transparent)
+		color-mix(in srgb, var(--color-red) 45%, transparent) var(--color-red);
 }
 
 .snowflake-method-rail-card.is-conflict:hover {
-	border-color: color-mix(in srgb, var(--color-red) 65%, transparent);
-	border-left-color: var(--color-red);
+	border-color: color-mix(in srgb, var(--color-red) 65%, transparent)
+		color-mix(in srgb, var(--color-red) 65%, transparent)
+		color-mix(in srgb, var(--color-red) 65%, transparent) var(--color-red);
 }
 
 /* Where an arrow just landed: lit for a beat, and fading through the frame's
@@ -7575,7 +7594,6 @@ body {
 .snowflake-method-rail-card.is-jumped,
 .snowflake-method-rail-card.is-jumped:hover {
 	border-color: var(--interactive-accent);
-	border-left-color: var(--interactive-accent);
 	box-shadow: var(--shadow-l);
 }
 
@@ -14706,8 +14724,10 @@ body.is-frameless > .app-container ~ .snowflake-method-sticky-layer {
 	width: 20rem;
 	min-width: 0;
 	min-height: 0;
-	border: 1px solid var(--background-modifier-border);
-	border-top: 3px solid var(--snowflake-method-task-status-edge);
+	border-width: 3px 1px 1px;
+	border-style: solid;
+	border-color: var(--snowflake-method-task-status-edge)
+		var(--background-modifier-border) var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background-color: var(--background-secondary);
 }
@@ -18827,8 +18847,9 @@ body.is-mobile .snowflake-method-corkboard-picture > .clickable-icon {
 }
 
 .snowflake-method-freeform-face > .snowflake-method-rail-card.is-conflict:hover {
-	border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
-	border-left-color: var(--color-red);
+	border-color: color-mix(in srgb, var(--color-red) 45%, transparent)
+		color-mix(in srgb, var(--color-red) 45%, transparent)
+		color-mix(in srgb, var(--color-red) 45%, transparent) var(--color-red);
 }
 
 .snowflake-method-freeform-face:is(.is-scene, .is-card).is-selected > .snowflake-method-corkboard-card,
