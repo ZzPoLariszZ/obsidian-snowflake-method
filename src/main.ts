@@ -988,11 +988,10 @@ export default class SnowflakeMethodPlugin
 	});
 	private projectDiscoveryPromise: Promise<ProjectRef[]> | null = null;
 	/**
-	 * Counts every change to what a dashboard draws that does not come from
-	 * the vault's own files: the app's reading of a note's properties, the
-	 * settings, and anyone asking the dashboards to read again. The vault's
-	 * files are counted by the repository, and `dashboardEpoch` answers for
-	 * both together.
+	 * Counts every change to what a dashboard draws: a file of the vault's,
+	 * the app's reading of a note's properties, a setting, and anyone asking
+	 * the dashboards to read again. It only ever grows, and `dashboardEpoch`
+	 * hands it out.
 	 */
 	private dashboardDataChanges = 0;
 	/** What the last scan found, as one line: the roster's followers are told only when it moves. */
@@ -1390,10 +1389,11 @@ export default class SnowflakeMethodPlugin
 				},
 			},
 		);
-		// The repository counts the vault's changes from here on: while the
-		// count stands still the project service keeps what it worked out
-		// from the tree, and a dashboard keeps the model it drew.
-		this.register(this.projects.repository.watch());
+		// The vault's changes are counted from here on, twice over. While the
+		// repository's count stands still the project service keeps what it
+		// worked out from the tree, and while the host's own stands still a
+		// dashboard keeps the model it drew.
+		this.register(this.watchVault());
 		// The app reads a note's properties a beat after the note is written,
 		// and the project is read through that reading: its arrival is a
 		// change to what a dashboard would draw, like the write before it.
@@ -2338,13 +2338,32 @@ export default class SnowflakeMethodPlugin
 	 * would be given again, and need not ask.
 	 */
 	dashboardEpoch(): number {
-		// Two counts that only ever grow: their sum stands still only while
-		// both do.
-		return (this.projects.repository.treeVersion ?? 0) + this.dashboardDataChanges;
+		return this.dashboardDataChanges;
 	}
 
 	private touchDashboardData(): void {
 		this.dashboardDataChanges += 1;
+	}
+
+	/**
+	 * Has the repository count the vault's changes, and counts by them the
+	 * ones a dashboard draws: every change but a manuscript cache written
+	 * afresh. The two are told in one call, so neither count hears of a
+	 * change the other has yet to hear of.
+	 *
+	 * A cache holds what was worked out from the notes, and its words reach
+	 * no dashboard: the project's reading takes such a file by its path
+	 * alone. It is written again five seconds after every pause in the
+	 * typing, and counting those writes had the next change of pane read the
+	 * whole project again to find it as it was. A cache made, moved or taken
+	 * away is counted like any file, since the structure report says which
+	 * are there.
+	 */
+	private watchVault(): () => void {
+		return this.projects.repository.watch((change, file) => {
+			if (change === 'modify' && isManuscriptCachePath(file.path)) return;
+			this.touchDashboardData();
+		});
 	}
 
 	async listProjects(): Promise<ProjectOption[]> {
@@ -3059,15 +3078,16 @@ export default class SnowflakeMethodPlugin
 		locale: ProjectLanguage,
 		step: StepId,
 	): void {
-		if (
-			this.settings.recentProjectPath === path &&
-			this.currentProjectLocale === locale &&
-			this.settings.recentStep === step
-		) {
-			return;
-		}
+		const sameProject =
+			this.settings.recentProjectPath === path && this.currentProjectLocale === locale;
+		if (sameProject && this.settings.recentStep === step) return;
 		this.markCurrentProject(path, locale, step);
-		void this.saveSettings();
+		// The step alone is where the next dashboard opens, and no part of
+		// what an open one draws: remembered as `selectStep` remembers it. A
+		// dashboard restored on another step than the one last saved used to
+		// count as a change here, and its first change of pane read again.
+		if (sameProject) this.armSettingsSave();
+		else void this.saveSettings();
 	}
 
 	async selectStep(step: StepId): Promise<void> {
@@ -12249,13 +12269,15 @@ export default class SnowflakeMethodPlugin
 			plugin: life,
 			t: this.globalT,
 			settings: () => this.settings,
+			// The explorer's choices are read by the explorer alone, so saving
+			// one is no change to what a dashboard draws.
 			saveOrders: (next) => {
 				this.settings.explorerOrders = next;
-				this.saveSettingsSoon();
+				this.armSettingsSave();
 			},
 			saveToggle: (key, value) => {
 				this.settings[key] = value;
-				this.saveSettingsSoon();
+				this.armSettingsSave();
 				// The immersive row stands on the settings page; a button press
 				// or the command must not leave it showing the old value.
 				this.settingTab?.refreshRows();
@@ -12263,7 +12285,7 @@ export default class SnowflakeMethodPlugin
 			projectRootOf: (path) => projectRootContaining(path, this.explorerRoots),
 			saveFolds: (paths) => {
 				this.settings.explorerImmersiveFolds = [...paths];
-				this.saveSettingsSoon();
+				this.armSettingsSave();
 			},
 			// The project the sidebars show: the one a dashboard, a workspace or
 			// a manuscript tab last brought to the front, never the note under
@@ -12352,7 +12374,7 @@ export default class SnowflakeMethodPlugin
 		if (orders === this.settings.explorerOrders && !foldsMoved) return;
 		this.settings.explorerOrders = orders;
 		if (foldsMoved) this.settings.explorerImmersiveFolds = folds;
-		this.saveSettingsSoon();
+		this.armSettingsSave();
 	}
 
 	/**

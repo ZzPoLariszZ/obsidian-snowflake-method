@@ -18,7 +18,18 @@ describe('what the plugin hangs on the app as it starts', () => {
 	});
 
 	it('counts the vault\u2019s changes from the moment the project service is made', () => {
-		expect(main).toContain('this.register(this.projects.repository.watch());');
+		expect(main).toContain('this.register(this.watchVault());');
+	});
+
+	it('saves the explorer\u2019s own choices without counting them as a change to what a dashboard draws', () => {
+		for (const choice of [
+			'saveOrders: (next) => {\n\t\t\t\tthis.settings.explorerOrders = next;\n\t\t\t\tthis.armSettingsSave();',
+			'saveToggle: (key, value) => {\n\t\t\t\tthis.settings[key] = value;\n\t\t\t\tthis.armSettingsSave();',
+			'saveFolds: (paths) => {\n\t\t\t\tthis.settings.explorerImmersiveFolds = [...paths];\n\t\t\t\tthis.armSettingsSave();',
+			'if (foldsMoved) this.settings.explorerImmersiveFolds = folds;\n\t\tthis.armSettingsSave();',
+		]) {
+			expect(main).toContain(choice);
+		}
 	});
 
 	it('hears the index read a note again, for the snapshots and for the dashboards', () => {

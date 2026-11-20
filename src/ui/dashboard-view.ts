@@ -367,6 +367,18 @@ interface KeptTaskPanel<T = { dispose(): void }> {
 	current(): T | null;
 }
 
+/** One reading of what a dashboard draws, with the host's count as it began. */
+interface DashboardReading {
+	projects: Awaited<ReturnType<DashboardHost['listProjects']>>;
+	model: ProjectDashboardModel | null;
+	/**
+	 * The host's count of changes as the reading began, or null where the
+	 * host keeps none. While the host's count still says this, the model here
+	 * is the one it would hand over again.
+	 */
+	epoch: number | null;
+}
+
 interface StepDraft {
 	fields: StepFields;
 	expectedRevision: string;
@@ -686,16 +698,16 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	/** The funnel popover, lent to every panel that asks questions. */
 	private readonly filterPanel: FilterPanel;
 	/** What the last render drew, so a reveal can find a row's place now. */
-	private lastRender: {
-		projects: Awaited<ReturnType<DashboardHost['listProjects']>>;
-		model: ProjectDashboardModel | null;
-		/**
-		 * The host's count of changes as the reading behind this render
-		 * began, or null where the host keeps none. While the host's count
-		 * still says this, the model here is the one it would hand over again.
-		 */
-		epoch: number | null;
-	} | null = null;
+	private lastRender: DashboardReading | null = null;
+	/**
+	 * A reading the frame was not drawn from: one a gate let stand, the frame
+	 * being right by the gate's own test, though the reading found more than
+	 * the gate asked about. The next change of pane is drawn from it rather
+	 * than from the older model on show, and with no reading at all while the
+	 * host's count still stands where this one began. Emptied by every
+	 * drawing, and by a reading that finds the frame's own data.
+	 */
+	private unshown: DashboardReading | null = null;
 	/**
 	 * True while a pane is being drawn from the model in hand although a
 	 * reading is to follow it: the frame is on show at once, and what could be
@@ -735,6 +747,18 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	 * just drawn. While this stands, a reading draws whatever it finds.
 	 */
 	private redrawOwed = false;
+	/**
+	 * The reading now under way: the host's count as it began, and the test
+	 * its frame must pass to be drawn, if it was asked for with one. Null
+	 * between readings. A pane chosen meanwhile asks by it whether the
+	 * reading it would follow itself with is this very one.
+	 */
+	private pass: {
+		epoch: number | null;
+		gate: ((model: ProjectDashboardModel | null) => boolean) | null;
+		/** Whether it was asked for with a test, which a pane chosen meanwhile may since have taken away. */
+		readonly tested: boolean;
+	} | null = null;
 	/** The refresh now running, for a caller that arrived in the middle of it. */
 	private refreshRun: Promise<void> = Promise.resolve();
 	private rendered = false;
@@ -1498,8 +1522,9 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		onlyIf?: (model: ProjectDashboardModel | null) => boolean,
 	): Promise<void> {
 		// Anyone but a pane just drawn may have changed what the frame should
-		// show, and is owed a frame whatever the reading finds.
-		if (!this.followingUp) this.redrawOwed = true;
+		// show, and is owed a frame whatever the reading finds. One who asks
+		// with a test of their own is owed a frame only by that test.
+		if (!this.followingUp && onlyIf === undefined) this.redrawOwed = true;
 		this.followingUp = false;
 		this.refreshQueuedWhileHidden = false;
 		// A leaf that has not been told which project it is for has nothing to
@@ -1524,18 +1549,21 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		this.refreshing = true;
 		// The gate holds for this request alone: a later one, drawn by the
 		// same run, asked for the whole frame.
-		let gate = onlyIf ?? null;
+		let first = onlyIf ?? null;
 		try {
 			do {
 				this.refreshPending = false;
 				const owed = this.redrawOwed;
 				this.redrawOwed = false;
+				// Taken before the reading: a change that lands while the
+				// project is being read leaves this number behind, and the
+				// next change of pane reads again rather than trusting it.
+				const epoch = this.host.dashboardEpoch?.() ?? null;
+				const pass = { epoch, gate: first, tested: first !== null };
+				first = null;
+				this.pass = pass;
 				try {
 					const requestedProjectPath = this.projectPath;
-					// Taken before the reading: a change that lands while the
-					// project is being read leaves this number behind, and the
-					// next change of pane reads again rather than trusting it.
-					const epoch = this.host.dashboardEpoch?.() ?? null;
 					const [projects, model] = await Promise.all([
 						this.host.listProjects(),
 						this.host.loadDashboardModel(requestedProjectPath),
@@ -1549,12 +1577,20 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 						this.leaf.detach();
 						return;
 					}
-					if (gate === null && !owed && this.showsAlready(projects, model)) {
+					// Read here, after the reading: a pane chosen meanwhile may
+					// have taken the test away, and is then served by this frame.
+					const gate = pass.gate;
+					if (gate !== null && !gate(model)) {
+						// The frame stands by the gate's own test, and the reading
+						// is not thrown away for that: the next pane is drawn
+						// from it.
+						this.unshown = { projects, model, epoch };
+					} else if (gate === null && !owed && this.showsAlready(projects, model)) {
 						// The reading behind a pane found what the pane was drawn
 						// from: the frame stands, with the caret, the open list and
 						// the scroll the author has in it by now.
 						this.standBy(projects, model, epoch);
-					} else if (gate === null || gate(model)) {
+					} else {
 						this.keepingFocus(() => {
 							this.render(projects, model, epoch);
 						});
@@ -1562,10 +1598,16 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				} catch (error) {
 					// A gated re-read that failed says nothing here: the next
 					// refresh shows what went wrong in the frame, where an
-					// error belongs, and not over a note being typed in.
-					if (gate === null) this.renderError(error);
+					// error belongs, and not over a note being typed in. One a
+					// pane took for its own reading is read again, as that
+					// pane would have asked, and only that reading's failure
+					// is shown.
+					if (pass.gate === null) {
+						if (pass.tested) this.refreshPending = true;
+						else this.renderError(error);
+					}
 				} finally {
-					gate = null;
+					this.pass = null;
 				}
 			} while (this.refreshPending);
 		} finally {
@@ -1622,6 +1664,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		epoch: number | null,
 	): void {
 		this.lastRender = { projects, model, epoch };
+		this.unshown = null;
 		if (this.refreshPending) return;
 		for (const [draftKey, panels] of STEP_PANELS.get(this.host) ?? []) {
 			for (const panel of panels) {
@@ -1736,6 +1779,11 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	 * leaves the frame as the author has it by then. Until the reading is in,
 	 * the step boxes of this frame take no words.
 	 *
+	 * No reading is asked for twice. The model in hand is the newest one
+	 * read, whether or not a frame was drawn from it, and a reading already
+	 * under way that began at the host's present count is taken for this
+	 * pane's own.
+	 *
 	 * `remember` is the host's note of the choice, which nothing drawn waits
 	 * on: a failure there is said, and the pane stands all the same.
 	 */
@@ -1754,7 +1802,9 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				said(error);
 			}
 		}
-		const shown = this.lastRender;
+		// The newest reading in hand: one a gate let stand is newer than the
+		// frame, and is what the reading after this pane would find.
+		const shown = this.unshown ?? this.lastRender;
 		if (
 			shown === null ||
 			shown.model === null ||
@@ -1768,11 +1818,12 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		// Asked before the drawing: where a reading is to follow, the model in
 		// hand may be from before a save, so the frame is drawn with its step
 		// boxes held and only the reading's own frame lets them go.
+		const now = this.host.dashboardEpoch?.() ?? null;
 		const behind =
 			this.refreshing ||
 			this.refreshQueuedWhileHidden ||
 			shown.epoch === null ||
-			shown.epoch !== this.host.dashboardEpoch?.();
+			shown.epoch !== now;
 		this.drawingBehind = behind;
 		try {
 			this.keepingFocus(() => {
@@ -1787,10 +1838,28 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		} finally {
 			this.drawingBehind = false;
 		}
-		if (behind) {
-			this.followingUp = true;
-			void this.refresh();
+		if (!behind) return;
+		// A reading already under way that began at the host's present count
+		// is the very reading this pane would ask for: nothing has changed
+		// since it began. It is left to draw whatever it finds, a test it was
+		// asked with included, and no second reading is queued behind it. A
+		// burst of taps on a phone used to keep one reading after another
+		// going, each finding what the last had found.
+		// The count is asked again, after the drawing: what the drawing itself
+		// may have set going is not that reading's to have seen.
+		const pass = this.pass;
+		if (
+			pass !== null &&
+			pass.epoch !== null &&
+			pass.epoch === (this.host.dashboardEpoch?.() ?? null) &&
+			!this.refreshPending &&
+			!this.refreshQueuedWhileHidden
+		) {
+			pass.gate = null;
+			return;
 		}
+		this.followingUp = true;
+		void this.refresh();
 	}
 
 	private render(
@@ -1799,6 +1868,8 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		epoch: number | null,
 	): void {
 		this.lastRender = { projects, model, epoch };
+		// Whatever is drawn is the newest reading in hand.
+		this.unshown = null;
 		// Which project the typing in this view belongs to. A session reads it
 		// off the DOM, so a field anywhere below answers for its project
 		// without every panel having to be handed one.

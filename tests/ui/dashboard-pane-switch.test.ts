@@ -404,6 +404,190 @@ describe('changing pane on the dashboard', () => {
 		expect(mounted.shown().pane).toBe('Step 7');
 	});
 
+	it('asks for no second reading while one that began at the host’s present count is out', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		let answer = (_model: ProjectDashboardModel): void => undefined;
+		mounted.loadDashboardModel.mockImplementationOnce(
+			() => new Promise<ProjectDashboardModel>((resolve) => { answer = resolve; }),
+		);
+		mounted.epoch.value += 1;
+		const reading = mounted.view.refresh();
+		await flush();
+		// A burst of taps while that reading is out: each is drawn at once, and
+		// none of them sends the project to be read again behind it.
+		for (const label of ['Step 5', 'dashboard.tasks', 'Step 6']) {
+			mounted.press(label);
+			expect(mounted.shown()).toEqual({ pane: label, title: 'Novel' });
+		}
+		answer(makeModel('Novel, read again'));
+		await reading;
+		await flush();
+		expect(mounted.shown()).toEqual({ pane: 'Step 6', title: 'Novel, read again' });
+		expect(mounted.listProjects).toHaveBeenCalledTimes(2);
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+	});
+
+	it('reads again behind a reading under way that a change has overtaken', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		let answer = (_model: ProjectDashboardModel): void => undefined;
+		mounted.loadDashboardModel.mockImplementationOnce(
+			() => new Promise<ProjectDashboardModel>((resolve) => { answer = resolve; }),
+		);
+		mounted.epoch.value += 1;
+		const reading = mounted.view.refresh();
+		await flush();
+		// Something is written after that reading began: it may not hold it.
+		mounted.epoch.value += 1;
+		mounted.press('Step 5');
+		mounted.model.current = makeModel('Novel, written since');
+		answer(makeModel('Novel, read too early'));
+		await reading;
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(3);
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, written since' });
+	});
+
+	it('keeps a reading the health test let stand, and draws the next pane from it without reading', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		const frame = mounted.root.querySelector('.snowflake-method-step-button.is-active');
+		// A sticky note is saved: the count moves, and the reading finds more
+		// than the verdict it was asked about.
+		mounted.epoch.value += 1;
+		mounted.model.current = makeModel('Novel, retitled');
+		await mounted.view.reconcileHealth();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+		// The verdict stands, and so does the frame.
+		expect(frame?.isConnected).toBe(true);
+		expect(mounted.shown()).toEqual({ pane: 'Step 3', title: 'Novel' });
+
+		mounted.press('Step 5');
+		// Drawn at once from the newest reading, not from the frame's older one.
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, retitled' });
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+		// And it is the frame's own now: the next pane is drawn from it too.
+		mounted.press('Step 6');
+		await flush();
+		expect(mounted.shown()).toEqual({ pane: 'Step 6', title: 'Novel, retitled' });
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not trust a kept reading that a change overtook', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		mounted.epoch.value += 1;
+		mounted.model.current = makeModel('Novel, retitled');
+		await mounted.view.reconcileHealth();
+		mounted.epoch.value += 1;
+		mounted.model.current = makeModel('Novel, retitled twice');
+		mounted.press('Step 5');
+		// The newest reading in hand is drawn first, and the project read again.
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, retitled' });
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(3);
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, retitled twice' });
+	});
+
+	it('lets a later frame put a kept reading out of mind', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		mounted.epoch.value += 1;
+		mounted.model.current = makeModel('Novel, retitled');
+		await mounted.view.reconcileHealth();
+		// Someone asks for a frame, and the reading behind it finds a third title.
+		mounted.epoch.value += 1;
+		mounted.model.current = makeModel('Novel, retitled twice');
+		await mounted.view.refresh();
+		expect(mounted.shown().title).toBe('Novel, retitled twice');
+		mounted.press('Step 5');
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, retitled twice' });
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(3);
+	});
+
+	it('has a health reading already out draw for a pane chosen meanwhile', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		let answer = (_model: ProjectDashboardModel): void => undefined;
+		mounted.loadDashboardModel.mockImplementationOnce(
+			() => new Promise<ProjectDashboardModel>((resolve) => { answer = resolve; }),
+		);
+		mounted.epoch.value += 1;
+		const health = mounted.view.reconcileHealth();
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+		mounted.press('Step 5');
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel' });
+		// The verdict has not moved, and the frame is drawn all the same: the
+		// pane was drawn from a model this reading replaces.
+		answer(makeModel('Novel, retitled'));
+		await health;
+		await flush();
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, retitled' });
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+	});
+
+	it('reads again where a health reading a pane took for its own fails', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		let fail = (_error: Error): void => undefined;
+		mounted.loadDashboardModel.mockImplementationOnce(
+			() => new Promise<ProjectDashboardModel>((_resolve, reject) => { fail = reject; }),
+		);
+		mounted.epoch.value += 1;
+		const health = mounted.view.reconcileHealth();
+		await flush();
+		mounted.press('Step 5');
+		mounted.model.current = makeModel('Novel, retitled');
+		fail(new Error('the note would not read'));
+		await health;
+		await flush();
+		// No error over the pane: the reading the pane was owed is made, and drawn.
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(3);
+		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, retitled' });
+	});
+
+	it('does not take a reading for a pane\u2019s own once the drawing itself has moved the count', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		let answer = (_model: ProjectDashboardModel): void => undefined;
+		mounted.loadDashboardModel.mockImplementationOnce(
+			() => new Promise<ProjectDashboardModel>((resolve) => { answer = resolve; }),
+		);
+		mounted.epoch.value += 1;
+		const reading = mounted.view.refresh();
+		await flush();
+		// The drawing of the pane sets something going that the reading under way began before.
+		const drawing = vi
+			.spyOn(mounted.view as unknown as { renderSelectedStep(): void }, 'renderSelectedStep')
+			.mockImplementationOnce(() => {
+				mounted.epoch.value += 1;
+			});
+		mounted.press('Step 5');
+		expect(drawing).toHaveBeenCalled();
+		answer(makeModel());
+		await reading;
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(3);
+	});
+
+	it('draws nothing for a health reading that fails, and reads again at the next pane', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		mounted.epoch.value += 1;
+		mounted.loadDashboardModel.mockImplementationOnce(() => Promise.reject(new Error('the note would not read')));
+		await mounted.view.reconcileHealth();
+		// Nothing is said over the frame, and nothing is kept from it.
+		expect(mounted.shown()).toEqual({ pane: 'Step 3', title: 'Novel' });
+		mounted.press('Step 5');
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(3);
+		expect(mounted.shown().pane).toBe('Step 5');
+	});
+
 	it('owes a dashboard told of a change while hidden its reading at the next change of pane', async () => {
 		const mounted = mount();
 		await mounted.view.refresh();

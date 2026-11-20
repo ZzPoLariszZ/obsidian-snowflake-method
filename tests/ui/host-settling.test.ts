@@ -32,6 +32,8 @@ import { STORY_STRUCTURE_VIEW_TYPE, SnowflakeStoryStructureView } from '../../sr
 interface Host {
 	settings: SnowflakeSettings;
 	dashboardEpoch(): number;
+	watchVault(): () => void;
+	activateProject(path: string, locale: string, step: number): void;
 	selectStep(step: number): Promise<void>;
 	saveSettings(): Promise<void>;
 	saveSettingsSoon(): void;
@@ -83,7 +85,6 @@ async function ended(settling: Promise<void> | null): Promise<void> {
 async function host() {
 	const env = createFakeEnvironment();
 	const service = new SnowflakeProjectService(env.vault, env.fileManager, env.metadataCache);
-	const stop = service.repository.watch();
 	const saved: SnowflakeSettings[] = [];
 	const leaves = new Map<string, { view: unknown }[]>();
 	const sessions = { markShutdown: vi.fn(), checkpoint: vi.fn(), notePathRenamed: vi.fn() };
@@ -163,6 +164,8 @@ async function host() {
 		updatableSiblingsByProject: new Map(),
 		projectHealth: new Map(),
 	});
+	// The vault is listened to as the plugin listens to it when it loads.
+	const stop = (plugin as unknown as Host).watchVault();
 	return {
 		env,
 		service,
@@ -249,6 +252,88 @@ describe('what the host counts as a change to what a dashboard draws', () => {
 		// And nothing else moves it: asked twice, it says the same.
 		before = at();
 		expect(at()).toBe(before);
+		stop();
+	});
+
+	it('does not count a manuscript cache written afresh, and counts one made, moved or taken away', async () => {
+		const { plugin, env, service, stop } = await host();
+		const at = (): number => plugin.dashboardEpoch();
+		const index = 'Novels/Book/70_Tool/71_Data_Statistics/713_Entity_Tracking/desk_mention_index.json';
+		const stats = 'Novels/Book/70_Tool/71_Data_Statistics/713_Entity_Tracking/desk_analysis_stats.json';
+		// Made: the structure report says which caches stand, so this counts.
+		let before = at();
+		await env.fakeVault.seedFile(index, '{}');
+		expect(at()).toBeGreaterThan(before);
+		before = at();
+		await env.fakeVault.seedFile(stats, '{}');
+		expect(at()).toBeGreaterThan(before);
+
+		// Written afresh, as five seconds after every pause in the typing:
+		// nothing a dashboard draws is read from a cache's words.
+		before = at();
+		const tree = service.repository.treeVersion ?? -1;
+		env.fakeVault.write(index, '{"notes":{}}');
+		env.fakeVault.write(stats, '{"notes":{}}');
+		expect(at()).toBe(before);
+		// The repository's own count is of every change, these two included.
+		expect(service.repository.treeVersion).toBe(tree + 2);
+
+		// A file that only looks like one, in another folder, is a note like any other.
+		await env.fakeVault.seedFile('Novels/Book/desk_mention_index.json', '{}');
+		before = at();
+		env.fakeVault.write('Novels/Book/desk_mention_index.json', '{"a":1}');
+		expect(at()).toBeGreaterThan(before);
+
+		// Moved or taken away, a cache counts again.
+		before = at();
+		env.fakeVault.rename(stats, 'Novels/Book/70_Tool/71_Data_Statistics/713_Entity_Tracking/laptop_analysis_stats.json');
+		expect(at()).toBeGreaterThan(before);
+		before = at();
+		env.fakeVault.delete(index);
+		expect(at()).toBeGreaterThan(before);
+		stop();
+		// Once the listening has stopped, nothing more is counted.
+		before = at();
+		await env.fakeVault.seedFile('Novels/After.md', 'a note');
+		expect(at()).toBe(before);
+	});
+
+	it('remembers the step a tab is brought forward on without counting it, and counts another project', async () => {
+		const { plugin, saved, stop } = await host();
+		Object.assign(plugin, {
+			rerenderStatisticsViews: vi.fn(),
+			explorer: { followCurrentProject: vi.fn() },
+			settings: { ...plugin.settings, recentProjectPath: 'Novels/Book/Project.md', recentStep: 2 },
+			currentProjectLocale: 'en',
+		});
+		const before = plugin.dashboardEpoch();
+		// A dashboard restored on another step than the one last saved.
+		plugin.activateProject('Novels/Book/Project.md', 'en', 7);
+		expect(plugin.settings.recentStep).toBe(7);
+		expect(plugin.dashboardEpoch()).toBe(before);
+		// Remembered a moment later, in one write.
+		expect(saved).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(400);
+		expect(saved).toHaveLength(1);
+		expect(saved[0]?.recentStep).toBe(7);
+		expect(plugin.dashboardEpoch()).toBe(before);
+
+		// The very same again asks for nothing.
+		plugin.activateProject('Novels/Book/Project.md', 'en', 7);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(saved).toHaveLength(1);
+
+		// Another project is a change to what the dashboards draw, written at once.
+		plugin.activateProject('Novels/Other/Project.md', 'en', 7);
+		expect(plugin.dashboardEpoch()).toBeGreaterThan(before);
+		await microtasks();
+		expect(saved).toHaveLength(2);
+		expect(saved[1]?.recentProjectPath).toBe('Novels/Other/Project.md');
+		// And so is the same project in another language.
+		const then = plugin.dashboardEpoch();
+		plugin.activateProject('Novels/Other/Project.md', 'zh', 7);
+		expect(plugin.dashboardEpoch()).toBeGreaterThan(then);
+		await microtasks();
 		stop();
 	});
 

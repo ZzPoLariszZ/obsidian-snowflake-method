@@ -264,6 +264,71 @@ describe('a pane shown again from the model in hand', () => {
 		expect(save().disabled).toBe(false);
 	});
 
+	it('frees a step held by a second tap with the one reading already out', async () => {
+		const { host, loadDashboardModel, holdReading, moveCount } = makeReadingHost();
+		const { view, box, save } = mount(host, 6);
+		await view.refresh();
+		moveCount();
+		const landed = holdReading();
+		showPane(view);
+		// Tapped again while that reading is out: drawn anew, held, and no
+		// second reading is sent after the first.
+		showPane(view);
+		const drawn = box(SYNOPSIS);
+		expect(drawn.getAttribute('contenteditable')).toBe('false');
+		landed();
+		await flush();
+		expect(loadDashboardModel).toHaveBeenCalledTimes(2);
+		expect(box(SYNOPSIS)).toBe(drawn);
+		expect(drawn.getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(save().disabled).toBe(false);
+	});
+
+	it('frees a step held by a tap made while a health reading is out', async () => {
+		const { host, loadDashboardModel, holdReading, moveCount } = makeReadingHost();
+		const { view, box, save } = mount(host, 6);
+		await view.refresh();
+		moveCount();
+		const landed = holdReading();
+		const health = view.reconcileHealth();
+		await flush();
+		showPane(view);
+		const drawn = box(SYNOPSIS);
+		expect(drawn.getAttribute('contenteditable')).toBe('false');
+		landed();
+		await health;
+		await flush();
+		// The health reading served the pane: no other was sent, and the box
+		// it was drawn holding takes words again.
+		expect(loadDashboardModel).toHaveBeenCalledTimes(2);
+		expect(box(SYNOPSIS)).toBe(drawn);
+		expect(drawn.getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(save().disabled).toBe(false);
+	});
+
+	it('holds a step drawn from a kept reading that a save has overtaken', async () => {
+		const { host, loadDashboardModel, holdReading, moveCount } = makeReadingHost();
+		const { view, box, save, type } = mount(host, 6);
+		await view.refresh();
+		// A health reading is kept, the frame standing by its verdict.
+		moveCount();
+		await view.reconcileHealth();
+		expect(loadDashboardModel).toHaveBeenCalledTimes(2);
+		// Then the step is saved, and its own reading is still out.
+		type(SYNOPSIS, ' First.');
+		const landed = holdReading();
+		save().click();
+		await flush();
+		showPane(view);
+		// Whatever model the pane was drawn from is from before the save.
+		expect(box(SYNOPSIS).getAttribute('contenteditable')).toBe('false');
+		expect(save().disabled).toBe(true);
+		landed();
+		await flush();
+		expect(box(SYNOPSIS).textContent).toBe('Long. First.');
+		expect(box(SYNOPSIS).getAttribute('contenteditable')).toBe('plaintext-only');
+	});
+
 	it('holds the step where the count has moved, and frees it with the reading', async () => {
 		const { host, holdReading, moveCount } = makeReadingHost();
 		const { view, box } = mount(host, 6);

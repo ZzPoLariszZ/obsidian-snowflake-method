@@ -103,6 +103,9 @@ export interface SectionCheckResult {
   conflicts: RepairSectionConflict[];
 }
 
+/** The four kinds of change a vault announces. */
+export type VaultChange = "create" | "modify" | "delete" | "rename";
+
 export type FrontmatterUpdater = (
   current: Readonly<ManagedFrontmatter>,
 ) => ManagedFrontmatter;
@@ -162,17 +165,25 @@ export class VaultRepository {
    * Called once the vault can be listened to, before anything is kept by
    * the count. Stopping forgets the count, so what was kept by it is worked
    * out again rather than trusted past the last change that was heard.
+   *
+   * `heard` is told of each change inside the call that counts it, with
+   * what kind it was and the file it was made to. A caller that keeps a
+   * count of its own, of fewer changes than these, keeps it from here and
+   * so never hears of a change later than this count does.
    */
-  watch(): () => void {
-    const moved = (): void => {
-      if (this.changes !== null) this.changes += 1;
-    };
+  watch(heard?: (change: VaultChange, file: TAbstractFile) => void): () => void {
+    const moved =
+      (change: VaultChange) =>
+      (file: TAbstractFile): void => {
+        if (this.changes !== null) this.changes += 1;
+        heard?.(change, file);
+      };
     const { vault } = this;
     const refs = [
-      vault.on("create", moved),
-      vault.on("modify", moved),
-      vault.on("delete", moved),
-      vault.on("rename", moved),
+      vault.on("create", moved("create")),
+      vault.on("modify", moved("modify")),
+      vault.on("delete", moved("delete")),
+      vault.on("rename", moved("rename")),
     ];
     this.changes = 0;
     return () => {

@@ -788,6 +788,29 @@ describe("VaultRepository", () => {
     expect(fakeVault.listenerCount()).toBe(0);
   });
 
+  it("tells a listener of each change inside the call that counts it", async () => {
+    // The folders stand already, so each step below is one change.
+    await fakeVault.seedFile("Projects/Novel/Zero.md", "zero");
+    const heard: string[] = [];
+    const stop = repository.watch((change, file) => {
+      // Told with the count already moved: a count kept from here is never behind it.
+      heard.push(`${change} ${file.path} at ${String(repository.treeVersion)}`);
+    });
+    await fakeVault.seedFile("Projects/Novel/One.md", "one");
+    fakeVault.write("Projects/Novel/One.md", "one!");
+    fakeVault.rename("Projects/Novel/One.md", "Projects/Novel/Two.md");
+    fakeVault.delete("Projects/Novel/Two.md");
+    expect(heard).toEqual([
+      "create Projects/Novel/One.md at 1",
+      "modify Projects/Novel/One.md at 2",
+      "rename Projects/Novel/Two.md at 3",
+      "delete Projects/Novel/Two.md at 4",
+    ]);
+    stop();
+    await fakeVault.seedFile("Projects/Novel/Three.md", "three");
+    expect(heard).toHaveLength(4);
+  });
+
   it("says while a change is on its way to the vault, and when every one has landed", async () => {
     await fakeVault.seedFile("Projects/Novel/One.md", "one");
     await fakeVault.seedFile("Projects/Novel/Two.md", "two");

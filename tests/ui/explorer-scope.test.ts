@@ -56,6 +56,8 @@ function host(scope: ExplorerScope) {
 	const view = new FakeExplorerView(dom, files);
 	app.leaves.push(new FakeLeaf(view));
 	const plugin = Object.create(SnowflakeMethodPlugin.prototype) as ExplorerHost;
+	const armed = vi.fn();
+	const counted = vi.fn();
 	Object.assign(plugin, {
 		app,
 		settings: {
@@ -74,7 +76,10 @@ function host(scope: ExplorerScope) {
 		explorerLife: null,
 		explorerRoots: new Set(['Novel']),
 		globalT: (key: string) => key,
-		saveSettingsSoon: () => undefined,
+		// The explorer's choices are saved a moment later and are no change to
+		// what a dashboard draws: through the one, never through the other.
+		armSettingsSave: armed,
+		saveSettingsSoon: counted,
 		addChild: (child: Component) => {
 			child.load();
 			return child;
@@ -91,7 +96,7 @@ function host(scope: ExplorerScope) {
 			(button) => [...button.classes].find((cls) => cls.startsWith('snowflake-method-explorer-button-')) ?? '',
 		);
 	const shownName = (path: string): string | null => view.fileItems[path]?.innerEl.textContent ?? null;
-	return { dom, files, view, plugin, buttons, shownName };
+	return { dom, files, view, plugin, buttons, shownName, armed, counted };
 }
 
 afterEach(async () => {
@@ -141,7 +146,7 @@ describe('the explorer tools and their scope', () => {
 	});
 
 	it('keeps the arranged order and the saved folds through what is renamed or deleted while the scope is off', async () => {
-		const { dom, files, plugin } = host('projects');
+		const { dom, files, plugin, armed, counted } = host('projects');
 		for (const name of ['A', 'B', 'C', 'D']) files.file(`Novel/50_Manuscript/Chapters/${name}.md`);
 		plugin.settings.explorerOrders = { 'Novel/50_Manuscript/Chapters': ['C.md', 'A.md', 'D.md', 'B.md'] };
 		plugin.startExplorer();
@@ -164,6 +169,9 @@ describe('the explorer tools and their scope', () => {
 		rename('Novel/50_Manuscript/Chapters', 'Novel/50_Manuscript/Parts');
 		plugin.carryExplorerChoices('Novel/50_Manuscript/Parts/D.md', null);
 		expect(plugin.settings.explorerImmersiveFolds).toEqual(['Novel/50_Manuscript/Parts']);
+		// Each carried choice is saved, and none is told as a change to the dashboards.
+		expect(armed).toHaveBeenCalled();
+		expect(counted).not.toHaveBeenCalled();
 		plugin.settings.explorerScope = 'projects';
 		await plugin.handleSettingsChanged('explorerScope');
 		await settle(dom);
