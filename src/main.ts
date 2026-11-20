@@ -1397,13 +1397,17 @@ export default class SnowflakeMethodPlugin
 		// The app reads a note's properties a beat after the note is written,
 		// and the project is read through that reading: its arrival is a
 		// change to what a dashboard would draw, like the write before it.
+		// The project service is told which note it was: a snapshot it read
+		// before the index caught up is told apart by that.
 		this.registerEvent(
-			this.app.metadataCache.on('changed', () => {
+			this.app.metadataCache.on('changed', (file) => {
+				this.projects.indexMoved(file.path);
 				this.touchDashboardData();
 			}),
 		);
 		this.registerEvent(
-			this.app.metadataCache.on('deleted', () => {
+			this.app.metadataCache.on('deleted', (file) => {
+				this.projects.indexMoved(file.path);
 				this.touchDashboardData();
 			}),
 		);

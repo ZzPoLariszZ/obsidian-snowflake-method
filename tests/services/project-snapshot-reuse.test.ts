@@ -7,6 +7,7 @@ import {
 } from "../../src/services";
 import {
   createFakeEnvironment,
+  type FakeMetadataCache,
   type FakeVault,
 } from "../helpers/fake-vault";
 
@@ -24,6 +25,14 @@ type Internals = {
   calculateProjectFingerprints: (...args: unknown[]) => Promise<unknown>;
 };
 
+/** A note's properties as its file holds them. */
+function frontmatterOf(vault: FakeVault, path: string): Record<string, unknown> {
+  const raw = vault.contents.get(path) ?? "";
+  const parts = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/u.exec(raw);
+  if (parts === null) throw new Error(`No frontmatter in ${path}`);
+  return JSON.parse(parts[1] ?? "{}") as Record<string, unknown>;
+}
+
 /** Rewrites one frontmatter key of a note the way an edit from outside would. */
 function setFrontmatter(vault: FakeVault, path: string, key: string, value: unknown): void {
   const raw = vault.contents.get(path) ?? "";
@@ -36,6 +45,7 @@ function setFrontmatter(vault: FakeVault, path: string, key: string, value: unkn
 
 describe("a project's snapshot between two loads", () => {
   let fakeVault: FakeVault;
+  let fakeMetadataCache: FakeMetadataCache;
   let service: SnowflakeProjectService;
   let fresh: () => SnowflakeProjectService;
   let projectFile: string;
@@ -44,6 +54,7 @@ describe("a project's snapshot between two loads", () => {
   beforeEach(async () => {
     const environment = createFakeEnvironment();
     fakeVault = environment.fakeVault;
+    fakeMetadataCache = environment.fakeMetadataCache;
     const make = (): SnowflakeProjectService =>
       new SnowflakeProjectService(
         environment.vault,
@@ -220,6 +231,87 @@ describe("a project's snapshot between two loads", () => {
     expect(late.title).toBe("Thaw");
     expect((await service.loadProject(projectFile)).title).toBe("Thaw");
     expect(await service.loadProject(projectFile)).toEqual(await fresh().loadProject(projectFile));
+    stop();
+  });
+
+  /**
+   * A second chapter written into the first one's place by hand, with the
+   * app's index still serving what it read before: the file has moved on,
+   * the index has not. What the index says of a chapter's place is what the
+   * health report's manuscript findings are read from.
+   */
+  async function writeBehindTheIndex(): Promise<string> {
+    const two = await service.manuscript.appendSegment(await service.loadProject(projectFile), "Two");
+    await service.loadProject(projectFile);
+    fakeMetadataCache.behind.set(two, frontmatterOf(fakeVault, two));
+    setFrontmatter(fakeVault, two, FRONTMATTER_KEYS.manuscriptSequence, 1024);
+    return two;
+  }
+
+  const codes = (snapshot: ProjectSnapshot): string[] =>
+    snapshot.structureIssues.map((issue) => issue.code);
+  const DUPLICATE = "duplicate-manuscript-sequence";
+
+  it("reads again once the index has caught up with a write, and keeps that reading", async () => {
+    const stop = service.repository.watch();
+    const two = await writeBehindTheIndex();
+    // Read in the beat before the index catches up: the note's place is the old one.
+    const early = await service.loadProject(projectFile);
+    expect(codes(early)).not.toContain(DUPLICATE);
+
+    // The index reads the note again and says so.
+    fakeMetadataCache.behind.delete(two);
+    service.indexMoved(two);
+    const late = await service.loadProject(projectFile);
+    expect(late).not.toBe(early);
+    expect(codes(late)).toContain(DUPLICATE);
+    expect(late).toEqual(await fresh().loadProject(projectFile));
+    // Kept from here on, while the tree and the index both stand still.
+    expect(await service.loadProject(projectFile)).toBe(late);
+    // A note elsewhere in the vault read again is no change to this project.
+    service.indexMoved("Elsewhere/Loose.md");
+    expect(await service.loadProject(projectFile)).toBe(late);
+    stop();
+  });
+
+  it("gives a load asked for after the index caught up a reading of its own", async () => {
+    const stop = service.repository.watch();
+    const two = await writeBehindTheIndex();
+    const internals = service as unknown as Internals;
+    const builds = vi.spyOn(internals, "buildSnapshot");
+    // The first reading is held after it has asked the index, as the disk
+    // read that follows in a build holds it.
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let asked = false;
+    const reading = internals.calculateProjectFingerprints.bind(service);
+    vi.spyOn(internals, "calculateProjectFingerprints").mockImplementationOnce(
+      async (...args: unknown[]) => {
+        const result = await reading(...args);
+        asked = true;
+        await held;
+        return result;
+      },
+    );
+    const before = service.loadProject(projectFile);
+    for (let turn = 0; turn < 2000 && !asked; turn += 1) await Promise.resolve();
+    expect(asked).toBe(true);
+
+    // The index catches up while that reading is still out.
+    fakeMetadataCache.behind.delete(two);
+    service.indexMoved(two);
+    const late = await service.loadProject(projectFile);
+    // Not handed the reading under way, which holds the note as it was.
+    expect(builds).toHaveBeenCalledTimes(2);
+    expect(codes(late)).toContain(DUPLICATE);
+
+    release();
+    const early = await before;
+    expect(early).not.toBe(late);
+    // What stands afterwards is the later reading.
+    expect(await service.loadProject(projectFile)).toBe(late);
     stop();
   });
 

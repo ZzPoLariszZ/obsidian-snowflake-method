@@ -684,11 +684,46 @@ export class SnowflakeProjectService {
    * rename, deletion or new folder from anyone, the plugin included, reads
    * as a different project and rebuilds; until then the same snapshot
    * answers. Snapshots are shared, never edited, like the records they carry.
+   *
+   * A snapshot is a reading of the app's index too: the notes' properties
+   * come from it where it has them, and it reads a note a beat after the
+   * note is written. So the count of the index's changes under the project
+   * is kept beside the digest, and a snapshot read before the index caught
+   * up is no longer the project's once it has.
    */
   private readonly snapshots = new Map<
     string,
-    { digest: string; snapshot: ProjectSnapshot }
+    { digest: string; index: number; snapshot: ProjectSnapshot }
   >();
+
+  /**
+   * How many times the app's index has said a note under each project
+   * changed or went, for the projects loaded so far. Fed by whoever listens
+   * to the index; with nobody listening every count stays at nothing, and
+   * the digest alone decides, as it always did.
+   */
+  private readonly indexMoves = new Map<string, number>();
+
+  /**
+   * The app's index has read a note again, or let one go. The index runs a
+   * beat behind the vault: between a note's write and this word, a project
+   * read through the index holds the note's properties as they were. What
+   * was read in that beat is told apart by the count this moves.
+   */
+  indexMoved(path: string): void {
+    for (const [rootPath, moves] of this.indexMoves) {
+      if (path === rootPath || path.startsWith(`${rootPath}/`)) {
+        this.indexMoves.set(rootPath, moves + 1);
+      }
+    }
+  }
+
+  private indexVersion(rootPath: string): number {
+    const moves = this.indexMoves.get(rootPath);
+    if (moves !== undefined) return moves;
+    this.indexMoves.set(rootPath, 0);
+    return 0;
+  }
 
   /**
    * The digest last worked out for each project, with the vault's change
@@ -714,7 +749,7 @@ export class SnowflakeProjectService {
    */
   private readonly loading = new Map<
     string,
-    { digest: string; recordPath: string; pending: Promise<ProjectSnapshot> }
+    { digest: string; index: number; recordPath: string; pending: Promise<ProjectSnapshot> }
   >();
 
   /**
@@ -791,23 +826,27 @@ export class SnowflakeProjectService {
     }
     const rootPath = projectRootForMetadataPath(record.path);
     const digest = this.projectTreeDigest(rootPath);
+    const index = this.indexVersion(rootPath);
     const cached = this.snapshots.get(rootPath);
-    if (cached !== undefined && cached.digest === digest) {
+    if (cached !== undefined && cached.digest === digest && cached.index === index) {
       return cached.snapshot;
     }
-    // Joined only where the reading under way began from this very tree and
-    // this very metadata note: a write since then is a different project,
-    // and gets a reading of its own.
+    // Joined only where the reading under way began from this very tree,
+    // this very metadata note and the index as it stands: a write since
+    // then is a different project, and a reading begun before the index
+    // caught up with a write holds that note as it was. Either gets a
+    // reading of its own.
     const underway = this.loading.get(rootPath);
     if (
       underway !== undefined &&
       underway.digest === digest &&
+      underway.index === index &&
       underway.recordPath === record.path
     ) {
       return underway.pending;
     }
-    const pending = this.buildSnapshot(record, rootPath, digest);
-    const entry = { digest, recordPath: record.path, pending };
+    const pending = this.buildSnapshot(record, rootPath, digest, index);
+    const entry = { digest, index, recordPath: record.path, pending };
     this.loading.set(rootPath, entry);
     try {
       return await pending;
@@ -820,6 +859,7 @@ export class SnowflakeProjectService {
     record: ManagedFileRecord,
     rootPath: string,
     digest: string,
+    index: number,
   ): Promise<ProjectSnapshot> {
     const project = await this.toInspectableProjectRef(record, rootPath);
     const steps = readStepStatuses(record.frontmatter[FRONTMATTER_KEYS.stepStatuses]);
@@ -866,9 +906,15 @@ export class SnowflakeProjectService {
       structureIssues,
     };
     // A write can land while a snapshot is building, leaving it of neither
-    // state: such a snapshot is served once and never cached.
-    if (this.projectTreeDigest(rootPath) === digest) {
-      this.snapshots.set(rootPath, { digest, snapshot });
+    // state: such a snapshot is served once and never cached. The same for
+    // the index moving meanwhile: what was read of it may be from before,
+    // and a later reading may already stand in the cache, which this one
+    // must not put itself in front of.
+    if (
+      this.projectTreeDigest(rootPath) === digest &&
+      this.indexVersion(rootPath) === index
+    ) {
+      this.snapshots.set(rootPath, { digest, index, snapshot });
     }
     return snapshot;
   }
