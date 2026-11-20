@@ -8,6 +8,35 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0]
+
+### Added
+
+- **Six more languages.** The plugin now speaks Traditional Chinese, Japanese, Korean, French, German and Spanish, as well as English and Simplified Chinese. Each can be chosen for the interface and for a project, as before. A project in a new language names its folders and files in that language, and its starter notes, fields and tables are in it too. The beat sheet presets, the vocabulary a character tree starts with and the first view of the freeform canvas and the timeline come in the project's language. Word frequency leaves out the project language's function words along with the English ones. An exported Japanese or Korean manuscript indents each paragraph by one character, where Chinese takes two. Numbers follow the interface language too. A goal of 4,000 words reads 4.000 in German and 4 000 in French, and German, French and Spanish write decimals with a comma.
+- **German, French and Spanish quotes.** Dialogue rules now know „ “, « » and » «. The dialogue highlight and the dialogue share in prose analysis now work for German, French and Spanish manuscripts. Each style has its own switch, on by default. Before, the closing mark of a German „quote“ was read as an opening one, and the narration after it counted as dialogue.
+- **Screen recording.** A new button in the ribbon records the screen while you write. Press it to start, and press it again to stop. If someone later asks whether AI wrote your novel, the video shows how the words came to be. A dialog first says what a recording shows and costs, and can be told not to ask again. The window then counts 3, 2, 1, and **Esc** cancels. It uses macOS's own recorder on a Mac, or OBS Studio on Windows, macOS and Linux. Its choices are in the plugin's settings, under **Screen recording**. With OBS, **Set up OBS Studio** walks you through the one switch it needs, and **Test connection** shows what it will record. After that, the plugin opens OBS itself and puts back every setting it borrows. Recordings are saved **In the vault** unless you choose **Outside the vault**. In the Vault they go to **Snowflake Recordings** beside your projects unless you name another folder, and sync carries them unless you exclude them. **What to record** starts at **Obsidian only**, and offers **Current screen**, **All screens** and, with OBS, **As set in OBS Studio**. With **All screens**, macOS's recorder saves a file for each screen and OBS fits them all into one video. **Obsidian only** takes in tabs you moved into windows of their own. There macOS's recorder saves a file for each window, and OBS on a Mac shows the one you are working in. With OBS, **Video quality** starts at **1080p**. It also offers **2K**, **720p**, **Native** for the full size up to 4096 pixels a side, and **As set in OBS Studio**. A recording is kept even if Obsidian quits or crashes. While one runs, the button turns red and a clock in the status bar counts the time. The **Start screen recording**, **Stop screen recording** and **Open screen recording settings** commands do the same from the Command palette. It is desktop only, and its settings stay on the device.
+
+### Changed
+
+- With the interface language set to follow Obsidian, Obsidian in Traditional Chinese, Japanese, Korean, French, German or Spanish now gets the plugin in that language. Before, Traditional Chinese got Simplified Chinese and the others got English. The default project language follows Obsidian the same way.
+- The dialog that adds a note to the manuscript is now titled **Add manuscript note**, like the plugin's other dialogs that add something. It said **New manuscript note**.
+- Step 9's hints are now titled **Hints for scene planning**, after the step they belong to. They said **Hints for scene list**, like step 8's.
+- In Simplified Chinese, a few things went by two names and now go by one. The trash is always **回收站**, never 废纸篓. Goals and statistics for the manuscript alone say **仅正文**, not 仅正文稿. An entity's kind says **种类**, not 类型. A book's place in its series is **册次**, where 册数 meant how many books there are. A few hints read more naturally too.
+- Moving between steps and panes on the dashboard now shows the pane the moment you tap. Before, every tap rebuilt the dashboard from the whole project, and in a project of thousands of notes that took a second or more on a phone. The project is now read again only when something has changed, and only after the pane is on screen.
+- Saving a note no longer makes the dashboard read the whole project twice at once. It reads it once, so typing in a large project with the dashboard open is much lighter.
+
+### Fixed
+
+- On a phone or a tablet, what you type is now saved as soon as you switch to another app. That covers the manuscript stream, sticky notes, the cards on the visualization workspace, your settings and the writing session's count. Before, they waited for a pause in your typing, and a system that closes an app in the background could take the last words with it.
+- Quitting Obsidian no longer stops on **Saving...** for three seconds every time. The plugin used to hold back every quit, with or without anything to save. A quit now closes at once when nothing is waiting to be written, and otherwise waits only until it is.
+- The dashboard no longer goes blank for a moment each time Obsidian opens. Since 1.15.1, Obsidian shows the workspace as you left it while it starts, and the dashboard was still empty when that view was taken away. It is now drawn before then, without waiting for every other project in the vault to be read first. Its rail no longer moves by a pixel at that moment either.
+- On a phone, a dialog's title now runs on to a second line when it is too long for one. Before, it was cut short, so a question such as **Turn off managed boundary protection?** lost its last word.
+- The titles on the prose analysis cards now wrap instead of ending in an ellipsis. On a phone or in a narrow pane, **Reading time per chapter** read "Reading time p…".
+- A slider's answer in words, such as **Theme default**, now keeps the room its longest answer needs. On a phone it ran into the reset button beside it.
+- The **Actions** column in the dashboard's tables now fits its buttons in every language, with the same room before and after them. Before, the buttons stood further from the table's edge than from the column's start, and in French and German **Delete** was cut off.
+- Changing **Interface language** now redraws everything the plugin has open, along with tab titles and the ribbon's tooltips. Before, the **Data statistics** and **Task management** tabs, the manuscript stream's toolbar and the sidebars' titles kept the old language until they were opened again.
+- The project switcher at the foot of the dashboard's rail is now as tall as Obsidian's vault switcher beside it, so the lines above the two stand level. It was a pixel taller.
+
 ## [0.32.0]
 
 ### Added
@@ -781,6 +810,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.33.0]
+
+### 新增
+
+- **新增六种语言。** 除了英文和简体中文，插件现在还支持繁体中文、日文、韩文、法文、德文和西班牙文。界面和项目都可以选择这些语言，用法和以前一样。用新语言创建的项目，文件夹和文件名都用这种语言，初始笔记、字段和表格也是。节拍表预设、角色词表的初始条目，以及自由画布和时间线的第一个视图，都会使用项目的语言。词频统计除了略去英文停用词，也会略去项目语言自己的停用词。导出日文或韩文正文时，每段缩进一个字，中文仍是两个字。数字也按界面语言书写：4,000 字的目标在德文里写作 4.000，在法文里写作 4 000，德文、法文和西班牙文的小数也用逗号。
+- **德文、法文和西班牙文的引号。** 对话规则现在也认得 „ “、« » 和 » «，正文流中的对话高亮和正文分析里的对话占比，在德文、法文和西班牙文的正文中也能正确工作。每种样式都有自己的开关，默认开启。以前德文 „引语“ 的结束引号会被当成开头，后面的叙述也被算作对话。
+- **屏幕录制。** 功能区里新增一个按钮，在你写作时录下屏幕：按一下开始，再按一下停止。日后有人怀疑小说由 AI 生成，这段视频能说明文字是怎样写出来的。开始之前，对话框会先说明录屏的用途与风险，勾选**不再询问**就不再弹出。随后窗口中央倒数 3、2、1，期间按 **Esc** 可取消。Mac 上可以用 macOS 自带的录屏工具，Windows、macOS 和 Linux 上可以用 OBS Studio。各项选择都在插件设置的**屏幕录制**一节。使用 OBS 时，**配置 OBS Studio** 带你打开它需要的开关，**测试连接**会显示将要录下的画面。之后插件会替你打开 OBS，停止后还原借用过的设置。**录屏保存位置**默认是**仓库之内**，也可选**仓库之外**。保存在仓库里时，录屏放在项目旁的 **Snowflake Recordings**，也可另指定文件夹，同步会带上它们（除非明确排除）。**录制内容**默认是**仅 Obsidian**，也可选**当前屏幕**、**所有屏幕**，使用 OBS 时还有**按 OBS Studio 中的设置**。选**所有屏幕**时，macOS 自带的工具为每个屏幕各存一个文件，OBS 则把它们拼进同一段视频。**仅 Obsidian**也会录下移到独立窗口里的标签页：macOS 自带的工具为每个窗口各存一个文件，Mac 上的 OBS 则跟随你在用的窗口。使用 OBS 时，**视频质量**默认是 **1080p**，也可选 **2K**、**720p**、**原生**（按原本大小录制，每边最多 4096 像素）或**按 OBS Studio 中的设置**。即使 Obsidian 中途退出或崩溃，录屏也会保留。录制期间按钮变红，状态栏显示已录时长。命令面板里的**开始屏幕录制**、**停止屏幕录制**和**打开屏幕录制设置**也能做同样的事。它只在桌面端提供，设置只保存在本设备。
+
+### 变更
+
+- 界面语言设为跟随 Obsidian 时，如果 Obsidian 使用繁体中文、日文、韩文、法文、德文或西班牙文，插件现在也会使用同一种语言。以前繁体中文显示为简体中文，其他语言显示为英文。默认项目语言也同样跟随 Obsidian。
+- 在正文中添加笔记的对话框，标题现在是**添加正文笔记**，和插件里其他添加内容的对话框一致。以前是**新建正文笔记**。
+- 第九步的提示，标题现在是**场景规划提示**，与所在的步骤一致。以前和第八步一样，是**场景列表提示**。
+- 简体中文界面中，有几样东西以前有两个名字，现在只用一个：回收站不再写作废纸篓，目标和统计中的仅正文不再写作仅正文稿，实体的种类不再写作类型，书在系列中的位置改称**册次**（册数指的是一共有几册）。几条提示也改得更通顺了。
+- 在工作台上切换步骤和面板，现在一点就能看到。以前每点一次都要根据整个项目把工作台重建一遍，几千篇笔记的项目在手机上要等一秒以上。现在只有项目有了变化才会重读，而且是在面板显示出来之后。
+- 保存笔记时，工作台不会再同时把整个项目读两遍，只读一遍。开着工作台在大项目里打字时，插件的负担轻了许多。
+
+### 修复
+
+- 在手机或平板上，切换到其他应用时，你写下的内容现在会立刻保存，包括正文流、便签、可视化工作区里的卡片、插件设置和写作时段的字数。以前这些都要等你停笔片刻才保存，系统在后台关掉应用时，最后写下的几个字可能随之丢失。
+- 退出 Obsidian 时，不会再每次都在 **Saving...** 画面上停三秒。以前不管有没有要保存的内容，插件都会让每次退出等着。现在没有要写入的内容就立刻关闭，有的话也只等到写完为止。
+- 每次打开 Obsidian 时，工作台不会再闪现一下空白。从 1.15.1 起，Obsidian 启动时会先显示你上次离开时的工作区，而这幅画面撤掉时工作台还没有内容。现在工作台会在此之前画好，也不必先等仓库里其他项目全部读完。导航栏在那一刻也不再移动一个像素。
+- 在手机上，对话框标题太长时现在会换到第二行。以前过长的标题会被截断，提问的后半句会看不到。
+- 正文分析卡片上的标题现在会换行，不再以省略号结尾。以前在手机上或较窄的窗格里，较长的标题会被截断，例如英文的 Reading time per chapter。
+- 滑块旁用文字显示的数值，现在会预留出最长那个值所需的宽度。以前在手机上，较长的值会压到旁边的重置按钮，例如英文的 Theme default。
+- 工作台表格的**操作**列现在会按按钮的实际宽度调整，每种语言下按钮前后的留白都一样。以前按钮离表格边缘比离这一列的起始处更远，法文和德文的**删除**按钮还会被截断。
+- 更改**界面语言**后，插件打开的所有内容现在都会重新绘制，标签页标题和功能区按钮的提示也一样。以前**数据统计**和**任务管理**的标签页、正文流的工具栏和侧边栏的标题会保留原来的语言，直到重新打开。
+- 工作台导航栏底部的项目切换器，现在和旁边 Obsidian 的仓库切换器一样高，两者上方的分隔线对齐了。以前它高出一个像素。
 
 ## [0.32.0]
 
