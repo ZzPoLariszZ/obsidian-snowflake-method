@@ -37,6 +37,7 @@ interface Host {
 	saveSettingsSoon(): void;
 	scanProjects(): Promise<unknown[]>;
 	onExternalSettingsChange(): Promise<void>;
+	syncCertificateCelebration(projectId: string, complete: boolean): Promise<boolean>;
 	currentProjectLocale: string | null;
 	settleForQuit(): Promise<void> | null;
 	settleOutOfSight(): void;
@@ -272,6 +273,21 @@ describe('what the host counts as a change to what a dashboard draws', () => {
 		// The step already remembered asks for nothing at all.
 		await plugin.selectStep(6);
 		await vi.advanceTimersByTimeAsync(1000);
+		expect(saved).toHaveLength(1);
+		stop();
+	});
+
+	it('writes the celebration’s flag at once without counting it as a change', async () => {
+		const { plugin, saved, stop } = await host();
+		const before = plugin.dashboardEpoch();
+		// Asked from inside the drawing of the last step: a count moved here
+		// sent that very drawing off to read the project again.
+		expect(await plugin.syncCertificateCelebration('novel', true)).toBe(true);
+		expect(saved).toHaveLength(1);
+		expect(saved[0]?.certificateCelebrations).toEqual({ novel: true });
+		expect(plugin.dashboardEpoch()).toBe(before);
+		// Asked again, it has nothing to write.
+		expect(await plugin.syncCertificateCelebration('novel', true)).toBe(false);
 		expect(saved).toHaveLength(1);
 		stop();
 	});

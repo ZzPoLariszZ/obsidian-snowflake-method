@@ -174,6 +174,7 @@ import { KeptPanel } from './kept-panel';
 import { relabelLeafHeader, type RelabelsHeader } from './leaf-header';
 import { paintCount, renderSplitButton, renderTabStrip } from './pane-parts';
 import { writeUnderWay } from './pending-writes';
+import { sameData } from './same-data';
 import {
 	renderStickyNoteBoard,
 	stickyBoardMemory,
@@ -411,6 +412,19 @@ function holdStepPanel(panel: StepPanel, held: boolean): void {
 	const off = held || panel.readOnly;
 	for (const box of panel.boxes.values()) box.disabled = off;
 	panel.save.disabled = off;
+}
+
+/** Whether an element is a box words are typed into: a text input or a text area. */
+function isTypedInto(element: Element): element is HTMLInputElement | HTMLTextAreaElement {
+	const tag = element.tagName;
+	return tag === 'TEXTAREA' || (tag === 'INPUT' && !['checkbox', 'radio', 'button', 'range', 'color', 'file'].includes((element as HTMLInputElement).type));
+}
+
+/** What tells one kind of box from another on a page drawn twice: its tag, its type, its name and its dress. */
+function kindOfField(field: HTMLInputElement | HTMLTextAreaElement): string {
+	const named = field.getAttribute('aria-label') ?? field.getAttribute('placeholder') ?? '';
+	const labelled = field.closest('.snowflake-method-field')?.querySelector('label')?.textContent ?? '';
+	return [field.tagName, field.getAttribute('type') ?? '', named, labelled, field.className].join('\u0001');
 }
 
 export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
@@ -708,6 +722,19 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	private opened = false;
 	private refreshing = false;
 	private refreshPending = false;
+	/**
+	 * Set by a pane just drawn from the model in hand, for the reading it
+	 * asks for behind itself: such a reading may leave the frame alone where
+	 * it finds what is drawn already. Read and lowered as the reading is
+	 * asked for.
+	 */
+	private followingUp = false;
+	/**
+	 * Whether a frame has been asked for by someone who may have changed what
+	 * the frame should show: every asking but the one that follows a pane
+	 * just drawn. While this stands, a reading draws whatever it finds.
+	 */
+	private redrawOwed = false;
 	/** The refresh now running, for a caller that arrived in the middle of it. */
 	private refreshRun: Promise<void> = Promise.resolve();
 	private rendered = false;
@@ -1470,6 +1497,10 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	async refresh(
 		onlyIf?: (model: ProjectDashboardModel | null) => boolean,
 	): Promise<void> {
+		// Anyone but a pane just drawn may have changed what the frame should
+		// show, and is owed a frame whatever the reading finds.
+		if (!this.followingUp) this.redrawOwed = true;
+		this.followingUp = false;
 		this.refreshQueuedWhileHidden = false;
 		// A leaf that has not been told which project it is for has nothing to
 		// draw, and asking the host with no path would have it answer with the
@@ -1497,6 +1528,8 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		try {
 			do {
 				this.refreshPending = false;
+				const owed = this.redrawOwed;
+				this.redrawOwed = false;
 				try {
 					const requestedProjectPath = this.projectPath;
 					// Taken before the reading: a change that lands while the
@@ -1509,13 +1542,19 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 					]);
 					if (requestedProjectPath !== this.projectPath) {
 						this.refreshPending = true;
+						this.redrawOwed = true;
 						continue;
 					}
 					if (model === null && this.projectPath !== null) {
 						this.leaf.detach();
 						return;
 					}
-					if (gate === null || gate(model)) {
+					if (gate === null && !owed && this.showsAlready(projects, model)) {
+						// The reading behind a pane found what the pane was drawn
+						// from: the frame stands, with the caret, the open list and
+						// the scroll the author has in it by now.
+						this.standBy(projects, model, epoch);
+					} else if (gate === null || gate(model)) {
 						this.keepingFocus(() => {
 							this.render(projects, model, epoch);
 						});
@@ -1555,6 +1594,44 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		);
 	}
 
+	/** Whether the frame on show was drawn from this very data: the same projects and the same model, value for value. */
+	private showsAlready(
+		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
+		model: ProjectDashboardModel | null,
+	): boolean {
+		const shown = this.lastRender;
+		return (
+			shown !== null &&
+			this.rendered &&
+			!this.loadFailed &&
+			sameData(shown.model, model) &&
+			sameData(shown.projects, projects)
+		);
+	}
+
+	/**
+	 * A reading found what is drawn already: the frame is left as it stands
+	 * and takes the reading for its own, count and all, so the next change of
+	 * pane finds a model that is current. The step boxes the frame was drawn
+	 * holding are let go, unless a save is still writing theirs or another
+	 * reading is already asked for, whose frame will do it.
+	 */
+	private standBy(
+		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
+		model: ProjectDashboardModel | null,
+		epoch: number | null,
+	): void {
+		this.lastRender = { projects, model, epoch };
+		if (this.refreshPending) return;
+		for (const [draftKey, panels] of STEP_PANELS.get(this.host) ?? []) {
+			for (const panel of panels) {
+				if (panel.view === this && panel.save.isConnected) {
+					holdStepPanel(panel, this.stepSaves.has(draftKey));
+				}
+			}
+		}
+	}
+
 	/**
 	 * A frame rebuild empties the root and puts the kept panels back, which
 	 * takes the document's focus off whatever was being typed in among them
@@ -1575,10 +1652,35 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				: null;
 		const label = box?.getAttribute('aria-label') ?? null;
 		const caret = box === null ? null : proseBoxCaret(box);
+		// A search box or a one-line box is drawn anew as well, and has no
+		// name of its own to be found by: it is found by what it is and where
+		// it stands among its like, and takes its selection back with the focus.
+		const typed =
+			box === null && active !== null && this.contentEl.contains(active) && isTypedInto(active)
+				? active
+				: null;
+		const place = typed === null ? null : this.placeOfField(typed);
+		const selection =
+			typed === null ? null : { start: typed.selectionStart, end: typed.selectionEnd, value: typed.value };
 		work();
 		if (active === null || doc.activeElement === active) return;
 		if (this.contentEl.contains(active) && 'focus' in active) {
 			(active as HTMLElement).focus({ preventScroll: true });
+			return;
+		}
+		if (place !== null && selection !== null) {
+			const again = this.fieldAt(place);
+			// Only a box holding the very words it held: one that reads
+			// otherwise is another box, or the same one with a new story to tell.
+			if (again === null || again.disabled || again.value !== selection.value) return;
+			again.focus({ preventScroll: true });
+			try {
+				if (selection.start !== null && selection.end !== null) {
+					again.setSelectionRange(selection.start, selection.end);
+				}
+			} catch {
+				// A kind of box that keeps no selection: the focus is what mattered.
+			}
 			return;
 		}
 		if (label === null) return;
@@ -1592,6 +1694,24 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		if (twin === undefined) return;
 		twin.focus({ preventScroll: true });
 		if (caret !== null) placeProseBoxCaret(twin, caret);
+	}
+
+	/** What kind of box a field is, and which of its kind it is on the page, counted from the top. */
+	private placeOfField(field: HTMLInputElement | HTMLTextAreaElement): { kind: string; nth: number } {
+		const kind = kindOfField(field);
+		const like = this.fieldsOfKind(kind);
+		return { kind, nth: like.indexOf(field) };
+	}
+
+	/** The box of a kind standing at a place, or null where the page has none there now. */
+	private fieldAt(place: { kind: string; nth: number }): HTMLInputElement | HTMLTextAreaElement | null {
+		return place.nth < 0 ? null : (this.fieldsOfKind(place.kind)[place.nth] ?? null);
+	}
+
+	private fieldsOfKind(kind: string): (HTMLInputElement | HTMLTextAreaElement)[] {
+		return Array.from(
+			this.contentEl.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'),
+		).filter((candidate) => kindOfField(candidate) === kind);
 	}
 
 	private get freeformMode(): boolean {
@@ -1611,8 +1731,10 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	 * every change to what a dashboard draws; while its count is the one this
 	 * model was read at, the model is current and the reading is skipped.
 	 * Where the count has moved, or the host keeps none, the reading follows
-	 * the drawing as it always did, and its frame replaces this one. Until it
-	 * does, the step boxes of this frame take no words.
+	 * the drawing as it always did. Its frame replaces this one only where it
+	 * found something else to draw: a reading that finds the very model drawn
+	 * leaves the frame as the author has it by then. Until the reading is in,
+	 * the step boxes of this frame take no words.
 	 *
 	 * `remember` is the host's note of the choice, which nothing drawn waits
 	 * on: a failure there is said, and the pane stands all the same.
@@ -1656,10 +1778,19 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			this.keepingFocus(() => {
 				this.render(shown.projects, shown.model, shown.epoch);
 			});
+		} catch (error) {
+			// A pane that cannot be drawn says so in the frame, as it does when
+			// a reading draws it: a throw let out of here left the dashboard
+			// half built, with nothing to say why and nothing to press.
+			this.renderError(error);
+			return;
 		} finally {
 			this.drawingBehind = false;
 		}
-		if (behind) void this.refresh();
+		if (behind) {
+			this.followingUp = true;
+			void this.refresh();
+		}
 	}
 
 	private render(

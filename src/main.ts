@@ -2317,7 +2317,11 @@ export default class SnowflakeMethodPlugin
 		if (complete) next[projectId] = true;
 		else delete next[projectId];
 		this.settings.certificateCelebrations = next;
-		await this.saveSettings();
+		// Written at once, and no change to what a dashboard draws: this is
+		// asked from inside the drawing of the last step, and counted as a
+		// change it sent every such drawing off to read the project again,
+		// whose frame then took the celebration down as it began.
+		await this.writeSettings();
 		return complete;
 	}
 

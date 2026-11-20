@@ -247,6 +247,23 @@ describe('a pane shown again from the model in hand', () => {
 		expect(save().disabled).toBe(false);
 	});
 
+	it('frees a held step where it stands when the reading finds nothing new', async () => {
+		const { host, holdReading, moveCount } = makeReadingHost();
+		const { view, box, save } = mount(host, 6);
+		await view.refresh();
+		moveCount();
+		const landed = holdReading();
+		showPane(view);
+		const drawn = box(SYNOPSIS);
+		expect(drawn.getAttribute('contenteditable')).toBe('false');
+		landed();
+		await flush();
+		// The same box, not one drawn anew, and it takes words again.
+		expect(box(SYNOPSIS)).toBe(drawn);
+		expect(drawn.getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(save().disabled).toBe(false);
+	});
+
 	it('holds the step where the count has moved, and frees it with the reading', async () => {
 		const { host, holdReading, moveCount } = makeReadingHost();
 		const { view, box } = mount(host, 6);

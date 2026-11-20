@@ -273,6 +273,113 @@ describe('changing pane on the dashboard', () => {
 		expect(mounted.shown()).toEqual({ pane: 'Step 5', title: 'Novel, read again' });
 	});
 
+	it('leaves the frame as it stands where the reading behind a pane finds nothing new', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		// Something was written that no dashboard draws: the count moved,
+		// and the project reads as it did, value for value.
+		mounted.epoch.value += 1;
+		mounted.model.current = makeModel();
+		mounted.press('Step 5');
+		const drawn = mounted.root.querySelector('.snowflake-method-step-button.is-active');
+		expect(drawn?.getAttribute('aria-label')).toBe('Step 5');
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+		// Not drawn a second time: the very nodes of the first frame stand.
+		expect(drawn?.isConnected).toBe(true);
+		expect(mounted.root.querySelector('.snowflake-method-step-button.is-active')).toBe(drawn);
+		// And the frame took the reading's count for its own: the next pane reads nothing.
+		mounted.press('Step 6');
+		await flush();
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+	});
+
+	it('draws again for anyone else who asks, whatever the reading finds', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		const drawn = mounted.root.querySelector('.snowflake-method-step-button.is-active');
+		// A refresh asked for by a save, a setting or a change of state is owed its frame.
+		await mounted.view.refresh();
+		expect(drawn?.isConnected).toBe(false);
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(2);
+	});
+
+	it('draws again where such an asking arrives while the reading behind a pane is out', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		let answer = (_model: ProjectDashboardModel): void => undefined;
+		mounted.loadDashboardModel.mockImplementationOnce(
+			() => new Promise<ProjectDashboardModel>((resolve) => { answer = resolve; }),
+		);
+		mounted.epoch.value += 1;
+		mounted.press('Step 5');
+		const drawn = mounted.root.querySelector('.snowflake-method-step-button.is-active');
+		// Someone else asks for a frame meanwhile.
+		const asked = mounted.view.refresh();
+		answer(makeModel());
+		await asked;
+		await flush();
+		expect(drawn?.isConnected).toBe(false);
+		expect(mounted.shown().pane).toBe('Step 5');
+		expect(mounted.loadDashboardModel).toHaveBeenCalledTimes(3);
+	});
+
+	it('says so in the frame when the pane cannot be drawn from the model in hand', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		const failing = vi
+			.spyOn(mounted.view as unknown as { renderSelectedStep(): void }, 'renderSelectedStep')
+			.mockImplementationOnce(() => {
+				throw new Error('This pane cannot be drawn');
+			});
+		// Nothing is thrown out of the tap.
+		expect(() => {
+			mounted.press('Step 5');
+		}).not.toThrow();
+		expect(failing).toHaveBeenCalled();
+		const panel = mounted.root.querySelector('.snowflake-method-panel');
+		expect(panel?.querySelector('h2')?.textContent).toBe('errors.dashboard');
+		expect(panel?.querySelector('p')?.textContent).toBe('This pane cannot be drawn');
+		// And the way back works: Retry reads and draws.
+		panel?.querySelector('button')?.click();
+		await flush();
+		expect(mounted.shown().pane).toBe('Step 5');
+	});
+
+	it('gives a search box drawn anew its focus and its selection back', async () => {
+		const mounted = mount();
+		await mounted.view.refresh();
+		const draw = (): HTMLInputElement => {
+			const field = mounted.root.createDiv({ cls: 'snowflake-method-field' });
+			field.createEl('label', { text: 'Search' });
+			const input = field.createEl('input', { attr: { type: 'search' } });
+			input.value = 'Ada';
+			return input;
+		};
+		const first = draw();
+		first.focus();
+		first.setSelectionRange(1, 2);
+		expect(document.activeElement).toBe(first);
+		let second: HTMLInputElement | null = null;
+		(mounted.view as unknown as { keepingFocus(work: () => void): void }).keepingFocus(() => {
+			// A frame rebuild: the box is another node, holding the same words.
+			mounted.root.empty();
+			second = draw();
+		});
+		expect(document.activeElement).toBe(second);
+		expect(second!.selectionStart).toBe(1);
+		expect(second!.selectionEnd).toBe(2);
+
+		// A box that reads otherwise is not the box that was being typed in.
+		let third: HTMLInputElement | null = null;
+		(mounted.view as unknown as { keepingFocus(work: () => void): void }).keepingFocus(() => {
+			mounted.root.empty();
+			third = draw();
+			third.value = 'Bea';
+		});
+		expect(document.activeElement).not.toBe(third);
+	});
+
 	it('reads first where there is no model in hand to draw from', async () => {
 		const mounted = mount();
 		// Never drawn: a tap can only come from a command or a restored frame.
