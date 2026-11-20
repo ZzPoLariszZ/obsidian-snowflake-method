@@ -12,9 +12,9 @@
 
 [![Release](https://img.shields.io/github/v/release/ZzPoLariszZ/obsidian-snowflake-method?display_name=tag&sort=semver)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/releases) [![CI](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/ZzPoLariszZ/obsidian-snowflake-method?color=blue)](LICENSE) [![Obsidian 1.13+](https://img.shields.io/badge/Obsidian-1.13%2B-7c3aed?logo=obsidian)](https://obsidian.md)
 
-**Turn a story idea into a draft-ready plan, one Snowflake step at a time.**
+**Turn a story idea into a first draft, one Snowflake step at a time.**
 
-A multilingual, Markdown-native fiction planning workspace for Obsidian. Your projects stay local, portable, and readable even when the plugin is disabled.
+A multilingual workspace for planning and writing fiction in Obsidian. Your projects stay local, portable, and readable even when the plugin is disabled.
 
 <br />
 
@@ -816,9 +816,9 @@ The Freeform tab's canvas is built on [React Flow](https://reactflow.dev) (MIT, 
 
 [![Release](https://img.shields.io/github/v/release/ZzPoLariszZ/obsidian-snowflake-method?display_name=tag&sort=semver)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/releases) [![CI](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/ZzPoLariszZ/obsidian-snowflake-method?color=blue)](LICENSE) [![Obsidian 1.13+](https://img.shields.io/badge/Obsidian-1.13%2B-7c3aed?logo=obsidian)](https://obsidian.md)
 
-**从一句话灵感到可动笔的小说方案，一步步完成雪花写作法。**
+**从一句话灵感到完整的初稿，一步步完成雪花写作法。**
 
-一个支持多种语言、以 Markdown 为原生存储格式的 Obsidian 小说规划工作台。所有项目均保存在本地，即使停用插件，笔记依然可读、可编辑。
+一个支持多种语言的 Obsidian 小说构思与写作工作台。所有项目均保存在本地，即使停用插件，笔记依然可读、可编辑。
 
 <br />
 
