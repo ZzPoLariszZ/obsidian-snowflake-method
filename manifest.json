@@ -1,7 +1,7 @@
 {
 	"id": "snowflake-method",
 	"name": "Snowflake Method",
-	"version": "0.32.0",
+	"version": "0.33.0",
 	"minAppVersion": "1.13.0",
 	"description": "Plan and write a novel with the ten-step Snowflake Method, in any of eight languages. Build characters, scenes and worlds, lay out the story on boards and timelines, and draft it as one continuous manuscript.",
 	"author": "Polaris",
