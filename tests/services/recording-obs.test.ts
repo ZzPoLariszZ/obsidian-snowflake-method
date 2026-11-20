@@ -2067,4 +2067,118 @@ describe('a recording nobody saw begin or end', () => {
 		expect(obs.writes()).toHaveLength(asked);
 		expect(obs.recording).toBe(true);
 	});
+
+	it('tells OBS to stop where a start it took was never seen to begin', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		const before = obs.borrowable();
+		// OBS records, and neither says so nor shows it to a look.
+		obs.startsUnseen = true;
+		expect(await clock.drive(recorder.start(request({ quality: '1080p' }), hooks))).toEqual({
+			ok: false,
+			code: 'obs-refused',
+			detail: 'StartRecord',
+		});
+		// The recording nobody saw was ended, and everything given back.
+		expect(obs.types().filter((type) => type === 'StopRecord')).toHaveLength(1);
+		expect(obs.recording).toBe(false);
+		expect(obs.borrowable()).toEqual(before);
+		expect([obs.scenes.map((scene) => scene.name), obs.capturing()]).toEqual([['Scene'], []]);
+		expect(ledger.value).toBeNull();
+	});
+
+	it('follows a recording OBS began as the conversation ended under the start', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		const before = obs.borrowable();
+		// OBS takes the start, and the conversation ends before its answer comes.
+		obs.holdNext('StartRecord');
+		const starting = recorder.start(request({ quality: '1080p' }), hooks);
+		await clock.advance(5000);
+		expect(obs.recording).toBe(true);
+		obs.drop();
+		// A conversation is opened anew and OBS is found recording. Nothing was given back under it.
+		expect(await clock.drive(starting)).toMatchObject({ ok: true });
+		expect(obs.conversations).toBe(2);
+		expect(obs.recording).toBe(true);
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		expect(obs.mutes['Mic/Aux']).toBe(true);
+		expect(obs.writes().filter((type) => type === 'StopRecord')).toEqual([]);
+		// It is stopped like any other, and everything goes back then.
+		expect(await clock.drive(recorder.stop())).toMatchObject({ error: null });
+		expect(obs.recording).toBe(false);
+		expect(obs.borrowable()).toEqual(before);
+		expect(ledger.value).toBeNull();
+		expect(obs.live).toBe(0);
+	});
+
+	it('follows a recording that turns up after all, where OBS would take no stop for it', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		const before = obs.borrowable();
+		obs.startsUnseen = true;
+		// The stop comes a moment too soon for OBS, which then shows the recording running.
+		const receive = obs.receive.bind(obs);
+		obs.receive = (socket, frame) => {
+			if (frame.includes('"requestType":"StopRecord"') && obs.startsUnseen) {
+				obs.failNext('StopRecord', 501);
+				obs.startsUnseen = false;
+			}
+			receive(socket, frame);
+		};
+		expect(await clock.drive(recorder.start(request({ quality: '1080p' }), hooks))).toMatchObject({ ok: true });
+		expect(obs.recording).toBe(true);
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		expect(await clock.drive(recorder.stop())).toMatchObject({ error: null });
+		expect(obs.recording).toBe(false);
+		expect(obs.borrowable()).toEqual(before);
+		expect(ledger.value).toBeNull();
+	});
+
+	it('gives nothing back under a start it gave up while OBS still closes the file', async () => {
+		const { obs, clock, recorder, hooks, ledger, again } = rig();
+		const before = obs.borrowable();
+		obs.startsUnseen = true;
+		// OBS takes the stop for the recording nobody saw, and needs long to close the file.
+		const receive = obs.receive.bind(obs);
+		obs.receive = (socket, frame) => {
+			if (frame.includes('"requestType":"StopRecord"')) obs.stopsLate = 90;
+			receive(socket, frame);
+		};
+		expect(await clock.drive(recorder.start(request({ quality: '1080p' }), hooks))).toMatchObject({
+			ok: false,
+			code: 'obs-refused',
+		});
+		// Nothing was moved under it: the scene, the sound and the sizes stand as the plugin left them, written down.
+		expect(obs.writes().slice(obs.writes().lastIndexOf('StopRecord') + 1)).toEqual([]);
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		expect(ledger.value?.loans.length).toBeGreaterThan(0);
+		expect(ledger.value?.recording).toEqual(expect.any(Number));
+		// Once OBS is quiet, the next conversation gives everything back.
+		obs.receive = receive;
+		obs.stopsLate = 0;
+		expect((await clock.drive(again().probe({ ...LOOK, scope: 'obs' }))).ok).toBe(true);
+		expect(obs.borrowable()).toEqual(before);
+		expect([obs.scenes.map((scene) => scene.name), obs.capturing()]).toEqual([['Scene'], []]);
+		expect(ledger.value).toBeNull();
+	});
+
+	it('gives a start up where OBS stops answering as it is asked to record, and keeps what it knows written down', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		const receive = obs.receive.bind(obs);
+		obs.receive = (socket, frame) => {
+			if (frame.includes('"requestType":"StartRecord"')) obs.silent = true;
+			receive(socket, frame);
+		};
+		const from = clock.now;
+		expect(await clock.drive(recorder.start(request({ quality: '1080p' }), hooks))).toMatchObject({
+			ok: false,
+			code: 'obs-refused',
+		});
+		// Two silences are enough: not the ten looks an OBS that answers is given.
+		expect(obs.types().filter((type) => type === 'GetRecordStatus').length).toBeLessThan(6);
+		expect(clock.now - from).toBeLessThan(150_000);
+		// A stop was left for it all the same, for the moment it wakes.
+		expect(obs.types()).toContain('StopRecord');
+		// OBS was asked and may yet record: the mark and the loans stand for the next conversation.
+		expect(ledger.value?.recording).toEqual(expect.any(Number));
+		expect(ledger.value?.loans.length).toBeGreaterThan(0);
+	});
 });

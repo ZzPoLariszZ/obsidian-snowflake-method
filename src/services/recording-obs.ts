@@ -532,12 +532,17 @@ export class ObsRecorder {
 		// own by its age.
 		this.mark(this.deps.now());
 		const asked = await this.ask('StartRecord');
-		if (!asked.ok) {
-			// OBS said no: nothing of the plugin's records. Where it said nothing at all, the mark stands.
-			if (!unanswered(asked)) this.mark(null);
+		if (!asked.ok && !unanswered(asked)) {
+			// OBS said no: nothing of the plugin's records.
+			this.mark(null);
 			return this.giveUp(asked.code === OUTPUT_RUNNING ? 'obs-recording' : 'obs-refused', asked.comment);
 		}
-		if (!(await this.confirmStarted())) return this.giveUp('obs-refused', 'StartRecord');
+		// OBS said yes, or its answer was lost on the way. Either way it may
+		// record, and it is believed once it is seen to. One never seen to is
+		// told to stop, and followed all the same where it runs after that.
+		if (!(await this.confirmStarted(asked.ok ? 0 : 1)) && !(await this.unstart())) {
+			return this.giveUp('obs-refused', asked.ok ? 'StartRecord' : asked.comment);
+		}
 		this.recording = true;
 		this.beat();
 		return { ok: true, startedAt: this.deps.now(), path: this.path };
@@ -550,7 +555,14 @@ export class ObsRecorder {
 			// same. Where OBS says nothing records, the mark goes. Where it
 			// cannot be asked, the mark stands for the next conversation.
 			const status = await this.ask('GetRecordStatus');
-			if (status.ok && status.data.outputActive !== true) this.mark(null);
+			if (status.ok && status.data.outputActive === true) {
+				// It records after all, or has not closed its file yet. Nothing is
+				// moved under a recording: what was borrowed stays written down
+				// with the mark, and the next conversation settles both.
+				this.finish();
+				return { ok: false, code, detail };
+			}
+			if (status.ok) this.mark(null);
 		}
 		await this.giveBack();
 		// An OBS that never got as far as a scene of the plugin's is asked for nothing more.
@@ -568,6 +580,26 @@ export class ObsRecorder {
 	private leave(code: RecordingErrorCode): RecorderStart {
 		this.finish();
 		return { ok: false, code, detail: null };
+	}
+
+	/**
+	 * OBS said yes to a start, or said nothing to it, and was never seen to
+	 * record. It is told to stop all the same, over a conversation opened
+	 * anew where the old one went: a recording that began unseen would go on
+	 * with nobody following it. One that took the stop is waited for a
+	 * moment, so that what was borrowed for it can go back. True where OBS
+	 * would take no stop and records all the same: that recording is the
+	 * plugin's, and is followed like any other.
+	 */
+	private async unstart(): Promise<boolean> {
+		if (this.socket === null || !this.socket.open) await this.converse(this.port, this.password);
+		const asked = await this.ask('StopRecord');
+		if (asked.ok) {
+			await this.confirmStopped(SETTLE_SECONDS);
+			return false;
+		}
+		const status = await this.ask('GetRecordStatus');
+		return status.ok && status.data.outputActive === true;
 	}
 
 	/** Whether the recording OBS says it is making is the one the plugin asked for: by the mark, and by its age. */
@@ -607,12 +639,37 @@ export class ObsRecorder {
 		return { ok: false, code: 'obs-closed' };
 	}
 
-	private async confirmStarted(): Promise<boolean> {
+	/**
+	 * Whether OBS came to record: it is asked now and again for a while. One
+	 * that has stopped answering is not waited for any longer: `silent` is
+	 * how many times in a row it has said nothing already.
+	 *
+	 * A conversation that ended under the start is opened anew, once. OBS may
+	 * well record, and nothing must be given back under a recording that is
+	 * only just beginning: a size set anew in that moment leaves OBS with a
+	 * recording that neither runs nor stops.
+	 */
+	private async confirmStarted(silent = 0): Promise<boolean> {
+		let redialled = false;
 		for (let second = 0; second < START_SECONDS; second += 1) {
+			if (this.socket === null || !this.socket.open) {
+				if (redialled || !(await this.converse(this.port, this.password)).ok) return false;
+				redialled = true;
+				// What was heard over the old conversation says nothing of now.
+				this.sawStarted = false;
+				this.sawStopped = false;
+				silent = 0;
+			}
 			if (this.sawStarted) return true;
 			const status = await this.ask('GetRecordStatus');
 			if (status.ok && status.data.outputActive === true) return true;
-			if (unanswered(status) && this.socket === null) return false;
+			if (unanswered(status)) {
+				// The conversation ended, which the next turn sees to, or OBS has stopped answering.
+				silent += 1;
+				if (this.socket !== null && this.socket.open && silent >= SILENT_TRIES) return false;
+				continue;
+			}
+			silent = 0;
 			await waitOn(this.deps.timers, READY_WAIT_MS);
 		}
 		return this.sawStarted;

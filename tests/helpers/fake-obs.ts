@@ -129,6 +129,12 @@ export class FakeObs {
 	videoResets = 0;
 	/** OBS says yes to a start and records nothing, as it does into a folder that is not there. */
 	startsNothing = false;
+	/**
+	 * OBS says yes to a start and records, and nobody is told: no word of it
+	 * comes unasked, and a look finds nothing running. A start whose only
+	 * witness was a conversation that has since gone looks like this.
+	 */
+	startsUnseen = false;
 	/** The clock OBS counts a recording's length by, where a test hands it one. Without it the length is `duration`. */
 	now: (() => number) | null = null;
 	/** How many more looks at the recording find it still running after a stop was asked. */
@@ -254,6 +260,11 @@ export class FakeObs {
 		return this.sockets.length;
 	}
 
+	/** How many conversations are open now: one the plugin opened and never closed is still among them. */
+	get live(): number {
+		return this.sockets.filter((socket) => socket.alive).length;
+	}
+
 	/** The kinds of request OBS got, in order. */
 	types(): string[] {
 		return this.calls.map((call) => call.type);
@@ -352,6 +363,7 @@ export class FakeObs {
 	startFromInside(): void {
 		this.recording = true;
 		this.stopAsked = false;
+		this.startsUnseen = false;
 		this.began = this.now?.() ?? null;
 		this.emit('RecordStateChanged', {
 			outputActive: true,
@@ -437,7 +449,7 @@ export class FakeObs {
 				}
 				return ok({ obsVersion: this.version, supportedImageFormats: this.formats, platform: 'macos' });
 			case 'GetRecordStatus': {
-				let active = this.recording;
+				let active = this.recording && !this.startsUnseen;
 				if (this.stopAsked && this.stopsLate > 0) {
 					this.stopsLate -= 1;
 					active = true;
@@ -675,6 +687,8 @@ export class FakeObs {
 				this.recording = true;
 				this.stopAsked = false;
 				this.began = this.now?.() ?? null;
+				// One that records unseen says nothing of it.
+				if (this.startsUnseen) return ok();
 				this.emit('RecordStateChanged', {
 					outputActive: true,
 					outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
@@ -684,6 +698,7 @@ export class FakeObs {
 			case 'StopRecord':
 				if (!this.recording) return { code: 501 };
 				this.recording = false;
+				this.startsUnseen = false;
 				this.stopAsked = true;
 				if (this.stopsLate === 0) {
 					this.emit('RecordStateChanged', {
