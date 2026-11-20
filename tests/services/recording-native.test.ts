@@ -252,6 +252,23 @@ describe('recording with the Mac’s own recorder', () => {
 		expect(seen.kept).toBeNull();
 	});
 
+	it('writes down that a recorder was sent its stop, for whoever finds it still saving', async () => {
+		// The plugin goes this instant, and the recorder takes a while over its file.
+		const gone = rig();
+		const left = await gone.begin();
+		left.onSignal = {};
+		gone.recorder.abandon();
+		expect(left.signals).toEqual(['SIGINT']);
+		expect(gone.seen.kept).toEqual([{ pid: left.pid, file: FILE, startedAt: 1_000_000, stopped: true }]);
+
+		// A quitting Obsidian that could not wait for the file leaves the same word.
+		const quit = rig();
+		const slow = await quit.begin();
+		slow.onSignal = {};
+		expect(await quit.clock.drive(quit.recorder.settle())).toEqual({ path: null, error: null });
+		expect(quit.seen.kept).toEqual([{ pid: slow.pid, file: FILE, startedAt: 1_000_000, stopped: true }]);
+	});
+
 	it('stops with an interrupt and waits for the file', async () => {
 		const { clock, recorder, seen, begin } = rig();
 		const process = await begin();
@@ -605,6 +622,20 @@ describe('Obsidian alone, a recorder for each of its windows', () => {
 		expect(clock.waiting).toBe(0);
 	});
 
+	it('writes down that the recorder of a window that closed was sent its stop, beside the one that records on', async () => {
+		const { runner, recorder, seen, begin } = rig();
+		await begin({ takes: BOTH_WINDOWS });
+		const [main, side] = runner.of(NATIVE_RECORDER);
+		if (main === undefined || side === undefined) throw new Error('Two recorders were started.');
+		// It takes a while over its file.
+		side.onSignal = {};
+		recorder.release(SIDE);
+		expect(seen.kept).toEqual([
+			{ pid: main.pid, file: WINDOW_1, startedAt: 1_000_000 },
+			{ pid: side.pid, file: WINDOW_2, startedAt: 1_000_000, stopped: true },
+		]);
+	});
+
 	it('lets a recorder join for a window that opens, with a file of its own', async () => {
 		const { clock, runner, recorder, seen, begin } = rig();
 		await begin({ takes: BOTH_WINDOWS });
@@ -713,8 +744,8 @@ describe('a recorder an earlier run left going', () => {
 	const KEPT: NativeLedger = { pid: 4321, file: FILE, startedAt: 900_000 };
 
 	/** The system's list and signaller, with one recorder that is still there until it is interrupted. */
-	function leftover(options: { line?: string; endsOnInterrupt?: boolean } = {}) {
-		const made = rig({ kept: { ...KEPT } });
+	function leftover(options: { line?: string; endsOnInterrupt?: boolean; kept?: unknown } = {}) {
+		const made = rig({ kept: options.kept ?? { ...KEPT } });
 		const state = { alive: true };
 		made.runner.played.set(MAC_PROCESS_LIST, (process) => {
 			if (!state.alive) {
@@ -769,12 +800,60 @@ describe('a recorder an earlier run left going', () => {
 		expect(seen.kept).toBeNull();
 	});
 
-	it('is looked at again later where it is still moving its file', async () => {
-		const { clock, runner, recorder, seen } = leftover({ endsOnInterrupt: false });
+	it('is looked at again later where it is still moving its file, and is never sent a second stop', async () => {
+		const { clock, runner, recorder, seen, state } = leftover({ endsOnInterrupt: false });
 		expect(await clock.drive(recorder.mend())).toBeNull();
-		// Interrupted once, never twice: a second interrupt could cost the file.
 		expect(runner.of(MAC_SIGNAL)).toHaveLength(1);
-		expect(seen.kept).toEqual(KEPT);
+		// What the device keeps says the stop was sent.
+		expect(seen.kept).toEqual([{ ...KEPT, stopped: true }]);
+		// The next look, before the next start, waits for it and sends nothing.
+		expect(await clock.drive(recorder.mend())).toBeNull();
+		expect(runner.of(MAC_SIGNAL)).toHaveLength(1);
+		// Once it has put its file in place under a look, the file is named.
+		const looking = recorder.mend();
+		await clock.advance(1200);
+		state.alive = false;
+		expect(await clock.drive(looking)).toEqual({ path: FILE, more: 0 });
+		expect(runner.of(MAC_SIGNAL)).toHaveLength(1);
+		expect(seen.kept).toBeNull();
+	});
+
+	it('is sent no stop by the next plugin to load where the one that went had sent it', async () => {
+		// As a plugin that was switched off, or a quitting Obsidian, left it: interrupted and still saving.
+		const { clock, runner, recorder, seen, state } = leftover({
+			endsOnInterrupt: false,
+			kept: [{ ...KEPT, stopped: true }],
+		});
+		const looking = recorder.mend();
+		await clock.advance(2200);
+		state.alive = false;
+		expect(await clock.drive(looking)).toEqual({ path: FILE, more: 0 });
+		expect(runner.of(MAC_SIGNAL)).toHaveLength(0);
+		expect(seen.kept).toBeNull();
+	});
+
+	it('sends its stop only to those of several that have not had it', async () => {
+		const made = rig({
+			kept: [
+				{ pid: 4321, file: SCREEN_1, startedAt: 900_000, stopped: true },
+				{ pid: 4322, file: SCREEN_2, startedAt: 900_000 },
+			],
+		});
+		made.runner.played.set(MAC_PROCESS_LIST, (process) => {
+			const pid = process.args[process.args.length - 1] ?? '';
+			process.say('out', `01:40 ${NATIVE_RECORDER} -v -x -D ${pid === '4321' ? '1' : '2'} ${pid === '4321' ? SCREEN_1 : SCREEN_2}\n`);
+			process.end(0);
+		});
+		made.runner.played.set(MAC_SIGNAL, (process) => {
+			process.end(0);
+		});
+		expect(await made.clock.drive(made.recorder.mend())).toBeNull();
+		expect(made.runner.of(MAC_SIGNAL).map((run) => run.args)).toEqual([['-INT', '4322']]);
+		// Both are written down as stopped now.
+		expect(made.seen.kept).toEqual([
+			{ pid: 4321, file: SCREEN_1, startedAt: 900_000, stopped: true },
+			{ pid: 4322, file: SCREEN_2, startedAt: 900_000, stopped: true },
+		]);
 	});
 
 	it('are all ended where a recording of every screen was left, and told of as one', async () => {

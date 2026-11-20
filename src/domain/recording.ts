@@ -394,20 +394,25 @@ export function folderTestArguments(folder: string): string[] {
 	return ['-d', folder, '-a', '-w', folder];
 }
 
-/** A recorder that runs, as the device keeps it: enough to find it again and end it. */
+/**
+ * A recorder that runs, as the device keeps it: enough to find it again and
+ * end it. `stopped` says it was sent its stop already and is saving its
+ * file: it is waited for, and never sent a second one.
+ */
 export interface NativeLedger {
 	pid: number;
 	file: string;
 	startedAt: number;
+	stopped?: true;
 }
 
 function readNativeEntry(raw: unknown): NativeLedger | null {
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-	const { pid, file, startedAt } = raw as Record<string, unknown>;
+	const { pid, file, startedAt, stopped } = raw as Record<string, unknown>;
 	if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 1) return null;
 	if (typeof file !== 'string' || file.length === 0) return null;
 	if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
-	return { pid, file, startedAt };
+	return { pid, file, startedAt, ...(stopped === true ? { stopped: true as const } : {}) };
 }
 
 /**

@@ -354,6 +354,9 @@ describe('the Mac recorder', () => {
 		expect(readNativeLedger(kept)).toEqual([kept]);
 		// What is no recorder is left out, and the rest still read.
 		expect(readNativeLedger([kept, 'junk', { ...other, pid: 1 }])).toEqual([kept]);
+		// One that was sent its stop says so, and nothing but a plain yes says it.
+		expect(readNativeLedger([{ ...kept, stopped: true }, other])).toEqual([{ ...kept, stopped: true }, other]);
+		expect(readNativeLedger([{ ...kept, stopped: 'yes' }, { ...other, stopped: false }])).toEqual([kept, other]);
 		for (const junk of [
 			null,
 			undefined,

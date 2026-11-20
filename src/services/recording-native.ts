@@ -38,7 +38,10 @@ import {
  *
  * A recorder goes on without Obsidian: one whose Obsidian died records
  * until something ends it. The device therefore keeps the number of the
- * recorder that runs, and the next plugin to load ends what was left.
+ * recorder that runs, and the next plugin to load ends what was left. It
+ * keeps whether the recorder was sent its stop too. One that was is saving
+ * its file, which can take a while onto another disk: it is waited for and
+ * sent nothing more, by this plugin or the next.
  *
  * The recorder takes one screen. A rectangle laid over several screens
  * comes out with every screen but one black, so every screen at once is a
@@ -121,7 +124,11 @@ interface Take {
 	said: string;
 	/** How it ended, once it has. */
 	exit: ProcessExit | null;
-	/** It was sent its stop. A second one could cost the file, so it is sent once. */
+	/**
+	 * It was sent its stop, which is sent once. A second one has nothing to
+	 * tell a recorder that is saving, and what it would do to a long save is
+	 * not known.
+	 */
 	interrupted: boolean;
 }
 
@@ -284,7 +291,13 @@ export class NativeRecorder {
 			this.deps.ledger.save(null);
 			return null;
 		}
-		for (const entry of left) await runner.run(MAC_SIGNAL, interruptArguments(entry.pid)).closed;
+		// Each is sent its stop once. One that an earlier look, or the plugin as
+		// it went, already sent it is saving its file, and is only waited for.
+		for (const entry of left) {
+			if (entry.stopped !== true) await runner.run(MAC_SIGNAL, interruptArguments(entry.pid)).closed;
+		}
+		// Written down at once, so a look after this one sends no second stop either.
+		this.deps.ledger.save(left.map((entry) => ({ ...entry, stopped: true as const })));
 		for (let attempt = 0; attempt < MEND_TRIES; attempt += 1) {
 			await waitOn(this.deps.timers, MEND_WAIT_MS);
 			if (this.disposed) return null;
@@ -338,13 +351,20 @@ export class NativeRecorder {
 		});
 	}
 
-	/** Writes down the recorders that run, for a plugin that finds them left running. */
+	/** Writes down the recorders that run, and which of them were sent their stop, for a plugin that finds them left running. */
 	private keep(takes: readonly Take[]): void {
 		if (this.takes !== takes) return;
-		const running = takes.flatMap((take) =>
+		const running = takes.flatMap((take): NativeLedger[] =>
 			take.exit !== null || take.child.pid === null
 				? []
-				: [{ pid: take.child.pid, file: take.file, startedAt: take.startedAt }],
+				: [
+						{
+							pid: take.child.pid,
+							file: take.file,
+							startedAt: take.startedAt,
+							...(take.interrupted ? { stopped: true as const } : {}),
+						},
+					],
 		);
 		this.deps.ledger.save(running.length > 0 ? running : null);
 	}
@@ -364,13 +384,19 @@ export class NativeRecorder {
 
 	// ---- An end ----
 
-	/** Sends each recorder that still runs its stop, once. */
+	/**
+	 * Sends each recorder that still runs its stop, once, and writes down
+	 * that it has it: a plugin that later finds it still saving sends none.
+	 */
 	private interrupt(takes: readonly Take[]): void {
+		let sent = false;
 		for (const take of takes) {
 			if (take.exit !== null || take.interrupted) continue;
 			take.interrupted = true;
 			take.child.signal('SIGINT');
+			sent = true;
 		}
+		if (sent) this.keep(this.takes);
 	}
 
 	private read(take: Take, stopAsked: boolean, early: boolean): ReturnType<typeof classifyNativeExit> {
