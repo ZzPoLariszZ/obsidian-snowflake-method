@@ -271,6 +271,8 @@ export class ObsRecorder {
 	private mine: number | null;
 	/** The plugin is going away: whatever is under way ends at its next step and begins nothing more. */
 	private left = false;
+	/** The conversation being opened now, while one is. One overtaken by another, or by the run's end, is not kept. */
+	private dialing: ObsSocket | null = null;
 
 	constructor(private readonly deps: ObsRecorderDeps) {
 		const kept = readObsJournal(deps.journal.load());
@@ -1472,7 +1474,16 @@ export class ObsRecorder {
 	private async converse(port: number, password: string | null): Promise<ObsConnection> {
 		this.hangUp();
 		const socket = this.deps.socket();
+		this.dialing = socket;
 		const outcome = await socket.connect(port, password);
+		if (this.dialing !== socket) {
+			// Another conversation was begun while this one was being opened,
+			// or the run it was for is over. It is not kept, and nothing is
+			// left listening on it.
+			socket.close();
+			return { ok: false, reason: 'silent' };
+		}
+		this.dialing = null;
 		if (!outcome.ok) return outcome;
 		this.socket = socket;
 		this.releases = [
@@ -1488,6 +1499,7 @@ export class ObsRecorder {
 	}
 
 	private hangUp(): void {
+		this.dialing = null;
 		for (const release of this.releases) release();
 		this.releases = [];
 		this.socket?.close();

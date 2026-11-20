@@ -2250,3 +2250,38 @@ describe('a plugin that goes under a recording', () => {
 		expect(ledger.value).toBeNull();
 	});
 });
+
+describe('one conversation at a time', () => {
+	it('keeps no conversation that another overtook', async () => {
+		const { obs, clock, recorder, hooks } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		// The conversation drops, and OBS is slow to greet whoever calls next.
+		obs.greetingHeld = true;
+		obs.drop();
+		await clock.advance(3100);
+		expect(obs.conversations).toBe(2);
+		// The author stops while the plugin is still reaching for OBS again.
+		const stopping = recorder.stop();
+		await clock.settle();
+		expect(obs.conversations).toBe(3);
+		obs.greetingHeld = false;
+		obs.greet();
+		expect(await clock.drive(stopping)).toEqual({ path: obs.recordPath, error: null });
+		expect(obs.recording).toBe(false);
+		// Neither conversation outlived the recording.
+		expect(obs.live).toBe(0);
+	});
+
+	it('keeps none that was still being opened when the plugin went', async () => {
+		const { obs, clock, recorder, hooks } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		obs.greetingHeld = true;
+		obs.drop();
+		await clock.advance(3100);
+		recorder.abandon();
+		obs.greetingHeld = false;
+		obs.greet();
+		await clock.advance(1000);
+		expect(obs.live).toBe(0);
+	});
+});
