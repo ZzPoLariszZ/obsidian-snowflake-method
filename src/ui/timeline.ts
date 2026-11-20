@@ -231,10 +231,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const aimed = currentView();
 		const path = controls.projectPath();
 		if (readOnly || aimed === null) return;
+		// The host may ask before it replaces a canvas: no write until it has.
 		void enqueue(async () => {
 			if (controls.projectPath() !== path) return;
 			await controls.bridge().exportCanvas(aimed.id);
-		}, 'nothing');
+		}, 'nothing', { waits: true });
 	});
 	const editViewButton = iconButton('snowflake-method-timeline-view-edit', 'pencil', t('timeline.view.edit'));
 	editViewButton.addEventListener('click', () => {
@@ -1588,11 +1589,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const path = controls.projectPath();
 		if (time === null || path === null || readOnly) return;
 		let saved = false;
+		// The run stands for as long as the form is open: the form's own save is the write.
 		void enqueue(async () => {
 			await host.openEntityForm({ mode: 'edit', id: time.id, section: 'description' }, path, () => {
 				saved = true;
 			});
-		}, () => (saved ? 'model' : 'none'));
+		}, () => (saved ? 'model' : 'none'), { waits: true });
 	};
 
 	const openTimeMenu = (entry: RowEntry, event: MouseEvent): void => {

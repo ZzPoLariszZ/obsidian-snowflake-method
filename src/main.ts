@@ -1543,9 +1543,9 @@ export default class SnowflakeMethodPlugin
 		// offsets: the store is brought level quietly, once, for every writer
 		// alike, and only a real move re-dresses anything.
 		this.projects.manuscript.onSegmentWritten = (path, body) => {
-			// Noted as a write on its way: it follows a save unasked, and a
-			// quit that waited for the save alone would cut it short.
-			void writeUnderWay(this.levelMarginRecords(path, body)).catch(() => undefined);
+			// It notes its own writes as on their way: it follows a save
+			// unasked, and a quit that waited for the save alone would cut it short.
+			void this.levelMarginRecords(path, body).catch(() => undefined);
 		};
 		// And text that walks from one note into another takes its revisions
 		// with it. `left` is the departing note as it stood, which is what
@@ -9178,7 +9178,9 @@ export default class SnowflakeMethodPlugin
 			const agreed = await confirmExportReplace(this.app, t, [planned.path]);
 			if (!agreed) return;
 		}
-		await this.projects.canvasExporter.write(planned);
+		// Noted as a write on its way from here, the question once answered:
+		// the board that asked is not held for the answer, and notes nothing.
+		await writeUnderWay(this.projects.canvasExporter.write(planned));
 		new Notice(t('messages.exported', { path: planned.path }));
 		await this.openManagedFile(planned.path);
 	}
@@ -9773,9 +9775,15 @@ export default class SnowflakeMethodPlugin
 		if (project === null) return;
 		// Every file at once, and one announce for whatever moved: each
 		// announce re-dresses every stream and rebuilds every dashboard.
-		const moved = await Promise.all(
-			this.projects.marginRecords.map((store) =>
-				store.refreshAnchorsOnSave(project, path, body),
+		// The levelling is the write, and is noted as one on its way. What is
+		// announced after it has every dashboard read its project again, which
+		// is nobody's to wait for: a quit just after typing near a revision
+		// used to sit on the saving screen for that reading.
+		const moved = await writeUnderWay(
+			Promise.all(
+				this.projects.marginRecords.map((store) =>
+					store.refreshAnchorsOnSave(project, path, body),
+				),
 			),
 		);
 		if (moved.some(Boolean)) await this.announceMarginRecordsChanged();

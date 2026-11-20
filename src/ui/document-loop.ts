@@ -71,8 +71,19 @@ export interface DocumentLoop {
 	 * paint alone -- asked as a value, or as a question answered once the
 	 * change is done, for a form that may or may not have saved. A change
 	 * queued before the workspace went still lands.
+	 *
+	 * The change is noted as a write on its way from the moment it is queued
+	 * until it has landed, so a quit waits for it; what is read after it is
+	 * not. `waits` says the action waits on a person, as one that opens a
+	 * form or asks a question does: it is no write on its way, a quit is not
+	 * held for it, and what it writes once answered is noted where it is
+	 * written.
 	 */
-	enqueue: (action: () => Promise<void>, after?: After | (() => After)) => Promise<void>;
+	enqueue: (
+		action: () => Promise<void>,
+		after?: After | (() => After),
+		options?: { waits?: boolean },
+	) => Promise<void>;
 	/** Lays the workspace out again, unless a drag is in flight, which owes it one. */
 	paint: () => void;
 	/** The paint a drag held back, made now that the drag has ended. */
@@ -194,13 +205,22 @@ export function createDocumentLoop<Reading, Model>(
 		return run;
 	};
 
-	const enqueue = (action: () => Promise<void>, after: After | (() => After) = 'document'): Promise<void> => {
-		const run = queue.then(async () => {
+	const enqueue = (
+		action: () => Promise<void>,
+		after: After | (() => After) = 'document',
+		options: { waits?: boolean } = {},
+	): Promise<void> => {
+		// The change, apart from what follows it. It is what a quit waits
+		// for, from this moment, queued behind whatever is before it.
+		const change = queue.then(async () => {
 			try {
 				await action();
 			} catch (error) {
 				if (!deps.disposed()) deps.notice(error);
 			}
+		});
+		if (options.waits !== true) void writeUnderWay(change);
+		const run = change.then(async () => {
 			if (deps.disposed()) return;
 			// What follows the change is guarded as the change is. A paint that
 			// throws would else reject this promise, and the callers waiting on
@@ -217,8 +237,7 @@ export function createDocumentLoop<Reading, Model>(
 			}
 		});
 		queue = run.catch(() => undefined);
-		// Noted until it lands: a quit waits for the changes still queued.
-		return writeUnderWay(run);
+		return run;
 	};
 
 	return {

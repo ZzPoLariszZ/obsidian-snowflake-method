@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDocumentLoop, type DocumentLoopDeps, type DocumentSource } from '../../src/ui/document-loop';
+import { writesUnderWay } from '../../src/ui/pending-writes';
 
 interface Reading { held: { version: number } }
 interface Model { name: string }
@@ -374,5 +375,83 @@ describe('the queue of changes', () => {
 		expect(fixture.notice).not.toHaveBeenCalled();
 		expect(fixture.source.read).not.toHaveBeenCalled();
 		expect(fixture.draw).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * What a quit waits for of a workspace's queue: each change from the moment
+ * it is queued until it has landed, and nothing else.
+ */
+describe('a queued change as a write on its way', () => {
+	it('is one from the moment it is queued until it lands, and not while the document is read after it', async () => {
+		const reread = gate<Reading | null>();
+		const fixture = harness();
+		await fixture.loop.reload();
+		const written = gate<void>();
+		const run = fixture.loop.enqueue(() => written.promise);
+		expect(writesUnderWay()).not.toBeNull();
+		await settle();
+		expect(writesUnderWay()).not.toBeNull();
+		// The write lands, and the reading that follows it is held open.
+		vi.mocked(fixture.source.read).mockImplementationOnce(() => reread.promise);
+		written.open();
+		await settle();
+		expect(fixture.source.read).toHaveBeenCalledTimes(2);
+		// Nothing is owed to the disk any more: a quit is not held for a reading.
+		expect(writesUnderWay()).toBeNull();
+		reread.open({ held: { version: 2 } });
+		await run;
+	});
+
+	it('is one while it waits its turn behind the change before it', async () => {
+		const fixture = harness();
+		await fixture.loop.reload();
+		const first = gate<void>();
+		const second = gate<void>();
+		const reread = gate<Reading | null>();
+		const one = fixture.loop.enqueue(() => first.promise);
+		const began = vi.fn(() => second.promise);
+		const two = fixture.loop.enqueue(began);
+		// The first lands and the document is being read after it: the second
+		// has not begun, and is owed all the same.
+		vi.mocked(fixture.source.read).mockImplementationOnce(() => reread.promise);
+		first.open();
+		await settle();
+		expect(began).not.toHaveBeenCalled();
+		expect(writesUnderWay()).not.toBeNull();
+		reread.open({ held: { version: 2 } });
+		await one;
+		await settle();
+		expect(began).toHaveBeenCalledTimes(1);
+		expect(writesUnderWay()).not.toBeNull();
+		second.open();
+		await two;
+		expect(writesUnderWay()).toBeNull();
+	});
+
+	it('is none where the action waits on a person', async () => {
+		const fixture = harness();
+		await fixture.loop.reload();
+		const answered = gate<void>();
+		// A form opened from the queue: the run stands for as long as the form does.
+		const run = fixture.loop.enqueue(() => answered.promise, 'none', { waits: true });
+		await settle();
+		expect(writesUnderWay()).toBeNull();
+		answered.open();
+		await run;
+		expect(writesUnderWay()).toBeNull();
+	});
+
+	it('is one no longer once it has failed', async () => {
+		const fixture = harness();
+		await fixture.loop.reload();
+		const written = gate<void>();
+		const run = fixture.loop.enqueue(() => written.promise, 'none');
+		await settle();
+		expect(writesUnderWay()).not.toBeNull();
+		written.fail(new Error('The project refused it'));
+		await run;
+		expect(fixture.notice).toHaveBeenCalledTimes(1);
+		expect(writesUnderWay()).toBeNull();
 	});
 });

@@ -25,7 +25,7 @@ import SnowflakeMethodPlugin from '../../src/main';
 import { DEFAULT_SETTINGS, type SnowflakeSettings } from '../../src/settings';
 import { SnowflakeProjectService } from '../../src/services';
 import { MANUSCRIPT_VIEW_TYPE, SnowflakeManuscriptView } from '../../src/ui/manuscript-view';
-import { writeUnderWay } from '../../src/ui/pending-writes';
+import { writeUnderWay, writesUnderWay } from '../../src/ui/pending-writes';
 import { STORY_STRUCTURE_VIEW_TYPE, SnowflakeStoryStructureView } from '../../src/ui/story-structure-view';
 
 /** What these tests reach of the plugin that its type keeps to itself. */
@@ -44,6 +44,8 @@ interface Host {
 	registerSettling(): void;
 	requireProject(projectPath?: string): Promise<unknown>;
 	handleVaultRename(file: unknown, oldPath: string): Promise<void>;
+	levelMarginRecords(path: string, body: string): Promise<void>;
+	runCanvasExport(projectPath: string | null, plan: () => Promise<unknown>): Promise<void>;
 	scheduleFieldsBlockReconcile(path: string): void;
 	fieldsReconcileTimer: number | null;
 	mutateDocument<T>(
@@ -801,6 +803,54 @@ describe('what a quit waits for', () => {
 		drained.resolve();
 		await ended(settling);
 		expect(over).toBe(true);
+		stop();
+	});
+
+	it('holds for the levelling behind a save, and not for the reading it then asks of every dashboard', async () => {
+		const { plugin, service, stop } = await host();
+		const levelled = deferred();
+		const announced = deferred();
+		const store = { refreshAnchorsOnSave: vi.fn(async () => { await levelled.promise; return true; }) };
+		Object.assign(service, { marginRecords: [store] });
+		Object.assign(plugin, {
+			projectRefAtPath: () => ({ rootPath: 'Novels/Alpha' }),
+			announceMarginRecordsChanged: () => announced.promise,
+		});
+		const levelling = plugin.levelMarginRecords('Novels/Alpha/50_Manuscript/One.md', 'words');
+		await microtasks();
+		// The records are being written: a quit waits.
+		expect(writesUnderWay()).not.toBeNull();
+		levelled.resolve();
+		await microtasks();
+		// Written. What is told afterwards reads every project again, and is nobody's to wait for.
+		expect(store.refreshAnchorsOnSave).toHaveBeenCalledTimes(1);
+		expect(writesUnderWay()).toBeNull();
+		expect(plugin.settleForQuit()).toBeNull();
+		announced.resolve();
+		await levelling;
+		stop();
+	});
+
+	it('holds for a canvas being written once the author has answered, and not for the question', async () => {
+		const { plugin, service, stop } = await host();
+		const written = deferred();
+		const write = vi.fn(() => written.promise);
+		Object.assign(service, { canvasExporter: { write } });
+		Object.assign(plugin, {
+			resolveProject: () => Promise.resolve({ locale: 'en', readOnly: false }),
+			translateForProject: (_locale: unknown, key: string) => key,
+			canvasExportWords: () => ({}),
+			openManagedFile: () => Promise.resolve(),
+		});
+		const exporting = plugin.runCanvasExport('Novels/Alpha/Project.md', () =>
+			Promise.resolve({ kind: 'canvas', path: 'Novels/Alpha/Board.canvas', exists: false, unchanged: false }),
+		);
+		await microtasks();
+		expect(write).toHaveBeenCalledTimes(1);
+		expect(writesUnderWay()).not.toBeNull();
+		written.resolve();
+		await exporting;
+		expect(writesUnderWay()).toBeNull();
 		stop();
 	});
 

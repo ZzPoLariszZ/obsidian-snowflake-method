@@ -293,8 +293,10 @@ export interface WriteOptions {
 	/** Whether the read that follows the action is wanted; true when absent. */
 	shouldRefresh?: () => boolean;
 	/**
-	 * True for an action that waits on a person, as an open form does. It is
-	 * no write on its way, and a quit is not held for it.
+	 * True for an action that waits on a person, as one that opens a form or
+	 * asks before it deletes does. It is no write on its way, and a quit is
+	 * not held for it: what it writes once answered is noted where it is
+	 * written.
 	 */
 	waits?: boolean;
 }
@@ -468,7 +470,10 @@ export function createMemberCardDeck<
 	// -- The queue and the revisions -----------------------------------------
 
 	const enqueue = (action: () => Promise<void>, options: WriteOptions = {}): Promise<void> => {
-		const run = queue.then(async () => {
+		// The write, apart from the reading that follows it. It is what a
+		// quit waits for, from this moment, queued behind whatever is before
+		// it: the reading after it is nobody's to wait for.
+		const change = queue.then(async () => {
 			if (disposed && options.persist !== true) return;
 			try {
 				await action();
@@ -476,6 +481,9 @@ export function createMemberCardDeck<
 				if (options.reportError === false) throw error;
 				notice(error);
 			}
+		});
+		if (options.waits !== true) void writeUnderWay(change).catch(() => undefined);
+		const run = change.then(async () => {
 			if (!disposed && (options.shouldRefresh?.() ?? true)) await deps.refresh().then(() => revisionTransitions.clear()).catch((error: unknown) => {
 				if (options.reportError === false) throw error;
 				notice(error);
@@ -483,8 +491,7 @@ export function createMemberCardDeck<
 		});
 		// A modal receives its own rejection, without poisoning later writes.
 		queue = run.catch(() => undefined);
-		// Noted until it lands: a quit waits for the writes still queued.
-		return options.waits === true ? run : writeUnderWay(run);
+		return run;
 	};
 
 	const openForm = (open: (onSaved: () => void) => Promise<unknown>): void => {

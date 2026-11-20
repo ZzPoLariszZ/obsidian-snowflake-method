@@ -22,6 +22,7 @@ vi.mock('obsidian', async (importOriginal) => {
 import type { ScenePatch } from '../../src/services';
 import { renderCorkboard } from '../../src/ui/corkboard';
 import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
+import { writesUnderWay } from '../../src/ui/pending-writes';
 import type { CorkboardControls, CorkboardHandle } from '../../src/ui/corkboard-bridge';
 import { corkboardMemory, type CorkboardMemory } from '../../src/ui/story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
@@ -564,6 +565,47 @@ describe('a corkboard asked to keep what is typed, the app going out of sight', 
 		fixture.handle.settle();
 		await settle();
 		expect(fixture.host.patchScene).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('a card’s queued write as a write on its way', () => {
+	it('is one until it lands, and not while the board reads again after it', async () => {
+		const fixture = board();
+		const write = fixture.holdWrite();
+		const reread = fixture.holdRefresh();
+		fixture.setStatus('complete');
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledTimes(1);
+		expect(writesUnderWay()).not.toBeNull();
+		// The write lands, and the reading that follows it is still out.
+		write.resolve();
+		await settle();
+		expect(fixture.refresh).toHaveBeenCalledTimes(1);
+		expect(writesUnderWay()).toBeNull();
+		reread.resolve();
+		await settle();
+		expect(fixture.stored().progressStatus).toBe('complete');
+	});
+
+	it('is one while it waits its turn behind the write before it', async () => {
+		const fixture = board();
+		const write = fixture.holdWrite();
+		const reread = fixture.holdRefresh();
+		fixture.setStatus('complete');
+		fixture.typeConflict('Typed behind it');
+		fixture.conflict.dispatch('blur');
+		await settle();
+		// The first has landed and the board is reading: the second has not
+		// begun, and is owed all the same.
+		write.resolve();
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledTimes(1);
+		expect(writesUnderWay()).not.toBeNull();
+		reread.resolve();
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledTimes(2);
+		expect(fixture.stored().conflict).toBe('Typed behind it');
+		expect(writesUnderWay()).toBeNull();
 	});
 });
 

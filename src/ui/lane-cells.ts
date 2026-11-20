@@ -1633,7 +1633,8 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 				.setDisabled(deps.readOnly() || card.member.readOnly || path === null)
 				.onClick(() => {
 					if (path === null) return;
-					void deck.enqueue(() => host.deleteScene(card.id, card.member.revision, path), { persist: true });
+					// The host asks before it deletes: no write until it has an answer.
+					void deck.enqueue(() => host.deleteScene(card.id, card.member.revision, path), { persist: true, waits: true });
 				});
 		});
 		deps.menuOpened(menu);

@@ -268,10 +268,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		const path = controls.projectPath();
 		if (id === null || (model?.readOnly ?? true) || disposed) return;
 		canvas.settle();
+		// The host may ask before it replaces a canvas: no write until it has.
 		void enqueue(async () => {
 			if (controls.projectPath() !== path) return;
 			await controls.bridge().exportCanvas(id);
-		}, 'nothing');
+		}, 'nothing', { waits: true });
 	});
 	const editViewButton = toolbarIconButton(end, 'snowflake-method-freeform-view-edit', 'pencil', t('timeline.view.edit'));
 	editViewButton.addEventListener('click', () => {

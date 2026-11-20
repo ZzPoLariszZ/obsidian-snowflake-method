@@ -234,10 +234,11 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		const aimed = currentSheet();
 		const path = controls.projectPath();
 		if (readOnly || aimed === null) return;
+		// The host may ask before it replaces a canvas: no write until it has.
 		void enqueue(async () => {
 			if (controls.projectPath() !== path) return;
 			await controls.bridge().exportCanvas(aimed.id);
-		}, 'nothing');
+		}, 'nothing', { waits: true });
 	});
 	// The pencil wears no class of the timeline's, since the timeline's pencil is the view's and this one the sheet's.
 	const editSheetButton = iconButton('snowflake-method-beat-sheet-edit', 'pencil', t('beatSheet.sheet.edit'));

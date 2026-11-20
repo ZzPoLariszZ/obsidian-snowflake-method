@@ -1009,7 +1009,8 @@ export function renderBoard<
 				.onClick(() => {
 					// The note as the card holds it when the item is pressed: a save
 					// queued before may have moved its revision on since the menu opened.
-					void enqueue(() => deal.delete(entry.member, current.path), { persist: true });
+					// The host asks before it deletes: no write until it has an answer.
+					void enqueue(() => deal.delete(entry.member, current.path), { persist: true, waits: true });
 				});
 		});
 		dragPress.opened(menu);
@@ -1033,7 +1034,8 @@ export function renderBoard<
 			);
 			if (anchor !== null && afterIndex === null) return;
 			created = await deal.openCreate(afterIndex, owningProject, () => { saved = true; });
-		}, { shouldRefresh: () => saved || created !== null }).then(() => {
+			// The run stands for as long as the form is open: the form's own save is the write.
+		}, { shouldRefresh: () => saved || created !== null, waits: true }).then(() => {
 			if (created === null || disposed || projectPath !== owningProject) return;
 			if (displayOfMember(created) === -1) {
 				memory.query = '';
