@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { syntaxTree } from '@codemirror/language';
 import { EditorState, type Extension } from '@codemirror/state';
 import { Decoration, EditorView } from '@codemirror/view';
 
@@ -28,9 +29,13 @@ function marks(view: EditorView): Record<number, string[]> {
 }
 
 function editor(...extensions: Extension[]): EditorView {
+	return editorOf(doc, ...extensions);
+}
+
+function editorOf(text: string, ...extensions: Extension[]): EditorView {
 	const parent = document.body.createDiv();
 	return new EditorView({
-		state: EditorState.create({ doc, extensions: [MARKDOWN_LANGUAGE, ...extensions] }),
+		state: EditorState.create({ doc: text, extensions: [MARKDOWN_LANGUAGE, ...extensions] }),
 		parent,
 	});
 }
@@ -45,6 +50,68 @@ describe('paragraphLines', () => {
 			5: [PARAGRAPH_LINE_CLASSES.first, PARAGRAPH_LINE_CLASSES.line],
 		});
 		view.destroy();
+	});
+
+	it('marks a long note to its end the moment the editor is built', () => {
+		// A state just made has read its first three thousand characters and
+		// no more, whatever the clock says. The lines bring the grammar up to
+		// the whole note themselves, so a paragraph far down is dressed in
+		// the first frame and not a moment later. The clock stands still
+		// here, so no budget runs out and a busy machine changes nothing.
+		vi.useFakeTimers();
+		try {
+			const long = [`${'word '.repeat(1000)}`, '', 'Deep paragraph.', '', 'Last paragraph.'].join('\n');
+			const state = EditorState.create({ doc: long, extensions: MARKDOWN_LANGUAGE });
+			expect(syntaxTree(state).length).toBeLessThan(state.doc.length);
+			const view = editorOf(long, paragraphLines);
+			expect(marks(view)).toEqual({
+				1: [PARAGRAPH_LINE_CLASSES.first, PARAGRAPH_LINE_CLASSES.line],
+				2: [PARAGRAPH_LINE_CLASSES.blank],
+				3: [PARAGRAPH_LINE_CLASSES.first, PARAGRAPH_LINE_CLASSES.line],
+				4: [PARAGRAPH_LINE_CLASSES.blank],
+				5: [PARAGRAPH_LINE_CLASSES.first, PARAGRAPH_LINE_CLASSES.line],
+			});
+			view.destroy();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('dresses the lines the grammar reaches only later, with nothing asked of it', () => {
+		vi.useFakeTimers();
+		try {
+			// A machine so busy that every look at the clock finds the time
+			// gone: the first parse stops after a step, and the lines' own
+			// second try after another.
+			let now = Date.now();
+			const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+				now += 3_600_000;
+				return now;
+			});
+			let view: EditorView;
+			try {
+				view = editor(paragraphLines);
+			} finally {
+				clock.mockRestore();
+			}
+			// Drawn from what the grammar had reached, which is not the whole note.
+			expect(syntaxTree(view.state).length).toBeLessThan(view.state.doc.length);
+			expect(marks(view)[5]).toBeUndefined();
+			// The editor's own grammar reads on a moment later, as it does behind
+			// every live editor, and says so: the lines are marked again from the
+			// tree that reaches the end. Nothing here asks for it.
+			vi.advanceTimersByTime(1_000);
+			expect(syntaxTree(view.state).length).toBe(view.state.doc.length);
+			expect(marks(view)).toEqual({
+				2: [PARAGRAPH_LINE_CLASSES.blank],
+				3: [PARAGRAPH_LINE_CLASSES.first, PARAGRAPH_LINE_CLASSES.line],
+				4: [PARAGRAPH_LINE_CLASSES.blank],
+				5: [PARAGRAPH_LINE_CLASSES.first, PARAGRAPH_LINE_CLASSES.line],
+			});
+			view.destroy();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

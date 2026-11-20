@@ -1,23 +1,35 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
 
 import { MARKDOWN_LANGUAGE, paragraphLayout } from '../../src/editor';
 
 /**
- * The layout of a document as line numbers, which is how a reader sees it.
- * A short document is parsed in full the moment the state is made, so the
- * tree the rule reads is the whole tree.
+ * The layout of a document as line numbers, which is how a reader sees it,
+ * read off a tree parsed to the document's end.
+ *
+ * A state just made parses against the clock: twenty milliseconds, and then
+ * it keeps whatever tree it has. A short document nearly always fits, and
+ * these tests once trusted that it always did. On a machine busy elsewhere
+ * the clock ran out part way down ten lines, the rule was handed a tree
+ * that stopped short of the last paragraph, and one test failed now and
+ * then for no fault of the rule's. So the parse is finished here first,
+ * with no clock to run out, and the rule reads that tree: the question
+ * asked is what the rule makes of a document, not how far a parser gets in
+ * twenty milliseconds.
  */
 function layoutOf(
 	doc: string,
 	range?: { from: number; to: number },
 ): { first: number[]; lines: number[]; blank: number[] } {
 	const state = EditorState.create({ doc, extensions: MARKDOWN_LANGUAGE });
+	const tree = ensureSyntaxTree(state, state.doc.length, Number.POSITIVE_INFINITY);
+	if (tree === null) throw new Error('The grammar did not read the document to its end');
 	const layout = paragraphLayout(
 		state,
 		range?.from ?? 0,
 		range?.to ?? state.doc.length,
+		tree,
 	);
 	const lineOf = (at: number): number => state.doc.lineAt(at).number;
 	return {
@@ -25,6 +37,24 @@ function layoutOf(
 		lines: layout.lines.map(lineOf),
 		blank: layout.blank.map(lineOf),
 	};
+}
+
+/**
+ * Runs `work` with a clock that stands still for one look and then jumps an
+ * hour: a machine so busy that the first parse of a state made meanwhile is
+ * out of time after its first step.
+ */
+function onAStarvedClock<T>(work: () => T): T {
+	let looks = 0;
+	const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+		looks += 1;
+		return looks <= 1 ? 1_000 : 3_601_000;
+	});
+	try {
+		return work();
+	} finally {
+		clock.mockRestore();
+	}
 }
 
 describe('the manuscript grammar', () => {
@@ -185,6 +215,35 @@ describe('paragraphLayout', () => {
 		expect(tree).not.toBeNull();
 		const layout = paragraphLayout(state, from, doc.length, tree ?? undefined);
 		expect(layout.first.map((at) => state.doc.lineAt(at).number)).toEqual([3, 5]);
+	});
+
+	it('is read here off the whole document, however little of it a slow first parse reached', () => {
+		const doc = [
+			'# Title', // 1
+			'', // 2
+			'Para', // 3
+			'', // 4
+			'- item', // 5
+			'- item', // 6
+			'', // 7
+			'> quote', // 8
+			'', // 9
+			'Last', // 10
+		].join('\n');
+		// What a state made on a busy machine holds: a tree that stops short,
+		// and a rule that can only answer for what the tree reached.
+		onAStarvedClock(() => {
+			const state = EditorState.create({ doc, extensions: MARKDOWN_LANGUAGE });
+			expect(syntaxTree(state).length).toBeLessThan(state.doc.length);
+			const short = paragraphLayout(state, 0, state.doc.length);
+			expect(short.first.map((at) => state.doc.lineAt(at).number)).not.toContain(10);
+		});
+		// The helper these tests read through finishes the parse first.
+		expect(onAStarvedClock(() => layoutOf(doc))).toEqual({
+			first: [3, 10],
+			lines: [3, 10],
+			blank: [2, 4, 7, 9],
+		});
 	});
 
 	it('answers for a range alone', () => {
