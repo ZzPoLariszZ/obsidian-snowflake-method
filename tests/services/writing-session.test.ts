@@ -1830,6 +1830,49 @@ describe("WritingSessionService", () => {
 		expect((await sessions.todaySummary(project)).trackedNet).toBe(4);
 	});
 
+	it("counts the words still on their debounce when a checkpoint is taken", async () => {
+		await sessions.recoverAtStartup();
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// A second later more is typed, and the app is hidden before the
+		// typing's own debounce has had its seven tenths of a second.
+		clock += 1_000;
+		sessions.noteChanged(NOTES, written("one two three four five six seven"));
+		sessions.checkpoint();
+		// Frozen at once and then taken away, with no debounce and no
+		// shutdown: the day comes back with the last words in it.
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(4);
+	});
+
+	it("leaves the twenty-second beat its turn after a checkpoint", async () => {
+		await sessions.recoverAtStartup();
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// The store was last written twenty-five seconds ago: the beat is due.
+		clock += 25_000;
+		sessions.checkpoint();
+		// The app lives on a moment after being hidden. More is typed, and
+		// only the typing's own debounce is let fire.
+		const standing = new Set(timers.handlers.keys());
+		sessions.noteChanged(NOTES, written("one two three four five six seven"));
+		for (const [id, handler] of [...timers.handlers]) {
+			if (standing.has(id)) continue;
+			timers.handlers.delete(id);
+			handler();
+		}
+		await settle();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(4);
+		// Taken away now: the beat wrote those words, where a checkpoint that
+		// took the beat's turn left the store without them.
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(4);
+	});
+
 	it("resumes a same-day untimed snapshot where the day still is", async () => {
 		sessions.noteChanged(NOTES, written("one two three four five"));
 		await timers.flush();

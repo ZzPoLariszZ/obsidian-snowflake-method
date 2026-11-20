@@ -2296,9 +2296,21 @@ export class WritingSessionService {
 		if (this.unloading) return;
 		// Not before the startup has read what the last run left: the store
 		// is the only copy of those days until then.
-		if (this.untimedBroughtHome) this.snapshotUntimed();
+		if (this.untimedBroughtHome) {
+			// The last keystrokes are still on their debounce, which a phone
+			// that freezes the app at once never lets fire: counted now, as
+			// far as they can be without the disk.
+			this.settlePendingSync();
+			// Written without touching the beat's own stamp. The app usually
+			// lives on a moment, the debounce fires and the beat comes due:
+			// a stamp moved here made that beat skip its turn, and the store
+			// was left without the words the checkpoint came too early for.
+			this.deps.untimedRecovery.save(this.buildUntimedSnapshot());
+		}
 		const live = this.liveState;
-		if (live !== null) this.snapshot(live);
+		// A stopping session is never snapshotted again, as in `snapshot`.
+		if (live === null || live.tracker === null || live.stopping) return;
+		this.deps.recovery.save(this.buildSnapshot(live, false));
 	}
 
 	/**
