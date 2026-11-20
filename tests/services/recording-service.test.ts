@@ -1349,4 +1349,16 @@ describe('what the second look at the recording turned up', () => {
 		await clock.advance(30_000);
 		expect(service.state()).toMatchObject({ phase: 'idle', error: { code: 'obs-lost' } });
 	});
+
+	it('marks OBS as reached the moment it speaks, and by nothing else', async () => {
+		// A start the author gives up during the count had OBS answer all the same.
+		const { clock, kept, service } = rig({ preferences: { tool: 'obs' } });
+		const count = heldCount();
+		kept.count = () => count.handle;
+		const starting = service.start();
+		await clock.advance(2000);
+		expect(kept.preferences.obsReached).toBe(true);
+		await service.stop();
+		expect(await clock.drive(starting)).toBe('cancelled');
+	});
 });

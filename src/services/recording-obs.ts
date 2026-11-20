@@ -123,6 +123,8 @@ export interface ObsRecorderDeps {
 	macTarget(scope: 'screen' | 'all'): Promise<ObsMacTarget | null>;
 	/** The window of Obsidian's to show now: the one in use, or the main one. Null where there is none to name. */
 	obsidianWindow(): DesktopWindow | null;
+	/** OBS spoke on this device, whatever it said: its server is on, and OBS may be opened the next time it is found closed. */
+	reached(): void;
 }
 
 export interface ObsStart {
@@ -1520,6 +1522,8 @@ export class ObsRecorder {
 			return { ok: false, reason: 'silent' };
 		}
 		this.dialing = null;
+		// OBS spoke, whatever it said: its server is on.
+		if (outcome.ok || (outcome.reason !== 'refused' && outcome.reason !== 'silent')) this.deps.reached();
 		if (!outcome.ok) return outcome;
 		this.socket = socket;
 		this.releases = [

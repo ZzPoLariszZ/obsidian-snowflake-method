@@ -175,6 +175,9 @@ export class ScreenRecordingService {
 				const { all, active } = deps.windows();
 				return active ?? all[0] ?? null;
 			},
+			reached: () => {
+				this.reached();
+			},
 		});
 	}
 
@@ -325,7 +328,6 @@ export class ScreenRecordingService {
 		this.looking = ended;
 		const probe = await look;
 		if (this.looking === ended) this.looking = null;
-		if (probe.ok || probe.code !== 'obs-closed') this.reached();
 		return probe;
 	}
 
@@ -499,7 +501,7 @@ export class ScreenRecordingService {
 			await this.looking;
 			if (this.gone(run)) return { ok: false, code: 'cancelled', detail: null };
 		}
-		const outcome = await this.obs.start(
+		return this.obs.start(
 			{
 				port: preferences.obsPort,
 				password: this.password(preferences),
@@ -510,9 +512,6 @@ export class ScreenRecordingService {
 			},
 			hooks,
 		);
-		// Whatever OBS said, it said something: the server is on, and OBS may be opened next time.
-		if (outcome.ok || (outcome.code !== 'obs-closed' && outcome.code !== 'cancelled')) this.reached();
-		return outcome;
 	}
 
 	/**

@@ -38,6 +38,8 @@ interface Rig {
 	again: () => ObsRecorder;
 	/** What the system calls the screen Obsidian is on, and every screen, on a Mac. Null where it will not say. `fails` has the asking itself fall over. */
 	mac: { screen: ObsMacTarget | null; all: ObsMacTarget | null; asked: string[]; fails: boolean };
+	/** How many times the recorder said OBS had spoken on this device. */
+	told: { reached: number };
 	/** The window of Obsidian's in use, which a recording of Obsidian alone begins on. */
 	windows: { inUse: DesktopWindow | null };
 }
@@ -77,6 +79,7 @@ function rig(
 	const clock = options.clock ?? new FakeClock();
 	// OBS counts how long it has recorded by the same clock the plugin reads.
 	obs.now = () => clock.now;
+	const told = { reached: 0 };
 	const ledger = { value: options.ledger ?? null, saves: 0 };
 	const opened = { count: 0, works: true, then: (): void => {} };
 	const seen: Rig['seen'] = {
@@ -128,6 +131,9 @@ function rig(
 				return mac.fails ? Promise.reject(new Error('The system would not name its screens.')) : Promise.resolve(mac[scope]);
 			},
 			obsidianWindow: () => windows.inUse,
+			reached: () => {
+				told.reached += 1;
+			},
 		});
 	return {
 		obs,
@@ -150,6 +156,7 @@ function rig(
 		again: make,
 		mac,
 		windows,
+		told,
 	};
 }
 
@@ -2367,5 +2374,42 @@ describe('OBS’s own word on its recording', () => {
 		expect(clock.now - from).toBeLessThan(1000);
 		expect(obs.borrowable()).toEqual(before);
 		expect(ledger.value).toBeNull();
+	});
+});
+
+describe('whether OBS has spoken on this device', () => {
+	it('says so as soon as OBS greets it, whatever comes of the conversation', async () => {
+		const fine = rig();
+		await fine.clock.drive(fine.recorder.start(request(), fine.hooks));
+		expect(fine.told.reached).toBe(1);
+		// A password it will not take, or one it asks for and is not given, is still OBS speaking.
+		const wrong = rig();
+		wrong.obs.password = FAKE_OBS_PASSWORD;
+		expect(await wrong.clock.drive(wrong.recorder.probe({ ...LOOK, password: 'not it' }))).toEqual({
+			ok: false,
+			code: 'obs-password',
+		});
+		expect(wrong.told.reached).toBe(1);
+		const none = rig();
+		none.obs.password = FAKE_OBS_PASSWORD;
+		await none.clock.drive(none.recorder.probe(LOOK));
+		expect(none.told.reached).toBe(1);
+	});
+
+	it('says nothing where nothing answered, or where the recorder itself was busy', async () => {
+		const closed = rig();
+		closed.obs.closed = true;
+		expect(await closed.clock.drive(closed.recorder.start(request(), closed.hooks))).toMatchObject({
+			ok: false,
+			code: 'obs-closed',
+		});
+		expect(closed.told.reached).toBe(0);
+		// A start that finds a look under way is turned away by the recorder, not by OBS.
+		const busy = rig();
+		busy.obs.closed = true;
+		const looking = busy.recorder.probe(LOOK);
+		expect(await busy.recorder.start(request(), busy.hooks)).toMatchObject({ ok: false, code: 'obs-recording' });
+		await busy.clock.drive(looking);
+		expect(busy.told.reached).toBe(0);
 	});
 });
