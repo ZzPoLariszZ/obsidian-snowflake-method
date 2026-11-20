@@ -1329,6 +1329,50 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The footer at the rail's foot stands beside the app's own bar at the
+	 * foot of the sidebar, where the vault is switched, and the two are read
+	 * as one line across the window. At a fixed 26px row the footer came to
+	 * 43px against the bar's 41.9, its rule a pixel higher. Its row is now
+	 * worked out from what the app's bar is worked out from, so the two stay
+	 * level under a theme with other sizes, and folded as open.
+	 */
+	it('stands the project footer as tall as the app\u2019s vault switcher, open and folded', () => {
+		const flat = (rule: string): string => rule.replace(/\s+/gu, ' ');
+		const footer = flat(declarations('.snowflake-method-project-footer'));
+		// The switcher's name on the app's tight line with its padding, or the
+		// bar's icons in theirs, whichever is the taller.
+		expect(footer).toContain(
+			'--snowflake-method-footer-row: max( calc( var(--size-4-1) * 2 + var(--vault-profile-font-size, var(--font-ui-small)) * var(--line-height-tight, 1.3) ), calc(var(--size-2-2) * 2 + var(--icon-s)) )',
+		);
+		// Around the row, what the app's bar has around its own.
+		expect(footer).toContain('padding: var(--size-4-2)');
+		expect(footer).toContain('border-top: 1px solid var(--background-modifier-border)');
+		// The switcher takes the row open and folded, and the two buttons beside it.
+		for (const selector of [
+			'.snowflake-method-dashboard button.snowflake-method-project-control',
+			'.snowflake-method-dashboard:where(.is-rail-compact) button.snowflake-method-project-control',
+		]) {
+			expect(declarations(selector), selector).toContain('height: var(--snowflake-method-footer-row, 1.625rem)');
+		}
+		const buttons = declarations(
+			'.snowflake-method-dashboard .snowflake-method-project-footer button.snowflake-method-toolbar-button',
+		);
+		expect(buttons).toContain('height: var(--snowflake-method-footer-row)');
+		expect(buttons).toContain('min-height: var(--snowflake-method-footer-row)');
+		// The folded footer says nothing of a height of its own.
+		expect(
+			declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-project-footer'),
+		).not.toMatch(/height/u);
+		// A finger's size still stands on a phone or a tablet, where no such bar is beside it.
+		expect(declarations('body.is-mobile .snowflake-method-dashboard button.snowflake-method-project-control')).toContain(
+			'height: var(--touch-size-m, 2.75rem)',
+		);
+		expect(declarations('body.is-mobile .snowflake-method-dashboard button.snowflake-method-toolbar-button')).toContain(
+			'min-height: var(--touch-size-m, 2.75rem)',
+		);
+	});
+
+	/**
 	 * The rail's scrollbar stands outside it, just past its border in the gap
 	 * before the main column: the scroller reaches through the end padding,
 	 * the hairline and the bar's own width, and pads the rows back. So no bar
