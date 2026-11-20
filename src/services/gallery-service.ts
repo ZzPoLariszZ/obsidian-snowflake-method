@@ -185,7 +185,9 @@ export class GalleryService {
     await this.repository.ensureFolder(folder);
     const wanted = normalizePath(`${folder}/${safeFileName(name)}`);
     const path = this.repository.resolveUniquePath(wanted);
-    const file = await this.repository.vault.createBinary(path, data);
+    const file = await this.repository.counted(() =>
+      this.repository.vault.createBinary(path, data),
+    );
     // The name is a leaving picture's until that picture is in the trash:
     // the note records the name, and the file takes it once the save has landed.
     if (path !== wanted && freed.delete(wanted)) {

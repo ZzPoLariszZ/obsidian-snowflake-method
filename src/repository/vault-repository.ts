@@ -418,6 +418,17 @@ export class VaultRepository {
     });
   }
 
+  /**
+   * A change that reaches the vault by another road than this repository's
+   * own methods, counted as one of them: a folder renamed through the file
+   * manager, a picture written as bytes. Left uncounted, such a change was
+   * one a quit could not see, and the longest step of a project's rename
+   * ran with nothing owed.
+   */
+  counted<T>(write: () => Promise<T>): Promise<T> {
+    return this.tracked(write);
+  }
+
   private async tracked<T>(write: () => Promise<T>): Promise<T> {
     this.writesUnderWay += 1;
     try {

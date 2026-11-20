@@ -40,6 +40,9 @@ interface Host {
 	settleOutOfSight(): void;
 	registerSettling(): void;
 	requireProject(projectPath?: string): Promise<unknown>;
+	handleVaultRename(file: unknown, oldPath: string): Promise<void>;
+	scheduleFieldsBlockReconcile(path: string): void;
+	fieldsReconcileTimer: number | null;
 	mutateDocument<T>(
 		bell: { ring(): void },
 		projectPath: string | null,
@@ -78,7 +81,7 @@ async function host() {
 	const stop = service.repository.watch();
 	const saved: SnowflakeSettings[] = [];
 	const leaves = new Map<string, { view: unknown }[]>();
-	const sessions = { markShutdown: vi.fn(), checkpoint: vi.fn() };
+	const sessions = { markShutdown: vi.fn(), checkpoint: vi.fn(), notePathRenamed: vi.fn() };
 	const explorer = { projectsChanged: vi.fn() };
 	const dressNotes = vi.fn();
 	const refreshParagraphLineEditors = vi.fn();
@@ -109,6 +112,19 @@ async function host() {
 			heard.push({ target, type, listener });
 		},
 		pageLeaving: false,
+		// What a rename tells besides the records it carries: nothing these
+		// tests look at, and nothing that reads or writes.
+		history: { notePathRenamed: vi.fn() },
+		carryExplorerChoices: vi.fn(),
+		carryRosterThroughRename: vi.fn(),
+		scheduleStickyNoteNotify: vi.fn(),
+		scheduleProjectRescan: vi.fn(),
+		scheduleDefinitionMaterialize: vi.fn(),
+		invalidateProjectDiscovery: vi.fn(),
+		holdsProjectMetadata: () => false,
+		detachProjectViews: vi.fn(),
+		fieldsReconcilePaused: false,
+		renameCarry: Promise.resolve(),
 		projects: service,
 		settings: { ...DEFAULT_SETTINGS, projectRoot: 'Novels' },
 		saveData: (data: SnowflakeSettings) => {
@@ -599,6 +615,124 @@ describe('what a quit waits for', () => {
 		expect(over).toBe(true);
 		expect(await answer).toBe('took');
 		expect(bell.ring).toHaveBeenCalledTimes(1);
+		stop();
+	});
+
+	it('holds while a project’s folder is being moved, and for the name written after it', async () => {
+		const { plugin, service, env, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		const moved = deferred();
+		const moving = deferred();
+		const rename = env.fakeFileManager.renameFile.bind(env.fakeFileManager);
+		env.fakeFileManager.renameFile = async (file, to) => {
+			// The app moves the folder and rewrites every link into it before it answers.
+			moving.resolve();
+			await moved.promise;
+			return rename(file, to);
+		};
+		const renaming = service.renameProject(alpha.projectFile, 'Beta');
+		await moving.promise;
+		expect(service.repository.writing).toBe(true);
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		moved.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
+		// The whole rename landed inside the hold: the folder, and the name in it.
+		const renamed = await renaming;
+		expect(renamed.rootPath).toBe('Novels/Beta');
+		expect(renamed.title).toBe('Beta');
+		stop();
+	});
+
+	it('holds for what a rename still has to carry', async () => {
+		const { plugin, env, stop } = await host();
+		const file = await env.fakeVault.seedFile('Elsewhere/Chapter.md', 'words');
+		const crossed = deferred();
+		const carried: string[] = [];
+		Object.assign(plugin, {
+			// The carry reads the projects before it files anything under the new name.
+			projectsCrossedByRename: async (from: string, to: string) => {
+				await crossed.promise;
+				carried.push(`${from} -> ${to}`);
+				return [];
+			},
+		});
+		env.fakeVault.rename('Elsewhere/Chapter.md', 'Elsewhere/Chapter 1.md');
+		await plugin.handleVaultRename(file, 'Elsewhere/Chapter.md');
+		// The listener has answered, and nothing has been written yet.
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		crossed.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
+		expect(carried).toEqual(['Elsewhere/Chapter.md -> Elsewhere/Chapter 1.md']);
+		stop();
+	});
+
+	it('owes the settings from the moment the projects’ root moves with its folder', async () => {
+		const { plugin, env, saved, stop } = await host();
+		await env.fakeVault.createFolder('Novels');
+		const followed = deferred();
+		Object.assign(plugin, {
+			projectsCrossedByRename: async () => [],
+			// The views follow the folder, which reads their projects again.
+			renameProjectViews: () => followed.promise,
+		});
+		env.fakeVault.rename('Novels', 'Books');
+		const folder = env.fakeVault.getAbstractFileByPath('Books');
+		const handling = plugin.handleVaultRename(folder, 'Novels');
+		await microtasks();
+		expect(plugin.settings.projectRoot).toBe('Books');
+		expect(saved).toHaveLength(0);
+		// A quit in that reading sends the new root on its way.
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		await microtasks();
+		expect(saved).toHaveLength(1);
+		expect(saved[0]?.projectRoot).toBe('Books');
+		followed.resolve();
+		await handling;
+		await ended(settling);
+		// The handler's own save found nothing left waiting on the timer.
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(saved.every((written) => written.projectRoot === 'Books')).toBe(true);
+		window.clearTimeout(plugin.refreshTimer ?? undefined);
+		stop();
+	});
+
+	it('holds for a fields reconcile that has already begun', async () => {
+		const { plugin, stop } = await host();
+		const drained = deferred();
+		Object.assign(plugin, { drainFieldsBlockReconciles: () => drained.promise });
+		plugin.scheduleFieldsBlockReconcile('Novels/Alpha/20_Characters/Ada.md');
+		await vi.advanceTimersByTimeAsync(1000);
+		// The timer has fired and is gone: the pass is reading, and nothing
+		// but its own note of itself says so.
+		expect(plugin.fieldsReconcileTimer).toBeNull();
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		drained.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
 		stop();
 	});
 

@@ -1024,7 +1024,9 @@ export class SnowflakeProjectService {
     if (destinationRoot !== project.rootPath) {
       const folder = this.repository.getFolder(project.rootPath);
       if (!folder) throw new ManagedFileNotFoundError(project.rootPath);
-      await this.repository.fileManager.renameFile(folder, destinationRoot);
+      await this.repository.counted(() =>
+        this.repository.fileManager.renameFile(folder, destinationRoot),
+      );
       projectFile = normalizePath(
         `${destinationRoot}/${relativeToRoot(project.projectFile, project.rootPath)}`,
       );
@@ -2023,7 +2025,9 @@ export class SnowflakeProjectService {
       );
       if (destination === normalized) return this.loadProject(project.projectFile);
       if (this.repository.get(destination)) throw new PathConflictError(destination);
-      await this.repository.fileManager.renameFile(folder, destination);
+      await this.repository.counted(() =>
+        this.repository.fileManager.renameFile(folder, destination),
+      );
       return this.loadProject(
         normalizePath(
           `${destination}/${relativeToRoot(project.projectFile, normalized)}`,

@@ -2588,7 +2588,11 @@ export default class SnowflakeMethodPlugin
 		const oldPath = option.path;
 		let project: ProjectSnapshot;
 		try {
-			project = await this.projects.renameProject(oldPath, title);
+			// Noted as one write on its way: the folder moves first, with every
+			// link into it rewritten, and the name and the heading are written
+			// only after. A quit in between left a folder with the new name
+			// around a project still called by the old one.
+			project = await writeUnderWay(this.projects.renameProject(oldPath, title));
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
@@ -4211,6 +4215,12 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private async writeSettings(): Promise<void> {
+		// Everything is written here, so a save still waiting on its timer has
+		// nothing left to say: it would only write the same file a second time.
+		if (this.settingsSaveTimer !== null) {
+			window.clearTimeout(this.settingsSaveTimer);
+			this.settingsSaveTimer = null;
+		}
 		const snapshot: SnowflakeSettings = {
 			...this.settings,
 			certificateCelebrations: {
@@ -12753,11 +12763,14 @@ export default class SnowflakeMethodPlugin
 	 * writing, which is what makes it safe to call on every folder event.
 	 */
 	private scheduleDefinitionMaterialize(path: string): void {
-		void (async () => {
-			const project = await this.projectOfPath(path);
-			if (project === null || project.readOnly) return;
-			await this.projects.materializeDefinitionNodesBelow(project, path);
-		})().catch((error: unknown) => {
+		// Noted as a write on its way: the project is read before a note is made.
+		void writeUnderWay(
+			(async () => {
+				const project = await this.projectOfPath(path);
+				if (project === null || project.readOnly) return;
+				await this.projects.materializeDefinitionNodesBelow(project, path);
+			})(),
+		).catch((error: unknown) => {
 			console.error(
 				'Snowflake: could not materialize definition nodes',
 				path,
@@ -12784,7 +12797,10 @@ export default class SnowflakeMethodPlugin
 		}
 		this.fieldsReconcileTimer = window.setTimeout(() => {
 			this.fieldsReconcileTimer = null;
-			void this.drainFieldsBlockReconciles();
+			// Noted as a write on its way: the pass reads each note, and its
+			// project, before it writes, and with the timer gone nothing else
+			// says it is running.
+			void writeUnderWay(this.drainFieldsBlockReconciles());
 		}, FIELDS_RECONCILE_DELAY_MS);
 	}
 
@@ -13120,25 +13136,35 @@ export default class SnowflakeMethodPlugin
 		// renames dependent notes back to back, and a later carry overtaking
 		// an earlier one would file a note's revisions under the name another
 		// note had just taken.
-		this.renameCarry = this.renameCarry
-			.then(async () => {
-				let carried = false;
-				let placed = false;
-				for (const project of await this.projectsCrossedByRename(
-					oldPath,
-					file.path,
-				)) {
-					for (const store of this.projects.marginRecords) {
-						if (await store.renameNotePaths(project, oldPath, file.path)) {
-							carried = true;
-						}
-					}
-					// A file a freeform view places is named by its path too,
-					// and follows its note the same way.
-					if (await this.projects.freeform.renameFilePaths(project, oldPath, file.path)) {
-						placed = true;
+		//
+		// The carrying is noted as a write on its way from the rename itself:
+		// it waits its turn behind the one before it and reads the project
+		// before it writes, and a quit in that time left a chapter's
+		// revisions filed under a name no note had any more. What is told
+		// afterwards is a reading, and nobody's to wait for.
+		const carrying = this.renameCarry.then(async () => {
+			let carried = false;
+			let placed = false;
+			for (const project of await this.projectsCrossedByRename(
+				oldPath,
+				file.path,
+			)) {
+				for (const store of this.projects.marginRecords) {
+					if (await store.renameNotePaths(project, oldPath, file.path)) {
+						carried = true;
 					}
 				}
+				// A file a freeform view places is named by its path too,
+				// and follows its note the same way.
+				if (await this.projects.freeform.renameFilePaths(project, oldPath, file.path)) {
+					placed = true;
+				}
+			}
+			return { carried, placed };
+		});
+		void writeUnderWay(carrying).catch(() => undefined);
+		this.renameCarry = carrying
+			.then(async ({ carried, placed }) => {
 				if (carried) await this.announceMarginRecordsChanged();
 				if (placed) this.scheduleFreeformNotify();
 			})
@@ -13218,7 +13244,14 @@ export default class SnowflakeMethodPlugin
 			oldPath,
 			file.path,
 		);
-		if (movedRoot !== null) this.settings.projectRoot = movedRoot;
+		if (movedRoot !== null) {
+			this.settings.projectRoot = movedRoot;
+			// Owed to the disk from this moment. It is written below, once the
+			// views have followed the folder, which reads their projects again:
+			// armed here, a quit in that reading sends it on, where the
+			// settings would otherwise keep a root that no longer exists.
+			this.armSettingsSave();
+		}
 
 		// A project folder can be carried across the line the scan draws by
 		// hand: dragged into the archive, or dragged back out of it. Neither
@@ -13567,11 +13600,13 @@ export default class SnowflakeMethodPlugin
 		const file = this.app.vault.getFileByPath(path);
 		if (file === null) return false;
 		let done = false;
-		await this.app.vault.process(file, (data) => {
-			if (data.slice(from, to) !== expected) return data;
-			done = true;
-			return data.slice(0, from) + insert + data.slice(to);
-		});
+		await this.projects.repository.counted(() =>
+			this.app.vault.process(file, (data) => {
+				if (data.slice(from, to) !== expected) return data;
+				done = true;
+				return data.slice(0, from) + insert + data.slice(to);
+			}),
+		);
 		return done;
 	}
 

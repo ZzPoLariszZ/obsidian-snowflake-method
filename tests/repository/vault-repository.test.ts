@@ -829,6 +829,32 @@ describe("VaultRepository", () => {
     expect(repository.writing).toBe(false);
   });
 
+  it("counts a change that reaches the vault by another road", async () => {
+    let land = (): void => undefined;
+    const moving = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    // A folder renamed through the file manager, a picture written as bytes.
+    const counted = repository.counted(() => moving);
+    expect(repository.writing).toBe(true);
+    let landed = false;
+    const waited = repository.whenWritten().then(() => {
+      landed = true;
+    });
+    await Promise.resolve();
+    expect(landed).toBe(false);
+    land();
+    await counted;
+    await waited;
+    expect(repository.writing).toBe(false);
+
+    // One that fails is counted no longer either.
+    const failing = repository.counted(() => Promise.reject(new Error("the disk said no")));
+    expect(repository.writing).toBe(true);
+    await expect(failing).rejects.toThrow("the disk said no");
+    expect(repository.writing).toBe(false);
+  });
+
   it("tells a record a write has overtaken from the note as it stands", async () => {
     const created = await repository.createManagedFile({
       userInput: false,
