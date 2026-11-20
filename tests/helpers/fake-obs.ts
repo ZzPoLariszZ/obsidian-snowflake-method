@@ -137,6 +137,8 @@ export class FakeObs {
 	startsUnseen = false;
 	/** The clock OBS counts a recording's length by, where a test hands it one. Without it the length is `duration`. */
 	now: (() => number) | null = null;
+	/** Every new conversation waits for its greeting until `greet` is called: an OBS that is slow to say hello. */
+	greetingHeld = false;
 	/** How many more looks at the recording find it still running after a stop was asked. */
 	stopsLate = 0;
 	/** Another output of OBS runs, so it will not change the size it writes at. */
@@ -228,6 +230,7 @@ export class FakeObs {
 	private readonly held: (() => void)[] = [];
 	private readonly lingering = new Map<string, number>();
 	private readonly sockets: FakeSocket[] = [];
+	private readonly greetings: (() => void)[] = [];
 	private nextItem = 1;
 	private stopAsked = false;
 	/** When the recording that runs began, on the clock handed in. */
@@ -244,16 +247,25 @@ export class FakeObs {
 		void Promise.resolve().then(() => {
 			socket.onopen?.();
 		});
-		socket.deliver({
-			op: 0,
-			d: {
-				obsWebSocketVersion: '5.6.3',
-				rpcVersion: 1,
-				...(this.password === null ? {} : { authentication: { challenge: CHALLENGE, salt: SALT } }),
-			},
-		});
+		const hello = (): void => {
+			socket.deliver({
+				op: 0,
+				d: {
+					obsWebSocketVersion: '5.6.3',
+					rpcVersion: 1,
+					...(this.password === null ? {} : { authentication: { challenge: CHALLENGE, salt: SALT } }),
+				},
+			});
+		};
+		if (this.greetingHeld) this.greetings.push(hello);
+		else hello();
 		return socket;
 	};
+
+	/** Says the greeting to every conversation that was kept waiting for it. */
+	greet(): void {
+		for (const hello of this.greetings.splice(0)) hello();
+	}
 
 	/** How many conversations were opened in all. */
 	get conversations(): number {

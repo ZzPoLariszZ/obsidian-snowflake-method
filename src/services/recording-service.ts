@@ -304,8 +304,12 @@ export class ScreenRecordingService {
 			},
 			onOpening,
 		);
-		// Kept while it runs: the plugin's scene may be on air in OBS for its moment.
-		const ended = look.then(() => {});
+		// Kept while it runs: the plugin's scene may be on air in OBS for its
+		// moment, and a start pressed meanwhile waits for the look to end.
+		const ended = look.then(
+			() => {},
+			() => {},
+		);
 		this.looking = ended;
 		const probe = await look;
 		if (this.looking === ended) this.looking = null;
@@ -465,6 +469,12 @@ export class ScreenRecordingService {
 				for (const window of this.deps.windows().all) this.join(windowed, window, 0);
 			}
 			return started;
+		}
+		// A look at OBS still under way holds the recorder. The start waits for
+		// it to end, as the author would have had to.
+		if (this.looking !== null) {
+			await this.looking;
+			if (this.gone(run)) return { ok: false, code: 'cancelled', detail: null };
 		}
 		const outcome = await this.obs.start(
 			{

@@ -1207,3 +1207,56 @@ describe('the screen recording service', () => {
 		expect(heard).toContain('started');
 	});
 });
+
+describe('what the second look at the recording turned up', () => {
+	it('waits for a look at OBS under way before it starts, and starts then', async () => {
+		const { clock, obs, service, events } = rig({ preferences: { tool: 'obs' } });
+		obs.holdNext('GetSourceScreenshot');
+		const looking = service.testObs();
+		await clock.advance(1000);
+		// The author presses record while the settings' test still has OBS.
+		const starting = service.start();
+		await clock.advance(1000);
+		expect(service.state().phase).toBe('starting');
+		expect(obs.types()).not.toContain('StartRecord');
+		obs.release();
+		expect((await clock.drive(looking)).ok).toBe(true);
+		expect(await clock.drive(starting)).toBeNull();
+		expect(obs.recording).toBe(true);
+		expect(events.filter((event) => event.kind === 'failed')).toEqual([]);
+	});
+
+	it('says what OBS said, not that it records, where a start is pressed during a look that finds no OBS', async () => {
+		const { clock, obs, kept, service, events } = rig({ preferences: { tool: 'obs' } });
+		// Something takes the call and never says hello: no OBS, and a look that lasts.
+		obs.greetingHeld = true;
+		const looking = service.testObs();
+		await clock.advance(1000);
+		const starting = service.start();
+		await clock.advance(1000);
+		// The start waits for the look. It is not turned away as if OBS were recording.
+		expect(service.state().phase).toBe('starting');
+		expect(await clock.drive(looking)).toEqual({ ok: false, code: 'obs-closed' });
+		expect(await clock.drive(starting)).toBe('obs-closed');
+		expect(events.filter((event) => event.kind === 'failed')).toEqual([{ kind: 'failed', code: 'obs-closed', detail: null }]);
+		// Nothing answered: OBS has not been reached on this device, and is not opened next time.
+		expect(kept.preferences.obsReached).toBe(false);
+	});
+
+	it('gives up a start that was stopped while it waited for the look', async () => {
+		const { clock, obs, service } = rig({ preferences: { tool: 'obs' } });
+		const before = obs.borrowable();
+		obs.holdNext('GetSourceScreenshot');
+		const looking = service.testObs();
+		await clock.advance(1000);
+		const starting = service.start();
+		await clock.advance(500);
+		await service.stop();
+		obs.release();
+		expect(await clock.drive(starting)).toBe('cancelled');
+		await clock.drive(looking);
+		expect(obs.types()).not.toContain('StartRecord');
+		expect(obs.borrowable()).toEqual(before);
+		expect(service.state().phase).toBe('idle');
+	});
+});
