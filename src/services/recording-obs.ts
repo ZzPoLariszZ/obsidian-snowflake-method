@@ -300,6 +300,10 @@ export class ObsRecorder {
 				return { ok: false, code: 'cancelled', detail: null };
 			}
 			return outcome;
+		} catch (error) {
+			// A fault of the plugin's own on the way. What was borrowed goes back
+			// all the same, and the conversation ends.
+			return await this.giveUp('unavailable', error instanceof Error ? error.message.slice(0, 200) : null);
 		} finally {
 			this.working = false;
 		}
@@ -376,6 +380,8 @@ export class ObsRecorder {
 	): Promise<ObsProbe> {
 		if (this.working || this.recording) return { ok: false, code: 'obs-recording' };
 		this.working = true;
+		// The look reached the point where it puts a scene of its own into OBS.
+		let moving = false;
 		try {
 			const link = await this.reach(request.port, request.password, request.mayOpen, {
 				opening: onOpening,
@@ -410,6 +416,7 @@ export class ObsRecorder {
 			} else {
 				// Nothing records: a recording the plugin once asked for is over.
 				this.mark(null);
+				moving = true;
 				await this.giveBack();
 				await this.tidy();
 				let scene = await this.programScene();
@@ -427,6 +434,14 @@ export class ObsRecorder {
 			}
 			this.hangUp();
 			return { ok: true, version: greeted.version, picture, problem };
+		} catch {
+			// A fault of the plugin's own on the way: what the look put into OBS comes out again all the same.
+			if (moving) {
+				await this.giveBack();
+				await this.tidy();
+			}
+			this.hangUp();
+			return { ok: false, code: 'unavailable' };
 		} finally {
 			this.working = false;
 		}

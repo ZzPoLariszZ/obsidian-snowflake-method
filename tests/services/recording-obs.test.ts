@@ -36,8 +36,8 @@ interface Rig {
 	};
 	/** A second recorder over the same OBS and the same ledger, as after a restart of the plugin. */
 	again: () => ObsRecorder;
-	/** What the system calls the screen Obsidian is on, and every screen, on a Mac. Null where it will not say. */
-	mac: { screen: ObsMacTarget | null; all: ObsMacTarget | null; asked: string[] };
+	/** What the system calls the screen Obsidian is on, and every screen, on a Mac. Null where it will not say. `fails` has the asking itself fall over. */
+	mac: { screen: ObsMacTarget | null; all: ObsMacTarget | null; asked: string[]; fails: boolean };
 	/** The window of Obsidian's in use, which a recording of Obsidian alone begins on. */
 	windows: { inUse: DesktopWindow | null };
 }
@@ -92,6 +92,7 @@ function rig(
 		screen: { displayUuid: MAIN_SCREEN },
 		all: TWO_SCREENS,
 		asked: [],
+		fails: false,
 	};
 	const windows: Rig['windows'] = { inUse: MAIN_WINDOW };
 	let minted = 0;
@@ -124,7 +125,7 @@ function rig(
 			screenOrigin: () => ({ x: 0, y: 0 }),
 			macTarget: (scope) => {
 				mac.asked.push(scope);
-				return Promise.resolve(mac[scope]);
+				return mac.fails ? Promise.reject(new Error('The system would not name its screens.')) : Promise.resolve(mac[scope]);
 			},
 			obsidianWindow: () => windows.inUse,
 		});
@@ -2283,5 +2284,40 @@ describe('one conversation at a time', () => {
 		obs.greet();
 		await clock.advance(1000);
 		expect(obs.live).toBe(0);
+	});
+});
+
+describe('a fault of the plugin’s own on the way', () => {
+	it('gives back what a start borrowed, and ends the conversation', async () => {
+		const { obs, clock, recorder, hooks, seen, ledger } = rig();
+		const before = obs.borrowable();
+		// The count cannot be shown: by then everything is borrowed and the plugin's scene is on air.
+		seen.count = () => Promise.reject(new Error('The count could not be shown.'));
+		expect(await clock.drive(recorder.start(request({ quality: '1080p' }), hooks))).toEqual({
+			ok: false,
+			code: 'unavailable',
+			detail: 'The count could not be shown.',
+		});
+		expect(obs.types()).not.toContain('StartRecord');
+		expect(obs.borrowable()).toEqual(before);
+		expect([obs.scenes.map((scene) => scene.name), obs.capturing()]).toEqual([['Scene'], []]);
+		expect(ledger.value).toBeNull();
+		expect(obs.live).toBe(0);
+		// The recorder is free for the next start.
+		seen.count = () => Promise.resolve(true);
+		expect((await clock.drive(recorder.start(request(), hooks))).ok).toBe(true);
+	});
+
+	it('takes out what a look put into OBS', async () => {
+		const { obs, clock, recorder, mac } = rig();
+		const before = obs.borrowable();
+		mac.fails = true;
+		expect(await clock.drive(recorder.probe(LOOK))).toEqual({ ok: false, code: 'unavailable' });
+		expect(obs.borrowable()).toEqual(before);
+		expect([obs.scenes.map((scene) => scene.name), obs.capturing()]).toEqual([['Scene'], []]);
+		expect(obs.live).toBe(0);
+		// And is free for the next look.
+		mac.fails = false;
+		expect(await clock.drive(recorder.probe(LOOK))).toMatchObject({ ok: true, problem: null });
 	});
 });
