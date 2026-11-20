@@ -57,6 +57,7 @@ function stream() {
 		host,
 		mounted: new Map([[one.path, one], [two.path, two]]),
 		saving: Promise.resolve(),
+		flushesUnderWay: 0,
 		saveTimer: null,
 		saveWindow: null,
 		t: (key: string) => key,
@@ -101,6 +102,41 @@ describe('settling the stream’s saves', () => {
 		expect(one.editor).toBe(editor);
 		expect(two.pending).toBeNull();
 		// Written, so nothing is owed any more.
+		expect(view.settleSaves()).toBeNull();
+	});
+
+	it('owes words taken out again while the save carrying them is still out', async () => {
+		const { view, one, saves, answerWith } = stream();
+		const write = deferred<{ revision: string }>();
+		answerWith(() => write.promise);
+		// A word typed, and the quiet timer's own flush set going.
+		one.pending = 'one two';
+		const timed = (view as unknown as { flushPendingSave(): Promise<void> }).flushPendingSave();
+		await microtasks();
+		expect(saves).toHaveLength(1);
+		// The author takes the word out again while that write is out. The
+		// editor now reads as the note did before the save.
+		one.pending = 'one';
+		const settling = view.settleSaves();
+		// Not nothing: the save in flight is writing words the author removed.
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await microtasks();
+		expect(over).toBe(false);
+		answerWith(async (path) => ({ revision: `${path}@2` }));
+		write.resolve({ revision: 'r1b' });
+		await timed;
+		await settling;
+		// The note ends as the editor stands, written on the revision the first save left.
+		expect(saves).toEqual([
+			{ path: one.path, body: 'one two', revision: 'r1' },
+			{ path: one.path, body: 'one', revision: 'r1b' },
+		]);
+		expect(one.text.body).toBe('one');
+		expect(one.pending).toBeNull();
 		expect(view.settleSaves()).toBeNull();
 	});
 

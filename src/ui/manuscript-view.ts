@@ -537,6 +537,8 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	private saveWindow: Window | null = null;
 	/** The flush in progress, if any: the next one waits its turn behind it. */
 	private saving: Promise<void> = Promise.resolve();
+	/** How many flushes are queued or running. While one is, a note's body here is not yet what its save will leave. */
+	private flushesUnderWay = 0;
 	/** The refresh under way, with any asked for meanwhile, for whoever must wait it out. */
 	private refreshRun: Promise<void> | null = null;
 	/** A refresh asked for while one was running, run once that one is done. */
@@ -6806,7 +6808,12 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	 * second finds nothing left to write.
 	 */
 	private flushPendingSave(): Promise<void> {
-		const run = this.saving.then(() => this.flushNow());
+		this.flushesUnderWay += 1;
+		const run = this.saving
+			.then(() => this.flushNow())
+			.finally(() => {
+				this.flushesUnderWay -= 1;
+			});
 		this.saving = run.catch(() => undefined);
 		return run;
 	}
@@ -6825,7 +6832,13 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	settleSaves(): Promise<void> | null {
 		let owed = false;
 		for (const entry of this.mounted.values()) {
-			if (entry.pending !== null && entry.pending !== entry.text.body) owed = true;
+			if (entry.pending === null) continue;
+			// While a save is under way the body kept here is the note's from
+			// before it. Words typed and then taken out again read as that
+			// old body, and as nothing typed, though the save in flight is
+			// writing them into the note: they are owed, and the flush asked
+			// for here runs behind that save and puts the note right.
+			if (entry.pending !== entry.text.body || this.flushesUnderWay > 0) owed = true;
 		}
 		return owed ? this.flushPendingSave() : null;
 	}
