@@ -2321,3 +2321,51 @@ describe('a fault of the plugin’s own on the way', () => {
 		expect(await clock.drive(recorder.probe(LOOK))).toMatchObject({ ok: true, problem: null });
 	});
 });
+
+describe('OBS’s own word on its recording', () => {
+	it('believes a start the moment OBS says it began', async () => {
+		const { obs, clock, recorder, hooks } = rig();
+		// OBS takes the start and needs a moment to begin, as the real one does.
+		obs.startsNothing = true;
+		const starting = recorder.start(request(), hooks);
+		await clock.advance(300);
+		expect(obs.types()).toContain('StartRecord');
+		const from = clock.now;
+		obs.startsNothing = false;
+		obs.startFromInside();
+		expect(await clock.drive(starting, 20)).toMatchObject({ ok: true });
+		// Not at the next look, most of a second later.
+		expect(clock.now - from).toBeLessThan(200);
+	});
+
+	it('gives back the moment OBS says it stopped', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		const before = obs.borrowable();
+		await clock.drive(recorder.start(request({ quality: '1080p' }), hooks));
+		// OBS takes the stop and needs a moment to close the file.
+		obs.stopsLate = 90;
+		const stopping = recorder.stop();
+		await clock.advance(300);
+		const from = clock.now;
+		obs.stopFromInside();
+		expect(await clock.drive(stopping, 20)).toEqual({ path: obs.recordPath, error: null });
+		expect(clock.now - from).toBeLessThan(200);
+		expect(obs.borrowable()).toEqual(before);
+		expect(ledger.value).toBeNull();
+	});
+
+	it('gives a start up at once where OBS says it stopped without ever beginning', async () => {
+		const { obs, clock, recorder, hooks, ledger } = rig();
+		const before = obs.borrowable();
+		obs.startsNothing = true;
+		const starting = recorder.start(request(), hooks);
+		await clock.advance(300);
+		const from = clock.now;
+		// OBS could not begin, and says so.
+		obs.stopFromInside();
+		expect(await clock.drive(starting, 20)).toEqual({ ok: false, code: 'obs-refused', detail: 'StartRecord' });
+		expect(clock.now - from).toBeLessThan(1000);
+		expect(obs.borrowable()).toEqual(before);
+		expect(ledger.value).toBeNull();
+	});
+});

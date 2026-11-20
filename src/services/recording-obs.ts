@@ -273,6 +273,8 @@ export class ObsRecorder {
 	private left = false;
 	/** The conversation being opened now, while one is. One overtaken by another, or by the run's end, is not kept. */
 	private dialing: ObsSocket | null = null;
+	/** Ends the wait of whoever waits for OBS's word on its recording, while someone does. */
+	private wake: (() => void) | null = null;
 
 	constructor(private readonly deps: ObsRecorderDeps) {
 		const kept = readObsJournal(deps.journal.load());
@@ -680,9 +682,11 @@ export class ObsRecorder {
 	}
 
 	/**
-	 * Whether OBS came to record: it is asked now and again for a while. One
-	 * that has stopped answering is not waited for any longer: `silent` is
-	 * how many times in a row it has said nothing already.
+	 * Whether OBS came to record. It says so unasked the moment it does, and
+	 * is asked now and again in case that word was lost. One that says it
+	 * stopped without ever having started has failed to start, and is not
+	 * waited for any longer. Neither is one that has stopped answering:
+	 * `silent` is how many times in a row it has said nothing already.
 	 *
 	 * A conversation that ended under the start is opened anew, once. OBS may
 	 * well record, and nothing must be given back under a recording that is
@@ -701,8 +705,9 @@ export class ObsRecorder {
 				silent = 0;
 			}
 			if (this.sawStarted) return true;
+			if (this.sawStopped) return false;
 			const status = await this.ask('GetRecordStatus');
-			if (status.ok && status.data.outputActive === true) return true;
+			if (this.sawStarted || (status.ok && status.data.outputActive === true)) return true;
 			if (unanswered(status)) {
 				// The conversation ended, which the next turn sees to, or OBS has stopped answering.
 				silent += 1;
@@ -710,9 +715,22 @@ export class ObsRecorder {
 				continue;
 			}
 			silent = 0;
-			await waitOn(this.deps.timers, READY_WAIT_MS);
+			await this.heardOrAfter(READY_WAIT_MS);
 		}
 		return this.sawStarted;
+	}
+
+	/** Waits a while on the clock, or less: until OBS says something of its recording. */
+	private heardOrAfter(ms: number): Promise<void> {
+		return new Promise((resolve) => {
+			const done = (): void => {
+				if (this.wake === done) this.wake = null;
+				this.deps.timers.clear(timer);
+				resolve();
+			};
+			const timer = this.deps.timers.set(done, ms);
+			this.wake = done;
+		});
 	}
 
 	// ---- The scene ----
@@ -1372,6 +1390,8 @@ export class ObsRecorder {
 				this.sawStopped = true;
 				if (this.recording && !this.stopping) void this.endedElsewhere();
 			}
+			// Whoever waits for this word has it now.
+			this.wake?.();
 			return;
 		}
 		if (event.type === 'ExitStarted' && this.recording && !this.stopping) {
@@ -1467,13 +1487,14 @@ export class ObsRecorder {
 		for (let second = 0; second < seconds; second += 1) {
 			if (this.sawStopped) return true;
 			const status = await this.ask('GetRecordStatus');
-			if (status.ok && status.data.outputActive !== true) return true;
+			if (this.sawStopped || (status.ok && status.data.outputActive !== true)) return true;
 			if (unanswered(status)) {
 				// The conversation is down, or OBS has stopped answering: asking on would learn nothing.
 				silent += 1;
 				if (this.socket === null || !this.socket.open || silent >= SILENT_TRIES) return false;
 			} else silent = 0;
-			await waitOn(this.deps.timers, READY_WAIT_MS);
+			// OBS says it stopped the moment it has: the wait ends there.
+			await this.heardOrAfter(READY_WAIT_MS);
 		}
 		return this.sawStopped;
 	}
