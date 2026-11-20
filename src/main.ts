@@ -802,8 +802,6 @@ export default class SnowflakeMethodPlugin
 	/** The bell between the streams and the contents sidebar. */
 	readonly contents = new ContentsHub();
 	private settingsSaveTimer: number | null = null;
-	/** How many settings writes are on their way to the disk. */
-	private settingsWrites = 0;
 	private refreshTimer: number | null = null;
 	private projectRescanTimer: number | null = null;
 	private refreshProjectLocales = false;
@@ -4243,14 +4241,12 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The settings on their way to the disk: a deferred save still waiting on
-	 * its timer is written now, and every write under way is waited for. Null
-	 * where there is neither, so a quit with nothing to save is held by
-	 * nothing.
+	 * A deferred save still waiting on its timer, written now: null where
+	 * none waits. The write itself is noted with every other write on its
+	 * way, and is waited for there.
 	 */
 	private settleSettings(): Promise<void> | null {
-		if (this.settingsSaveTimer === null && this.settingsWrites === 0) return null;
-		return this.flushSettingsSave().then(() => this.settingsSaveQueue.catch(() => undefined));
+		return this.settingsSaveTimer === null ? null : this.flushSettingsSave();
 	}
 
 	async saveSettings(): Promise<void> {
@@ -4274,13 +4270,11 @@ export default class SnowflakeMethodPlugin
 				...this.settings.certificateCelebrations,
 			},
 		};
-		this.settingsWrites += 1;
-		const save = this.settingsSaveQueue
-			.catch(() => undefined)
-			.then(() => this.saveData(snapshot))
-			.finally(() => {
-				this.settingsWrites -= 1;
-			});
+		// Noted from here, behind whatever write it waits its turn for, until
+		// it has landed: a quit waits for it with every other write.
+		const save = writeUnderWay(
+			this.settingsSaveQueue.catch(() => undefined).then(() => this.saveData(snapshot)),
+		);
 		this.settingsSaveQueue = save;
 		await save;
 	}
@@ -12672,32 +12666,31 @@ export default class SnowflakeMethodPlugin
 	 * null where there is nothing. What was still waiting on a timer is sent
 	 * on first: a setting saved a moment ago, and the reconcile a note's own
 	 * write asks for a second later, neither of which a closing window would
-	 * live to see fire.
+	 * live to see fire. Each notes itself as it is sent, so the one list of
+	 * writes on their way is all there is to ask.
 	 */
 	private owedNow(): Promise<void> | null {
-		const landing: Promise<unknown>[] = [];
-		const ask = (settle: () => Promise<unknown> | null): void => {
+		for (const send of [
+			(): Promise<void> | null => this.settleSettings(),
+			(): Promise<void> | null => this.settleFieldsReconcile(),
+		]) {
 			try {
-				const pending = settle();
-				if (pending !== null) landing.push(pending);
+				// What becomes of it is the list's to wait for and its own
+				// caller's to say; here it is only set going.
+				void send()?.catch(() => undefined);
 			} catch (error) {
 				console.error('Snowflake: a write could not be sent on its way', error);
 			}
-		};
-		ask(() => this.settleSettings());
-		ask(() => this.settleFieldsReconcile());
-		ask(() => writesUnderWay());
-		ask(() => (this.projects.repository.writing ? this.projects.repository.whenWritten() : null));
-		if (landing.length === 0) return null;
-		return Promise.allSettled(landing).then(() => undefined);
+		}
+		return writesUnderWay();
 	}
 
-	/** The fields-block reconcile still waiting on its timer, run now: null where none waits. */
+	/** The fields-block reconcile still waiting on its timer, run now and noted: null where none waits. */
 	private settleFieldsReconcile(): Promise<void> | null {
 		if (this.fieldsReconcileTimer === null) return null;
 		window.clearTimeout(this.fieldsReconcileTimer);
 		this.fieldsReconcileTimer = null;
-		return this.drainFieldsBlockReconciles();
+		return writeUnderWay(this.drainFieldsBlockReconciles());
 	}
 
 	private registerVaultListeners(): void {

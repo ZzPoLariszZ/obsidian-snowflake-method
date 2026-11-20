@@ -9,9 +9,17 @@ import {
   UnsupportedSchemaError,
   VaultRepository,
   parseMarkdownFrontmatter,
+  writeUnderWay,
+  writesUnderWay,
 } from "../../src/repository";
 import { renderMarkedSection } from "../../src/templates";
 import { createFakeEnvironment, type FakeFileManager, type FakeVault } from "../helpers/fake-vault";
+
+/** Whether anything at all is noted as on its way to the disk. */
+const writing = (): boolean => writesUnderWay() !== null;
+
+/** Resolves once everything now on its way has landed: at once where nothing is. */
+const whenWritten = (): Promise<void> => writesUnderWay() ?? Promise.resolve();
 
 describe("VaultRepository", () => {
   let fakeVault: FakeVault;
@@ -811,34 +819,70 @@ describe("VaultRepository", () => {
     expect(heard).toHaveLength(4);
   });
 
+  it("notes its changes in the one list every writer notes itself in", async () => {
+    await fakeVault.seedFile("Projects/Novel/One.md", "one");
+    expect(writesUnderWay()).toBeNull();
+    // Another writer's change, a setting's say, stands in the same list.
+    let land = (): void => undefined;
+    const other = writeUnderWay(new Promise<void>((resolve) => {
+      land = resolve;
+    }));
+    const mine = repository.updatePlainFile("Projects/Novel/One.md", (text) => `${text}!`);
+    const all = writesUnderWay();
+    expect(all).not.toBeNull();
+    let landed = false;
+    void all?.then(() => {
+      landed = true;
+    });
+    await mine;
+    for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+    // The repository's own change has landed, and the list still holds the other.
+    expect(landed).toBe(false);
+    expect(writesUnderWay()).not.toBeNull();
+    land();
+    await other;
+    await all;
+    expect(landed).toBe(true);
+    expect(writesUnderWay()).toBeNull();
+  });
+
+  it("notes as failed a change that throws before it has a promise to hand back", async () => {
+    const thrown = repository.counted(() => {
+      throw new Error("thrown at once");
+    });
+    // Handed back as a promise, and over: nothing is left waiting on it.
+    await expect(thrown).rejects.toThrow("thrown at once");
+    expect(writesUnderWay()).toBeNull();
+  });
+
   it("says while a change is on its way to the vault, and when every one has landed", async () => {
     await fakeVault.seedFile("Projects/Novel/One.md", "one");
     await fakeVault.seedFile("Projects/Novel/Two.md", "two");
-    expect(repository.writing).toBe(false);
-    await repository.whenWritten();
+    expect(writing()).toBe(false);
+    await whenWritten();
 
     const first = repository.updatePlainFile("Projects/Novel/One.md", (text) => `${text}!`);
     const second = repository.updatePlainFile("Projects/Novel/Two.md", (text) => `${text}!`);
-    expect(repository.writing).toBe(true);
+    expect(writing()).toBe(true);
     let landed = false;
-    const waited = repository.whenWritten().then(() => {
+    const waited = whenWritten().then(() => {
       landed = true;
     });
     await first;
     await second;
     await waited;
     expect(landed).toBe(true);
-    expect(repository.writing).toBe(false);
+    expect(writing()).toBe(false);
     expect(fakeVault.contents.get("Projects/Novel/One.md")).toBe("one!");
     expect(fakeVault.contents.get("Projects/Novel/Two.md")).toBe("two!");
 
     // A write that fails is over all the same: nothing waits on it for good.
     fakeVault.failNextProcessPath = "Projects/Novel/One.md";
     const failing = repository.updatePlainFile("Projects/Novel/One.md", (text) => `${text}?`);
-    expect(repository.writing).toBe(true);
+    expect(writing()).toBe(true);
     await expect(failing).rejects.toThrow(/Simulated process failure/u);
-    expect(repository.writing).toBe(false);
-    await repository.whenWritten();
+    expect(writing()).toBe(false);
+    await whenWritten();
 
     // Managed writes, creations and folders are counted the same way.
     const created = repository.createManagedFile({
@@ -847,9 +891,9 @@ describe("VaultRepository", () => {
       template: { body: "# Made\n", sections: [] },
       frontmatter: { "snowflake-document": "scene", "snowflake-project-id": "project-1" },
     });
-    expect(repository.writing).toBe(true);
+    expect(writing()).toBe(true);
     await created;
-    expect(repository.writing).toBe(false);
+    expect(writing()).toBe(false);
   });
 
   it("counts a change that reaches the vault by another road", async () => {
@@ -859,9 +903,9 @@ describe("VaultRepository", () => {
     });
     // A folder renamed through the file manager, a picture written as bytes.
     const counted = repository.counted(() => moving);
-    expect(repository.writing).toBe(true);
+    expect(writing()).toBe(true);
     let landed = false;
-    const waited = repository.whenWritten().then(() => {
+    const waited = whenWritten().then(() => {
       landed = true;
     });
     await Promise.resolve();
@@ -869,13 +913,13 @@ describe("VaultRepository", () => {
     land();
     await counted;
     await waited;
-    expect(repository.writing).toBe(false);
+    expect(writing()).toBe(false);
 
     // One that fails is counted no longer either.
     const failing = repository.counted(() => Promise.reject(new Error("the disk said no")));
-    expect(repository.writing).toBe(true);
+    expect(writing()).toBe(true);
     await expect(failing).rejects.toThrow("the disk said no");
-    expect(repository.writing).toBe(false);
+    expect(writing()).toBe(false);
   });
 
   it("tells a record a write has overtaken from the note as it stands", async () => {
@@ -948,13 +992,13 @@ describe("VaultRepository", () => {
       ["a folder sent to the trash", fakeFileManager, "trashFile", () => repository.trashFolder("Projects/Novel/Gone")],
     ];
     for (const [what, target, method, change] of kinds) {
-      expect(repository.writing, what).toBe(false);
+      expect(writing(), what).toBe(false);
       const held = hold(target, method);
       const changing = change();
       await held.reached;
-      expect(repository.writing, what).toBe(true);
+      expect(writing(), what).toBe(true);
       let landed = false;
-      const waited = repository.whenWritten().then(() => {
+      const waited = whenWritten().then(() => {
         landed = true;
       });
       for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
@@ -962,7 +1006,7 @@ describe("VaultRepository", () => {
       held.release();
       await changing;
       await waited;
-      expect(repository.writing, what).toBe(false);
+      expect(writing(), what).toBe(false);
     }
   });
 

@@ -1,41 +1,19 @@
 /**
- * The writes on their way that nobody is waiting for, and the hold a quit
- * keeps on the app until they have landed.
+ * The hold a quit keeps on the app until the writes on their way have
+ * landed.
  *
  * A board sends a change to the vault and goes on: the row is drawn already,
  * and the write lands a moment later behind a queue. That is right while
  * the app stays, and it is how a change was lost when the app left: Obsidian
  * gives a closing window three seconds, measured on 1.15, and then takes it
- * away whatever is still being written. So each such write is noted here
- * from the moment it is queued until it lands, and a quit can wait for
- * exactly those and nothing else.
+ * away whatever is still being written. So each such write is noted from
+ * the moment it is queued until it lands, in the one list every writer
+ * notes itself in, and a quit can wait for exactly those and nothing else.
+ * The list is kept beside the repository, whose own writes are in it, and
+ * is handed on from here to the surfaces that queue a change.
  */
 
-const underway = new Set<Promise<unknown>>();
-
-/**
- * Notes a write on its way until it lands or fails, and hands the same
- * promise back, so the call sits around a write without changing what its
- * caller is given.
- */
-export function writeUnderWay<T>(run: Promise<T>): Promise<T> {
-	underway.add(run);
-	const landed = (): void => {
-		underway.delete(run);
-	};
-	run.then(landed, landed);
-	return run;
-}
-
-/**
- * Every noted write that has not landed, as one promise that never rejects.
- * Null where there is none, so that a caller with nothing to wait for can
- * tell, without a turn of the event loop to find out.
- */
-export function writesUnderWay(): Promise<void> | null {
-	if (underway.size === 0) return null;
-	return Promise.allSettled([...underway]).then(() => undefined);
-}
+export { writeUnderWay, writesUnderWay } from '../repository/writes-under-way';
 
 /** What the app hands a `quit` listener: the one method used here. */
 export interface QuitTasks {

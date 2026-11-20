@@ -43,6 +43,7 @@ import {
   type ManagedFrontmatter,
 } from "./frontmatter";
 import { normalizePath } from "./normalize-path";
+import { writeUnderWay } from "./writes-under-way";
 
 export interface ManagedFileRecord {
   file: TFile;
@@ -407,32 +408,9 @@ export class VaultRepository {
   }
 
   /**
-   * How many changes this repository has on their way to the vault. A quit
-   * asks: the app gives a closing window three seconds and then takes it
-   * away whatever is still being written, so what the plugin set going has
-   * to be waited for by name rather than hoped for.
-   */
-  private writesUnderWay = 0;
-
-  private readonly writesAwaited: (() => void)[] = [];
-
-  /** Whether a change is on its way to the vault through this repository. */
-  get writing(): boolean {
-    return this.writesUnderWay > 0;
-  }
-
-  /** Resolves once no change is on its way: at once where none is. */
-  whenWritten(): Promise<void> {
-    if (this.writesUnderWay === 0) return Promise.resolve();
-    return new Promise((resolve) => {
-      this.writesAwaited.push(resolve);
-    });
-  }
-
-  /**
    * A change that reaches the vault by another road than this repository's
-   * own methods, counted as one of them: a folder renamed through the file
-   * manager, a picture written as bytes. Left uncounted, such a change was
+   * own methods, noted as one of them: a folder renamed through the file
+   * manager, a picture written as bytes. Left unnoted, such a change was
    * one a quit could not see, and the longest step of a project's rename
    * ran with nothing owed.
    */
@@ -440,16 +418,14 @@ export class VaultRepository {
     return this.tracked(write);
   }
 
-  private async tracked<T>(write: () => Promise<T>): Promise<T> {
-    this.writesUnderWay += 1;
-    try {
-      return await write();
-    } finally {
-      this.writesUnderWay -= 1;
-      if (this.writesUnderWay === 0) {
-        for (const landed of this.writesAwaited.splice(0)) landed();
-      }
-    }
+  /**
+   * Sets a change going and notes it as on its way to the vault until it
+   * lands or fails, in the one list every writer notes itself in: a quit
+   * asks that list and no other. Begun inside a promise, so a write that
+   * throws before it has one to hand back is a failed write like any other.
+   */
+  private tracked<T>(write: () => Promise<T>): Promise<T> {
+    return writeUnderWay((async () => write())());
   }
 
   private async processMarked(

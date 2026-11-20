@@ -139,7 +139,6 @@ async function host() {
 		},
 		settingsSaveQueue: Promise.resolve(),
 		settingsSaveTimer: null,
-		settingsWrites: 0,
 		dashboardDataChanges: 0,
 		rosterSignature: null,
 		refreshTimer: null,
@@ -665,7 +664,7 @@ describe('what a quit waits for', () => {
 			return process(file, callback);
 		};
 		const write = service.repository.updatePlainFile('Novels/Loose.md', (text) => `${text}!`);
-		expect(service.repository.writing).toBe(true);
+		expect(writesUnderWay()).not.toBeNull();
 		const settling = plugin.settleForQuit();
 		expect(settling).not.toBeNull();
 		let over = false;
@@ -710,14 +709,14 @@ describe('what a quit waits for', () => {
 		void settling?.then(() => {
 			over = true;
 		});
-		// The first write has landed and nothing is counted: the hold stands.
+		// The first write has landed and nothing is noted: the hold stands.
 		await vi.advanceTimersByTimeAsync(9);
 		expect(env.fakeVault.contents.get('Novels/Loose.md')).toBe('a note!');
-		expect(service.repository.writing).toBe(false);
+		expect(writesUnderWay()).toBeNull();
 		expect(over).toBe(false);
 		// The second is out now and held open, and so is the quit.
 		await vi.advanceTimersByTimeAsync(500);
-		expect(service.repository.writing).toBe(true);
+		expect(writesUnderWay()).not.toBeNull();
 		expect(over).toBe(false);
 		second.resolve();
 		await ended(settling);
@@ -827,7 +826,7 @@ describe('what a quit waits for', () => {
 		};
 		const renaming = service.renameProject(alpha.projectFile, 'Beta');
 		await moving.promise;
-		expect(service.repository.writing).toBe(true);
+		expect(writesUnderWay()).not.toBeNull();
 		const settling = plugin.settleForQuit();
 		expect(settling).not.toBeNull();
 		let over = false;
@@ -994,6 +993,88 @@ describe('what a quit waits for', () => {
 		await ended(settling);
 		expect(drained).toHaveBeenCalledTimes(1);
 		expect((plugin as unknown as { fieldsReconcileTimer: number | null }).fieldsReconcileTimer).toBeNull();
+		stop();
+	});
+});
+
+describe('the one list a quit asks', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('holds for a fields reconcile sent on at the quit, for as long as it reads', async () => {
+		const { plugin, stop } = await host();
+		// The reconcile is still reading its notes and has written nothing:
+		// no write of its own says it is running.
+		const reading = deferred();
+		const drained = vi.fn(() => reading.promise);
+		Object.assign(plugin, {
+			drainFieldsBlockReconciles: drained,
+			fieldsReconcileTimer: window.setTimeout(() => undefined, 1000),
+		});
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		expect(drained).toHaveBeenCalledTimes(1);
+		expect(plugin.fieldsReconcileTimer).toBeNull();
+		// Noted like any write, which is what holds the quit for it.
+		expect(writesUnderWay()).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		reading.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
+		expect(writesUnderWay()).toBeNull();
+		stop();
+	});
+
+	it('waits once for a settings write, however it came to be owed', async () => {
+		const { plugin, saved, holdSaves, stop } = await host();
+		const land = holdSaves();
+		// One write waiting on its timer, sent on by the quit and noted once.
+		plugin.saveSettingsSoon();
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		// Sent once, and not a second time for the hold looking again.
+		expect(saved).toHaveLength(1);
+		land();
+		await ended(settling);
+		expect(over).toBe(true);
+		expect(saved).toHaveLength(1);
+		expect(writesUnderWay()).toBeNull();
+		stop();
+	});
+
+	it('is asked for a writer of any kind, with nothing more to wire', async () => {
+		const { plugin, stop } = await host();
+		expect(plugin.settleForQuit()).toBeNull();
+		// A writer the host has never heard of notes itself, and is waited for.
+		const stranger = deferred();
+		void writeUnderWay(stranger.promise);
+		const settling = plugin.settleForQuit();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		expect(over).toBe(false);
+		stranger.resolve();
+		await ended(settling);
+		expect(over).toBe(true);
 		stop();
 	});
 });

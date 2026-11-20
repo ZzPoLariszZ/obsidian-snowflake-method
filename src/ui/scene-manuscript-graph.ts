@@ -303,10 +303,13 @@ export class SceneManuscriptGraphKeeper {
 	/**
 	 * What a tab's options ask of its project's file: cleared once the tab
 	 * is back on the preset, written where they moved from what it holds,
-	 * and nothing where they agree. A read-only project keeps nothing.
+	 * and nothing where they agree. A read-only project keeps nothing. The
+	 * one place this is decided: a quit asks it, and a snapshot acts on it.
 	 */
-	private owed(entry: HeldLeaf): 'clear' | 'store' | null {
-		const options = graphViewOptions(entry.view);
+	private owed(
+		entry: HeldLeaf,
+		options: NativeGraphOptions | null = graphViewOptions(entry.view),
+	): 'clear' | 'store' | null {
 		if (options === null || entry.project.readOnly) return null;
 		if (sameGraphOptions(options, entry.preset)) return entry.kept === null ? null : 'clear';
 		return entry.kept !== null && sameOptionsEntirely(entry.kept, options) ? null : 'store';
@@ -396,24 +399,21 @@ export class SceneManuscriptGraphKeeper {
 
 	/**
 	 * What the tab's engine holds, kept for the project while it differs
-	 * from the preset: the file is written when the options moved from what
-	 * it holds, and cleared once the tab is back on the preset. A read-only
-	 * project keeps nothing.
+	 * from the preset: the file is written or cleared as `owed` says, and
+	 * left alone where it says nothing.
 	 */
 	private async snapshot(entry: HeldLeaf): Promise<void> {
 		const options = graphViewOptions(entry.view);
 		if (options === null) return;
 		this.lastOurs = options;
-		if (entry.project.readOnly) return;
-		if (sameGraphOptions(options, entry.preset)) {
-			if (entry.kept === null) return;
+		const owed = this.owed(entry, options);
+		if (owed === 'clear') {
 			entry.kept = null;
 			await this.deps.clear(entry.project);
-			return;
+		} else if (owed === 'store') {
+			entry.kept = options;
+			await this.deps.store(entry.project, options);
 		}
-		if (entry.kept !== null && sameOptionsEntirely(entry.kept, options)) return;
-		entry.kept = options;
-		await this.deps.store(entry.project, options);
 	}
 
 	private scheduleSnapshot(): void {
