@@ -196,6 +196,27 @@ describe('styles.css', () => {
 	 * back by 0.8.1, because nothing was watching. A class the plugin puts on
 	 * the element says the same thing and costs nothing to check.
 	 */
+	/**
+	 * At the app's own dialog width an English sentence of the dialog ran two
+	 * words past its line and left them alone on the next one. The dialog
+	 * takes the width its longest sentence asks for, within what the app
+	 * allows a dialog, and a sentence that must break breaks evenly.
+	 */
+	it('lets the dialog before a recording grow to its longest sentence, and breaks one evenly where it must', () => {
+		const dialog = declarations('.modal.snowflake-method-recording-confirm');
+		expect(dialog).toContain('width: max-content');
+		// Never narrower than a dialog is, nor than the window lets one be.
+		expect(dialog).toContain('min-width: min(var(--dialog-width), var(--dialog-max-width))');
+		// The app's own limit stands: nothing here lets it past the window.
+		expect(dialog).not.toMatch(/(?:^|;)\s*max-width\s*:/u);
+		// Nothing records on a phone or a tablet, so the dialog is never
+		// opened there and no mobile rule is written for it.
+		expect(section('Mobile')).not.toContain('snowflake-method-recording-confirm');
+		expect(
+			declarations('.snowflake-method-recording-confirm-notes .snowflake-method-history-notice-text'),
+		).toContain('text-wrap: balance');
+	});
+
 	it('keeps the screen recording to theme tokens, with marks that never blink', () => {
 		const recording = section('Screen recording');
 		expect(recording.includes('!important')).toBe(false);

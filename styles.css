@@ -13828,6 +13828,23 @@ col.snowflake-method-history-column-actions {
 	gap: var(--size-4-2);
 }
 
+/* The dialog is as wide as its longest sentence, and never narrower than a
+   dialog is. At the app's own width an English or a German sentence ran two
+   words past the end of its line and left them alone on the next. It stops
+   at the widest a dialog may be in the window, which the app's own limit
+   sees to. There is no phone or tablet to allow for: nothing records
+   there, so the dialog is never opened. */
+.modal.snowflake-method-recording-confirm {
+	width: max-content;
+	min-width: min(var(--dialog-width), var(--dialog-max-width));
+}
+
+/* Where a sentence must break all the same, in a narrow window, it breaks
+   into lines of a like length. */
+.snowflake-method-recording-confirm-notes .snowflake-method-history-notice-text {
+	text-wrap: balance;
+}
+
 /* The box that says not to ask again stands at the head of the buttons, as
    in Obsidian's own confirmations. */
 .snowflake-method-recording-confirm-skip {
