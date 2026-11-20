@@ -89,18 +89,6 @@ function frameOf(display: unknown): DesktopFrame | null {
 	return width > 0 && height > 0 ? { x, y, width, height } : null;
 }
 
-interface Bounds {
-	x: number;
-	y: number;
-}
-
-function boundsOf(display: unknown): Bounds | null {
-	const bounds = part(display, 'bounds');
-	const x = figure(bounds?.x);
-	const y = figure(bounds?.y);
-	return x === null || y === null ? null : { x, y };
-}
-
 /** The desktop's shell as a window reaches it, or null where the window has no Electron. */
 export function desktopShell(win: Window): DesktopShell | null {
 	const remote = part(part(win, 'electron'), 'remote');
@@ -113,6 +101,22 @@ export function desktopShell(win: Window): DesktopShell | null {
 	const mainWindow = (): Record<string, unknown> | null => {
 		const found = ask(remote, 'getCurrentWindow');
 		return isRecord(found) ? found : null;
+	};
+	/**
+	 * Every screen there is, the main one first, the rest in the system's
+	 * order. The one list both answers below are read from, so a screen's
+	 * number and its place among the screens can never disagree.
+	 */
+	const ordered = (): { frame: DesktopFrame; id: number | null }[] => {
+		const all = ask(screen, 'getAllDisplays');
+		const main = frameOf(ask(screen, 'getPrimaryDisplay'));
+		const found = (Array.isArray(all) ? (all as unknown[]) : []).flatMap((display) => {
+			const frame = frameOf(display);
+			return frame === null ? [] : [{ frame, id: isRecord(display) ? figure(display.id) : null }];
+		});
+		const isMain = (entry: { frame: DesktopFrame }): boolean =>
+			main !== null && entry.frame.x === main.x && entry.frame.y === main.y;
+		return [...found.filter(isMain), ...found.filter((entry) => !isMain(entry))];
 	};
 	return {
 		pickFolder: async (startAt) => {
@@ -150,17 +154,11 @@ export function desktopShell(win: Window): DesktopShell | null {
 			const window = mainWindow();
 			const frame = window === null ? undefined : ask(window, 'getBounds');
 			const display = frame === undefined ? undefined : ask(screen, 'getDisplayMatching', frame);
-			const origin = boundsOf(display);
-			if (origin === null) return null;
+			const found = frameOf(display);
+			if (found === null) return null;
+			const origin = { x: found.x, y: found.y };
 			// The main screen is the first to a recorder, the rest follow in the system's order.
-			const main = boundsOf(ask(screen, 'getPrimaryDisplay'));
-			const all = ask(screen, 'getAllDisplays');
-			const others = (Array.isArray(all) ? (all as unknown[]) : [])
-				.map(boundsOf)
-				.filter((bounds): bounds is Bounds => bounds !== null)
-				.filter((bounds) => main === null || bounds.x !== main.x || bounds.y !== main.y);
-			const same = (bounds: Bounds): boolean => bounds.x === origin.x && bounds.y === origin.y;
-			const position = others.findIndex(same);
+			const position = ordered().findIndex((entry) => entry.frame.x === origin.x && entry.frame.y === origin.y);
 			const id = isRecord(display) ? figure(display.id) : null;
 			// Electron turns a point into pixels on Windows and Linux alone. A Mac
 			// has no such call, and there the plugin names a screen another way.
@@ -168,20 +166,9 @@ export function desktopShell(win: Window): DesktopShell | null {
 			const px = isRecord(converted) ? figure(converted.x) : null;
 			const py = isRecord(converted) ? figure(converted.y) : null;
 			const pixelOrigin = px === null || py === null ? origin : { x: Math.round(px), y: Math.round(py) };
-			return { origin, pixelOrigin, index: position === -1 ? 1 : position + 2, id };
+			return { origin, pixelOrigin, index: position === -1 ? 1 : position + 1, id };
 		},
-		displays: () => {
-			const all = ask(screen, 'getAllDisplays');
-			const main = boundsOf(ask(screen, 'getPrimaryDisplay'));
-			const found = (Array.isArray(all) ? (all as unknown[]) : []).flatMap((display) => {
-				const frame = frameOf(display);
-				return frame === null ? [] : [{ frame, id: isRecord(display) ? figure(display.id) : null }];
-			});
-			const isMain = (entry: { frame: DesktopFrame }): boolean =>
-				main !== null && entry.frame.x === main.x && entry.frame.y === main.y;
-			// The main screen is the first to a recorder, the rest follow in the system's order.
-			return [...found.filter(isMain), ...found.filter((entry) => !isMain(entry))];
-		},
+		displays: () => ordered(),
 		reveal: (path) => {
 			ask(shell, 'showItemInFolder', path);
 		},
