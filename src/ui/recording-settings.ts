@@ -128,6 +128,16 @@ export function renderRecordingNotes(setting: Setting, t: Translate): void {
 }
 
 /**
+ * Whether the row on what macOS allows has anything to say: with the Mac's
+ * own recorder, where macOS has not said yes. The page asks this to show
+ * the row, and the row asks it before it listens for anything, so the two
+ * never differ.
+ */
+export function recordingPermissionShown(bridge: RecordingSettingsBridge): boolean {
+	return bridge.preferences().tool === 'native' && bridge.screenAccess() !== 'granted';
+}
+
+/**
  * What macOS allows, said only where it has not said yes: with the Mac's
  * own recorder, Obsidian itself must be let record the screen. The author
  * comes back from the system's settings to this window, so what macOS
@@ -140,10 +150,11 @@ export function renderRecordingPermission(
 	refresh: () => void,
 ): () => void {
 	const row = bare(setting, 'snowflake-method-settings-recording-permission');
-	// The page draws a row it then keeps out of sight: one with nothing to say listens for nothing.
-	const access = bridge.screenAccess();
-	if (access === 'granted') return () => {};
-	const denied = access === 'denied';
+	// The page draws a row it then keeps out of sight: one with nothing to say
+	// listens for nothing, or every coming forward of the window would draw the
+	// whole page again for a row nobody sees.
+	if (!recordingPermissionShown(bridge)) return () => {};
+	const denied = bridge.screenAccess() === 'denied';
 	const line = recordingNotice(
 		row,
 		denied ? 'warning' : 'muted',

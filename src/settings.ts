@@ -138,6 +138,7 @@ import {
 	renderObsPassword,
 	renderObsTest,
 	renderRecordingNotes,
+	recordingPermissionShown,
 	renderRecordingOutsideFolder,
 	renderRecordingScope,
 	renderRecordingPermission,
@@ -2706,7 +2707,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('recording.permission.open'),
 						desc: this.t('recording.permission.denied'),
-						visible: () => withMac() && bridge.screenAccess() !== 'granted',
+						visible: () => recordingPermissionShown(bridge),
 						render: (setting) => renderRecordingPermission(setting, bridge, t, refresh),
 					},
 					{

@@ -17,6 +17,7 @@ import {
 	describeRecordingVaultFolder,
 	forgetObsProbe,
 	freshRecordingSettingsMemory,
+	recordingPermissionShown,
 	recordingScopeHint,
 	renderObsGuide,
 	renderObsPassword,
@@ -210,6 +211,33 @@ describe('the screen recording’s rows in the settings', () => {
 		expect(quiet?.querySelector('.snowflake-method-history-notice-text')?.textContent).toBe(
 			'macOS asks for permission the first time you record. Restart Obsidian after you allow it.',
 		);
+	});
+
+	it('listens for nothing while it is out of sight: with OBS as the recorder, or once macOS has said yes', () => {
+		const { bridge, held, refreshed, refresh } = rig();
+		// OBS records, so what macOS allows Obsidian is nobody's question, whatever the answer.
+		held.preferences = { ...held.preferences, tool: 'obs' };
+		for (const access of ['unknown', 'denied', 'granted'] as const) {
+			held.access = access;
+			const row = new Row();
+			const release = renderRecordingPermission(row.setting, bridge, t, refresh);
+			expect(recordingPermissionShown(bridge), access).toBe(false);
+			expect(row.settingEl.querySelector('.snowflake-method-history-notice'), access).toBeNull();
+			// The window comes forward, as it does at every step between OBS and these settings.
+			window.dispatchEvent(new Event('focus'));
+			release();
+		}
+		held.preferences = { ...held.preferences, tool: 'native' };
+		held.access = 'granted';
+		const allowed = renderRecordingPermission(new Row().setting, bridge, t, refresh);
+		expect(recordingPermissionShown(bridge)).toBe(false);
+		window.dispatchEvent(new Event('focus'));
+		allowed();
+		// Not once was the page asked to draw itself again.
+		expect(refreshed.count).toBe(0);
+		// The row shows, and listens, only with the Mac's own recorder where macOS has not said yes.
+		held.access = 'unknown';
+		expect(recordingPermissionShown(bridge)).toBe(true);
 	});
 
 	it('says where recordings go outside the vault, and offers the system’s own dialog to choose', async () => {
