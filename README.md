@@ -14,7 +14,7 @@
 
 **Turn a story idea into a draft-ready plan, one Snowflake step at a time.**
 
-A bilingual, Markdown-native fiction planning workspace for Obsidian. Your projects stay local, portable, and readable even when the plugin is disabled.
+A multilingual, Markdown-native fiction planning workspace for Obsidian. Your projects stay local, portable, and readable even when the plugin is disabled.
 
 <br />
 
@@ -102,6 +102,7 @@ Thank you for your support!
 | Prose analysis | See the draft's reading time, sentences, dialogue share, and the words you use most. |
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions in the text. |
 | Modification history | Read each day's work back: the versions Obsidian kept, your writing sessions, and the notes, tasks, foreshadowing and revisions the plugin changed. |
+| Screen recording | Record the screen while you write, with macOS's own recorder or OBS Studio, as proof that the words are yours. |
 | Task board | Put everything that's waiting on one Kanban board: your own tasks and the ones the plugin derives from your writing. |
 | Revision | Propose a replacement, a deletion or an insertion beside the manuscript. The chapter only changes once you accept the proposal. |
 | Foreshadowing | Follow a thread from its plant to its payoff. Each of its passages is marked in the text, and they're all listed together. |
@@ -109,7 +110,7 @@ Thank you for your support!
 | File explorer enhancement | Hide the plugin's own files from the file explorer, focus on one project, arrange files your own way, and see word counts. |
 | Revision awareness | Get reminders that never block you when the material a step builds on changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
-| Bilingual workspace | Choose English or Simplified Chinese separately for the interface and for each project. |
+| Eight languages | Choose English, Simplified or Traditional Chinese, Japanese, Korean, French, German, or Spanish, separately for the interface and for each project. |
 | Phones and tablets | Use the plugin on Obsidian for iOS and Android, laid out for the screen, with a menu for anything you'd drag. |
 
 ## Workflow
@@ -310,13 +311,21 @@ Writing is easier to keep up when you can see it. The dashboard's **Data statist
 
 **Modification history** reads each day's work back. The tab merges three records: the versions Obsidian's File recovery keeps as you edit, your writing sessions, and the notes, tasks, foreshadowing and revisions the plugin changed for you. Pick a day, a week or a month, and every happening in it is listed by day, newest first. The plugin keeps only each version's time and word count, never the text, from when it first reads them. Restoring a version happens in Obsidian's own File recovery dialog, which every row can open, and the gear beside the filter opens File recovery's settings. If the core plugin is off, the tab says so and opens the Core plugins settings.
 
+### Screen recording
+
+**Screen recording** keeps a video of the screen while you write. If someone later asks whether AI wrote your novel, the video shows how the words came to be. A recording belongs to no project, so it has a button of its own in the ribbon. Press it to start, and press it again to stop. A dialog first says what a recording shows and what it costs, and a box there turns the question off. The window then counts 3, 2, 1 before the recording begins, and **Esc** during the count cancels it. While it records, the button turns red and a clock in the status bar counts the time. A recording shows everything on the screen, so watch it before you share it.
+
+The choices are in the plugin's settings, under **Screen recording**. On a Mac the tool can be macOS's own recorder. On Windows, macOS and Linux it can be [OBS Studio](https://obsproject.com), which you install yourself. A guide there covers the one switch OBS needs, and **Test connection** shows what OBS will record. After that, the plugin opens OBS itself whenever it is closed. Recordings go to **Snowflake Recordings** beside your projects, where sync carries them unless you exclude them, or to a folder outside the Vault.
+
+A recording shows **Obsidian only** unless you choose **Current screen**, **All screens** or, with OBS, **As set in OBS Studio**, which alone can record sound. **Obsidian only** takes in the tabs you moved into windows of their own. With **All screens**, macOS's recorder saves a file for each screen, and OBS fits them all into one video. With OBS, **Video quality** starts at **1080p**. It can also be **2K**, **720p**, **Native** for the full size of what is recorded, or OBS's own size. OBS takes at most 4096 pixels a side from the plugin, so a larger screen is brought down to that.
+
 ### Import and series
 
 A story can grow out of another. The project menu at the bottom of the dashboard has **Import from project**. It copies any part of another project's design into the one you are working on. That covers the step texts, characters, scenes, worldbuilding notes, vocabularies, field templates, pictures and tool records, and the manuscript if you ask for it. Everything arrives as new notes in this project's folders and language, and every link between them points at the copies.
 
 <p align="center"><a href="assets/screenshots/import_from_project_en.png"><img src="assets/screenshots/import_from_project_en.png" width="100%" alt="The Import from project dialog open over a new project's dashboard: Clocktower Snow chosen under From, Skip it chosen for notes that already exist, a search box, and a tree of groups with their counts and checkboxes, with Characters open to show Nora Linden, Arthur Linden, Clara Linden, Silas Penn, Granny Hart and Edmund Crane ticked. The footer counts forty-three notes and twenty tool records, then says that seven linked notes aren’t selected, with Select them beside it, above the Cancel and Import buttons." /></a></p>
 
-**Tick what you want.** Each group can be taken whole or opened to pick single notes, and the search box narrows the rows. The manuscript is off by default, and the revisions anchored in it come only with its chapters. A link to a note you haven't ticked is kept only when a note of that name is already here. So the footer counts those links, and **Select them** ticks the notes in one click. A note whose name is already taken is skipped, or replaced if you choose so. The import is confirmed before it runs, because it can't be undone, and a source in the other language is pointed out when you choose it. A report lists whatever was skipped, dropped or failed.
+**Tick what you want.** Each group can be taken whole or opened to pick single notes, and the search box narrows the rows. The manuscript is off by default, and the revisions anchored in it come only with its chapters. A link to a note you haven't ticked is kept only when a note of that name is already here. So the footer counts those links, and **Select them** ticks the notes in one click. A note whose name is already taken is skipped, or replaced if you choose so. The import is confirmed before it runs, because it can't be undone, and a source in another language is pointed out when you choose it. A report lists whatever was skipped, dropped or failed.
 
 **Books in a series share a design.** The create form and the project manager can put a project in a series with a book number, and the project menu then groups the books together. The project manager lists them the same way, with each series folding like the archive, and the archive is grouped by series as well. A new book can start from another book's design. Every copy remembers where it came from, so **Update from series** works in both directions. The book that imported takes a sibling's later changes into the copies it hasn't edited. The book it imported from takes back what the sibling changed in those copies. Notes edited on both sides are listed and left alone unless you tick them. Chapters, pictures and tool records are brought once and never updated.
 
@@ -351,11 +360,11 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 
 ### Phones and tablets
 
-The plugin runs on Obsidian for iOS and Android. A tablet shows the desktop layout, with controls sized for a finger. On a phone, the dashboard's steps sit behind a **Steps** button, and every dialog opens at full width. Obsidian has no status bar on a phone, so the writing count and the writing session appear on the toolbars instead. The dashboard scrolls as one page, so a long cast or scene list runs down the screen under its search box.
+The plugin runs on Obsidian for iOS and Android. A tablet shows the desktop layout, with controls sized for a finger. On a phone, the dashboard's steps sit behind a **Steps** button, and every dialog opens at full width. Obsidian has no status bar on a phone, so the writing count and the writing session appear on the toolbars instead. The dashboard scrolls as one page, so a long cast or scene list runs down the screen under its search box. What you type is saved as soon as you switch to another app, since the system may close an app in the background without warning.
 
 A long press opens the menus a right-click opens on the desktop, and anything you can drag can also be arranged from a menu. In the stream, a long press selects text as usual, and the **Selection actions** button on the toolbar opens the plugin's menu for the selected words. On a phone, you read and answer the revision and foreshadowing cards in the **Margin cards** sidebar, since the margin beside the stream is too narrow. The **Contents** wheel is in a sidebar there for the same reason, with rows a finger high. A long press on a name opens its rename and delete menu, and so do the dots beside the current chapter.
 
-The visualization workspace, with its corkboard, freeform canvas, timeline, beat sheet and relationship graph, is for tablets and the desktop. A phone's screen leaves it no useful room, and the dashboard's tables still hold the scenes and characters. On a phone, floating sticky notes open in the sticky notes sidebar. The right-click menu in text boxes, notes beside the dashboard, hidden scrollbars and hidden tooltips stay desktop features. **Show mobile diagnostics** in the Command palette shows what your device reports to the plugin, with a button that copies the report for a bug report.
+The visualization workspace, with its corkboard, freeform canvas, timeline, beat sheet and relationship graph, is for tablets and the desktop. A phone's screen leaves it no useful room, and the dashboard's tables still hold the scenes and characters. On a phone, floating sticky notes open in the sticky notes sidebar. The right-click menu in text boxes, notes beside the dashboard, hidden scrollbars, hidden tooltips and screen recording stay desktop features. **Show mobile diagnostics** in the Command palette shows what your device reports to the plugin, with a button that copies the report for a bug report.
 
 <a id="guide"></a>
 
@@ -410,6 +419,7 @@ The visualization workspace, with its corkboard, freeform canvas, timeline, beat
 | Open relationship graph workspace | Open the visualization workspace to its relationship graph, with your characters and worldbuilding notes joined by the relationships you recorded. |
 | Open scene base | Open the Bases view of the current project's scenes. |
 | Open scenes and manuscript graph | Open Obsidian's own graph in a tab of its own, set to the project's scenes and the manuscript chapters they link to. |
+| Open screen recording settings | Open the plugin's settings on their Screen recording section. |
 | Open sticky note sidebar | Open the current project's sticky notes in their own sidebar. |
 | Open timeline workspace | Open the visualization workspace to its timeline, with each scene placed at the time it happens. |
 | Open visualization workspace | Open the current project's story structure in its own workspace. |
@@ -425,7 +435,9 @@ The visualization workspace, with its corkboard, freeform canvas, timeline, beat
 | Start a pomodoro writing session | Begin a session that alternates work periods with breaks. |
 | Start a stopwatch writing session | Begin a session that runs until you stop it. |
 | Start a writing session with options | Choose the timer, its length, and the writing stage before the session starts. |
+| Start screen recording | Start recording the screen with the tool and settings you chose. |
 | Stop editing the current manuscript note | Leave the note at the center of the page and return it to reading view. |
+| Stop screen recording | Stop the recording and save the video to your folder. |
 | Stop the writing session | End the running session and save its record. |
 | Switch statistics scope | Switch the statistics between the whole project and the manuscript alone. |
 | Toggle arrange mode in the file explorer | Start or stop dragging files and folders into your own order. |
@@ -452,7 +464,7 @@ The visualization workspace, with its corkboard, freeform canvas, timeline, beat
 | Update from series | Bring a sibling book's changes into the notes the two books share. |
 | Update notes in older format | Update every note written by an older release. |
 
-Commands that act on the manuscript are available only while a manuscript stream is the current view. **Split manuscript note at the cursor** also needs a note in the stream to be open for writing. **Toggle typewriter scrolling** works in the notes under the typography scope as well, and the focus mode commands work in your projects' notes. The two commands that copy or export the current note use the note at the center of the page. **Show mobile diagnostics** is offered only on a phone or a tablet. **Toggle opening notes beside the dashboard**, **Toggle scrollbars**, **Toggle tooltips** and the solo focus mode command aren't offered there. On a phone, neither are **Toggle the dashboard rail** and the commands that open the visualization workspace.
+Commands that act on the manuscript are available only while a manuscript stream is the current view. **Split manuscript note at the cursor** also needs a note in the stream to be open for writing. **Toggle typewriter scrolling** works in the notes under the typography scope as well, and the focus mode commands work in your projects' notes. The two commands that copy or export the current note use the note at the center of the page. **Show mobile diagnostics** is offered only on a phone or a tablet. **Toggle opening notes beside the dashboard**, **Toggle scrollbars**, **Toggle tooltips**, the solo focus mode command and the three screen recording commands aren't offered there. On a phone, neither are **Toggle the dashboard rail** and the commands that open the visualization workspace.
 
 <a id="settings"></a>
 
@@ -461,7 +473,7 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Setting | Default | Purpose |
 |---|---|---|
 | Project root folder | Vault root | Choose the folder that holds your projects, as a path relative to the Vault. |
-| Interface language | Follow project | Use the current project's language, Obsidian's language, English, or Simplified Chinese. |
+| Interface language | Follow project | Use the current project's language, Obsidian's language, or one of the eight languages. |
 | Default project language | System language | Set the language for new projects. |
 | Freeform mode | Off | Hide the ten steps and their progress. Characters and scenes join the worldbuilding list. |
 | Open notes beside the dashboard | On | Reuse one companion pane for the notes you open. |
@@ -524,7 +536,7 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Reading speed, CJK characters per minute | 400 | How fast the prose analysis assumes you read CJK characters. |
 | Custom stopwords | None | Words to leave out of the frequency count, on top of the built-in lists. One per line. |
 | Custom sensitive words | None | Terms that entity tracking looks for and counts. One per line. |
-| Dialogue quote styles | All four on | Which quote marks open dialogue: “ ”, " ", 「 」 and 『 』. |
+| Dialogue quote styles | All seven on | Which quote marks open dialogue: “ ”, " ", „ “, « », » «, 「 」 and 『 』. |
 | Custom highlight rules | None | Your own rules, as literal text or regular expressions, each shown in the color and decoration you choose. |
 | Read File recovery snapshots | On | Read the versions Obsidian's File recovery keeps. |
 | Export folder | Snowflake Export beside the projects | The folder where exported files are saved. A folder inside a project is not accepted. |
@@ -533,6 +545,15 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Preserve extra paragraph spacing | Off | Keep blank lines between paragraphs. |
 | Layout | One file | Export the manuscript as one file or as one file per note. |
 | Between notes | Blank line | What goes between notes when you export the manuscript as one file: a blank line, a line of dashes or three asterisks. |
+| Confirm before recording | On | Ask before each recording, with what a recording shows and costs. |
+| Recording tool | macOS native on a Mac, OBS Studio elsewhere | The program that records the screen: macOS's own recorder or OBS Studio. |
+| Save recordings to | In the vault | Keep recordings in the Vault, where sync carries them too, or outside it. |
+| Folder outside the vault | The system's video folder | Where recordings go. Choose another folder in the system's own dialog. |
+| Folder in the vault | Snowflake Recordings beside the projects | The Vault folder recordings go to. A folder inside a project is not accepted. |
+| What to record | Obsidian only | Obsidian alone, the screen it is on, every screen or, with OBS, what OBS shows. |
+| Port | 4455 | The port of OBS's WebSocket server. |
+| Password | None | The secret that holds OBS's server password. |
+| Video quality | 1080p | With OBS, record at Native, 2K, 1080p or 720p, or keep OBS's own size. |
 
 <a id="privacy"></a>
 
@@ -541,7 +562,8 @@ Commands that act on the manuscript are available only while a manuscript stream
 Snowflake Method for Obsidian is local-first. Your project files and plugin settings stay in your Vault. The plugin does not send your writing or your settings anywhere.
 
 - You don't need an account, a subscription, or any outside service.
-- The plugin makes no network requests and includes no AI service, telemetry, or analytics. A web link on the freeform canvas shows its address and loads nothing.
+- The plugin makes no requests to the internet and includes no AI service, telemetry, or analytics. A web link on the freeform canvas shows its address and loads nothing.
+- Screen recording is the one feature that reaches outside Obsidian. It starts macOS's own recorder, or opens OBS Studio and talks to it on the same computer. The video is saved in the folder you chose and is never sent anywhere.
 - **Show mobile diagnostics** only shows what your device reports. The report leaves the device only if you copy it and share it yourself.
 - Projects are made of ordinary files that work in Obsidian. You can still read and edit them when the plugin is turned off.
 
@@ -635,6 +657,8 @@ The numbered folders keep a project in order, but they make Obsidian's file expl
 
 Exporting writes plain-text files into `Snowflake Export`, a folder next to your projects like the archive. You can pick another folder in the settings, as long as it is outside the project. If a note has left the manuscript since an earlier export, its exported file is never deleted. A workspace exported as an Obsidian Canvas is the one exception. Its file goes next to the workspace's own file inside the project, as the layout above shows.
 
+A screen recording belongs to no project, so it is kept apart from them. By default it goes to `Snowflake Recordings`, a folder next to your projects like the archive. You can keep recordings outside the Vault instead, in your system's video folder or one you choose. Each file is named by the moment it began, such as `2026-11-19 14.30.05.mov`. When several screens or windows are recorded at once, each file has a number after its name. The recording's settings stay on the device and are not written into the Vault.
+
 A manuscript can be one note or many, in whatever folders suit you. Each note records its place with `snowflake-manuscript-sequence`, so moving or renaming a note never changes where it is read. The manuscript stream shows the notes in that order as a single page.
 
 The dashboard syncs only the text between a pair of managed section boundaries:
@@ -702,6 +726,8 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Card sizes on the corkboard, timeline and beat sheet (0.32.0)
 - [x] Timeline in the relationship graph (0.32.0)
 - [x] Contents wheel in the manuscript stream (0.32.0)
+- [x] Six more languages (0.33.0)
+- [x] Screen recording (0.33.0)
 
 <a id="development"></a>
 
@@ -792,7 +818,7 @@ The Freeform tab's canvas is built on [React Flow](https://reactflow.dev) (MIT, 
 
 **从一句话灵感到可动笔的小说方案，一步步完成雪花写作法。**
 
-一个中英双语、以 Markdown 为原生存储格式的 Obsidian 小说规划工作台。所有项目均保存在本地，即使停用插件，笔记依然可读、可编辑。
+一个支持多种语言、以 Markdown 为原生存储格式的 Obsidian 小说规划工作台。所有项目均保存在本地，即使停用插件，笔记依然可读、可编辑。
 
 <br />
 
@@ -867,6 +893,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 正文分析 | 从草稿中算出阅读时间、句数和对话占比，并找出你最常用的那些词。 |
 | 实体追踪 | 追踪每个角色、地点与物品在正文中的足迹，并在原处标出对它们的提及。 |
 | 修改历史 | 按日回看做过的事：Obsidian 保留的版本、写作时段，以及插件改动过的笔记、任务、伏笔和修订。 |
+| 屏幕录制 | 写作时用 macOS 自带的录屏工具或 OBS Studio 录下屏幕，留作文字出自你手的证明。 |
 | 任务看板 | 把待办的事情放上看板，既有你自己写下的任务，也有插件根据你的写作派生出的任务。 |
 | 修订 | 在正文旁提出替换、删除或插入的建议，只有接受后才会改动正文。 |
 | 伏笔 | 追踪一条线索从埋设到回收，在每一处落点上标出，并把它们汇总列出。 |
@@ -874,7 +901,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 文件列表增强 | 隐藏插件自己的文件，专注于一个项目，按自己的方式排列，还能显示字数。 |
 | 修订提醒 | 上游材料有变化时给出复核提示，不会打断写作。 |
 | 安全修复 | 检测项目结构问题，安全地补齐缺失的托管文件，不会覆盖正文。 |
-| 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
+| 八种语言 | 支持英文、简体中文、繁体中文、日文、韩文、法文、德文和西班牙文，界面语言与每个项目的模板语言可分别选择。 |
 | 手机和平板 | 在 iOS 和 Android 版的 Obsidian 上使用插件，版面随屏幕调整，凡是要拖动的都有菜单可用。 |
 
 ## 流程
@@ -1075,15 +1102,23 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 **修改历史**按日回看做过的事。这一页把三份记录合在一起：Obsidian 的文件恢复在你编辑时保留的版本、你的写作时段，以及插件替你改动过的笔记、任务、伏笔和修订。选一天、一周或一个月，这段时间发生的每件事都按日从新到旧列出。插件只保存每个版本的时间和字数，从不保存正文，从第一次读到它们时开始记。恢复某个版本在 Obsidian 自己的文件恢复对话框中进行，每一行都能打开它，筛选旁边的齿轮则打开文件恢复的设置。核心插件关闭时，这一页会提示，并能打开核心插件设置。
 
+### 屏幕录制
+
+**屏幕录制**在你写作时把屏幕录成视频。日后有人怀疑小说由 AI 生成，这段视频能说明文字是怎样写出来的。录屏不属于任何一个项目，所以它在功能区有自己的按钮：按一下开始，再按一下停止。开始之前，对话框会先说明录屏会拍下什么、要付出什么，勾选其中的**不再询问**就不再弹出。随后窗口中央倒数 3、2、1 才开始录制，倒数期间按 **Esc** 可以取消。录制期间按钮变红，状态栏里的时钟显示已经录了多久。录屏会拍下屏幕上的一切，分享之前请先自己看一遍。
+
+各项选择都在插件设置的**屏幕录制**一节里。Mac 上可以用 macOS 自带的录屏工具。Windows、macOS 和 Linux 上可以用 [OBS Studio](https://obsproject.com)，需要你自行安装。设置里有一份指引，带你打开 OBS 需要的那一个开关，**测试连接**会显示它将要录下的画面。此后 OBS 没有打开时，插件会替你打开它。录屏默认保存到项目旁的 **Snowflake Recordings**，同步会带上录屏文件（除非明确排除它们）。也可以改为保存到仓库之外的文件夹。
+
+录制内容默认是**仅 Obsidian**，也可以选**当前屏幕**、**所有屏幕**，使用 OBS 时还有**按 OBS Studio 中的设置**，只有这一种可能录到声音。**仅 Obsidian**也会录下移到独立窗口里的标签页。选**所有屏幕**时，macOS 自带的工具为每个屏幕各存一个文件，OBS 则把它们拼进同一段视频。使用 OBS 时，**视频质量**默认是 **1080p**，也可以选 **2K**、**720p**、按所录内容原本大小录制的**原生**，或者沿用 OBS 自己的尺寸。OBS 接受插件设置的尺寸每边最多 4096 像素，更大的屏幕会缩到这个尺寸。
+
 ### 导入与系列
 
 一个故事可以从另一个故事里长出来。工作台底部的项目菜单里有**从项目导入**，它把另一个项目的任何设计内容复制到你正在写的项目里：步骤文本、角色、场景、世界观笔记、词汇表、字段模板、图片和工具记录，勾选后还有正文。所有内容都以新笔记的形式落在这个项目的文件夹里，使用这个项目的语言，笔记之间的链接也都指向这些副本。
 
 <p align="center"><a href="assets/screenshots/import_from_project_cn.png"><img src="assets/screenshots/import_from_project_cn.png" width="100%" alt="在新项目的工作台上打开的从项目导入对话框：来源项目选了钟楼雪，笔记已存在时选了跳过，下面是搜索框和一棵带数量与复选框的分组树，角色一组已展开，列出勾选好的林晚、林知远、苏念、沈砚、顾婆婆和周明川。页脚数出四十三篇笔记和二十条工具记录，再写明链接到七篇未选择的笔记，旁边是选择它们，下面是取消和导入按钮。" /></a></p>
 
-**勾选你要的内容。** 每一组可以整组选取，也可以展开只挑几篇笔记，搜索框会缩小范围。正文默认不选，锚在正文里的修订只随它的章节一起过来。链接到你没有勾选的笔记时，只有这里已经有同名笔记，链接才会保留，所以页脚会数出这些链接，点一下**选择它们**就能把那些笔记勾上。名字已被占用的笔记会跳过，你也可以选择替换。导入前会先确认，因为它无法撤销，选中另一种语言的项目时也会先提醒。导入后的报告会列出跳过、丢弃和失败的内容。
+**勾选你要的内容。** 每一组可以整组选取，也可以展开只挑几篇笔记，搜索框会缩小范围。正文默认不选，锚在正文里的修订只随它的章节一起过来。链接到你没有勾选的笔记时，只有这里已经有同名笔记，链接才会保留，所以页脚会数出这些链接，点一下**选择它们**就能把那些笔记勾上。名字已被占用的笔记会跳过，你也可以选择替换。导入前会先确认，因为它无法撤销，选中其他语言的项目时也会先提醒。导入后的报告会列出跳过、丢弃和失败的内容。
 
-**同一系列的书共用一套设计。** 创建表单和项目管理器都可以把项目放进一个系列并编上册数，项目菜单会把同系列的书归在一起。项目管理器也按系列列出各册，每个系列都能像归档区一样折叠，归档区同样按系列归组。新的一册可以从另一册的设计起步。每个副本都记得自己来自哪里，所以之后用**从系列更新**，两个方向都行：导入的一册把姊妹卷后来的改动带进自己没改过的副本，被导入的一册则把姊妹卷在副本里的改动收回来。两边都改过的笔记会单独列出，不勾选就不会动。章节、图片和工具记录只导入一次，不会更新。
+**同一系列的书共用一套设计。** 创建表单和项目管理器都可以把项目放进一个系列并编上册次，项目菜单会把同系列的书归在一起。项目管理器也按系列列出各册，每个系列都能像归档区一样折叠，归档区同样按系列归组。新的一册可以从另一册的设计起步。每个副本都记得自己来自哪里，所以之后用**从系列更新**，两个方向都行：导入的一册把姊妹卷后来的改动带进自己没改过的副本，被导入的一册则把姊妹卷在副本里的改动收回来。两边都改过的笔记会单独列出，不勾选就不会动。章节、图片和工具记录只导入一次，不会更新。
 
 ## 安装
 
@@ -1114,11 +1149,11 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 ### 手机和平板
 
-插件可以在 iOS 和 Android 版的 Obsidian 上使用。平板显示与桌面端相同的版面，控件放大到适合手指的尺寸。手机上，工作台的各步收在**步骤**按钮后面，每个对话框都占满屏幕宽度。Obsidian 在手机上没有状态栏，所以字数和写作时段改为显示在工具栏上。工作台作为一整页滚动，长长的角色表和场景表在搜索框下面一路排开。
+插件可以在 iOS 和 Android 版的 Obsidian 上使用。平板显示与桌面端相同的版面，控件放大到适合手指的尺寸。手机上，工作台的各步收在**步骤**按钮后面，每个对话框都占满屏幕宽度。Obsidian 在手机上没有状态栏，所以字数和写作时段改为显示在工具栏上。工作台作为一整页滚动，长长的角色表和场景表在搜索框下面一路排开。切换到其他应用时，你写下的内容会立刻保存，因为系统可能不打招呼就在后台关掉应用。
 
 长按可以打开桌面端用右键打开的菜单，凡是能拖动排列的，也都能在菜单里排列。在正文流里长按照常选择文字，工具栏上的**选中文字操作**按钮会为选中的文字打开插件的菜单。手机上正文流旁的页边太窄，修订和伏笔卡片改在**页边卡片**侧边栏里阅读和处理。**目录**滚轮也因此放在侧边栏里，每一行都够手指点按。长按章节名可以打开重命名和删除的菜单，点击当前章节旁边的三个点也可以。
 
-可视化工作区，包括卡片看板、自由画布、时间线、节拍表和关系图，只在平板和桌面端提供。手机屏幕留不出值得探索的空间，场景和角色仍在工作台的表格里。浮动便签在手机上改为在便签侧边栏中打开。文本框里的右键菜单、在工作台旁打开笔记、隐藏滚动条和隐藏工具提示仍是桌面端的功能。命令面板中的**显示移动端诊断**会显示设备向插件报告的信息，并提供复制报告的按钮，方便提交问题。
+可视化工作区，包括卡片看板、自由画布、时间线、节拍表和关系图，只在平板和桌面端提供。手机屏幕留不出值得探索的空间，场景和角色仍在工作台的表格里。浮动便签在手机上改为在便签侧边栏中打开。文本框里的右键菜单、在工作台旁打开笔记、隐藏滚动条、隐藏工具提示和屏幕录制仍是桌面端的功能。命令面板中的**显示移动端诊断**会显示设备向插件报告的信息，并提供复制报告的按钮，方便提交问题。
 
 ## 指南
 
@@ -1183,10 +1218,13 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 新建任务 | 在当前项目的任务看板上添加一条任务。 |
 | 新建便签 | 在当前项目中新建一张便签，并在悬浮面板中打开它。 |
 | 打开便签侧边栏 | 在独立的侧栏中打开当前项目的便签。 |
-| 切换数据统计范围 | 让统计范围在整个项目和仅正文稿之间切换。 |
+| 切换数据统计范围 | 让统计范围在整个项目和仅正文之间切换。 |
 | 打开修改历史 | 打开数据统计面板的修改历史标签页。 |
+| 开始屏幕录制 | 按你选好的工具和设置开始录制屏幕。 |
+| 停止屏幕录制 | 停止录制，把视频保存到你选的文件夹。 |
+| 打开屏幕录制设置 | 打开插件设置里的屏幕录制一节。 |
 | 切换写作时段外的字数记录 | 开启或关闭写作时段以外的字数记录。 |
-| 统计项目字数 | 报告当前项目的字数，整个项目和仅正文稿各给出一份。 |
+| 统计项目字数 | 报告当前项目的字数，整个项目和仅正文各给出一份。 |
 | 将专注模式设为关／开／深度／仅正文 | 每一档各有一条命令，直接切到那一档专注深度。 |
 | 切换打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 切换自定义高亮 | 让你自己的高亮规则在正文中生效，或者暂时收起来。 |
@@ -1211,14 +1249,14 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 切换文件列表中的字数 | 显示或隐藏每篇笔记和每个文件夹旁的字数。 |
 | 显示移动端诊断 | 在手机或平板上显示设备报告的信息，可以复制下来。 |
 
-与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。**切换打字机滚动**在排版范围内的笔记里也能使用。设置专注模式的四条命令，在项目里的笔记中也能使用。两条针对当前笔记的命令，作用于页面正中的那一篇。**显示移动端诊断**只在手机和平板上提供。**切换在工作台旁打开笔记**、**切换滚动条**、**切换工具提示**和设为仅正文的专注模式命令在那里不提供。手机上也不提供**切换工作台导航栏**和打开可视化工作区的各条命令。
+与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。**切换打字机滚动**在排版范围内的笔记里也能使用。设置专注模式的四条命令，在项目里的笔记中也能使用。两条针对当前笔记的命令，作用于页面正中的那一篇。**显示移动端诊断**只在手机和平板上提供。**切换在工作台旁打开笔记**、**切换滚动条**、**切换工具提示**、设为仅正文的专注模式命令和三条屏幕录制命令在那里不提供。手机上也不提供**切换工作台导航栏**和打开可视化工作区的各条命令。
 
 ## 设置
 
 | 设置 | 默认值 | 用途 |
 |---|---|---|
 | 项目根目录 | 仓库根目录 | 选择存放项目的父文件夹，路径相对于仓库。 |
-| 界面语言 | 跟随项目 | 跟随当前项目或 Obsidian，也可以固定为英文或简体中文。 |
+| 界面语言 | 跟随项目 | 跟随当前项目或 Obsidian，也可以固定为八种语言之一。 |
 | 默认项目语言 | 系统语言 | 新建项目时，模板使用哪种语言。 |
 | 自由模式 | 关闭 | 隐藏十个步骤和进度。角色和场景会并入世界观列表。 |
 | 在工作台旁打开笔记 | 开启 | 长篇笔记都在工作台旁的同一个固定分栏里打开。 |
@@ -1276,12 +1314,12 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 在写作时段之外记录字数 | 开启 | 没开写作时段时写下的字数，也照样记录。和时间有关的统计仍然只来自写作时段。 |
 | 数据统计范围 | 整个项目 | 写作统计显示哪一部分的字数。 |
 | 每日目标：整个项目 | 6000 | 整个项目每天要净增多少字。设为 0 就关闭这个目标。 |
-| 每日目标：仅正文稿 | 4000 | 正文稿每天要净增多少字。设为 0 就关闭这个目标。 |
+| 每日目标：仅正文 | 4000 | 正文每天要净增多少字。设为 0 就关闭这个目标。 |
 | 阅读速度（词/分钟） | 250 | 正文分析估算阅读时间时，按每分钟读多少个词来算。 |
 | 阅读速度（字/分钟） | 400 | 正文分析估算阅读时间时，按每分钟读多少个中日韩文字来算。 |
 | 自定义停用词 | 无 | 内置词表之外，词频统计还要排除的词。每行一个。 |
 | 自定义敏感词 | 无 | 实体追踪要留意并统计的词。每行一个。 |
-| 对话引号样式 | 四种全部开启 | 哪些引号算作一段对话的开头：“ ”、" "、「 」和『 』。 |
+| 对话引号样式 | 七种全部开启 | 哪些引号算作一段对话的开头：“ ”、" "、„ “、« »、» «、「 」和『 』。 |
 | 自定义高亮规则 | 无 | 你自己定的规则，用文本或正则表达式来写，颜色和装饰都由你选。 |
 | 读取文件恢复快照 | 开启 | 读取 Obsidian 文件恢复保留的笔记版本。 |
 | 导出文件夹 | 项目旁的 Snowflake Export | 导出文件存放的文件夹。不能设为项目内部的文件夹。 |
@@ -1290,13 +1328,23 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 保留段落间空行 | 关闭 | 保留段落之间的空行。 |
 | 布局 | 一个文件 | 把正文导出为一个文件，或者每篇笔记各导出一个文件。 |
 | 笔记之间 | 空行 | 导出为一个文件时，笔记之间用什么分隔：空行、一行短横线或三个星号。 |
+| 录制前确认 | 开启 | 每次开始录制前，先用对话框说明录屏的用途与风险。 |
+| 录制工具 | Mac 上为 macOS 原生，其他系统为 OBS Studio | 用来录屏的程序：macOS 自带的录屏工具或 OBS Studio。 |
+| 录屏保存位置 | 仓库之内 | 把录屏保存在仓库里，同步也会带上它们，或者保存在仓库之外。 |
+| 仓库之外的文件夹 | 系统的视频文件夹 | 录屏存放的位置。可以在系统的文件夹对话框里另选一个。 |
+| 仓库里的文件夹 | 项目旁的 Snowflake Recordings | 录屏存放的仓库文件夹。不能设为项目内部的文件夹。 |
+| 录制内容 | 仅 Obsidian | 仅 Obsidian、Obsidian 所在的屏幕、所有屏幕，使用 OBS 时还可以按 OBS Studio 中的设置。 |
+| 端口 | 4455 | OBS 的 WebSocket 服务器端口。 |
+| 密码 | 无 | 保存 OBS 服务器密码的密钥。 |
+| 视频质量 | 1080p | 使用 OBS 时，可选原生、2K、1080p 或 720p，或者沿用 OBS 自己的尺寸。 |
 
 ## 隐私
 
 Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设置都留在你的仓库里，插件不会向外传送你的创作内容或配置。
 
 - 不需要注册账号、订阅，也不需要连接外部服务。
-- 插件不会发起网络请求，也不包含 AI 服务、遥测或数据分析。自由画布上的网页链接只显示网址，不会抓取任何内容。
+- 插件不会向互联网发起任何请求，也不包含 AI 服务、遥测或数据分析。自由画布上的网页链接只显示网址，不会抓取任何内容。
+- 只有屏幕录制会用到 Obsidian 以外的程序。它会启动 macOS 自带的录屏工具，或者打开本机的 OBS Studio 并与它通信。视频保存在你选定的文件夹里，不会发送到任何地方。
 - **显示移动端诊断**只把设备报告的信息显示出来。只有你自己复制并分享时，这份报告才会离开设备。
 - 项目用的都是 Obsidian 兼容的文件。停用插件后，内容照样可以正常阅读和编辑。
 
@@ -1388,6 +1436,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 导出会把纯文本文件写进 `Snowflake Export`。它和归档文件夹一样，与各个项目放在同一层。如果你在设置里另指定了一个项目之外的文件夹，就会写到那里。以前导出过、后来又从正文中移走的笔记，它导出的文件不会被删除。导出为 Obsidian 白板是唯一的例外，它的文件会放在项目内工作区自己的文件旁边，如上面的目录所示。
 
+录屏不属于任何一个项目，所以和项目分开存放。默认写进 `Snowflake Recordings`，它和归档文件夹一样，与各个项目放在同一层。也可以改为保存在仓库之外，放进系统的视频文件夹或你选的文件夹。每个文件以开始录制的时刻命名，例如 `2026-11-19 14.30.05.mov`。同时录下多个屏幕或窗口时，每个文件的名称后面带有编号。录屏的设置只保存在本设备上，不写进仓库。
+
 正文可以只有一篇笔记，也可以有很多篇，文件夹怎么组织都行。每篇笔记都用 `snowflake-manuscript-sequence` 记下自己的位置，所以移动或重命名笔记，都不会改变它的阅读顺序。正文流会按这个顺序，把它们连成一整页来显示。
 
 工作台只同步一对托管区段边界之间的文字：
@@ -1453,6 +1503,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 卡片看板、时间线和节拍表的卡片大小 (0.32.0)
 - [x] 关系图的时间轴 (0.32.0)
 - [x] 正文流的目录滚轮 (0.32.0)
+- [x] 新增六种语言 (0.33.0)
+- [x] 屏幕录制 (0.33.0)
 
 ## 开发
 
