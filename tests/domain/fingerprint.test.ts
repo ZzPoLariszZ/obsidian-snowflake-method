@@ -45,6 +45,42 @@ describe('stable content fingerprints', () => {
 		expect(stableSerialize(-0)).not.toBe(stableSerialize(0));
 	});
 
+	it('gives the values the two separate passes gave', () => {
+		// Notes keep the fingerprints they were reviewed at, so the hash may
+		// be made faster and never different. This is the hash as it was
+		// first written: one whole walk of the text for each seed.
+		const pass = (input: string, seed: number): number => {
+			let hash = seed >>> 0;
+			for (let index = 0; index < input.length; index += 1) {
+				const codeUnit = input.charCodeAt(index);
+				hash ^= codeUnit & 0xff;
+				hash = Math.imul(hash, 0x01000193);
+				hash ^= codeUnit >>> 8;
+				hash = Math.imul(hash, 0x01000193);
+			}
+			return hash >>> 0;
+		};
+		const hex = (value: number): string => value.toString(16).padStart(8, '0');
+		const twoPasses = (value: unknown): string => {
+			const serialized = stableSerialize(value);
+			return `fp1-${hex(pass(serialized, 0x811c9dc5))}${hex(pass(serialized, 0x9e3779b9))}`;
+		};
+		const values: unknown[] = [
+			'',
+			'a',
+			'雪花 ❄️ 钟楼雪',
+			'\u0000\uffff\ud83d\ude00',
+			{ step: 3, character: { name: 'Lin', goal: 'Return home' }, tags: ['lead', 'pov'] },
+			[1, -0, Number.NaN, null, undefined, true, 10n],
+			Array.from({ length: 400 }, (_, index) => ({ id: `scene-${String(index)}`, rank: index * 1024, title: '第' + String(index) + '场' })),
+			'x'.repeat(70_000),
+		];
+		for (const value of values) expect(fingerprint(value)).toBe(twoPasses(value));
+		// Pinned as well, so a change to the serialization shows up here too.
+		expect(fingerprint('')).toBe(twoPasses(''));
+		expect(fingerprint({ a: 1 })).toMatch(/^fp1-[0-9a-f]{16}$/u);
+	});
+
 	it('rejects circular or non-data values', () => {
 		const circular: { self?: unknown } = {};
 		circular.self = circular;

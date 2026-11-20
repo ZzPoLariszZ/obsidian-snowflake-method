@@ -335,6 +335,17 @@ export class StickyNoteFloatLayer {
 		this.takeDown(id, panel);
 	}
 
+	/**
+	 * Every panel's place written to the device's memory now, where one was
+	 * still waiting on its timer; nothing is taken down. For a quit, where
+	 * the timer may not get to fire.
+	 */
+	settle(): void {
+		for (const [id, panel] of this.panels) {
+			if (panel.persistTimer !== null) this.flushPersist(id, panel);
+		}
+	}
+
 	private takeDown(id: string, panel: FloatingPanel): void {
 		this.panels.delete(id);
 		if (panel.persistTimer !== null) {

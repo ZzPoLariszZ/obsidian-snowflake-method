@@ -738,4 +738,160 @@ describe("VaultRepository", () => {
     expect(await repository.readManaged(sibling.path)).not.toBe(keptSibling);
     expect(await repository.readManaged(outside.path)).toBe(keptOutside);
   });
+
+  it("hands a walk every folder and file below a folder, once each, and nothing above it", async () => {
+    await fakeVault.seedFile("Projects/Novel/40_Scene/One.md", "one");
+    await fakeVault.seedFile("Projects/Novel/40_Scene/Deep/Down/Two.md", "two");
+    await fakeVault.seedFile("Projects/Novel/Loose.canvas", "{}");
+    await fakeVault.seedFile("Projects/Other/Elsewhere.md", "no");
+    const folders: string[] = [];
+    const files: string[] = [];
+    repository.visitBelow(
+      "Projects/Novel",
+      (folder) => folders.push(folder.path),
+      (file) => files.push(file.path),
+    );
+    expect(folders.sort()).toEqual([
+      "Projects/Novel/40_Scene",
+      "Projects/Novel/40_Scene/Deep",
+      "Projects/Novel/40_Scene/Deep/Down",
+    ]);
+    expect(files.sort()).toEqual([
+      "Projects/Novel/40_Scene/Deep/Down/Two.md",
+      "Projects/Novel/40_Scene/One.md",
+      "Projects/Novel/Loose.canvas",
+    ]);
+    // The same files the sorted listing names, which the walk replaces where order is nothing.
+    expect(files).toEqual(repository.listFilesBelow("Projects/Novel").map((file) => file.path));
+    const nothing: string[] = [];
+    repository.visitBelow("Projects/Missing", (folder) => nothing.push(folder.path), (file) => nothing.push(file.path));
+    expect(nothing).toEqual([]);
+  });
+
+  it("counts the vault's changes while it listens, and says it cannot once it stops", async () => {
+    expect(repository.treeVersion).toBeNull();
+    await fakeVault.seedFile("Projects/Novel/One.md", "one");
+    expect(repository.treeVersion).toBeNull();
+    const stop = repository.watch();
+    expect(repository.treeVersion).toBe(0);
+    fakeVault.write("Projects/Novel/One.md", "one!");
+    expect(repository.treeVersion).toBe(1);
+    await repository.updatePlainFile("Projects/Novel/One.md", (text) => `${text}?`);
+    expect(repository.treeVersion).toBe(2);
+    // A transform that hands its input back writes nothing, and moves nothing.
+    await repository.updatePlainFile("Projects/Novel/One.md", (text) => text);
+    expect(repository.treeVersion).toBe(2);
+    stop();
+    expect(repository.treeVersion).toBeNull();
+    fakeVault.write("Projects/Novel/One.md", "one!!");
+    expect(repository.treeVersion).toBeNull();
+    expect(fakeVault.listenerCount()).toBe(0);
+  });
+
+  it("says while a change is on its way to the vault, and when every one has landed", async () => {
+    await fakeVault.seedFile("Projects/Novel/One.md", "one");
+    await fakeVault.seedFile("Projects/Novel/Two.md", "two");
+    expect(repository.writing).toBe(false);
+    await repository.whenWritten();
+
+    const first = repository.updatePlainFile("Projects/Novel/One.md", (text) => `${text}!`);
+    const second = repository.updatePlainFile("Projects/Novel/Two.md", (text) => `${text}!`);
+    expect(repository.writing).toBe(true);
+    let landed = false;
+    const waited = repository.whenWritten().then(() => {
+      landed = true;
+    });
+    await first;
+    await second;
+    await waited;
+    expect(landed).toBe(true);
+    expect(repository.writing).toBe(false);
+    expect(fakeVault.contents.get("Projects/Novel/One.md")).toBe("one!");
+    expect(fakeVault.contents.get("Projects/Novel/Two.md")).toBe("two!");
+
+    // A write that fails is over all the same: nothing waits on it for good.
+    fakeVault.failNextProcessPath = "Projects/Novel/One.md";
+    const failing = repository.updatePlainFile("Projects/Novel/One.md", (text) => `${text}?`);
+    expect(repository.writing).toBe(true);
+    await expect(failing).rejects.toThrow(/Simulated process failure/u);
+    expect(repository.writing).toBe(false);
+    await repository.whenWritten();
+
+    // Managed writes, creations and folders are counted the same way.
+    const created = repository.createManagedFile({
+      userInput: false,
+      path: "Projects/Novel/40_Scene/Made.md",
+      template: { body: "# Made\n", sections: [] },
+      frontmatter: { "snowflake-document": "scene", "snowflake-project-id": "project-1" },
+    });
+    expect(repository.writing).toBe(true);
+    await created;
+    expect(repository.writing).toBe(false);
+  });
+
+  it("tells a record a write has overtaken from the note as it stands", async () => {
+    const created = await repository.createManagedFile({
+      userInput: false,
+      path: "Projects/Novel/40_Scene/One.md",
+      template: { body: "# One\n", sections: [] },
+      frontmatter: { "snowflake-document": "scene", "snowflake-project-id": "project-1" },
+    });
+    const record = await repository.readManaged(created.path);
+    expect(repository.isCurrent(record)).toBe(true);
+    fakeVault.write(created.path, `${fakeVault.contents.get(created.path) ?? ""}more\n`);
+    expect(repository.isCurrent(record)).toBe(false);
+    const reread = await repository.readManaged(created.path);
+    expect(repository.isCurrent(reread)).toBe(true);
+    expect(repository.isCurrent(record)).toBe(false);
+    repository.forget(created.path);
+    expect(repository.isCurrent(reread)).toBe(false);
+    fakeVault.delete(created.path);
+    expect(repository.isCurrent(reread)).toBe(false);
+  });
+
+  it("keeps one entry for a note while the index keeps one parse of it", async () => {
+    // The app's index hands back the same parsed object until it reads the
+    // note again; the fake's makes a new one per asking. This stands in for
+    // the app's, so that what is kept can be told from what is made.
+    const environment = createFakeEnvironment();
+    const parses = new Map<string, Record<string, unknown>>();
+    const parse = (path: string, fields: Record<string, unknown>): void => {
+      parses.set(path, { ...fields, position: { start: { line: 0 }, end: { line: 3 } } });
+    };
+    const indexed = new VaultRepository(environment.vault, environment.fileManager, {
+      getFileCache: (file: { path: string }) => {
+        const frontmatter = parses.get(file.path);
+        return frontmatter === undefined ? null : { frontmatter };
+      },
+      getFirstLinkpathDest: () => null,
+    } as never);
+    const fields = { "snowflake-document": "draft", "snowflake-project-id": "project-1", "snowflake-schema": SCHEMA_VERSION };
+    await environment.fakeVault.seedFile("Novel/50_Manuscript/One.md", "---\n{}\n---\none");
+    await environment.fakeVault.seedFile("Novel/50_Manuscript/Two.md", "---\n{}\n---\ntwo");
+    parse("Novel/50_Manuscript/One.md", fields);
+    parse("Novel/50_Manuscript/Two.md", fields);
+
+    const first = await indexed.listManagedEntriesBelow("Novel/50_Manuscript", "draft", "project-1");
+    const again = await indexed.listManagedEntriesBelow("Novel/50_Manuscript", "draft", "project-1");
+    expect(first.map((entry) => entry.path)).toEqual(["Novel/50_Manuscript/One.md", "Novel/50_Manuscript/Two.md"]);
+    expect(again[0]).toBe(first[0]);
+    expect(again[1]).toBe(first[1]);
+    // The block's own position never reaches an entry.
+    expect(first[0]?.frontmatter).toEqual(fields);
+
+    // The index read one note again: that note's entry is made anew, and says the new thing.
+    parse("Novel/50_Manuscript/One.md", { ...fields, "snowflake-sequence": 7 });
+    const after = await indexed.listManagedEntriesBelow("Novel/50_Manuscript", "draft", "project-1");
+    expect(after[0]).not.toBe(first[0]);
+    expect(after[0]?.frontmatter["snowflake-sequence"]).toBe(7);
+    expect(after[1]).toBe(first[1]);
+
+    // A renamed file keeps its parse, and its entry must still name it rightly.
+    environment.fakeVault.rename("Novel/50_Manuscript/Two.md", "Novel/50_Manuscript/Zed.md");
+    parses.set("Novel/50_Manuscript/Zed.md", parses.get("Novel/50_Manuscript/Two.md") ?? {});
+    parses.delete("Novel/50_Manuscript/Two.md");
+    const renamed = await indexed.listManagedEntriesBelow("Novel/50_Manuscript", "draft", "project-1");
+    expect(renamed.map((entry) => entry.path)).toEqual(["Novel/50_Manuscript/One.md", "Novel/50_Manuscript/Zed.md"]);
+    expect(renamed[1]).not.toBe(first[1]);
+  });
 });

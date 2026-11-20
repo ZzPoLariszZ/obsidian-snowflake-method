@@ -1,6 +1,5 @@
 import {
   getLinkpath,
-  normalizePath,
   stringifyYaml,
   type FileManager,
   type MetadataCache,
@@ -43,6 +42,7 @@ import {
   schemaVersionOf,
   type ManagedFrontmatter,
 } from "./frontmatter";
+import { normalizePath } from "./normalize-path";
 
 export interface ManagedFileRecord {
   file: TFile;
@@ -134,6 +134,52 @@ export class VaultRepository {
     readonly fileManager: FileManager,
     readonly metadataCache: MetadataCache,
   ) {}
+
+  /**
+   * How many changes the vault has announced since this repository began to
+   * listen, or null while nothing is listening.
+   *
+   * The vault moves its tree in one place only, and tells of the move in the
+   * same breath: a file's path, its modification time and its size change
+   * inside the very call that fires `create`, `modify`, `delete` or
+   * `rename`, with no wait between the two. So while this number stands
+   * still, nothing read off the tree can have moved either, and whatever
+   * was worked out from the tree at that number still holds. A caller that
+   * keeps such an answer keeps the number beside it. Null means the count
+   * cannot be trusted, and every answer is worked out afresh as it always
+   * was: a bare repository, such as a test builds, is never wrong for want
+   * of a listener.
+   */
+  private changes: number | null = null;
+
+  /** The count of vault changes heard so far, or null while nothing listens. */
+  get treeVersion(): number | null {
+    return this.changes;
+  }
+
+  /**
+   * Begins to count the vault's changes, and returns what stops the count.
+   * Called once the vault can be listened to, before anything is kept by
+   * the count. Stopping forgets the count, so what was kept by it is worked
+   * out again rather than trusted past the last change that was heard.
+   */
+  watch(): () => void {
+    const moved = (): void => {
+      if (this.changes !== null) this.changes += 1;
+    };
+    const { vault } = this;
+    const refs = [
+      vault.on("create", moved),
+      vault.on("modify", moved),
+      vault.on("delete", moved),
+      vault.on("rename", moved),
+    ];
+    this.changes = 0;
+    return () => {
+      for (const ref of refs) vault.offref(ref);
+      this.changes = null;
+    };
+  }
 
   normalize(path: string): string {
     const trimmed = path.trim();
@@ -234,7 +280,7 @@ export class VaultRepository {
         continue;
       }
       try {
-        await this.vault.createFolder(current);
+        await this.tracked(() => this.vault.createFolder(current));
       } catch (error) {
         // A concurrent creator may have won the race. Re-read before failing.
         const raced = this.vault.getAbstractFileByPath(current);
@@ -256,7 +302,7 @@ export class VaultRepository {
     if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
     await this.ensureFolder(parentOf(destinationPath));
     try {
-      await this.fileManager.renameFile(file, destinationPath);
+      await this.tracked(() => this.fileManager.renameFile(file, destinationPath));
     } catch (error) {
       if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
       throw error;
@@ -268,7 +314,7 @@ export class VaultRepository {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
-    await this.fileManager.trashFile(file);
+    await this.tracked(() => this.fileManager.trashFile(file));
   }
 
   /**
@@ -287,7 +333,7 @@ export class VaultRepository {
     if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
     await this.ensureFolder(parentOf(destinationPath));
     try {
-      await this.fileManager.renameFile(folder, destinationPath);
+      await this.tracked(() => this.fileManager.renameFile(folder, destinationPath));
     } catch (error) {
       if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
       throw error;
@@ -299,7 +345,7 @@ export class VaultRepository {
     const normalized = this.normalize(path);
     const folder = this.getFolder(normalized);
     if (!folder) throw new ManagedFileNotFoundError(normalized);
-    await this.fileManager.trashFile(folder);
+    await this.tracked(() => this.fileManager.trashFile(folder));
   }
 
   /**
@@ -343,9 +389,44 @@ export class VaultRepository {
   ): Promise<T> {
     this.writingPaths.add(path);
     try {
-      return await write();
+      return await this.tracked(write);
     } finally {
       this.writingPaths.delete(path);
+    }
+  }
+
+  /**
+   * How many changes this repository has on their way to the vault. A quit
+   * asks: the app gives a closing window three seconds and then takes it
+   * away whatever is still being written, so what the plugin set going has
+   * to be waited for by name rather than hoped for.
+   */
+  private writesUnderWay = 0;
+
+  private readonly writesAwaited: (() => void)[] = [];
+
+  /** Whether a change is on its way to the vault through this repository. */
+  get writing(): boolean {
+    return this.writesUnderWay > 0;
+  }
+
+  /** Resolves once no change is on its way: at once where none is. */
+  whenWritten(): Promise<void> {
+    if (this.writesUnderWay === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.writesAwaited.push(resolve);
+    });
+  }
+
+  private async tracked<T>(write: () => Promise<T>): Promise<T> {
+    this.writesUnderWay += 1;
+    try {
+      return await write();
+    } finally {
+      this.writesUnderWay -= 1;
+      if (this.writesUnderWay === 0) {
+        for (const landed of this.writesAwaited.splice(0)) landed();
+      }
     }
   }
 
@@ -402,6 +483,25 @@ export class VaultRepository {
   }
 
   /**
+   * Whether a record is still the note as the vault holds it: the same
+   * file, unmoved since the record was read. A record handed over a moment
+   * ago can be asked this before something is built on it, so that what is
+   * built is never the note as it stood and the tree as it stands.
+   */
+  isCurrent(record: ManagedFileRecord): boolean {
+    const file = this.getFile(record.path);
+    const kept = this.records.get(record.path);
+    return (
+      file !== null &&
+      kept !== undefined &&
+      kept.record === record &&
+      kept.mtime === file.stat.mtime &&
+      kept.size === file.stat.size &&
+      record.file === file
+    );
+  }
+
+  /**
    * Lets go of what the cache holds for a path the vault no longer has: a
    * deleted file's record, or with `children`, every record under a folder
    * that was renamed or deleted. Records hold their file's whole text, so a
@@ -441,7 +541,9 @@ export class VaultRepository {
     }
     const path = existing ? this.resolveUniquePath(requestedPath) : requestedPath;
 
-    const file = await this.vault.create(path, options.template.body);
+    const file = await this.tracked(() =>
+      this.vault.create(path, options.template.body),
+    );
     await this.updateFrontmatter(file.path, {
       ...options.frontmatter,
       "snowflake-schema": SCHEMA_VERSION,
@@ -465,7 +567,7 @@ export class VaultRepository {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
-    await this.vault.process(file, transform);
+    await this.tracked(() => this.vault.process(file, transform));
   }
 
   /** Reads a plain generated file whole, or null when it is not there. */
@@ -488,7 +590,7 @@ export class VaultRepository {
     const destination = existing
       ? this.resolveUniquePath(requestedPath)
       : requestedPath;
-    return this.vault.create(destination, content);
+    return this.tracked(() => this.vault.create(destination, content));
   }
 
   async replaceManagedFile(
@@ -1004,6 +1106,32 @@ export class VaultRepository {
     return files.sort((left, right) => left.path.localeCompare(right.path, "en"));
   }
 
+  /**
+   * Every folder and every file below a folder, each handed over once, in
+   * no promised order and with no list built. For a caller that folds the
+   * subtree into a sum, where the order cannot matter and sorting seven
+   * thousand paths to throw the order away was most of the walk's cost.
+   */
+  visitBelow(
+    folderPath: string,
+    visitFolder: (folder: TFolder) => void,
+    visitFile: (file: TFile) => void,
+  ): void {
+    const root = this.getFolder(folderPath);
+    if (!root) return;
+    const visit = (node: TFolder): void => {
+      for (const child of node.children) {
+        if (isFolder(child)) {
+          visitFolder(child);
+          visit(child);
+        } else if (isFile(child)) {
+          visitFile(child);
+        }
+      }
+    };
+    visit(root);
+  }
+
   listDirectFolders(folderPath: string): TFolder[] {
     const folder = this.getFolder(folderPath);
     if (!folder) return [];
@@ -1110,18 +1238,44 @@ export class VaultRepository {
       const record = await this.tryReadManaged(file.path);
       return record === null ? null : toEntry(record);
     }
+    // The index hands the same parsed object back until it reads the note
+    // again, so the entry made from it stands until then too. Checked
+    // against the file's path as well: the index keeps one parse for every
+    // note with the same text, and a renamed file keeps its parse.
+    const kept = this.entries.get(file);
+    if (
+      kept !== undefined &&
+      kept.source === cached.frontmatter &&
+      kept.entry.path === file.path
+    ) {
+      return kept.entry;
+    }
     // Obsidian hangs the frontmatter block's own position off the object it
     // parsed. Left in, it would be a key nothing wrote and nothing should see.
     const { position, ...frontmatter } = cached.frontmatter;
     void position;
-    return {
+    const entry: ManagedEntryRecord = {
       file,
       path: file.path,
       frontmatter,
       schemaVersion: schemaVersionOf(frontmatter),
       readOnly: isReadOnlySchema(frontmatter),
     };
+    this.entries.set(file, { source: cached.frontmatter, entry });
+    return entry;
   }
+
+  /**
+   * The entry last made for each file, with the index's own parse it was
+   * made from. A project is listed several times in one refresh, and each
+   * listing copied every note's frontmatter anew: seven thousand objects
+   * made and thrown away per listing. Shared and never edited, as the
+   * records are.
+   */
+  private readonly entries = new WeakMap<
+    TFile,
+    { source: object; entry: ManagedEntryRecord }
+  >();
 
   private async matchManagedFiles(
     files: readonly TFile[],

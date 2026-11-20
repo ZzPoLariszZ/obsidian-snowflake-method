@@ -23,6 +23,7 @@ import { statusOptions, type CardSelectOption } from './corkboard-layout';
 import { resolveGalleryPicture } from './gallery-links';
 import type { Translate } from './modals';
 import { paintCount } from './pane-parts';
+import { writeUnderWay } from './pending-writes';
 import { PROSE_BOX_CLASS, ProseBox } from './prose-box';
 import { renderStickySwatches } from './sticky-note-card';
 
@@ -291,6 +292,11 @@ export interface WriteOptions {
 	reportError?: boolean;
 	/** Whether the read that follows the action is wanted; true when absent. */
 	shouldRefresh?: () => boolean;
+	/**
+	 * True for an action that waits on a person, as an open form does. It is
+	 * no write on its way, and a quit is not held for it.
+	 */
+	waits?: boolean;
 }
 
 /**
@@ -470,12 +476,13 @@ export function createMemberCardDeck<
 		});
 		// A modal receives its own rejection, without poisoning later writes.
 		queue = run.catch(() => undefined);
-		return run;
+		// Noted until it lands: a quit waits for the writes still queued.
+		return options.waits === true ? run : writeUnderWay(run);
 	};
 
 	const openForm = (open: (onSaved: () => void) => Promise<unknown>): void => {
 		let saved = false;
-		void enqueue(async () => { await open(() => { saved = true; }); }, { shouldRefresh: () => saved });
+		void enqueue(async () => { await open(() => { saved = true; }); }, { shouldRefresh: () => saved, waits: true });
 	};
 
 	/** Only mounted editors and accepted saves still need revision aliases. */

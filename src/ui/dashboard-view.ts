@@ -674,6 +674,12 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	private lastRender: {
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>;
 		model: ProjectDashboardModel | null;
+		/**
+		 * The host's count of changes as the reading behind this render
+		 * began, or null where the host keeps none. While the host's count
+		 * still says this, the model here is the one it would hand over again.
+		 */
+		epoch: number | null;
 	} | null = null;
 	/**
 	 * False until a step has actually been chosen in this session. A view built
@@ -1475,6 +1481,10 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				this.refreshPending = false;
 				try {
 					const requestedProjectPath = this.projectPath;
+					// Taken before the reading: a change that lands while the
+					// project is being read leaves this number behind, and the
+					// next change of pane reads again rather than trusting it.
+					const epoch = this.host.dashboardEpoch?.() ?? null;
 					const [projects, model] = await Promise.all([
 						this.host.listProjects(),
 						this.host.loadDashboardModel(requestedProjectPath),
@@ -1489,7 +1499,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 					}
 					if (gate === null || gate(model)) {
 						this.keepingFocus(() => {
-							this.render(projects, model);
+							this.render(projects, model, epoch);
 						});
 					}
 				} catch (error) {
@@ -1570,11 +1580,69 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		return this.host.isFreeformModeEnabled();
 	}
 
+	/**
+	 * Shows the pane just chosen, at once.
+	 *
+	 * A change of pane is not a change of project. The model in hand is the
+	 * one every pane is drawn from, so the pane is drawn from it before
+	 * anything is read: a tap used to wait for the project list and the whole
+	 * model to be read again, which on a phone with a project of thousands of
+	 * notes was a second of nothing happening, and several after a save.
+	 *
+	 * The project is read again only where it may have moved. The host counts
+	 * every change to what a dashboard draws; while its count is the one this
+	 * model was read at, the model is current and the reading is skipped.
+	 * Where the count has moved, or the host keeps none, the reading follows
+	 * the drawing as it always did, and its frame replaces this one.
+	 *
+	 * `remember` is the host's note of the choice, which nothing drawn waits
+	 * on: a failure there is said, and the pane stands all the same.
+	 */
+	private showPane(remember?: () => Promise<void>): void {
+		if (remember !== undefined) {
+			const said = (error: unknown): void => {
+				new Notice(
+					error instanceof Error ? error.message : this.t('errors.unknown'),
+				);
+			};
+			// A host that fails before it has a promise to hand back is heard
+			// the same way, and the pane is drawn either way.
+			try {
+				void remember().catch(said);
+			} catch (error) {
+				said(error);
+			}
+		}
+		const shown = this.lastRender;
+		if (
+			shown === null ||
+			shown.model === null ||
+			!this.rendered ||
+			this.loadFailed ||
+			shown.model.path !== this.projectPath
+		) {
+			void this.refresh();
+			return;
+		}
+		this.keepingFocus(() => {
+			this.render(shown.projects, shown.model, shown.epoch);
+		});
+		if (
+			this.refreshing ||
+			this.refreshQueuedWhileHidden ||
+			shown.epoch === null ||
+			shown.epoch !== this.host.dashboardEpoch?.()
+		) {
+			void this.refresh();
+		}
+	}
+
 	private render(
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
 		model: ProjectDashboardModel | null,
+		epoch: number | null,
 	): void {
-		this.lastRender = { projects, model };
+		this.lastRender = { projects, model, epoch };
 		// Which project the typing in this view belongs to. A session reads it
 		// off the DOM, so a field anywhere below answers for its project
 		// without every panel having to be handed one.
@@ -2263,7 +2331,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 					this.selectedStep = step.id;
 					this.selectedPane = { kind: 'step', step: step.id };
 					this.stepChosen = true;
-					void this.runAndRefresh(() => this.host.selectStep(step.id));
+					this.showPane(() => this.host.selectStep(step.id));
 				},
 			});
 		}
@@ -2332,7 +2400,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			onClick: () => {
 				this.selectedPane = { kind: 'statistics' };
 				this.stepChosen = true;
-				void this.refresh();
+				this.showPane();
 			},
 		});
 		this.renderRailRow(list, {
@@ -2344,7 +2412,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			onClick: () => {
 				this.selectedPane = { kind: 'tasks' };
 				this.stepChosen = true;
-				void this.refresh();
+				this.showPane();
 			},
 		});
 		// Not a pane of this view but a view of its own, so the row reads as
@@ -2435,7 +2503,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				this.selectedStep = step;
 				this.selectedPane = { kind: 'step', step };
 				this.stepChosen = true;
-				void this.runAndRefresh(() => this.host.selectStep(step));
+				this.showPane(() => this.host.selectStep(step));
 			},
 		});
 	}
@@ -2481,9 +2549,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				onClick: () => {
 					this.selectedPane = { kind: 'worldbuilding', wbKind: kind };
 					this.stepChosen = true;
-					void this.runAndRefresh(() =>
-						this.host.selectWorldbuildingKind(kind),
-					);
+					this.showPane(() => this.host.selectWorldbuildingKind(kind));
 				},
 			});
 		}
@@ -2562,7 +2628,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				onClick: () => {
 					this.selectedPane = { kind: 'definition', definitionId };
 					this.stepChosen = true;
-					void this.refresh();
+					this.showPane();
 				},
 			});
 		}
@@ -2592,7 +2658,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			onClick: () => {
 				this.selectedPane = { kind: 'custom-fields' };
 				this.stepChosen = true;
-				void this.refresh();
+				this.showPane();
 			},
 		});
 	}

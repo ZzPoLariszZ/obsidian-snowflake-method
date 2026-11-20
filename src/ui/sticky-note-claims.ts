@@ -18,6 +18,12 @@ export interface StickyNoteEditOwner {
 	 * an owner leaving of its own accord calls `release` instead.
 	 */
 	release(): Promise<void>;
+	/**
+	 * Writes what the owner holds and leaves it editing: null where it holds
+	 * nothing the file lacks. Asked when the app quits or goes out of sight,
+	 * where the editor's own quiet timer may never fire.
+	 */
+	settle?(): Promise<void> | null;
 }
 
 export class StickyNoteClaims {
@@ -65,6 +71,21 @@ export class StickyNoteClaims {
 	/** The surface holding an editor for the note right now, if any. */
 	owner(noteId: string): string | null {
 		return this.owners.get(noteId)?.id ?? null;
+	}
+
+	/**
+	 * Every owner's unwritten text sent to its file, the editors left open.
+	 * Null where no owner holds any, so a quit with nothing to write waits
+	 * for nothing.
+	 */
+	settleAll(): Promise<void> | null {
+		const writes: Promise<void>[] = [];
+		for (const owner of this.owners.values()) {
+			const write = owner.settle?.() ?? null;
+			if (write !== null) writes.push(write);
+		}
+		if (writes.length === 0) return null;
+		return Promise.allSettled(writes).then(() => undefined);
 	}
 
 	/** Every note let go of, each owner flushing; the plugin's last word. */

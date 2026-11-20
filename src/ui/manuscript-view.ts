@@ -6811,6 +6811,25 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 		return run;
 	}
 
+	/**
+	 * What this stream still owes the vault, sent on its way: text typed and
+	 * not yet written, a save under way included, since a note's typing
+	 * stays pending until its write has landed. Null where every note stands
+	 * as the vault holds it, so a caller with nothing to wait for knows it.
+	 *
+	 * For the two moments a timer cannot be trusted to fire: the app
+	 * quitting, which gives the window three seconds and no more, and the
+	 * app going out of sight on a phone, where it may never be woken again.
+	 * The editor is left as it stands; only the words go to the note.
+	 */
+	settleSaves(): Promise<void> | null {
+		let owed = false;
+		for (const entry of this.mounted.values()) {
+			if (entry.pending !== null && entry.pending !== entry.text.body) owed = true;
+		}
+		return owed ? this.flushPendingSave() : null;
+	}
+
 	private async flushNow(): Promise<void> {
 		this.clearSaveTimer();
 		for (const entry of this.mounted.values()) {

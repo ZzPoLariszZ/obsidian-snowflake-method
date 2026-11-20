@@ -227,6 +227,11 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		this.owner = {
 			id: `${deps.ownerId}/${String(cardSerial)}`,
 			release: () => this.setMode('viewing'),
+			// Pending holds a write under way too: it clears when that lands.
+			settle: () =>
+				this.session === null || this.session.pending === null
+					? null
+					: this.session.flush(),
 		};
 		this.el = host.createDiv({
 			cls: 'snowflake-method-sticky-card snowflake-method-sticky-tint is-viewing',

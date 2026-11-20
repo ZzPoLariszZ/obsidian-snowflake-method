@@ -12,6 +12,8 @@
  * only to tell whether it moved.
  */
 
+import { writeUnderWay } from './pending-writes';
+
 /**
  * What a change asks for once it is done: the document read again, the model
  * read again, a paint alone, or nothing at all, for a change that moves only
@@ -215,7 +217,8 @@ export function createDocumentLoop<Reading, Model>(
 			}
 		});
 		queue = run.catch(() => undefined);
-		return run;
+		// Noted until it lands: a quit waits for the changes still queued.
+		return writeUnderWay(run);
 	};
 
 	return {

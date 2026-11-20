@@ -92,6 +92,73 @@ describe("node links", () => {
     expect(taxonomyPathFromTarget(root, root)).toBeNull();
   });
 
+  it("answers a remembered target as the first reading of it did, in every spelling", () => {
+    // The path helpers keep what they worked out. This is how the same two
+    // questions were answered before anything was kept, written out again,
+    // and every answer is held to it, asked twice over.
+    const fold = (value: string): string =>
+      value.normalize("NFC").replace(/\s+/gu, " ").trim().toLowerCase();
+    const first = (target: string, rootPath: string): string | null => {
+      const path = target.trim().replace(/\.md$/u, "");
+      const prefix = `${rootPath.trim().replace(/\/+$/u, "")}/`;
+      if (!path.startsWith(prefix)) return null;
+      const segments = path
+        .slice(prefix.length)
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0);
+      const last = segments[segments.length - 1];
+      const parent = segments[segments.length - 2];
+      if (last !== undefined && parent !== undefined && fold(last) === fold(parent)) segments.pop();
+      return segments.length === 0 ? null : segments.join("/");
+    };
+    const roots = [
+      root,
+      `${root}/`,
+      `${root}//`,
+      ` ${root} `,
+      "Novel/20_Character/22_Status",
+      "钟楼雪/20_人物/21_分类",
+      "",
+      "/",
+    ];
+    const targets = [
+      `${root}/Race/Elf/Elf`,
+      `${root}/Race/Elf/Elf.md`,
+      `  ${root}/Race/Elf/Elf.md  `,
+      `${root}/Race/Elf/elf`,
+      `${root}/Race/Race`,
+      `${root}/Race/Race/Race`,
+      `${root}/Race`,
+      `${root}/Race.md`,
+      `${root}/.md`,
+      `${root}/ Race / Elf /Elf`,
+      `${root}//Race///Elf/Elf`,
+      `${root}/`,
+      root,
+      `${root}.md`,
+      `${root}x/Race/Race`,
+      "Elsewhere/Race/Race",
+      "Novel/20_Character/22_Status/Alive/Alive",
+      "钟楼雪/20_人物/21_分类/种族/精灵/精灵",
+      "钟楼雪/20_人物/21_分类/种族/精灵/精灵.md",
+      "/Race/Race",
+      "Race",
+      "",
+      ".md",
+    ];
+    for (let round = 0; round < 2; round += 1) {
+      for (const rootPath of roots) {
+        for (const target of targets) {
+          expect(
+            taxonomyPathFromTarget(target, rootPath),
+            `${JSON.stringify(target)} under ${JSON.stringify(rootPath)}`,
+          ).toBe(first(target, rootPath));
+        }
+      }
+    }
+  });
+
   it("reads a folder by where it stands, so one named after its parent is its own node", () => {
     expect(taxonomyPathFromFolder(`${root}/Race`, root)).toBe("Race");
     expect(taxonomyPathFromFolder(`${root}/Race/Race`, root)).toBe("Race/Race");

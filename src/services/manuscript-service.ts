@@ -1,5 +1,3 @@
-import { normalizePath } from "obsidian";
-
 import {
   FRONTMATTER_KEYS,
   SCHEMA_VERSION,
@@ -19,6 +17,7 @@ import {
   ManagedFileNotFoundError,
   PathConflictError,
   UnsupportedSchemaError,
+  normalizePath,
   parseMarkdownFrontmatter,
   projectIdOf,
   type ManagedEntryRecord,

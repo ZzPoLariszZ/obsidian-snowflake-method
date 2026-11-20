@@ -62,18 +62,6 @@ export function stableSerialize(value: unknown): string {
 	return visit(value);
 }
 
-function fnv1a32(input: string, seed: number): number {
-	let hash = seed >>> 0;
-	for (let index = 0; index < input.length; index += 1) {
-		const codeUnit = input.charCodeAt(index);
-		hash ^= codeUnit & 0xff;
-		hash = Math.imul(hash, 0x01000193);
-		hash ^= codeUnit >>> 8;
-		hash = Math.imul(hash, 0x01000193);
-	}
-	return hash >>> 0;
-}
-
 function toHex(value: number): string {
 	return value.toString(16).padStart(8, '0');
 }
@@ -82,12 +70,29 @@ function toHex(value: number): string {
  * A synchronous, mobile-safe content fingerprint. This intentionally uses no
  * Node or Web Crypto APIs; two independently-seeded FNV-1a passes provide a
  * compact stable change detector (not a cryptographic signature).
+ *
+ * The two passes are made in one walk of the text, each code unit read once
+ * and fed to both: the values are the ones two separate walks gave, which
+ * matters, since notes keep the fingerprints they were reviewed at.
  */
 export function fingerprint(value: unknown): string {
 	const serialized = stableSerialize(value);
-	const first = fnv1a32(serialized, 0x811c9dc5);
-	const second = fnv1a32(serialized, 0x9e3779b9);
-	return `fp1-${toHex(first)}${toHex(second)}`;
+	let first = 0x811c9dc5;
+	let second = 0x9e3779b9;
+	for (let index = 0; index < serialized.length; index += 1) {
+		const codeUnit = serialized.charCodeAt(index);
+		const low = codeUnit & 0xff;
+		const high = codeUnit >>> 8;
+		first ^= low;
+		first = Math.imul(first, 0x01000193);
+		first ^= high;
+		first = Math.imul(first, 0x01000193);
+		second ^= low;
+		second = Math.imul(second, 0x01000193);
+		second ^= high;
+		second = Math.imul(second, 0x01000193);
+	}
+	return `fp1-${toHex(first >>> 0)}${toHex(second >>> 0)}`;
 }
 
 export const fingerprintContent = fingerprint;

@@ -582,13 +582,38 @@ describe('quitting and unloading', () => {
 		keeper.start();
 		await keeper.open(DEMO);
 		fake.engineOf(lastLeaf(fake)).setOptions({ linkDistance: 100 });
-		const pending: Promise<unknown>[] = [];
-		fake.fire('quit', { add: (work: () => Promise<unknown>) => pending.push(work()) });
-		await Promise.all(pending);
+		await keeper.settleForQuit();
 		expect(store).toHaveBeenCalledOnce();
 		keeper.dispose();
 		expect(fake.stored()).toBeDefined();
 		expect(fake.instance.options.search).toBe(PRESET_QUERY);
+	});
+
+	it('holds a quit only where a tab holds options its file does not', async () => {
+		const fake = fakeApp();
+		const { keeper, store } = keeperFor(fake);
+		keeper.start();
+		// No tab of ours open: nothing to wait for, and so nothing for the app to show its saving screen over.
+		expect(keeper.owes()).toBe(false);
+		expect(keeper.settleForQuit()).toBeNull();
+
+		// A tab still on the project's preset owes nothing either.
+		await keeper.open(DEMO);
+		expect(keeper.owes()).toBe(false);
+		expect(keeper.settleForQuit()).toBeNull();
+		expect(store).not.toHaveBeenCalled();
+
+		// Options moved off the preset are owed, waited for, and then owed no longer.
+		fake.engineOf(lastLeaf(fake)).setOptions({ linkDistance: 100 });
+		expect(keeper.owes()).toBe(true);
+		const settling = keeper.settleForQuit();
+		expect(settling).not.toBeNull();
+		await settling;
+		expect(store).toHaveBeenCalledOnce();
+		expect(keeper.owes()).toBe(false);
+		// Quitting, the storage is left for the restart rather than given back.
+		keeper.dispose();
+		expect(fake.stored()).toBeDefined();
 	});
 
 	it('gives the options back at once when the plugin unloads', async () => {

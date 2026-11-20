@@ -733,6 +733,45 @@ describe("WritingSessionService", () => {
 		expect(monthFile()?.sessions[0]?.id).toBe(record?.id);
 	});
 
+	it("takes a checkpoint as the app goes out of sight, and goes on as it was", async () => {
+		await startSession();
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
+		await timers.flush();
+		// Ten seconds on: well inside the twenty the periodic snapshot waits for.
+		clock += 10_000;
+		const before = store.value as WritingSessionSnapshot | null;
+		sessions.checkpoint();
+		const taken = store.value as WritingSessionSnapshot;
+		expect(taken).not.toBeNull();
+		expect(taken.capturedAt).toBe(new Date(clock).toISOString());
+		expect(taken.capturedAt).not.toBe(before?.capturedAt);
+		// Not a shutdown: the app usually comes back, and the session with it.
+		expect(taken.markedShutdown).toBeUndefined();
+		expect(sessions.isRunning()).toBe(true);
+
+		// Typing goes on being counted after it, which a shutdown would have ended.
+		sessions.noteChanged(NOTES, () => "one two three four five six seven\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(4);
+
+		// Killed while hidden, the session comes back as it stood at the checkpoint.
+		store.value = taken;
+		const revived = buildService();
+		const record = await revived.recoverAtStartup();
+		expect(record?.stopReason).toBe("recovered");
+		expect(record?.endedAt).toBe(taken.capturedAt);
+		expect(record?.words.project.added).toBe(2);
+	});
+
+	it("takes no checkpoint once it has shut down", async () => {
+		await startSession();
+		sessions.markShutdown();
+		const marked = store.value;
+		clock += 5_000;
+		sessions.checkpoint();
+		expect(store.value).toBe(marked);
+	});
+
 	it("recovers an unmarked snapshot as a crash", async () => {
 		await startSession();
 		sessions.noteChanged(NOTES, () => "one two three four five\n");
@@ -1743,6 +1782,52 @@ describe("WritingSessionService", () => {
 		};
 		expect(filed.days).toHaveLength(1);
 		expect(filed.days[0]?.words.project.net).toBe(3);
+	});
+
+	it("leaves the last run's untimed days in the store until the startup has read them", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		const left = untimedStore.value;
+		expect(left).not.toBeNull();
+		// A new run that goes out of sight before it has recovered anything:
+		// its memory is empty, and the store is the only copy of the day.
+		sessions = buildService();
+		sessions.checkpoint();
+		expect(untimedStore.value).toBe(left);
+		await sessions.recoverAtStartup();
+		await settle();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(2);
+		// Once the day is home, a checkpoint keeps it.
+		sessions.checkpoint();
+		expect(untimedStore.value).not.toBeNull();
+	});
+
+	it("writes the untimed day at a checkpoint without waiting for the twenty-second beat", async () => {
+		await sessions.recoverAtStartup();
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// A second later, more is typed. Only the typing's own debounce is
+		// let fire, as it would within a second of the app being hidden.
+		clock += 1_000;
+		const standing = new Set(timers.handlers.keys());
+		sessions.noteChanged(NOTES, written("one two three four five six seven"));
+		for (const [id, handler] of [...timers.handlers]) {
+			if (standing.has(id)) continue;
+			timers.handlers.delete(id);
+			handler();
+		}
+		await settle();
+		// Counted in memory, and not yet in the store, which waits twenty seconds.
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(4);
+		const behind = JSON.stringify(untimedStore.value);
+		sessions.checkpoint();
+		expect(JSON.stringify(untimedStore.value)).not.toBe(behind);
+		// Taken away while hidden, with no shutdown: the day comes back whole.
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(4);
 	});
 
 	it("resumes a same-day untimed snapshot where the day still is", async () => {

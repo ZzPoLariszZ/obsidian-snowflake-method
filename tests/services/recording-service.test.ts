@@ -1019,6 +1019,33 @@ describe('the screen recording service', () => {
 		expect(runner.runs).toHaveLength(0);
 	});
 
+	it('says whether a quit has anything of its to wait for', async () => {
+		const { clock, service } = rig();
+		// Idle: a quit that waited here at all would be shown the app's saving screen for nothing.
+		expect(service.holdsQuit()).toBe(false);
+		const starting = service.start();
+		// A start under way has borrowed from the recorder, and is waited for.
+		await clock.advance(300);
+		expect(service.state().phase).toBe('starting');
+		expect(service.holdsQuit()).toBe(true);
+		await clock.drive(starting);
+		expect(service.state().phase).toBe('recording');
+		expect(service.holdsQuit()).toBe(true);
+		await clock.drive(service.settle());
+		expect(service.state().phase).toBe('idle');
+		expect(service.holdsQuit()).toBe(false);
+
+		// A look at OBS under way is waited for as well.
+		const looked = rig({ preferences: { tool: 'obs' } });
+		looked.obs.holdNext('GetSourceScreenshot');
+		const looking = looked.service.testObs();
+		await looked.clock.advance(1000);
+		expect(looked.service.holdsQuit()).toBe(true);
+		looked.obs.release();
+		await looked.clock.drive(looking);
+		expect(looked.service.holdsQuit()).toBe(false);
+	});
+
 	it('stops what it can in a short while when Obsidian quits', async () => {
 		const { clock, service, recorder } = rig();
 		await clock.drive(service.start());

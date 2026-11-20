@@ -154,4 +154,63 @@ describe('StickyNoteClaims', () => {
 		expect(claims.owner('two')).toBeNull();
 		expect(log.sort()).toEqual(['A released', 'A releasing', 'B released', 'B releasing']);
 	});
+
+	it('writes what every owner holds and leaves each of them editing', async () => {
+		const claims = new StickyNoteClaims();
+		const log: string[] = [];
+		// Nothing held: nothing to wait for, said without a turn of the loop.
+		expect(claims.settleAll()).toBeNull();
+
+		const gate = deferred();
+		let unwritten = true;
+		const holding: StickyNoteEditOwner = {
+			...ownerOf('A', log),
+			settle: () => {
+				if (!unwritten) return null;
+				log.push('A settling');
+				return gate.promise.then(() => {
+					unwritten = false;
+					log.push('A settled');
+				});
+			},
+		};
+		const clean: StickyNoteEditOwner = { ...ownerOf('B', log), settle: () => null };
+		const plain = ownerOf('C', log);
+		await claims.claim('n1', holding);
+		await claims.claim('n2', clean);
+		await claims.claim('n3', plain);
+
+		const settling = claims.settleAll();
+		expect(settling).not.toBeNull();
+		let over = false;
+		void settling?.then(() => {
+			over = true;
+		});
+		await settle();
+		expect(over).toBe(false);
+		gate.resolve();
+		await settling;
+		expect(log).toEqual(['A settling', 'A settled']);
+		// No owner was asked to let go: each still holds its note.
+		expect(claims.owner('n1')).toBe('A');
+		expect(claims.owner('n2')).toBe('B');
+		expect(claims.owner('n3')).toBe('C');
+
+		// With nothing left unwritten there is nothing to wait for again.
+		expect(claims.settleAll()).toBeNull();
+	});
+
+	it('is not stopped by one owner whose write fails', async () => {
+		const claims = new StickyNoteClaims();
+		const log: string[] = [];
+		await claims.claim('n1', { ...ownerOf('A', log), settle: () => Promise.reject(new Error('refused')) });
+		await claims.claim('n2', {
+			...ownerOf('B', log),
+			settle: async () => {
+				log.push('B settled');
+			},
+		});
+		await expect(claims.settleAll()).resolves.toBeUndefined();
+		expect(log).toContain('B settled');
+	});
 });

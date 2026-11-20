@@ -139,7 +139,7 @@ function popNodeNoteSegment(segments: string[]): void {
  * when the path is not under the root at all.
  */
 function segmentsBelowRoot(path: string, rootPath: string): string[] | null {
-  const prefix = `${rootPath.trim().replace(/\/+$/u, "")}/`;
+  const prefix = rootPrefix(rootPath);
   if (!path.startsWith(prefix)) return null;
   return path
     .slice(prefix.length)
@@ -147,6 +147,24 @@ function segmentsBelowRoot(path: string, rootPath: string): string[] | null {
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
 }
+
+/**
+ * What every path below a root begins with: the root trimmed, the slashes
+ * at its end dropped, and one slash put back. A project has a handful of
+ * roots and asks about each for every link of every note, so the answer is
+ * kept by the root's spelling rather than worked out ten thousand times.
+ */
+function rootPrefix(rootPath: string): string {
+  let prefix = ROOT_PREFIXES.get(rootPath);
+  if (prefix === undefined) {
+    prefix = `${rootPath.trim().replace(/\/+$/u, "")}/`;
+    if (ROOT_PREFIXES.size >= 1_000) ROOT_PREFIXES.clear();
+    ROOT_PREFIXES.set(rootPath, prefix);
+  }
+  return prefix;
+}
+
+const ROOT_PREFIXES = new Map<string, string>();
 
 /**
  * The taxonomy path a link target names below a root: the segments between
@@ -160,14 +178,38 @@ export function taxonomyPathFromTarget(
   target: string,
   rootPath: string,
 ): string | null {
+  const trimmed = target.trim();
+  // Most links asked about lie under another root. Losing its extension
+  // only shortens a target, so one that does not begin as this root's paths
+  // do will not begin so without it either, and is refused here.
+  if (!trimmed.startsWith(rootPrefix(rootPath))) return null;
+  // A vocabulary is a few hundred nodes named by thousands of lines: the
+  // same target under the same root is the same path every time.
+  let byTarget = TAXONOMY_PATHS.get(rootPath);
+  if (byTarget === undefined) {
+    if (TAXONOMY_PATHS.size >= 1_000) TAXONOMY_PATHS.clear();
+    byTarget = new Map();
+    TAXONOMY_PATHS.set(rootPath, byTarget);
+  }
+  const known = byTarget.get(trimmed);
+  if (known !== undefined) return known === "" ? null : known;
   const segments = segmentsBelowRoot(
-    target.trim().replace(/\.md$/u, ""),
+    trimmed.endsWith(".md") ? trimmed.slice(0, -3) : trimmed,
     rootPath,
   );
-  if (segments === null) return null;
-  popNodeNoteSegment(segments);
-  return segments.length === 0 ? null : segments.join("/");
+  let path: string | null = null;
+  if (segments !== null) {
+    popNodeNoteSegment(segments);
+    path = segments.length === 0 ? null : segments.join("/");
+  }
+  if (byTarget.size >= 20_000) byTarget.clear();
+  // A path is never empty, so the empty string can stand for "none".
+  byTarget.set(trimmed, path ?? "");
+  return path;
 }
+
+/** The taxonomy path each target was found to name, by root. */
+const TAXONOMY_PATHS = new Map<string, Map<string, string>>();
 
 /**
  * The taxonomy path a node folder stands at: one segment per level between

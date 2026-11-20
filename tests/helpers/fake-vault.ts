@@ -64,8 +64,18 @@ export class FakeVault {
       this.tick += 1;
       file.stat.mtime = this.tick;
       file.stat.size = content.length;
+      // As the real vault does: the stat moves and the event fires in the
+      // same call, with no wait between. A file being made says `create`.
+      if (!this.creating) this.fire("modify", file);
     },
   );
+  /**
+   * Whoever listens for the vault's four change events, as `Vault.on`
+   * registers them. Nothing listens unless a test asks, so a test that
+   * pokes the vault and never mentions events sees no difference.
+   */
+  private readonly listeners = new Map<string, Set<(...args: never[]) => unknown>>();
+  private creating = false;
   /**
    * The bytes of a file made with `createBinary`, kept apart from the text so
    * a picture never reads as a note. Making one moves the stat as a text
@@ -104,6 +114,35 @@ export class FakeVault {
     this.contents.set(normalizeFakePath(path), content);
   }
 
+  /** As `Vault.on`, for `create`, `modify`, `delete` and `rename`. */
+  on(
+    name: string,
+    callback: (...args: never[]) => unknown,
+  ): { name: string; callback: (...args: never[]) => unknown } {
+    const heard = this.listeners.get(name) ?? new Set();
+    heard.add(callback);
+    this.listeners.set(name, heard);
+    return { name, callback };
+  }
+
+  /** As `Vault.offref`. */
+  offref(ref: { name: string; callback: (...args: never[]) => unknown }): void {
+    this.listeners.get(ref.name)?.delete(ref.callback);
+  }
+
+  /** How many listeners stand, so a test can tell they were all let go. */
+  listenerCount(): number {
+    let count = 0;
+    for (const heard of this.listeners.values()) count += heard.size;
+    return count;
+  }
+
+  private fire(name: string, ...args: unknown[]): void {
+    for (const callback of [...(this.listeners.get(name) ?? [])]) {
+      (callback as (...values: unknown[]) => unknown)(...args);
+    }
+  }
+
   asVault(): Vault {
     return this as unknown as Vault;
   }
@@ -128,6 +167,7 @@ export class FakeVault {
     const folder = fakeFolder(normalized, parent);
     parent.children.push(folder);
     this.nodes.set(normalized, folder);
+    this.fire("create", folder);
     return folder;
   }
 
@@ -142,8 +182,14 @@ export class FakeVault {
     const file = fakeFile(normalized, parent);
     parent.children.push(file);
     this.nodes.set(normalized, file);
-    this.write(normalized, content);
+    this.creating = true;
+    try {
+      this.write(normalized, content);
+    } finally {
+      this.creating = false;
+    }
     this.createCalls.push(normalized);
+    this.fire("create", file);
     return file;
   }
 
@@ -163,6 +209,7 @@ export class FakeVault {
     file.stat.mtime = this.tick;
     file.stat.size = data.byteLength;
     this.createBinaryCalls.push(normalized);
+    this.fire("create", file);
     return file;
   }
 
@@ -240,19 +287,26 @@ export class FakeVault {
     node.parent = nextParent;
 
     for (const [path] of moving) this.nodes.delete(path);
-    for (const [path, movingNode] of moving) {
-      const destination = `${newNormalized}${path.slice(oldNormalized.length)}`;
-      const content = this.contents.get(path);
-      this.contents.delete(path);
-      const bytes = this.binaryContents.get(path);
-      this.binaryContents.delete(path);
-      if (bytes !== undefined) this.binaryContents.set(destination, bytes);
-      movingNode.path = destination;
-      movingNode.name = basename(destination);
-      if ("extension" in movingNode) movingNode.basename = stem(destination);
-      this.nodes.set(destination, movingNode);
-      if (content !== undefined) this.contents.set(destination, content);
+    // A move says `rename`, once for each thing moved, and no `modify`.
+    this.creating = true;
+    try {
+      for (const [path, movingNode] of moving) {
+        const destination = `${newNormalized}${path.slice(oldNormalized.length)}`;
+        const content = this.contents.get(path);
+        this.contents.delete(path);
+        const bytes = this.binaryContents.get(path);
+        this.binaryContents.delete(path);
+        if (bytes !== undefined) this.binaryContents.set(destination, bytes);
+        movingNode.path = destination;
+        movingNode.name = basename(destination);
+        if ("extension" in movingNode) movingNode.basename = stem(destination);
+        this.nodes.set(destination, movingNode);
+        if (content !== undefined) this.contents.set(destination, content);
+      }
+    } finally {
+      this.creating = false;
     }
+    for (const [path, movingNode] of moving) this.fire("rename", movingNode, path);
   }
 
   delete(path: string): void {
@@ -265,11 +319,13 @@ export class FakeVault {
       (candidate) =>
         candidate === normalized || candidate.startsWith(`${normalized}/`),
     );
+    const gone = doomed.map((candidate) => this.nodes.get(candidate));
     for (const candidate of doomed) {
       this.nodes.delete(candidate);
       this.contents.delete(candidate);
       this.binaryContents.delete(candidate);
     }
+    for (const lost of gone) this.fire("delete", lost);
   }
 
   private requireFolder(path: string): FakeFolder {

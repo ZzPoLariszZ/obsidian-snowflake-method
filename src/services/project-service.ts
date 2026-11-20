@@ -1,5 +1,4 @@
 import {
-  normalizePath,
   type FileManager,
   type MetadataCache,
   type Vault,
@@ -103,6 +102,7 @@ import {
   VaultRepository,
   documentTypeOf,
   isFrontmatterOrdered,
+  normalizePath,
   projectIdOf,
   schemaVersionOf,
   type ManagedFileRecord,
@@ -691,14 +691,54 @@ export class SnowflakeProjectService {
   >();
 
   /**
+   * The digest last worked out for each project, with the vault's change
+   * count it was worked out at. One dashboard refresh asks for the project
+   * five times over, and each asking walked every file it holds to find the
+   * same digest: at seven thousand notes that was a quarter of a refresh
+   * that changed nothing. While the count stands still the tree has not
+   * moved, so neither has its digest. A repository nobody listens for has
+   * no count, and the walk is made every time, as before.
+   */
+  private readonly digests = new Map<
+    string,
+    { version: number; digest: string }
+  >();
+
+  /**
+   * The snapshots being built right now, by project. A load that finds the
+   * same tree already being read joins that reading rather than starting
+   * its own: a dashboard asks for its model and for the project list in the
+   * same breath, and after a note was saved both found the snapshot stale
+   * and each read all seven thousand notes, side by side, to build the same
+   * thing twice.
+   */
+  private readonly loading = new Map<
+    string,
+    { digest: string; recordPath: string; pending: Promise<ProjectSnapshot> }
+  >();
+
+  /**
    * Forgets every kept snapshot, so the next load rebuilds at full price.
    * The cost tests call it to measure that price; correctness never needs it.
    */
   forgetSnapshots(): void {
     this.snapshots.clear();
+    this.digests.clear();
   }
 
   private projectTreeDigest(rootPath: string): string {
+    const version = this.repository.treeVersion;
+    if (version !== null) {
+      const kept = this.digests.get(rootPath);
+      if (kept !== undefined && kept.version === version) return kept.digest;
+    }
+    const digest = this.readProjectTreeDigest(rootPath);
+    if (version === null) this.digests.delete(rootPath);
+    else this.digests.set(rootPath, { version, digest });
+    return digest;
+  }
+
+  private readProjectTreeDigest(rootPath: string): string {
     let sum = 0;
     let xor = 0;
     let count = 0;
@@ -713,39 +753,74 @@ export class SnowflakeProjectService {
       xor = (xor ^ hash) >>> 0;
       count += 1;
     };
-    const walkFolders = (path: string): void => {
-      for (const folder of this.repository.listDirectFolders(path)) {
+    // One walk, in whatever order the vault holds its children: the sum and
+    // the exclusive-or come out the same in any order.
+    this.repository.visitBelow(
+      rootPath,
+      (folder) => {
         eat(`${folder.path}/`);
-        walkFolders(folder.path);
-      }
-    };
-    walkFolders(rootPath);
-    for (const file of this.repository.listFilesBelow(rootPath)) {
-      // Cache contents are computed from the notes this snapshot describes.
-      // Their periodic flushes must not force another full project read. The
-      // timeline document, the beat sheet's and the freeform's files are the
-      // same case seen from the other side: nothing in this snapshot is read
-      // from their contents, only whether their folders stand, so a row
-      // edited on either, or a node dragged on a view, would else send the
-      // whole project to be read again before the workspace could paint.
-      // Keep their paths in the digest: creation, deletion and migration can
-      // still change the structure report, including a formerly filed cache.
-      eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path) || isBeatSheetFilePath(file.path) ||
-        isRelationshipGraphFilePath(file.path) || isFreeformFilePath(file.path)
-        ? file.path
-        : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
-    }
+      },
+      (file) => {
+        // Cache contents are computed from the notes this snapshot describes.
+        // Their periodic flushes must not force another full project read. The
+        // timeline document, the beat sheet's and the freeform's files are the
+        // same case seen from the other side: nothing in this snapshot is read
+        // from their contents, only whether their folders stand, so a row
+        // edited on either, or a node dragged on a view, would else send the
+        // whole project to be read again before the workspace could paint.
+        // Keep their paths in the digest: creation, deletion and migration can
+        // still change the structure report, including a formerly filed cache.
+        eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path) || isBeatSheetFilePath(file.path) ||
+          isRelationshipGraphFilePath(file.path) || isFreeformFilePath(file.path)
+          ? file.path
+          : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
+      },
+    );
     return `${count}:${sum}:${xor}`;
   }
 
   async loadProject(locator: ProjectLocator): Promise<ProjectSnapshot> {
-    const record = await this.resolveProjectRecord(locator);
+    let record = await this.resolveProjectRecord(locator);
+    // The digest is read off the tree as it stands in this very turn, and
+    // the metadata note must be read off the same tree: a record handed
+    // back from memory and then overtaken by a write would put yesterday's
+    // title under today's digest, and be kept under it. Read again until
+    // the two agree, which the first reading nearly always does.
+    for (let again = 0; again < 3 && !this.repository.isCurrent(record); again += 1) {
+      record = await this.resolveProjectRecord(locator);
+    }
     const rootPath = projectRootForMetadataPath(record.path);
     const digest = this.projectTreeDigest(rootPath);
     const cached = this.snapshots.get(rootPath);
     if (cached !== undefined && cached.digest === digest) {
       return cached.snapshot;
     }
+    // Joined only where the reading under way began from this very tree and
+    // this very metadata note: a write since then is a different project,
+    // and gets a reading of its own.
+    const underway = this.loading.get(rootPath);
+    if (
+      underway !== undefined &&
+      underway.digest === digest &&
+      underway.recordPath === record.path
+    ) {
+      return underway.pending;
+    }
+    const pending = this.buildSnapshot(record, rootPath, digest);
+    const entry = { digest, recordPath: record.path, pending };
+    this.loading.set(rootPath, entry);
+    try {
+      return await pending;
+    } finally {
+      if (this.loading.get(rootPath) === entry) this.loading.delete(rootPath);
+    }
+  }
+
+  private async buildSnapshot(
+    record: ManagedFileRecord,
+    rootPath: string,
+    digest: string,
+  ): Promise<ProjectSnapshot> {
     const project = await this.toInspectableProjectRef(record, rootPath);
     const steps = readStepStatuses(record.frontmatter[FRONTMATTER_KEYS.stepStatuses]);
     const links = {
@@ -1112,6 +1187,7 @@ export class SnowflakeProjectService {
       if (field.list) {
         const raw = storedList(stored);
         if (raw === null) continue;
+        const linksBefore = links;
         const next = raw.map((entry) => {
           const value = storedReference(field, entry);
           const tidied =
@@ -1120,7 +1196,11 @@ export class SnowflakeProjectService {
           links += 1;
           return tidied;
         });
-        if (fingerprint(next) !== fingerprint(raw)) patch[field.key] = next;
+        // The list moved exactly where an entry was tidied: a tidied link
+        // is never the one that was stored. Counted rather than found by
+        // fingerprinting both lists, which was done for every list of every
+        // note at every load.
+        if (links !== linksBefore) patch[field.key] = next;
         continue;
       }
       const tidied = this.tidiedLink(
@@ -4267,16 +4347,34 @@ export class SnowflakeProjectService {
       // reference spelled it — the name a folderless entry is shown by.
       const usage = new Map<string, DefinitionNodeUsage>();
       const spelled = new Map<string, string>();
+      // Who has been named under each node already, kept beside the lists:
+      // a relationship ten thousand lines name was looked for in a list of
+      // every name before it at each of those lines.
+      const named = new Map<string, Record<keyof DefinitionNodeUsage, Set<string>>>();
+      // A path is folded once however many lines spell it.
+      const foldedPaths = new Map<string, string>();
       const claim = (
         taxonomyPath: string,
         bucket: keyof DefinitionNodeUsage,
         name: string,
       ): void => {
-        const folded = foldName(taxonomyPath);
+        let folded = foldedPaths.get(taxonomyPath);
+        if (folded === undefined) {
+          folded = foldName(taxonomyPath);
+          foldedPaths.set(taxonomyPath, folded);
+        }
         if (!spelled.has(folded)) spelled.set(folded, taxonomyPath);
-        const entry = usage.get(folded) ?? { listed: [], records: [] };
-        if (!entry[bucket].includes(name)) entry[bucket].push(name);
-        usage.set(folded, entry);
+        let entry = usage.get(folded);
+        let seen = named.get(folded);
+        if (entry === undefined || seen === undefined) {
+          entry = { listed: [], records: [] };
+          seen = { listed: new Set(), records: new Set() };
+          usage.set(folded, entry);
+          named.set(folded, seen);
+        }
+        if (seen[bucket].has(name)) return;
+        seen[bucket].add(name);
+        entry[bucket].push(name);
       };
       for (const member of members) {
         const name = memberName(member);
@@ -7729,14 +7827,24 @@ export class SnowflakeProjectService {
               : FRONTMATTER_KEYS.sceneId
           ],
         );
-        const idsBeforeCurrent = new Set(stableIds);
-        const ranksBeforeCurrent = new Set(usedRanks);
         const stableIdIsUnique = stableId !== null && !stableIds.has(stableId);
         if (stableId !== null) stableIds.add(stableId);
         const rawRank = record.frontmatter[FRONTMATTER_KEYS.rank];
-        if (typeof rawRank === "number" && Number.isSafeInteger(rawRank)) {
-          usedRanks.add(rawRank);
-        }
+        const newRank =
+          typeof rawRank === "number" &&
+          Number.isSafeInteger(rawRank) &&
+          !usedRanks.has(rawRank)
+            ? rawRank
+            : null;
+        if (newRank !== null) usedRanks.add(newRank);
+        // The ids and ranks taken before this note, which only a repair
+        // reads: worked out for the note that needs one, where copying both
+        // sets at every note made three thousand scenes cost what four and a
+        // half million would.
+        const idsBeforeCurrent = (): Set<string> =>
+          setBefore(stableIds, stableIdIsUnique ? stableId : null);
+        const ranksBeforeCurrent = (): Set<number> =>
+          setBefore(usedRanks, newRank);
         inspectTitle(
           record,
           documentType === "character"
@@ -7825,14 +7933,14 @@ export class SnowflakeProjectService {
               ? safeCharacterMetadataRepairPatch(
                   record,
                   project.id,
-                  idsBeforeCurrent,
-                  ranksBeforeCurrent,
+                  idsBeforeCurrent(),
+                  ranksBeforeCurrent(),
                 ) !== null
               : safeSceneMetadataRepairPatch(
                   record,
                   project.id,
-                  idsBeforeCurrent,
-                  ranksBeforeCurrent,
+                  idsBeforeCurrent(),
+                  ranksBeforeCurrent(),
                 ) !== null),
         });
       }
@@ -7886,9 +7994,10 @@ export class SnowflakeProjectService {
           hasOwn(frontmatter, FRONTMATTER_KEYS.stickyNoteId);
         if (!looksManaged) continue;
         const stableId = asOptionalString(frontmatter[FRONTMATTER_KEYS.stickyNoteId]);
-        const idsBeforeCurrent = new Set(stableIds);
         const stableIdIsUnique = stableId !== null && !stableIds.has(stableId);
         if (stableId !== null) stableIds.add(stableId);
+        const idsBeforeCurrent = (): Set<string> =>
+          setBefore(stableIds, stableIdIsUnique ? stableId : null);
         if (
           isCurrentOrNewerSchema(frontmatter) &&
           documentTypeOf(frontmatter) === STICKY_NOTE_DOCUMENT &&
@@ -7907,7 +8016,7 @@ export class SnowflakeProjectService {
             safeStickyNoteMetadataRepairPatch(
               record,
               project.id,
-              idsBeforeCurrent,
+              idsBeforeCurrent(),
               file.stat.ctime,
             ) !== null,
         });
@@ -7942,14 +8051,20 @@ export class SnowflakeProjectService {
         const stableId = asOptionalString(
           record.frontmatter[FRONTMATTER_KEYS.entityId],
         );
-        const idsBeforeCurrent = new Set(stableIds);
-        const ranksBeforeCurrent = new Set(usedRanks);
         const stableIdIsUnique = stableId !== null && !stableIds.has(stableId);
         if (stableId !== null) stableIds.add(stableId);
         const rawRank = record.frontmatter[FRONTMATTER_KEYS.rank];
-        if (typeof rawRank === "number" && Number.isSafeInteger(rawRank)) {
-          usedRanks.add(rawRank);
-        }
+        const newRank =
+          typeof rawRank === "number" &&
+          Number.isSafeInteger(rawRank) &&
+          !usedRanks.has(rawRank)
+            ? rawRank
+            : null;
+        if (newRank !== null) usedRanks.add(newRank);
+        const idsBeforeCurrent = (): Set<string> =>
+          setBefore(stableIds, stableIdIsUnique ? stableId : null);
+        const ranksBeforeCurrent = (): Set<number> =>
+          setBefore(usedRanks, newRank);
 
         inspectTitle(record, "mismatched-entity-title", []);
         if ((this.extensionTidyPatch(record)?.links ?? 0) > 0) {
@@ -8012,8 +8127,8 @@ export class SnowflakeProjectService {
               record,
               project.id,
               kind.id,
-              idsBeforeCurrent,
-              ranksBeforeCurrent,
+              idsBeforeCurrent(),
+              ranksBeforeCurrent(),
             ) !== null,
         });
       }
@@ -8788,6 +8903,17 @@ function isSafelyRepairableProjectMetadataIssue(
     default:
       return false;
   }
+}
+
+/**
+ * A set as it stood before one value was added to it. `added` is null where
+ * the value was in the set already, or was never added, and the set as it
+ * stands is then the set as it stood.
+ */
+function setBefore<T>(set: ReadonlySet<T>, added: T | null): Set<T> {
+  const before = new Set(set);
+  if (added !== null) before.delete(added);
+  return before;
 }
 
 function safeCommonMetadataRepairPatch(
@@ -9919,7 +10045,14 @@ function memberName(
 function memberRecordTerms(
   record: ManagedFileRecord,
   locale: ProjectLanguage,
-): RecordTerm[] {
+): readonly RecordTerm[] {
+  let byLocale = RECORD_TERMS.get(record);
+  if (byLocale === undefined) {
+    byLocale = new Map();
+    RECORD_TERMS.set(record, byLocale);
+  }
+  const known = byLocale.get(locale);
+  if (known !== undefined) return known;
   const terms: RecordTerm[] = [];
   for (const sectionId of RECORD_SECTION_IDS) {
     const content = readMarkedSection(record.content, sectionId);
@@ -9931,8 +10064,22 @@ function memberRecordTerms(
       }
     }
   }
+  byLocale.set(locale, terms);
   return terms;
 }
+
+/**
+ * The terms already read off a record, kept with the record itself. They
+ * are a reading of its text and of nothing else, and a record is never
+ * edited: the repository hands the same one back until the note changes and
+ * a new one after. So a note saved in a project of five thousand has the
+ * other 4,999 answered from here, where each project load used to parse
+ * every record line of every note again, a quarter of the whole load.
+ */
+const RECORD_TERMS = new WeakMap<
+  ManagedFileRecord,
+  Map<ProjectLanguage, readonly RecordTerm[]>
+>();
 
 /**
  * What each of the project's periods spans, for the record lines that name

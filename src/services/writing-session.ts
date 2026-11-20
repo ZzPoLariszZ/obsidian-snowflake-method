@@ -460,6 +460,12 @@ export class WritingSessionService {
 	private untimedDirtySince: number | null = null;
 	private lastSnapshotAt = 0;
 	private lastUntimedSnapshotAt = 0;
+	/**
+	 * Whether the untimed days the last run left in the store have been
+	 * taken into memory. Until then the store holds the only copy of them,
+	 * and a checkpoint written from memory would put nothing in their place.
+	 */
+	private untimedBroughtHome = false;
 	private unloading = false;
 
 	constructor(private readonly deps: WritingSessionServiceDeps) {
@@ -2181,6 +2187,7 @@ export class WritingSessionService {
 		const snapshot = parseUntimedSnapshot(this.deps.untimedRecovery.load());
 		if (snapshot === null) {
 			this.deps.untimedRecovery.save(null);
+			this.untimedBroughtHome = true;
 			return;
 		}
 		let touched = false;
@@ -2267,12 +2274,31 @@ export class WritingSessionService {
 			);
 			touched = true;
 		}
+		// Every day the store held is in memory now, accruing or queued for
+		// its file, so a snapshot taken from memory covers them all.
+		this.untimedBroughtHome = true;
 		await this.flushUnflushed();
 		this.deps.untimedRecovery.save(this.buildUntimedSnapshot());
 		// A panel painted before this recovery ran has no heartbeat to catch
 		// it up -- with no session there is no ticker -- so the recovered
 		// words announce themselves.
 		if (touched) this.emit({ kind: "changed", counted: true });
+	}
+
+	/**
+	 * The app has gone out of sight and may never be woken again: a phone
+	 * takes a hidden app away without a word. What a recovery would be read
+	 * from is written now rather than at the next twenty-second beat, and the
+	 * service goes on exactly as it was, since the app usually comes back.
+	 * Synchronous, like the shutdown's own snapshot, and for the same reason.
+	 */
+	checkpoint(): void {
+		if (this.unloading) return;
+		// Not before the startup has read what the last run left: the store
+		// is the only copy of those days until then.
+		if (this.untimedBroughtHome) this.snapshotUntimed();
+		const live = this.liveState;
+		if (live !== null) this.snapshot(live);
 	}
 
 	/**

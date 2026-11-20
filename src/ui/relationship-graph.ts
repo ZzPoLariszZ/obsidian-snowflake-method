@@ -80,6 +80,7 @@ import type { GraphClickModifiers, GraphColors, GraphHandle, GraphPort } from '.
 import { renderGraphTimeline, type TimelinePoint } from './relationship-graph-timeline';
 import { playbackFrame, playbackSchedule, type PlaybackSchedule } from './relationship-graph-timeline-layout';
 import { renderEmptyLine } from './pane-parts';
+import { writeUnderWay } from './pending-writes';
 import { renderSceneManuscriptPane } from './scene-manuscript-pane';
 import {
 	RELATIONSHIP_GRAPH_VIEWS,
@@ -216,7 +217,7 @@ export function renderRelationshipGraph(
 		if (view === null || reading === null || reading.readOnly) return;
 		if (sameViewport(view, reading.held.entities.viewport)) return;
 		writtenViewport = view;
-		void (readBridge ?? controls.bridge()).updateEntities({ viewport: view }).catch(notice);
+		void writeUnderWay((readBridge ?? controls.bridge()).updateEntities({ viewport: view })).catch(notice);
 	};
 	const queueViewport = (view: GraphViewport): void => {
 		if (reading === null || reading.readOnly) return;
@@ -245,7 +246,7 @@ export function renderRelationshipGraph(
 		owedState = null;
 		if (patch === null || reading === null) return;
 		echoesOwed.push(reading.held.entities);
-		void (readBridge ?? controls.bridge()).updateEntities(patch).catch(notice);
+		void writeUnderWay((readBridge ?? controls.bridge()).updateEntities(patch)).catch(notice);
 	};
 	const changeState = (patch: Partial<EntityGraphState>): void => {
 		if (reading === null || reading.readOnly) return;

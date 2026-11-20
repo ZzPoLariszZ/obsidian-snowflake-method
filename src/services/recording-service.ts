@@ -407,6 +407,22 @@ export class ScreenRecordingService {
 	 * gives it back as it ends. An Obsidian that went at once would leave
 	 * OBS with the plugin's scene on air and its sound muted.
 	 */
+	/**
+	 * Whether a quit has anything here to wait for: a recording, a start
+	 * under way, or a look at OBS. With none of the three `settle` returns
+	 * at once, and a quit that waits on a promise at all is shown the app's
+	 * saving screen, so the caller asks before it adds one.
+	 */
+	holdsQuit(): boolean {
+		const phase = this.current.phase;
+		return (
+			phase === 'opening' ||
+			phase === 'starting' ||
+			phase === 'recording' ||
+			this.looking !== null
+		);
+	}
+
 	async settle(): Promise<void> {
 		if (this.current.phase === 'opening' || this.current.phase === 'starting') {
 			this.giveUp();

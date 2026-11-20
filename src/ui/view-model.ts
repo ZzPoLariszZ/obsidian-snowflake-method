@@ -871,6 +871,14 @@ export interface DashboardHost {
 	 * for, since the setting can move it while the project stays put.
 	 */
 	localeForProject(locale: ProjectLanguage | null): ProjectLanguage;
+	/**
+	 * A number that moves whenever what a dashboard draws may have moved, and
+	 * stands still otherwise. A dashboard that drew at one number and finds
+	 * the same number at a change of pane draws the pane from the model it
+	 * holds, without asking for the project again. A host that keeps no such
+	 * count leaves this out, and is asked for the project every time.
+	 */
+	dashboardEpoch?(): number;
 	getRecentStep(): StepId;
 	isReduceMotionEnabled(): boolean;
 	/** True while the tables write each note's progress status under its name. */

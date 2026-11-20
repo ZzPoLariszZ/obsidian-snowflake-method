@@ -200,10 +200,6 @@ export class SceneManuscriptGraphKeeper {
 					if (!entry.closed && entry.leaf !== leaf) void this.snapshot(entry).catch(this.fail);
 				}
 			}),
-			workspace.on('quit', (tasks) => {
-				this.quitting = true;
-				tasks.add(() => this.flush());
-			}),
 		);
 		// The graph core plugin turned off or on changes what the pane can
 		// offer, so its listeners hear of it the moment it happens.
@@ -285,6 +281,35 @@ export class SceneManuscriptGraphKeeper {
 	async flush(): Promise<void> {
 		this.cancelPending();
 		await Promise.all(this.held.filter((entry) => !entry.closed).map((entry) => this.snapshot(entry)));
+	}
+
+	/**
+	 * The app is quitting: what a held tab holds and its file does not is
+	 * taken down, and the storage is left to carry the loan over the
+	 * restart. Null where no tab owes anything, since a quit that waits on
+	 * anything at all is shown the app's saving screen. The plugin asks,
+	 * with everything else a quit waits for.
+	 */
+	settleForQuit(): Promise<void> | null {
+		this.quitting = true;
+		return this.owes() ? this.flush() : null;
+	}
+
+	/** Whether any held tab holds options its project's file does not: what `flush` would write. */
+	owes(): boolean {
+		return this.held.some((entry) => !entry.closed && this.owed(entry) !== null);
+	}
+
+	/**
+	 * What a tab's options ask of its project's file: cleared once the tab
+	 * is back on the preset, written where they moved from what it holds,
+	 * and nothing where they agree. A read-only project keeps nothing.
+	 */
+	private owed(entry: HeldLeaf): 'clear' | 'store' | null {
+		const options = graphViewOptions(entry.view);
+		if (options === null || entry.project.readOnly) return null;
+		if (sameGraphOptions(options, entry.preset)) return entry.kept === null ? null : 'clear';
+		return entry.kept !== null && sameOptionsEntirely(entry.kept, options) ? null : 'store';
 	}
 
 	/**

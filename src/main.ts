@@ -437,6 +437,7 @@ import {
 	SceneManuscriptGraphKeeper,
 	type SceneManuscriptProject,
 } from './ui/scene-manuscript-graph';
+import { holdQuit, writeUnderWay, writesUnderWay } from './ui/pending-writes';
 import { freeformCanvasMount } from './ui/freeform-canvas';
 import { renderTimeline } from './ui/timeline';
 import type {
@@ -801,6 +802,8 @@ export default class SnowflakeMethodPlugin
 	/** The bell between the streams and the contents sidebar. */
 	readonly contents = new ContentsHub();
 	private settingsSaveTimer: number | null = null;
+	/** How many settings writes are on their way to the disk. */
+	private settingsWrites = 0;
 	private refreshTimer: number | null = null;
 	private projectRescanTimer: number | null = null;
 	private refreshProjectLocales = false;
@@ -976,6 +979,16 @@ export default class SnowflakeMethodPlugin
 		this.resolveProjectScanReady = resolve;
 	});
 	private projectDiscoveryPromise: Promise<ProjectRef[]> | null = null;
+	/**
+	 * Counts every change to what a dashboard draws that does not come from
+	 * the vault's own files: the app's reading of a note's properties, the
+	 * settings, and anyone asking the dashboards to read again. The vault's
+	 * files are counted by the repository, and `dashboardEpoch` answers for
+	 * both together.
+	 */
+	private dashboardDataChanges = 0;
+	/** What the last scan found, as one line: the roster's followers are told only when it moves. */
+	private rosterSignature: string | null = null;
 	/** The books an update can come from, by project id, kept with the scan: the dashboard model asks on every refresh. */
 	private readonly updatableSiblingsByProject = new Map<string, Promise<ProjectRef[]>>();
 	private currentProjectLocale: ProjectLanguage | null = null;
@@ -1369,6 +1382,23 @@ export default class SnowflakeMethodPlugin
 				},
 			},
 		);
+		// The repository counts the vault's changes from here on: while the
+		// count stands still the project service keeps what it worked out
+		// from the tree, and a dashboard keeps the model it drew.
+		this.register(this.projects.repository.watch());
+		// The app reads a note's properties a beat after the note is written,
+		// and the project is read through that reading: its arrival is a
+		// change to what a dashboard would draw, like the write before it.
+		this.registerEvent(
+			this.app.metadataCache.on('changed', () => {
+				this.touchDashboardData();
+			}),
+		);
+		this.registerEvent(
+			this.app.metadataCache.on('deleted', () => {
+				this.touchDashboardData();
+			}),
+		);
 		// The dress's editor extensions, once there is a project service to say
 		// where a note stands: a note already open when the plugin loads -- an
 		// update, or the plugin turned back on -- has its editor's extensions
@@ -1501,7 +1531,9 @@ export default class SnowflakeMethodPlugin
 		// offsets: the store is brought level quietly, once, for every writer
 		// alike, and only a real move re-dresses anything.
 		this.projects.manuscript.onSegmentWritten = (path, body) => {
-			void this.levelMarginRecords(path, body).catch(() => undefined);
+			// Noted as a write on its way: it follows a save unasked, and a
+			// quit that waited for the save alone would cut it short.
+			void writeUnderWay(this.levelMarginRecords(path, body)).catch(() => undefined);
 		};
 		// And text that walks from one note into another takes its revisions
 		// with it. `left` is the departing note as it stood, which is what
@@ -1730,6 +1762,7 @@ export default class SnowflakeMethodPlugin
 			this.app.workspace.detachLeavesOfType('snowflake-method-mentions');
 			this.resolveProjectScanReady();
 			this.registerVaultListeners();
+			this.registerSettling();
 			// Pending history events file, and File recovery's copies are
 			// counted after the first pause, once the projects are known.
 			this.history.start();
@@ -2274,6 +2307,24 @@ export default class SnowflakeMethodPlugin
 		return complete;
 	}
 
+	/**
+	 * A number that moves whenever what a dashboard draws may have moved, and
+	 * stands still otherwise. Everything a dashboard's model is read from is
+	 * a file in the vault, the app's reading of a note's properties, or a
+	 * setting, and each of the three announces its changes. A dashboard that
+	 * drew at one number and finds the same number later holds the model it
+	 * would be given again, and need not ask.
+	 */
+	dashboardEpoch(): number {
+		// Two counts that only ever grow: their sum stands still only while
+		// both do.
+		return (this.projects.repository.treeVersion ?? 0) + this.dashboardDataChanges;
+	}
+
+	private touchDashboardData(): void {
+		this.dashboardDataChanges += 1;
+	}
+
 	async listProjects(): Promise<ProjectOption[]> {
 		const projects = await this.discoverProjects();
 		const options = await Promise.all(
@@ -2332,6 +2383,7 @@ export default class SnowflakeMethodPlugin
 
 	/** Drops the cached flags of every project the changed path belongs to. */
 	private invalidateProjectHealth(path: string): void {
+		this.touchDashboardData();
 		for (const rootPath of this.projectHealth.keys()) {
 			if (isPathAtOrBelow(path, rootPath)) this.projectHealth.delete(rootPath);
 		}
@@ -2367,6 +2419,7 @@ export default class SnowflakeMethodPlugin
 	 * one of their own.
 	 */
 	private invalidateProjectDiscovery(): void {
+		this.touchDashboardData();
 		this.projectDiscoveryPromise = null;
 		// The books an update can come from were read off the scan, and go with it.
 		this.updatableSiblingsByProject.clear();
@@ -2402,8 +2455,26 @@ export default class SnowflakeMethodPlugin
 		)) {
 			if (this.holdsProjectMetadata(folder.path)) this.explorerRoots.add(folder.path);
 		}
-		this.explorer?.projectsChanged();
 		this.rosterScanned = true;
+		// Every dashboard refresh scans, and nearly every scan finds the
+		// projects it found before. What follows the roster is told only when
+		// the roster moved: the explorer answers by sorting and renaming every
+		// row it holds, and each open note by dressing itself again, which at
+		// seven thousand notes was a third of a refresh that changed nothing.
+		const signature = JSON.stringify([
+			projects.map((project) => [
+				project.rootPath,
+				project.projectFile,
+				project.id,
+				project.title,
+				project.locale,
+				project.readOnly,
+			]),
+			[...this.explorerRoots].sort(),
+		]);
+		if (signature === this.rosterSignature) return projects;
+		this.rosterSignature = signature;
+		this.explorer?.projectsChanged();
 		// The roster decides which notes the typography reaches.
 		this.dressNotes();
 		this.refreshParagraphLineEditors();
@@ -2965,8 +3036,13 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async selectStep(step: StepId): Promise<void> {
+		if (this.settings.recentStep === step) return;
 		this.settings.recentStep = step;
-		await this.saveSettings();
+		// Where the next dashboard opens, and no part of what an open one
+		// draws: remembered a moment later, so that a walk through the steps
+		// writes the settings file once rather than at every step, and no tap
+		// waits on the disk before its pane is drawn.
+		this.armSettingsSave();
 	}
 
 	async selectWorldbuildingKind(): Promise<void> {
@@ -4073,12 +4149,22 @@ export default class SnowflakeMethodPlugin
 	 * so a drag and a quit in the same breath still lands.
 	 */
 	saveSettingsSoon(): void {
+		this.touchDashboardData();
+		this.armSettingsSave();
+	}
+
+	/**
+	 * Starts the wait before a deferred save over, and nothing else: a setting
+	 * no dashboard draws, such as the step last opened, is saved through here
+	 * so that remembering it does not read as a change to what is drawn.
+	 */
+	private armSettingsSave(): void {
 		if (this.settingsSaveTimer !== null) {
 			window.clearTimeout(this.settingsSaveTimer);
 		}
 		this.settingsSaveTimer = window.setTimeout(() => {
 			this.settingsSaveTimer = null;
-			void this.saveSettings();
+			void this.writeSettings();
 		}, SETTINGS_SAVE_DELAY_MS);
 	}
 
@@ -4087,19 +4173,42 @@ export default class SnowflakeMethodPlugin
 		if (this.settingsSaveTimer === null) return;
 		window.clearTimeout(this.settingsSaveTimer);
 		this.settingsSaveTimer = null;
-		await this.saveSettings();
+		await this.writeSettings();
+	}
+
+	/**
+	 * The settings on their way to the disk: a deferred save still waiting on
+	 * its timer is written now, and every write under way is waited for. Null
+	 * where there is neither, so a quit with nothing to save is held by
+	 * nothing.
+	 */
+	private settleSettings(): Promise<void> | null {
+		if (this.settingsSaveTimer === null && this.settingsWrites === 0) return null;
+		return this.flushSettingsSave().then(() => this.settingsSaveQueue.catch(() => undefined));
 	}
 
 	async saveSettings(): Promise<void> {
+		// A setting may be one a dashboard draws by: the language, the
+		// manuscript note to return to. One that is not is saved through
+		// `armSettingsSave` instead.
+		this.touchDashboardData();
+		await this.writeSettings();
+	}
+
+	private async writeSettings(): Promise<void> {
 		const snapshot: SnowflakeSettings = {
 			...this.settings,
 			certificateCelebrations: {
 				...this.settings.certificateCelebrations,
 			},
 		};
+		this.settingsWrites += 1;
 		const save = this.settingsSaveQueue
 			.catch(() => undefined)
-			.then(() => this.saveData(snapshot));
+			.then(() => this.saveData(snapshot))
+			.finally(() => {
+				this.settingsWrites -= 1;
+			});
 		this.settingsSaveQueue = save;
 		await save;
 	}
@@ -5578,12 +5687,8 @@ export default class SnowflakeMethodPlugin
 				this.tellRecording('focused', target);
 			});
 		});
-		// Obsidian quitting stops the recording as far as a short wait allows.
-		this.registerEvent(
-			this.app.workspace.on('quit', (tasks) => {
-				tasks.add(() => service.settle());
-			}),
-		);
+		// Obsidian quitting stops the recording as far as a short wait allows:
+		// `settleForQuit` asks it, with everything else a quit waits for.
 		// The ribbon's button starts a recording and ends it, and wears which
 		// of the two a press will do. Its right-click stays the app's own,
 		// which arranges the ribbon.
@@ -12125,6 +12230,9 @@ export default class SnowflakeMethodPlugin
 		});
 		this.explorer = explorer;
 		this.explorerLife = life;
+		// Tools made after a scan have not heard its roster: the next scan
+		// tells them, whether or not the roster moved.
+		this.rosterSignature = null;
 		life.register(() => {
 			explorer.dispose();
 			if (this.explorer === explorer) this.explorer = null;
@@ -12272,6 +12380,153 @@ export default class SnowflakeMethodPlugin
 		}
 		await this.selectProject(project.projectFile);
 		await this.openDashboard();
+	}
+
+	/**
+	 * What the plugin still owes the disk is sent on its way at the two
+	 * moments a timer cannot be trusted to fire: the app quitting, and the
+	 * app going out of sight.
+	 *
+	 * A quit used to be held by two tasks added every time, with or without
+	 * anything to save. The app shows its saving screen for any task at all,
+	 * and a task that settles at once leaves the window on that screen until
+	 * the three-second fallback destroys it, so every quit took three
+	 * seconds. Those three seconds were also, by accident, what let the
+	 * writes waiting on a timer land: a chapter's last words wait 0.8 s for
+	 * the typing to pause. With the hold gone they are written by name here
+	 * instead, and a quit with nothing to write is held by nothing.
+	 */
+	private registerSettling(): void {
+		this.registerEvent(
+			this.app.workspace.on('quit', (tasks) => {
+				holdQuit(tasks, this.settleForQuit(), window);
+			}),
+		);
+		// A phone takes a hidden app away without a word, and its timers may
+		// never fire again: what was typed is written as the app goes out of
+		// sight, and the editors are left exactly as they stand for its
+		// return. On the desktop the same costs a write the timer would have
+		// made a moment later.
+		const doc = this.app.workspace.containerEl.doc;
+		this.registerDomEvent(doc, 'visibilitychange', () => {
+			if (doc.hidden) this.settleOutOfSight();
+		});
+	}
+
+	/**
+	 * The text the writing surfaces hold and the vault does not: every
+	 * stream's and every sticky note's, sent to its note with the editor left
+	 * open. Null where there is none.
+	 */
+	private settleWriting(): Promise<void> | null {
+		const writes: Promise<unknown>[] = [];
+		// One at a time, each on its own: a stream that cannot answer must
+		// not leave the next one's words, or the sticky notes', unsent.
+		const ask = (settle: () => Promise<unknown> | null): void => {
+			try {
+				const pending = settle();
+				if (pending !== null) writes.push(pending);
+			} catch (error) {
+				console.error('Snowflake: a writing surface could not settle', error);
+			}
+		};
+		for (const leaf of this.app.workspace.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)) {
+			const view = leaf.view;
+			if (view instanceof SnowflakeManuscriptView) ask(() => view.settleSaves());
+		}
+		ask(() => this.stickyNoteHub.claims.settleAll());
+		if (writes.length === 0) return null;
+		return Promise.allSettled(writes).then(() => undefined);
+	}
+
+	/** The app went out of sight: what was typed goes to the disk, and nothing is taken down. */
+	private settleOutOfSight(): void {
+		if (this.unloading) return;
+		const steps: (() => void)[] = [
+			() => void this.settleWriting(),
+			() => void this.settleSettings()?.catch(() => undefined),
+			() => this.sessions.checkpoint(),
+			() => {
+				for (const layer of this.stickyLayers.values()) layer.settle();
+			},
+		];
+		for (const step of steps) {
+			try {
+				step();
+			} catch (error) {
+				console.error('Snowflake: a surface could not settle out of sight', error);
+			}
+		}
+	}
+
+	/**
+	 * Everything the plugin still owes the disk as the app quits, sent on its
+	 * way, and one promise for all of it; null where there is nothing, which
+	 * is what lets a quit with nothing to save close the window at once.
+	 *
+	 * What needs no wait is done first and in the open: the session's
+	 * snapshot and the floating notes' places go to the device's own store,
+	 * and the workspaces settle as they do when the plugin unloads, each
+	 * board committing the words still open in it. Those commits and the
+	 * boards' other changes are queued rather than awaited where they are
+	 * made, so they are picked up here from the note each made of itself.
+	 */
+	private settleForQuit(): Promise<void> | null {
+		const work: Promise<unknown>[] = [];
+		// Each surface is asked on its own: one that fails to answer is
+		// said in the console and costs the others nothing, since a fault
+		// thrown out of here would let the window go with everything unsent.
+		const owe = (ask: () => Promise<unknown> | null | undefined | void): void => {
+			try {
+				const pending = ask();
+				if (pending != null) work.push(pending);
+			} catch (error) {
+				console.error('Snowflake: a surface could not settle for the quit', error);
+			}
+		};
+		owe(() => this.sessions.markShutdown());
+		owe(() => {
+			for (const layer of this.stickyLayers.values()) layer.settle();
+		});
+		for (const leaf of this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)) {
+			const view = leaf.view;
+			if (view instanceof SnowflakeStoryStructureView) owe(() => view.settleForUnload());
+		}
+		owe(() => this.settleWriting());
+		owe(() => this.settleSettings());
+		owe(() => {
+			if (this.fieldsReconcileTimer === null) return null;
+			window.clearTimeout(this.fieldsReconcileTimer);
+			this.fieldsReconcileTimer = null;
+			return this.drainFieldsBlockReconciles();
+		});
+		owe(() => (this.recording?.holdsQuit() === true ? this.recording.settle() : null));
+		owe(() => this.sceneManuscriptGraph.settleForQuit());
+		owe(() => this.writesStillLanding());
+		if (work.length === 0) return null;
+		return (async () => {
+			await Promise.allSettled(work);
+			// What those set going in their turn: a save is followed by the
+			// levelling of its margin records, a commit by the write behind
+			// it. Asked again until a round finds nothing on its way; the hold
+			// itself gives up before the app does.
+			for (let round = 0; round < 50; round += 1) {
+				const more = this.writesStillLanding();
+				if (more === null) return;
+				await more;
+			}
+		})();
+	}
+
+	/** Every write on its way that nothing is waiting for, as one promise; null where there is none. */
+	private writesStillLanding(): Promise<void> | null {
+		const landing: Promise<unknown>[] = [];
+		const queued = writesUnderWay();
+		if (queued !== null) landing.push(queued);
+		if (this.projects.repository.writing) landing.push(this.projects.repository.whenWritten());
+		if (this.settingsWrites > 0) landing.push(this.settingsSaveQueue.catch(() => undefined));
+		if (landing.length === 0) return null;
+		return Promise.allSettled(landing).then(() => undefined);
 	}
 
 	private registerVaultListeners(): void {
@@ -12991,6 +13246,8 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private scheduleRefresh(refreshProjectLocales = false): void {
+		// Whoever asks for a refresh knows of a change no file event told of.
+		this.touchDashboardData();
 		this.refreshProjectLocales ||= refreshProjectLocales;
 		const workspaceWindow = this.app.workspace.containerEl.win;
 		if (this.refreshTimer !== null) {
@@ -13012,6 +13269,7 @@ export default class SnowflakeMethodPlugin
 	private async refreshDashboards(
 		options: { streams?: boolean } = {},
 	): Promise<void> {
+		this.touchDashboardData();
 		await Promise.all(
 			this.app.workspace
 				.getLeavesOfType(DASHBOARD_VIEW_TYPE)
@@ -13313,6 +13571,7 @@ export default class SnowflakeMethodPlugin
 
 	private async loadSettings(): Promise<void> {
 		this.settings = sanitizeSettings(await this.loadData());
+		this.touchDashboardData();
 	}
 
 	private currentLocale(): ProjectLanguage {

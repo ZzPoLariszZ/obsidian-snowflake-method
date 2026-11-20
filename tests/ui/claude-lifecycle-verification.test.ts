@@ -154,7 +154,9 @@ describe('Claude lifecycle findings: production errors and real user paths', () 
 		});
 		await view.refresh();
 		expect(detach).not.toHaveBeenCalled();
-		expect(render).toHaveBeenCalledWith([], { path: newPath });
+		// The third is the host's count of changes the reading began at: this
+		// host keeps none.
+		expect(render).toHaveBeenCalledWith([], { path: newPath }, null);
 	});
 
 	it('#2 plugin rename updates deferred dashboard titles and manuscript anchors even without vault-event delivery', async () => {
