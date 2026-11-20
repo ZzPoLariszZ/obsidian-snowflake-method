@@ -1046,6 +1046,62 @@ describe('the screen recording service', () => {
 		expect(looked.service.holdsQuit()).toBe(false);
 	});
 
+	it('holds a quit for a stop already asked for, until OBS has back what it lent', async () => {
+		const { clock, obs, kept, service } = rig({ preferences: { tool: 'obs' } });
+		const before = obs.borrowable();
+		expect(await clock.drive(service.start())).toBeNull();
+		// OBS takes the stop and is slow to close the file: it says nothing until it has.
+		obs.stopsLate = 99;
+		const stopping = service.stop();
+		await clock.advance(100);
+		expect(service.state().phase).toBe('stopping');
+		// The author quits a moment after the press. The file is not closed
+		// and nothing has been given back: the quit has that to wait for.
+		expect(service.holdsQuit()).toBe(true);
+		let settled = false;
+		void service.settle().then(() => {
+			settled = true;
+		});
+		await clock.advance(1500);
+		expect(settled).toBe(false);
+		expect(obs.borrowable()).not.toEqual(before);
+		// OBS closes the file, and the stop runs to its end.
+		obs.stopFromInside();
+		await clock.drive(stopping);
+		await clock.advance(100);
+		expect(settled).toBe(true);
+		expect(obs.borrowable()).toEqual(before);
+		expect(kept.journal).toBeNull();
+		expect(service.state().phase).toBe('idle');
+		expect(service.holdsQuit()).toBe(false);
+	});
+
+	it('holds a quit for the giving back after a stop made in OBS itself', async () => {
+		const { clock, obs, kept, service } = rig({ preferences: { tool: 'obs' } });
+		const before = obs.borrowable();
+		expect(await clock.drive(service.start())).toBeNull();
+		// The recording is stopped with OBS's own button, and OBS is slow to
+		// take its scene back: the service has not been told of the end yet.
+		obs.holdNext('SetCurrentProgramScene');
+		obs.stopFromInside();
+		await clock.advance(50);
+		expect(service.state().phase).toBe('recording');
+		expect(service.holdsQuit()).toBe(true);
+		let settled = false;
+		void service.settle().then(() => {
+			settled = true;
+		});
+		await clock.advance(1500);
+		// The end under way is waited for, where it used to be left at once.
+		expect(settled).toBe(false);
+		obs.release();
+		await clock.advance(1500);
+		expect(settled).toBe(true);
+		expect(obs.borrowable()).toEqual(before);
+		expect(kept.journal).toBeNull();
+		expect(service.holdsQuit()).toBe(false);
+	});
+
 	it('stops what it can in a short while when Obsidian quits', async () => {
 		const { clock, service, recorder } = rig();
 		await clock.drive(service.start());

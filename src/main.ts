@@ -5712,8 +5712,6 @@ export default class SnowflakeMethodPlugin
 				this.tellRecording('focused', target);
 			});
 		});
-		// Obsidian quitting stops the recording as far as a short wait allows:
-		// `settleForQuit` asks it, with everything else a quit waits for.
 		// The ribbon's button starts a recording and ends it, and wears which
 		// of the two a press will do. Its right-click stays the app's own,
 		// which arranges the ribbon.

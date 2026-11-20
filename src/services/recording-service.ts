@@ -111,7 +111,13 @@ export type RecordingEvent =
 
 /** How long an application being opened is given to say it cannot be. */
 const LAUNCH_WATCH_MS = 500;
-/** How long a quitting Obsidian waits for a start that was given up, or a look at OBS, to end and give back. */
+/**
+ * How long a quitting Obsidian waits for a start that was given up, or a look at OBS, to end and give back.
+ * The app itself gives a closing window less: the plugin's hold on a quit
+ * ends after two and a half seconds and the window is taken away at three,
+ * so at a quit this wait and the next never run out. They bound the wait
+ * where Obsidian stays after all.
+ */
 const SETTLE_WAIT_MS = 3000;
 /**
  * How long a quitting Obsidian waits for a recording to be stopped and for
@@ -149,6 +155,8 @@ export class ScreenRecordingService {
 	/** The start under way and the look at OBS under way, while there is one: a quitting Obsidian waits for them a short while. */
 	private beginning: Promise<void> | null = null;
 	private looking: Promise<void> | null = null;
+	/** A stop under way, kept while it runs so that a quitting Obsidian can wait for it to give back. */
+	private ending: Promise<void> | null = null;
 	/** The recording of Obsidian's windows that runs, while one does. */
 	private windowed: WindowedRecording | null = null;
 
@@ -303,7 +311,20 @@ export class ScreenRecordingService {
 		if (phase !== 'recording') return;
 		const run = this.run;
 		this.move({ phase: 'stopping' });
-		const stopped = this.current.tool === 'obs' ? await this.obs.stop() : await this.native.stop();
+		const stopping = this.current.tool === 'obs' ? this.obs.stop() : this.native.stop();
+		// Kept while it runs: the file is closed and what was borrowed goes
+		// back only as this ends, and a quit just after the press waits for it.
+		const ended = stopping.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.ending = ended;
+		let stopped: RecorderStop | null;
+		try {
+			stopped = await stopping;
+		} finally {
+			if (this.ending === ended) this.ending = null;
+		}
 		// Already ending by itself: that end is on its way, and is the one that names the file.
 		if (run !== this.run || stopped === null) return;
 		this.finish({ reason: 'stopped', ...stopped });
@@ -401,17 +422,10 @@ export class ScreenRecordingService {
 	}
 
 	/**
-	 * Obsidian is quitting: the recording is stopped as far as a short wait
-	 * allows. A start still under way is given up and waited for likewise,
-	 * and so is a look at OBS: each has borrowed from OBS by then, and
-	 * gives it back as it ends. An Obsidian that went at once would leave
-	 * OBS with the plugin's scene on air and its sound muted.
-	 */
-	/**
 	 * Whether a quit has anything here to wait for: a recording, a start
-	 * under way, or a look at OBS. With none of the three `settle` returns
-	 * at once, and a quit that waits on a promise at all is shown the app's
-	 * saving screen, so the caller asks before it adds one.
+	 * under way, a stop under way, or a look at OBS. With none of the four
+	 * `settle` returns at once, and a quit that waits on a promise at all is
+	 * shown the app's saving screen, so the caller asks before it adds one.
 	 */
 	holdsQuit(): boolean {
 		const phase = this.current.phase;
@@ -419,10 +433,19 @@ export class ScreenRecordingService {
 			phase === 'opening' ||
 			phase === 'starting' ||
 			phase === 'recording' ||
+			this.ending !== null ||
 			this.looking !== null
 		);
 	}
 
+	/**
+	 * Obsidian is quitting: the recording is stopped as far as a short wait
+	 * allows. A start still under way is given up and waited for likewise,
+	 * and so are a stop already asked for and a look at OBS: each has
+	 * borrowed from OBS by then, and gives it back as it ends. An Obsidian
+	 * that went at once would leave OBS with the plugin's scene on air and
+	 * its sound muted.
+	 */
 	async settle(): Promise<void> {
 		if (this.current.phase === 'opening' || this.current.phase === 'starting') {
 			this.giveUp();
@@ -430,6 +453,9 @@ export class ScreenRecordingService {
 			return;
 		}
 		if (this.current.phase !== 'recording') {
+			// A stop pressed a moment ago has the file to close and the loans
+			// to return: it tells of itself, and is only waited for here.
+			if (this.ending !== null) await within(this.deps.timers, this.ending, SETTLE_STOP_MS);
 			if (this.looking !== null) await within(this.deps.timers, this.looking, SETTLE_WAIT_MS);
 			return;
 		}

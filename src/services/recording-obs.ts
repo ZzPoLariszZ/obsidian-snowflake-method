@@ -229,6 +229,12 @@ export class ObsRecorder {
 	private working = false;
 	private recording = false;
 	private stopping = false;
+	/**
+	 * The end under way, kept while it runs: one a stop began, or one OBS
+	 * began by stopping the recording itself. Either gives back what was
+	 * borrowed as it finishes, and a quitting Obsidian waits for that.
+	 */
+	private ending: Promise<void> | null = null;
 	private sawStarted = false;
 	private sawStopped = false;
 	private path: string | null = null;
@@ -322,8 +328,17 @@ export class ObsRecorder {
 		return this.end(STOP_SECONDS);
 	}
 
-	/** The same for an Obsidian that is quitting and cannot wait long: what is not given back stays in the ledger. */
+	/**
+	 * The same for an Obsidian that is quitting and cannot wait long: what is
+	 * not given back stays in the ledger. An end already under way, by a stop
+	 * or by OBS itself, is waited for where it used to be left at once: it has
+	 * the giving back still to do, and tells of itself, so null is answered.
+	 */
 	async settle(): Promise<RecorderStop | null> {
+		if (this.stopping && this.ending !== null) {
+			await this.ending;
+			return null;
+		}
 		return this.end(SETTLE_SECONDS);
 	}
 
@@ -1412,14 +1427,16 @@ export class ObsRecorder {
 	private async endedElsewhere(): Promise<void> {
 		if (!this.recording || this.stopping) return;
 		this.stopping = true;
-		const hooks = this.hooks;
-		this.mark(null);
-		await this.giveBack();
-		await this.tidy();
-		const path = this.path;
-		this.finish();
-		if (this.loans.length > 0) hooks?.notice('return-pending');
-		hooks?.ended({ reason: 'external', path, error: null });
+		await this.whileEnding(async () => {
+			const hooks = this.hooks;
+			this.mark(null);
+			await this.giveBack();
+			await this.tidy();
+			const path = this.path;
+			this.finish();
+			if (this.loans.length > 0) hooks?.notice('return-pending');
+			hooks?.ended({ reason: 'external', path, error: null });
+		});
 	}
 
 	/** The conversation ended under a recording: OBS is asked again a few times before the recording is given up. */
@@ -1458,30 +1475,47 @@ export class ObsRecorder {
 		if (this.stopping) return null;
 		this.stopping = true;
 		this.deps.timers.clear(this.heartbeat);
-		const hooks = this.hooks;
-		if (this.socket === null || !this.socket.open) {
-			// The conversation is down: one more try, since OBS may be there still.
-			await this.converse(this.port, this.password);
+		return this.whileEnding(async () => {
+			const hooks = this.hooks;
+			if (this.socket === null || !this.socket.open) {
+				// The conversation is down: one more try, since OBS may be there still.
+				await this.converse(this.port, this.password);
+			}
+			const asked = await this.ask('StopRecord');
+			let path = asked.ok ? text(asked.data.outputPath) : null;
+			const stopped = await this.confirmStopped(seconds);
+			path = this.path ?? path;
+			// Once OBS took the stop, the recording the plugin asked for is over
+			// or as good as over: whatever is found recording from here on is not
+			// the plugin's, and the recording's picture is of no use to anything.
+			// A recording OBS never took a stop for may still run, and keeps its
+			// mark and the scene it shows.
+			const asEnded = stopped || asked.ok;
+			if (asEnded) this.mark(null);
+			// OBS answers before the file is closed, and takes no size back
+			// while it writes: nothing is given back until it has stopped.
+			if (stopped) await this.giveBack();
+			if (asEnded) await this.tidy();
+			this.finish();
+			if (this.loans.length > 0) hooks?.notice('return-pending');
+			// A stop OBS neither took nor was seen to make is no stop, and is not told as one.
+			return asEnded ? { path, error: null } : { path: null, error: 'obs-lost' };
+		});
+	}
+
+	/** Runs an end and keeps it while it runs, so that a quit can wait for it. */
+	private async whileEnding<T>(end: () => Promise<T>): Promise<T> {
+		const going = end();
+		const kept = going.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.ending = kept;
+		try {
+			return await going;
+		} finally {
+			if (this.ending === kept) this.ending = null;
 		}
-		const asked = await this.ask('StopRecord');
-		let path = asked.ok ? text(asked.data.outputPath) : null;
-		const stopped = await this.confirmStopped(seconds);
-		path = this.path ?? path;
-		// Once OBS took the stop, the recording the plugin asked for is over
-		// or as good as over: whatever is found recording from here on is not
-		// the plugin's, and the recording's picture is of no use to anything.
-		// A recording OBS never took a stop for may still run, and keeps its
-		// mark and the scene it shows.
-		const asEnded = stopped || asked.ok;
-		if (asEnded) this.mark(null);
-		// OBS answers before the file is closed, and takes no size back
-		// while it writes: nothing is given back until it has stopped.
-		if (stopped) await this.giveBack();
-		if (asEnded) await this.tidy();
-		this.finish();
-		if (this.loans.length > 0) hooks?.notice('return-pending');
-		// A stop OBS neither took nor was seen to make is no stop, and is not told as one.
-		return asEnded ? { path, error: null } : { path: null, error: 'obs-lost' };
 	}
 
 	private async confirmStopped(seconds: number): Promise<boolean> {
