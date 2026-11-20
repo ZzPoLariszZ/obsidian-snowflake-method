@@ -197,6 +197,15 @@ export class ScreenRecordingService {
 		return recordingStorage(this.deps.preferences(), this.deps.place);
 	}
 
+	/**
+	 * The folder a recording would go into, there when this answers: the
+	 * vault's own is made where it was not. Null where there is none to use.
+	 */
+	async folder(): Promise<string | null> {
+		const place = await resolveRecordingFolder(this.deps.preferences(), this.deps.place);
+		return place.ok ? place.folder : null;
+	}
+
 	/** How many recordings the vault's folder holds, where recordings are kept in the vault. */
 	async figures(): Promise<{ files: number; bytes: number } | null> {
 		try {

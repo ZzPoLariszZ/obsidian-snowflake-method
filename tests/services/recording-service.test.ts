@@ -1361,4 +1361,19 @@ describe('what the second look at the recording turned up', () => {
 		await service.stop();
 		expect(await clock.drive(starting)).toBe('cancelled');
 	});
+
+	it('finds the folder a recording would go into, and makes the vault’s own where it is not there', async () => {
+		const outside = rig({ preferences: { folder: '/Users/ada/Proof' } });
+		expect(await outside.service.folder()).toBe('/Users/ada/Proof');
+		expect(outside.kept.made).toEqual([]);
+		const unset = rig();
+		expect(await unset.service.folder()).toBe('/Users/ada/Movies');
+		const inside = rig({ preferences: { location: 'vault' } });
+		expect(await inside.service.folder()).toBe('/Users/ada/Vault/Novels/Snowflake Recordings');
+		expect(inside.kept.made).toEqual(['Novels/Snowflake Recordings']);
+		// A project's own folder is no place for recordings: nothing is made there, and there is nothing to open.
+		const refused = rig({ preferences: { location: 'vault', vaultFolder: 'Novels/Clocktower Snow/Clips' } });
+		expect(await refused.service.folder()).toBeNull();
+		expect(refused.kept.made).toEqual([]);
+	});
 });

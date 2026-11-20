@@ -5483,10 +5483,6 @@ export default class SnowflakeMethodPlugin
 	 * and Obsidian's secrets for OBS's password.
 	 */
 	private createScreenRecording(): ScreenRecordingService {
-		const adapter = (): FileSystemAdapter | null => {
-			const found = this.app.vault.adapter;
-			return found instanceof FileSystemAdapter ? found : null;
-		};
 		return new ScreenRecordingService({
 			system: () => desktopSystem(),
 			preferences: () => this.recordingPreferences(),
@@ -5496,12 +5492,12 @@ export default class SnowflakeMethodPlugin
 			secret: (name) => this.app.secretStorage.getSecret(name),
 			place: {
 				system: () => desktopSystem() ?? 'mac',
-				vaultBase: () => adapter()?.getBasePath() ?? null,
+				vaultBase: () => this.vaultDisk()?.getBasePath() ?? null,
 				videosFolder: () => this.desktopParts()?.videosFolder() ?? null,
 				// Beside the projects, where the archive and the exports stand too.
 				defaultVaultFolder: () => projectRecordingRoot(this.settings.projectRoot),
 				projectRoots: () => [...this.knownProjectsByRoot.keys()],
-				fullPath: (path) => adapter()?.getFullPath(normalizePath(path)) ?? path,
+				fullPath: (path) => this.vaultDisk()?.getFullPath(normalizePath(path)) ?? path,
 				mkdir: (path) => this.app.vault.adapter.mkdir(normalizePath(path)),
 				list: async (path) => {
 					const folder = normalizePath(path);
@@ -5686,10 +5682,10 @@ export default class SnowflakeMethodPlugin
 		this.app.saveLocalStorage(SCREEN_RECORDING_KEY, kept);
 	}
 
-	/** The vault's own folder on the disk, or null where the vault is not on one. */
-	private vaultBasePath(): string | null {
+	/** The vault as a folder on this computer's disk, or null where it is not one. */
+	private vaultDisk(): FileSystemAdapter | null {
 		const found = this.app.vault.adapter;
-		return found instanceof FileSystemAdapter ? found.getBasePath() : null;
+		return found instanceof FileSystemAdapter ? found : null;
 	}
 
 	/**
@@ -5802,28 +5798,21 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * Opens the folder recordings go to in the system's file manager. The
-	 * vault's folder is made first where it is not there yet: nothing has
-	 * been recorded into it, and a folder that is not there cannot be shown.
+	 * service finds it by the rule a recording goes by, so the vault's folder
+	 * is made first where it is not there yet: nothing has been recorded
+	 * into it, and a folder that is not there cannot be shown.
 	 */
 	private openRecordingFolder(): void {
 		const service = this.recording;
 		if (service === null) return;
-		const standing = service.storage();
-		if (standing.mode === 'none') return;
-		if (standing.mode !== 'vault') {
-			this.desktopParts()?.openFolder(standing.path);
-			return;
-		}
-		if (standing.refused) return;
-		const folder = normalizePath(standing.vaultPath);
-		void (async () => {
-			if (standing.vaultPath.length > 0 && !(await this.app.vault.adapter.exists(folder))) {
-				await this.app.vault.adapter.mkdir(folder);
-			}
-			this.desktopParts()?.openFolder(standing.path);
-		})().catch((error: unknown) => {
-			this.showError(error);
-		});
+		void service.folder().then(
+			(folder) => {
+				if (folder !== null) this.desktopParts()?.openFolder(folder);
+			},
+			(error: unknown) => {
+				this.showError(error);
+			},
+		);
 	}
 
 	/**
@@ -5860,7 +5849,7 @@ export default class SnowflakeMethodPlugin
 				// A folder picked inside the vault is the vault's to keep: the
 				// choice follows it there, so the page never says outside for
 				// a folder that is not.
-				const found = recordingPlace(picked, this.vaultBasePath(), system);
+				const found = recordingPlace(picked, this.vaultDisk()?.getBasePath() ?? null, system);
 				if (found.kind === 'vault' && found.vaultPath.length > 0) {
 					update({ location: 'vault', vaultFolder: found.vaultPath });
 				} else update({ location: 'outside', folder: picked });
