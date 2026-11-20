@@ -148,6 +148,119 @@ const SYNOPSIS = 'snowflake-method-synopsis-input';
 const PARAGRAPH = 'snowflake-method-one-paragraph-summary-input';
 const DESCRIPTION = 'snowflake-method-description-input';
 
+/**
+ * A host that reads as the plugin does: a new model at every reading, taken
+ * as the reading begins, and a count that moves with each save. `holdReading`
+ * keeps the next reading from landing until its release is called.
+ */
+function makeReadingHost() {
+	const made = makeHost();
+	let epoch = 0;
+	let reading: Promise<void> | null = null;
+	const loadDashboardModel = vi.fn(async () => {
+		const taken = structuredClone(made.model);
+		const held = reading;
+		reading = null;
+		if (held !== null) await held;
+		return taken;
+	});
+	const write = made.host.saveStepFields;
+	const saveStepFields = vi.fn(async (step: 2 | 6, fields: Record<string, string>) => {
+		await write(step, fields);
+		epoch += 1;
+	});
+	Object.assign(made.host, { loadDashboardModel, saveStepFields, dashboardEpoch: () => epoch });
+	const holdReading = (): (() => void) => {
+		let release = (): void => undefined;
+		reading = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		return release;
+	};
+	return { ...made, loadDashboardModel, holdReading, moveCount: () => { epoch += 1; } };
+}
+
+/** Shows the pane again as a tap on its rail row does. */
+function showPane(view: SnowflakeDashboardView): void {
+	(view as unknown as { showPane(): void }).showPane();
+}
+
+describe('a pane shown again from the model in hand', () => {
+	it('holds a just-saved step until its fresh reading has drawn', async () => {
+		const { host, loadDashboardModel, holdReading } = makeReadingHost();
+		const { view, box, save, type } = mount(host, 6);
+		await view.refresh();
+		type(SYNOPSIS, ' First.');
+		// The save lands, and the reading that follows it is still out.
+		const landed = holdReading();
+		save().click();
+		await flush();
+		expect(loadDashboardModel).toHaveBeenCalledTimes(2);
+		// The author taps the step's row again before that reading draws. The
+		// model in hand is from before the save: its words must not be taken
+		// for the note's, nor typed into.
+		showPane(view);
+		expect(box(SYNOPSIS).getAttribute('contenteditable')).toBe('false');
+		expect(save().disabled).toBe(true);
+		landed();
+		await flush();
+		expect(box(SYNOPSIS).textContent).toBe('Long. First.');
+		expect(box(SYNOPSIS).getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(save().disabled).toBe(false);
+		// And the next save goes out on the revision the first one made.
+		type(SYNOPSIS, ' Second.');
+		save().click();
+		await flush();
+		expect(box(SYNOPSIS).textContent).toBe('Long. First. Second.');
+	});
+
+	it('holds the step in another dashboard that has not read since the save', async () => {
+		const { host, holdReading } = makeReadingHost();
+		const one = mount(host, 6);
+		await one.view.refresh();
+		// The other dashboard is on another pane, so no panel of the step
+		// stands in it for the save to hold or to draw again.
+		const two = mount(host, 2);
+		await two.view.refresh();
+		one.type(SYNOPSIS, ' First.');
+		one.save().click();
+		await flush();
+		// It is turned to the step with its own reading still out.
+		const landed = holdReading();
+		Object.assign(two.view, { selectedStep: 6, selectedPane: { kind: 'step', step: 6 } });
+		showPane(two.view);
+		expect(two.box(SYNOPSIS).getAttribute('contenteditable')).toBe('false');
+		landed();
+		await flush();
+		expect(two.box(SYNOPSIS).textContent).toBe('Long. First.');
+		expect(two.box(SYNOPSIS).getAttribute('contenteditable')).toBe('plaintext-only');
+	});
+
+	it('takes words at once where nothing has changed since its model was read', async () => {
+		const { host, loadDashboardModel } = makeReadingHost();
+		const { view, box, save } = mount(host, 6);
+		await view.refresh();
+		showPane(view);
+		// No reading follows, and nothing is held.
+		expect(loadDashboardModel).toHaveBeenCalledTimes(1);
+		expect(box(SYNOPSIS).getAttribute('contenteditable')).toBe('plaintext-only');
+		expect(save().disabled).toBe(false);
+	});
+
+	it('holds the step where the count has moved, and frees it with the reading', async () => {
+		const { host, holdReading, moveCount } = makeReadingHost();
+		const { view, box } = mount(host, 6);
+		await view.refresh();
+		moveCount();
+		const landed = holdReading();
+		showPane(view);
+		expect(box(SYNOPSIS).getAttribute('contenteditable')).toBe('false');
+		landed();
+		await flush();
+		expect(box(SYNOPSIS).getAttribute('contenteditable')).toBe('plaintext-only');
+	});
+});
+
 describe('a step save holds its boxes still', () => {
 	it('holds a synopsis box drawn again while its save runs, and frees it once the words are written', async () => {
 		const { host, model, saveStepFields, hold } = makeHost();

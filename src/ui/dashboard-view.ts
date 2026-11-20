@@ -683,6 +683,12 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		epoch: number | null;
 	} | null = null;
 	/**
+	 * True while a pane is being drawn from the model in hand although a
+	 * reading is to follow it: the frame is on show at once, and what could be
+	 * typed into from stale words is held until the reading's own frame.
+	 */
+	private drawingBehind = false;
+	/**
 	 * False until a step has actually been chosen in this session. A view built
 	 * for a leaf Obsidian restored carries the step the workspace last saved,
 	 * which is where the author happened to stop rather than where they mean to
@@ -764,6 +770,17 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			STEP_SAVES.set(this.host, saves);
 		}
 		return saves;
+	}
+
+	/**
+	 * Whether a step's boxes are drawn held: while its words are being
+	 * written, and in a frame drawn from a model a reading is about to
+	 * replace. Such a frame may show the step as it stood before a save, and
+	 * a word typed into it would start a draft against the revision the save
+	 * has just replaced, which every later save would refuse.
+	 */
+	private stepHeld(draftKey: string): boolean {
+		return this.stepSaves.has(draftKey) || this.drawingBehind;
 	}
 
 	/** The panels on screen showing one step's draft, in every dashboard; ones drawn over are let go. */
@@ -1594,7 +1611,8 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 	 * every change to what a dashboard draws; while its count is the one this
 	 * model was read at, the model is current and the reading is skipped.
 	 * Where the count has moved, or the host keeps none, the reading follows
-	 * the drawing as it always did, and its frame replaces this one.
+	 * the drawing as it always did, and its frame replaces this one. Until it
+	 * does, the step boxes of this frame take no words.
 	 *
 	 * `remember` is the host's note of the choice, which nothing drawn waits
 	 * on: a failure there is said, and the pane stands all the same.
@@ -1625,17 +1643,23 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			void this.refresh();
 			return;
 		}
-		this.keepingFocus(() => {
-			this.render(shown.projects, shown.model, shown.epoch);
-		});
-		if (
+		// Asked before the drawing: where a reading is to follow, the model in
+		// hand may be from before a save, so the frame is drawn with its step
+		// boxes held and only the reading's own frame lets them go.
+		const behind =
 			this.refreshing ||
 			this.refreshQueuedWhileHidden ||
 			shown.epoch === null ||
-			shown.epoch !== this.host.dashboardEpoch?.()
-		) {
-			void this.refresh();
+			shown.epoch !== this.host.dashboardEpoch?.();
+		this.drawingBehind = behind;
+		try {
+			this.keepingFocus(() => {
+				this.render(shown.projects, shown.model, shown.epoch);
+			});
+		} finally {
+			this.drawingBehind = false;
 		}
+		if (behind) void this.refresh();
 	}
 
 	private render(
@@ -6244,7 +6268,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		const draftKey = `${model.projectId}:1`;
 		const draft = this.stepDrafts.get(draftKey);
 		const fields = draft?.fields ?? model.stepFields[1] ?? {};
-		const fieldReadOnly = readOnly || this.stepSaves.has(draftKey);
+		const fieldReadOnly = readOnly || this.stepHeld(draftKey);
 		const inputs = new Map<
 			StepOneSectionId,
 			HTMLInputElement | ProseBox
@@ -6438,7 +6462,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		const draftKey = `${model.projectId}:2`;
 		const draft = this.stepDrafts.get(draftKey);
 		const current = draft?.fields ?? model.stepFields[2] ?? {};
-		const fieldReadOnly = readOnly || this.stepSaves.has(draftKey);
+		const fieldReadOnly = readOnly || this.stepHeld(draftKey);
 		const paragraphSectionId = STEP_TWO_SECTION_IDS[0];
 		const descriptionSectionId = STEP_TWO_SECTION_IDS[1];
 		const writingHints = this.createDisclosure(
@@ -7964,7 +7988,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		const draftKey = `${model.projectId}:${String(id)}`;
 		const draft = this.stepDrafts.get(draftKey);
 		const current = draft?.fields ?? model.stepFields[id] ?? {};
-		const fieldReadOnly = readOnly || missing || this.stepSaves.has(draftKey);
+		const fieldReadOnly = readOnly || missing || this.stepHeld(draftKey);
 		const field = panel.createDiv({
 			cls: 'snowflake-method-field snowflake-method-synopsis-field',
 		});
