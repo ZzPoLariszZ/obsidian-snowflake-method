@@ -177,7 +177,7 @@ describe('Claude lifecycle findings: production errors and real user paths', () 
 			app: { workspace: { getLeavesOfType: (type: string) => leaves.filter((leaf) => leaf.getViewState().type === type) } },
 			settings: { recentProjectPath: env.project.projectFile },
 			projectLocalesById: new Map(), invalidateProjectHealth: vi.fn(),
-			saveSettings: vi.fn(async () => undefined), listProjects: async () => [], t: (key: string) => key,
+			saveSettings: vi.fn(async () => undefined), listProjectsWithHealth: async () => [], t: (key: string) => key,
 		});
 		await (env.plugin as unknown as {
 			renameManagedProject(option: { path: string; rootPath: string }, title: string): Promise<unknown>;

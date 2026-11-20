@@ -195,6 +195,7 @@ import type {
 	SceneFormIntent,
 	StepFields,
 	ProjectDashboardModel,
+	ProjectHealthFlags,
 	SceneViewModel,
 	StepViewModel,
 	WorldbuildingEntityViewModel,
@@ -358,6 +359,11 @@ function stepStatusesOf(model: ProjectDashboardModel): StepStatusMap {
 	return statuses;
 }
 const ACTIVE_STEP_SELECTOR = '.snowflake-method-step-button.is-active';
+/** What the switcher's row wears for a project the host has yet to read: no warning. */
+const UNREAD_PROJECT_HEALTH: ProjectHealthFlags = {
+	hasStructureIssues: false,
+	hasMarkerIssues: false,
+};
 
 /** A task tab's kept panel: let go, or drawn into a tab body. */
 interface KeptTaskPanel<T = { dispose(): void }> {
@@ -2129,8 +2135,18 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 			cls: 'snowflake-method-project-switcher-label',
 			text: model.title,
 		});
-		const switcher: ProjectSwitcherMenuConfig = {
-			projects,
+		// Built as the list opens, not as the frame is drawn: a row's warning
+		// is the host's to say at that moment. It takes reading every note of
+		// the project, and a frame that waited for that of every project in
+		// the root stood empty until the largest of them had been read. A
+		// project not read yet wears its plain icon until it has been.
+		const switcher = (): ProjectSwitcherMenuConfig => ({
+			projects: projects.map((project) => ({
+				path: project.path,
+				title: project.title,
+				series: project.series,
+				...(this.host.knownProjectHealth(project.rootPath) ?? UNREAD_PROJECT_HEALTH),
+			})),
 			currentPath: model.path,
 			t: this.t,
 			onSelect: (path) => {
@@ -2159,15 +2175,15 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 						}
 					: undefined,
 			canImport: !model.readOnly,
-		};
+		});
 		// The same rows serve the rail's stand-in on a phone, where this footer is away.
 		this.fillProjectMenu = (menu) => {
-			fillProjectSwitcherMenu(menu, switcher);
+			fillProjectSwitcherMenu(menu, switcher());
 		};
 		projectControl.addEventListener('click', () => {
 			const menu = new Menu();
 			menu.setParentElement(projectFooter);
-			fillProjectSwitcherMenu(menu, switcher);
+			fillProjectSwitcherMenu(menu, switcher());
 			projectControl.setAttribute('aria-expanded', 'true');
 			menu.onHide(() => {
 				projectControl.setAttribute('aria-expanded', 'false');

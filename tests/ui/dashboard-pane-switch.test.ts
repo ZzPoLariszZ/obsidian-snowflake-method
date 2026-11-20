@@ -93,7 +93,7 @@ function mount(options: { counts?: boolean } = {}): Mounted {
 	const epoch = { value: 1 };
 	const listProjects = vi.fn<() => Promise<unknown[]>>(() => Promise.resolve([{
 		path: PROJECT, rootPath: 'Novel', projectId: 'novel', title: model.current.title, readOnly: false,
-		series: null, hasStructureIssues: false, hasMarkerIssues: false,
+		series: null,
 	}]));
 	const loadDashboardModel = vi.fn<() => Promise<ProjectDashboardModel>>(() => Promise.resolve(model.current));
 	const selectStep = vi.fn<(step: number) => Promise<void>>(() => Promise.resolve());

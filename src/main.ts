@@ -521,6 +521,7 @@ import type {
 	KindMutationOutcome,
 	ProjectBaseChoice,
 	ProjectDashboardModel,
+	ProjectHealthFlags,
 	ProjectOption,
 	RepairReportViewModel,
 	SceneViewModel,
@@ -774,10 +775,18 @@ function measureScrollbarWidth(
 /** Tab group of a leaf; the companion pane is tracked by this identity. */
 type NotePane = WorkspaceLeaf['parent'];
 
-interface ProjectHealthFlags {
-	hasStructureIssues: boolean;
-	hasMarkerIssues: boolean;
+/** A project found by the scan, as the lists of projects show it. */
+function projectOption(project: ProjectRef): ProjectOption {
+	return {
+		path: project.projectFile,
+		rootPath: project.rootPath,
+		projectId: project.id,
+		title: project.title,
+		readOnly: project.readOnly,
+		series: project.series,
+	};
 }
+
 const DOCUMENT_BY_MANAGED_STEP: Readonly<
 	Partial<Record<StepId, DocumentType>>
 > = {
@@ -1040,6 +1049,13 @@ export default class SnowflakeMethodPlugin
 		string,
 		Promise<ProjectHealthFlags>
 	>();
+	/**
+	 * The flags last worked out for each project, by its root path: what the
+	 * switcher's row wears, asked for as the list opens. Kept while a newer
+	 * reading is under way, so a row does not lose its warning for the beat
+	 * between a change to the project and the reading after it.
+	 */
+	private readonly projectHealthKnown = new Map<string, ProjectHealthFlags>();
 	private settingsSaveQueue: Promise<void> = Promise.resolve();
 	readonly t = (
 		key: string,
@@ -2364,24 +2380,57 @@ export default class SnowflakeMethodPlugin
 		});
 	}
 
+	/**
+	 * The projects as a dashboard lists them, found by their metadata notes.
+	 *
+	 * Each one's health is set being read here and is not waited for. It is
+	 * one warning icon on a row of the switcher, and working it out reads
+	 * every note in the project. A frame that waited for it showed nothing
+	 * until every project in the root had been read, the largest of them
+	 * included, though its own project was in hand long before. Since 1.15.1
+	 * the app covers the window with a picture of the last session as it
+	 * starts, so that wait showed the dashboard, an empty pane, and the
+	 * dashboard again. The switcher asks for the flags as it opens
+	 * (knownProjectHealth), and the manager, drawn once, waits for them
+	 * (listProjectsWithHealth).
+	 */
 	async listProjects(): Promise<ProjectOption[]> {
 		const projects = await this.discoverProjects();
-		const options = await Promise.all(
+		this.forgetHealthOutside(projects);
+		for (const project of projects) void this.projectHealthFlags(project);
+		return projects.map(projectOption);
+	}
+
+	/** The projects with their health, every one read: the manager's rows, drawn once and not again. */
+	private async listProjectsWithHealth(): Promise<ManageProjectOption[]> {
+		const projects = await this.discoverProjects();
+		this.forgetHealthOutside(projects);
+		return Promise.all(
 			projects.map(async (project) => ({
-				path: project.projectFile,
-				rootPath: project.rootPath,
-				projectId: project.id,
-				title: project.title,
-				readOnly: project.readOnly,
-				series: project.series,
+				...projectOption(project),
 				...(await this.projectHealthFlags(project)),
 			})),
 		);
+	}
+
+	/**
+	 * A project's health as last worked out, or null while it has yet to be
+	 * read. Never a reading: the switcher asks this as it opens, and a list
+	 * that waited would open late, or on a frame drawn over meanwhile.
+	 */
+	knownProjectHealth(rootPath: string): ProjectHealthFlags | null {
+		return this.projectHealthKnown.get(rootPath) ?? null;
+	}
+
+	/** Lets go of what is held about the health of projects the scan no longer finds. */
+	private forgetHealthOutside(projects: readonly ProjectRef[]): void {
 		const discovered = new Set(projects.map((project) => project.rootPath));
 		for (const rootPath of this.projectHealth.keys()) {
 			if (!discovered.has(rootPath)) this.projectHealth.delete(rootPath);
 		}
-		return options;
+		for (const rootPath of this.projectHealthKnown.keys()) {
+			if (!discovered.has(rootPath)) this.projectHealthKnown.delete(rootPath);
+		}
 	}
 
 	/**
@@ -2394,7 +2443,17 @@ export default class SnowflakeMethodPlugin
 	private projectHealthFlags(project: ProjectRef): Promise<ProjectHealthFlags> {
 		const cached = this.projectHealth.get(project.rootPath);
 		if (cached !== undefined) return cached;
-		const pending = this.loadProjectHealthFlags(project);
+		const pending: Promise<ProjectHealthFlags> = this.loadProjectHealthFlags(
+			project,
+		).then((flags) => {
+			// Kept for the switcher only while this is still the reading of
+			// record: one a change has since put aside says how the project
+			// stood before the change, and the reading after it will say.
+			if (this.projectHealth.get(project.rootPath) === pending) {
+				this.projectHealthKnown.set(project.rootPath, flags);
+			}
+			return flags;
+		});
 		this.projectHealth.set(project.rootPath, pending);
 		return pending;
 	}
@@ -2624,7 +2683,7 @@ export default class SnowflakeMethodPlugin
 	private async renameManagedProject(
 		option: ManageProjectOption,
 		title: string,
-	): Promise<ProjectOption[]> {
+	): Promise<ManageProjectOption[]> {
 		const oldPath = option.path;
 		let project: ProjectSnapshot;
 		try {
@@ -2654,7 +2713,7 @@ export default class SnowflakeMethodPlugin
 
 		await this.renameProjectViews(option.rootPath, project.rootPath, renamed);
 		new Notice(this.t('messages.projectRenamed', { name: project.title }));
-		return this.listProjects();
+		return this.listProjectsWithHealth();
 	}
 
 	/**
@@ -2691,11 +2750,11 @@ export default class SnowflakeMethodPlugin
 
 	private async trashManagedProject(
 		option: ManageProjectOption,
-	): Promise<ProjectOption[] | null> {
+	): Promise<ManageProjectOption[] | null> {
 		if (!(await this.confirmProjectDeletion(option))) return null;
 		await this.forgetRecentProjectUnder(option.rootPath);
 		await this.refreshDashboards();
-		return (await this.listProjects()).filter(
+		return (await this.listProjectsWithHealth()).filter(
 			(candidate) => candidate.projectId !== option.projectId,
 		);
 	}
@@ -2726,7 +2785,7 @@ export default class SnowflakeMethodPlugin
 		// Disjoint folders, so neither has to wait on the other: the archive
 		// sits beside the projects rather than among them.
 		const [projects, archived] = await Promise.all([
-			this.listProjects(),
+			this.listProjectsWithHealth(),
 			this.listArchivedProjectOptions(),
 		]);
 		return { projects, archived };
@@ -4412,6 +4471,7 @@ export default class SnowflakeMethodPlugin
 		}
 		if (key === 'projectRoot') {
 			this.projectHealth.clear();
+			this.projectHealthKnown.clear();
 			const recent = this.settings.recentProjectPath;
 			if (recent !== null && !this.isDirectProjectFile(recent)) {
 				this.settings.recentProjectPath = null;

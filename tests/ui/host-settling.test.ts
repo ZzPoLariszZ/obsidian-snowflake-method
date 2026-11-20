@@ -59,6 +59,10 @@ interface Host {
 	scheduleRefresh(): void;
 	refreshTimer: number | null;
 	rosterSignature: string | null;
+	listProjects(): Promise<{ path: string; rootPath: string; title: string }[]>;
+	listProjectsWithHealth(): Promise<{ rootPath: string; hasStructureIssues: boolean; hasMarkerIssues: boolean }[]>;
+	knownProjectHealth(rootPath: string): { hasStructureIssues: boolean; hasMarkerIssues: boolean } | null;
+	invalidateProjectHealth(path: string): void;
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -162,6 +166,10 @@ async function host() {
 		explorerRoots: new Set(),
 		updatableSiblingsByProject: new Map(),
 		projectHealth: new Map(),
+		projectHealthKnown: new Map(),
+		// The layout is ready, and no scan is under way.
+		projectScanReady: Promise.resolve(),
+		projectDiscoveryPromise: null,
 	});
 	// The vault is listened to as the plugin listens to it when it loads.
 	const stop = (plugin as unknown as Host).watchVault();
@@ -475,6 +483,144 @@ describe('what the host counts as a change to what a dashboard draws', () => {
 		expect(dressNotes).toHaveBeenCalledTimes(3);
 		await plugin.scanProjects();
 		expect(explorer.projectsChanged).toHaveBeenCalledTimes(3);
+		stop();
+	});
+});
+
+/**
+ * A dashboard's frame waits on the list of projects, and the list used to
+ * wait for the health of every project in the root: one warning icon a row
+ * in the switcher, at the price of reading every note of every project. The
+ * frame stood empty until the largest of them had been read, though its own
+ * project was in hand, and under the picture of the last session the app
+ * starts with from 1.15.1 that showed the dashboard, nothing, and the
+ * dashboard again.
+ */
+describe('the projects a dashboard lists', () => {
+	const HEALTHY = { hasStructureIssues: false, hasMarkerIssues: false };
+	/** What a project wears once its first step's note is plain words: no longer a note of the plugin's. */
+	const DAMAGED = { hasStructureIssues: true, hasMarkerIssues: false };
+
+	/** Holds every reading of a project until let go, and counts them. */
+	function holdReadings(service: SnowflakeProjectService) {
+		const read = service.loadProject.bind(service);
+		const gate = deferred();
+		const loadProject = vi.spyOn(service, 'loadProject').mockImplementation(async (locator) => {
+			await gate.promise;
+			return read(locator);
+		});
+		return { loadProject, letGo: gate.resolve };
+	}
+
+	it('answers before any project has been read, and knows each one’s health once it has', async () => {
+		const { plugin, service, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		const beta = await service.createProject({ name: 'Beta', rootPath: 'Novels', locale: 'en' });
+		const { loadProject, letGo } = holdReadings(service);
+
+		const listed = await plugin.listProjects();
+		// The rows are whole, and nothing of them took reading a project.
+		expect(listed).toEqual([
+			{ path: alpha.projectFile, rootPath: alpha.rootPath, projectId: alpha.id, title: 'Alpha', readOnly: false, series: null },
+			{ path: beta.projectFile, rootPath: beta.rootPath, projectId: beta.id, title: 'Beta', readOnly: false, series: null },
+		]);
+		// Each one is set being read all the same, once, and is not known yet.
+		expect(loadProject).toHaveBeenCalledTimes(2);
+		expect(plugin.knownProjectHealth(alpha.rootPath)).toBeNull();
+		expect(plugin.knownProjectHealth(beta.rootPath)).toBeNull();
+
+		letGo();
+		await vi.waitFor(() => {
+			expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(HEALTHY);
+			expect(plugin.knownProjectHealth(beta.rootPath)).toEqual(HEALTHY);
+		});
+		// Listed again with nothing changed, no project is read again.
+		await plugin.listProjects();
+		expect(loadProject).toHaveBeenCalledTimes(2);
+		stop();
+	});
+
+	it('keeps a project’s last known health while it is read again, and then says what the reading found', async () => {
+		const { plugin, service, env, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		await plugin.listProjects();
+		await vi.waitFor(() => expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(HEALTHY));
+
+		// The first step's note is written over by hand: a fault the switcher warns of.
+		const stepOne = alpha.artifacts[1]?.path ?? '';
+		env.fakeVault.write(stepOne, 'One sentence, written by hand.');
+		plugin.invalidateProjectHealth(stepOne);
+		// Not read again yet: the row keeps what was last known, not a blank.
+		expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(HEALTHY);
+
+		const { letGo } = holdReadings(service);
+		await plugin.listProjects();
+		expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(HEALTHY);
+		letGo();
+		await vi.waitFor(() =>
+			expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(DAMAGED),
+		);
+		stop();
+	});
+
+	it('does not take the word of a reading that a change has put aside', async () => {
+		const { plugin, service, env, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		const { loadProject, letGo } = holdReadings(service);
+		await plugin.listProjects();
+		// The project changes while that reading is still out.
+		const stepOne = alpha.artifacts[1]?.path ?? '';
+		env.fakeVault.write(stepOne, 'One sentence, written by hand.');
+		plugin.invalidateProjectHealth(stepOne);
+		letGo();
+		// That reading ends, having found the project as it stood at some
+		// moment of the change: nothing is said from it.
+		await loadProject.mock.results[0]?.value;
+		await microtasks();
+		expect(plugin.knownProjectHealth(alpha.rootPath)).toBeNull();
+		// The reading after the change is the one that speaks.
+		await plugin.listProjects();
+		await vi.waitFor(() =>
+			expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(DAMAGED),
+		);
+		stop();
+	});
+
+	it('waits for every project’s health for the manager, whose rows are drawn once', async () => {
+		const { plugin, service, env, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		const beta = await service.createProject({ name: 'Beta', rootPath: 'Novels', locale: 'en' });
+		env.fakeVault.write(beta.artifacts[1]?.path ?? '', 'One sentence, written by hand.');
+		const { letGo } = holdReadings(service);
+
+		let rows: Awaited<ReturnType<Host['listProjectsWithHealth']>> | null = null;
+		void plugin.listProjectsWithHealth().then((listed) => {
+			rows = listed;
+		});
+		await microtasks();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(rows).toBeNull();
+		letGo();
+		await vi.waitFor(() => expect(rows).not.toBeNull());
+		expect(rows).toMatchObject([
+			{ rootPath: alpha.rootPath, title: 'Alpha', ...HEALTHY },
+			{ rootPath: beta.rootPath, title: 'Beta', ...DAMAGED },
+		]);
+		// What the manager waited for, the switcher knows as well.
+		expect(plugin.knownProjectHealth(beta.rootPath)).toEqual(DAMAGED);
+		stop();
+	});
+
+	it('forgets the health of a project that is no longer there', async () => {
+		const { plugin, service, env, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		const beta = await service.createProject({ name: 'Beta', rootPath: 'Novels', locale: 'en' });
+		await plugin.listProjects();
+		await vi.waitFor(() => expect(plugin.knownProjectHealth(beta.rootPath)).toEqual(HEALTHY));
+		env.fakeVault.delete(beta.rootPath);
+		expect((await plugin.listProjects()).map((project) => project.rootPath)).toEqual([alpha.rootPath]);
+		expect(plugin.knownProjectHealth(beta.rootPath)).toBeNull();
+		expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(HEALTHY);
 		stop();
 	});
 });

@@ -111,6 +111,10 @@ export type RenameDefinitionPathResult =
  */
 export type KindMutationOutcome = KindMutationResult;
 
+/**
+ * A project as a dashboard lists it: where it is and what it is called, read
+ * off its metadata note. Nothing here takes reading the project.
+ */
 export interface ProjectOption {
 	path: string;
 	rootPath: string;
@@ -118,6 +122,13 @@ export interface ProjectOption {
 	title: string;
 	readOnly: boolean;
 	series: ProjectSeries | null;
+}
+
+/**
+ * What a project's row wears where projects are listed, a warning in place
+ * of its icon. Working it out reads every note in the project.
+ */
+export interface ProjectHealthFlags {
 	hasStructureIssues: boolean;
 	hasMarkerIssues: boolean;
 }
@@ -911,7 +922,18 @@ export interface DashboardHost {
 		projectId: string,
 		complete: boolean,
 	): Promise<boolean>;
+	/**
+	 * The projects a dashboard lists in its switcher. Their health is no part
+	 * of it: a frame waits on this list, and must not wait for every project
+	 * in the root to be read.
+	 */
 	listProjects(): Promise<ProjectOption[]>;
+	/**
+	 * A project's health as last worked out, by its folder, for the warning
+	 * its row wears as the switcher opens. Null while the project has yet to
+	 * be read. Answered at once, with no reading.
+	 */
+	knownProjectHealth(rootPath: string): ProjectHealthFlags | null;
 	loadDashboardModel(path?: string | null): Promise<ProjectDashboardModel | null>;
 	selectProject(path: string): Promise<void>;
 	activateProject(

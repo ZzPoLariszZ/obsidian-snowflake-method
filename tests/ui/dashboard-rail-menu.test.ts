@@ -56,7 +56,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import { SnowflakeDashboardView, railMenuIcon, railMenuTitle } from '../../src/ui/dashboard-view';
-import type { DashboardHost, ProjectDashboardModel } from '../../src/ui/view-model';
+import type { DashboardHost, ProjectDashboardModel, ProjectHealthFlags } from '../../src/ui/view-model';
 import { installObsidianDom } from '../helpers/obsidian-dom';
 
 const PROJECT = 'Novel/00_System/001_Project_Metadata.md';
@@ -100,19 +100,26 @@ async function flush(): Promise<void> {
 	for (let round = 0; round < 10; round += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mount(step = 3, patch: Partial<ProjectDashboardModel> = {}) {
+function mount(step = 3, patch: Partial<ProjectDashboardModel> = {}, shelf: { withAnother?: boolean } = {}) {
 	const model = { ...makeModel(), ...patch };
 	const selectStep = vi.fn(() => Promise.resolve());
+	// What the host has worked out of each project's health so far, by its folder.
+	const health = new Map<string, ProjectHealthFlags>();
+	const listProjects = vi.fn(() => Promise.resolve([
+		{ path: model.path, rootPath: 'Novel', projectId: 'novel', title: 'Novel', readOnly: false, series: null },
+		// A second project in the root, where a test asks for one.
+		...(shelf.withAnother === true
+			? [{ path: 'Other/00_System/001_Project_Metadata.md', rootPath: 'Other', projectId: 'other', title: 'Other', readOnly: false, series: null }]
+			: []),
+	]));
 	const host = {
 		getRecentStep: () => 3,
 		isFreeformModeEnabled: () => false,
 		translateForProject: (_locale: unknown, key: string) => key,
 		writingCountMode: () => 'ms-word',
 		syncCertificateCelebration: () => Promise.resolve(false),
-		listProjects: () => Promise.resolve([{
-			path: model.path, rootPath: 'Novel', projectId: 'novel', title: 'Novel', readOnly: false,
-			series: null, hasStructureIssues: false, hasMarkerIssues: false,
-		}]),
+		listProjects,
+		knownProjectHealth: (rootPath: string) => health.get(rootPath) ?? null,
 		loadDashboardModel: () => Promise.resolve(model),
 		openStep: vi.fn(() => Promise.resolve()),
 		selectStep,
@@ -145,7 +152,7 @@ function mount(step = 3, patch: Partial<ProjectDashboardModel> = {}) {
 	});
 	const button = (): HTMLButtonElement =>
 		root.querySelector<HTMLButtonElement>('.snowflake-method-rail-menu') as HTMLButtonElement;
-	return { view, root, button, selectStep, host };
+	return { view, root, button, selectStep, host, health, listProjects };
 }
 
 const titles = (rows: MenuRow[]): string[] => rows.map((row) => (row.separator === true ? '---' : row.title ?? ''));
@@ -236,6 +243,28 @@ describe('the dashboard rail on a phone', () => {
 		expect((menus[menus.length - 1] ?? [])[11]?.disabled).toBe(true);
 	});
 
+	it('asks the host for each project’s warning as the menu opens, not as the frame is drawn', async () => {
+		document.body.classList.add('is-phone');
+		const { view, button, health, listProjects } = mount(3, {}, { withAnother: true });
+		await view.refresh();
+		const projectRows = (): MenuRow[] => {
+			button().click();
+			return (menus[menus.length - 1] ?? []).filter((row) => row.title === 'Novel' || row.title === 'Other');
+		};
+		// Neither project has been read yet: the rows are there, with no warning.
+		expect(projectRows().map((row) => row.icon)).toEqual(['book', 'book']);
+		// The host has since read the other project and found it damaged. The
+		// frame is not drawn again, and its list is not asked for again: the
+		// very next opening wears the warning.
+		health.set('Other', { hasStructureIssues: true, hasMarkerIssues: false });
+		health.set('Novel', { hasStructureIssues: false, hasMarkerIssues: false });
+		expect(projectRows().map((row) => row.icon)).toEqual(['book', 'triangle-alert']);
+		health.set('Novel', { hasStructureIssues: false, hasMarkerIssues: true });
+		health.set('Other', { hasStructureIssues: false, hasMarkerIssues: false });
+		expect(projectRows().map((row) => row.icon)).toEqual(['triangle-alert', 'book']);
+		expect(listProjects).toHaveBeenCalledTimes(1);
+	});
+
 	it('stands the footer’s new project and health check buttons beside the bar', async () => {
 		document.body.classList.add('is-phone');
 		const { view, root, host } = mount();
@@ -267,6 +296,21 @@ describe('the dashboard rail on a phone', () => {
 		expect(root.querySelector('.snowflake-method-rail-menu-row')).not.toBeNull();
 		// The footer's two buttons stand in the rail and in the hidden row alike.
 		expect(root.querySelectorAll('.snowflake-method-project-actions')).toHaveLength(2);
+	});
+
+	it('wears the same warnings on the rail’s own switcher, asked for as it opens', async () => {
+		const { view, root, health } = mount(3, {}, { withAnother: true });
+		await view.refresh();
+		const control = root.querySelector<HTMLButtonElement>('.snowflake-method-project-control');
+		const projectRows = (): MenuRow[] => {
+			control?.click();
+			return (menus[menus.length - 1] ?? []).filter((row) => row.title === 'Novel' || row.title === 'Other');
+		};
+		expect(projectRows().map((row) => row.icon)).toEqual(['book', 'book']);
+		health.set('Other', { hasStructureIssues: false, hasMarkerIssues: true });
+		expect(projectRows().map((row) => row.icon)).toEqual(['book', 'triangle-alert']);
+		// The project on show is the one marked, whatever its row wears.
+		expect(projectRows().map((row) => row.checked)).toEqual([true, false]);
 	});
 });
 
