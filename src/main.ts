@@ -1912,6 +1912,12 @@ export default class SnowflakeMethodPlugin
 
 	async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
+		// The roster's followers dress the open notes by these settings, mark
+		// their lines by them and leave focus mode by them, and are told only
+		// when the roster moves. Settings from another device move no roster:
+		// the line is forgotten, so the scan below tells every one of them
+		// once, with what has just arrived.
+		this.rosterSignature = null;
 		this.applyBodyPreferences();
 		// The bars may have come or gone with the settings, and the room they
 		// take moves with them, as it does when the setting is changed here.
@@ -2469,6 +2475,13 @@ export default class SnowflakeMethodPlugin
 		// the roster moved: the explorer answers by sorting and renaming every
 		// row it holds, and each open note by dressing itself again, which at
 		// seven thousand notes was a third of a refresh that changed nothing.
+		//
+		// The followers read two things besides the roster, and those are in
+		// the line as well: which project is the current one, which the
+		// explorer's cover follows, and the language that project speaks,
+		// which the bars over notes of no project are written in. The settings
+		// they read are not: a setting changed here tells them by its own
+		// handler, and settings that arrive from outside forget this line.
 		const signature = JSON.stringify([
 			projects.map((project) => [
 				project.rootPath,
@@ -2479,6 +2492,8 @@ export default class SnowflakeMethodPlugin
 				project.readOnly,
 			]),
 			[...this.explorerRoots].sort(),
+			this.settings.recentProjectPath,
+			this.currentProjectLocale,
 		]);
 		if (signature === this.rosterSignature) return projects;
 		this.rosterSignature = signature;

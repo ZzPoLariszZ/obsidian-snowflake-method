@@ -36,6 +36,8 @@ interface Host {
 	saveSettings(): Promise<void>;
 	saveSettingsSoon(): void;
 	scanProjects(): Promise<unknown[]>;
+	onExternalSettingsChange(): Promise<void>;
+	currentProjectLocale: string | null;
 	settleForQuit(): Promise<void> | null;
 	settleOutOfSight(): void;
 	registerSettling(): void;
@@ -308,6 +310,56 @@ describe('what the host counts as a change to what a dashboard draws', () => {
 		plugin.rosterSignature = null;
 		await plugin.scanProjects();
 		expect(explorer.projectsChanged).toHaveBeenCalledTimes(5);
+		stop();
+	});
+
+	it('tells them again when settings arrive from outside, the roster standing as it was', async () => {
+		const { plugin, service, explorer, dressNotes, refreshParagraphLineEditors, stop } = await host();
+		await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		await plugin.scanProjects();
+		expect(dressNotes).toHaveBeenCalledTimes(1);
+
+		// Another device's settings land: a new size for the page, focus mode
+		// turned off. No project came or went.
+		const arrived = { ...plugin.settings, manuscriptFontSize: 24, manuscriptFocusLevel: 'off' };
+		Object.assign(plugin, {
+			loadData: () => Promise.resolve(arrived),
+			projectScanReady: Promise.resolve(),
+			projectDiscoveryPromise: null,
+			applyBodyPreferences: vi.fn(),
+			publishScrollbarWidth: vi.fn(),
+			rerenderStatisticsViews: vi.fn(),
+			syncExplorer: vi.fn(),
+			refreshDashboards: vi.fn(() => Promise.resolve()),
+		});
+		await plugin.onExternalSettingsChange();
+		// The open notes are dressed by what arrived, and their lines marked by it.
+		expect(dressNotes).toHaveBeenCalledTimes(2);
+		expect(refreshParagraphLineEditors).toHaveBeenCalledTimes(2);
+		expect(explorer.projectsChanged).toHaveBeenCalledTimes(2);
+
+		// And only once: the scans after it find nothing moved.
+		await plugin.scanProjects();
+		expect(dressNotes).toHaveBeenCalledTimes(2);
+		stop();
+	});
+
+	it('tells them when the current project or its language moves', async () => {
+		const { plugin, service, explorer, dressNotes, stop } = await host();
+		const alpha = await service.createProject({ name: 'Alpha', rootPath: 'Novels', locale: 'en' });
+		await plugin.scanProjects();
+		expect(explorer.projectsChanged).toHaveBeenCalledTimes(1);
+		// The explorer's cover follows the current project.
+		plugin.settings.recentProjectPath = alpha.projectFile;
+		await plugin.scanProjects();
+		expect(explorer.projectsChanged).toHaveBeenCalledTimes(2);
+		// The bars over notes of no project speak its language.
+		plugin.currentProjectLocale = 'zh-CN';
+		await plugin.scanProjects();
+		expect(explorer.projectsChanged).toHaveBeenCalledTimes(3);
+		expect(dressNotes).toHaveBeenCalledTimes(3);
+		await plugin.scanProjects();
+		expect(explorer.projectsChanged).toHaveBeenCalledTimes(3);
 		stop();
 	});
 });
