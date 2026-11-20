@@ -24,6 +24,7 @@ import { FileSystemAdapter } from 'obsidian';
 import SnowflakeMethodPlugin from '../../src/main';
 import { DEFAULT_SETTINGS, type SnowflakeSettings } from '../../src/settings';
 import { SnowflakeProjectService } from '../../src/services';
+import { DASHBOARD_VIEW_TYPE, SnowflakeDashboardView } from '../../src/ui/dashboard-view';
 import { MANUSCRIPT_VIEW_TYPE, SnowflakeManuscriptView } from '../../src/ui/manuscript-view';
 import { writeUnderWay, writesUnderWay } from '../../src/ui/pending-writes';
 import { STORY_STRUCTURE_VIEW_TYPE, SnowflakeStoryStructureView } from '../../src/ui/story-structure-view';
@@ -63,6 +64,8 @@ interface Host {
 	listProjectsWithHealth(): Promise<{ rootPath: string; hasStructureIssues: boolean; hasMarkerIssues: boolean }[]>;
 	knownProjectHealth(rootPath: string): { hasStructureIssues: boolean; hasMarkerIssues: boolean } | null;
 	invalidateProjectHealth(path: string): void;
+	drawDashboardsOnShow(): Promise<void>;
+	streamsOnShowRead(): Promise<void>;
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -621,6 +624,94 @@ describe('the projects a dashboard lists', () => {
 		expect((await plugin.listProjects()).map((project) => project.rootPath)).toEqual([alpha.rootPath]);
 		expect(plugin.knownProjectHealth(beta.rootPath)).toBeNull();
 		expect(plugin.knownProjectHealth(alpha.rootPath)).toEqual(HEALTHY);
+		stop();
+	});
+});
+
+/**
+ * From 1.15.1 the app covers the window with a picture of the workspace as
+ * it last stood while it starts, and lifts it once the layout's callbacks
+ * are done, counting whatever promise one hands back. The plugin hands back
+ * these two, so the picture comes off panes that are drawn.
+ */
+describe('what the app’s picture of the last session waits for', () => {
+	function dashboard(shown: boolean, draw: () => Promise<void>) {
+		const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
+		const refreshFromWorkspace = vi.fn(draw);
+		Object.assign(view, { containerEl: { isShown: () => shown }, refreshFromWorkspace });
+		return { leaf: { view, loadIfDeferred: vi.fn(() => Promise.resolve()) }, refreshFromWorkspace };
+	}
+
+	it('is done with the dashboards on show once each is drawn, and draws none that is put away', async () => {
+		const { plugin, leaves, stop } = await host();
+		const first = deferred();
+		const second = deferred();
+		const one = dashboard(true, () => first.promise);
+		const two = dashboard(true, () => second.promise);
+		const away = dashboard(false, () => Promise.resolve());
+		// A tab the app has not loaded yet holds a placeholder, not a dashboard.
+		const unloaded = { view: { containerEl: { isShown: () => true } }, loadIfDeferred: vi.fn(() => Promise.resolve()) };
+		leaves.set(DASHBOARD_VIEW_TYPE, [one.leaf, away.leaf, two.leaf, unloaded]);
+
+		let over = false;
+		void plugin.drawDashboardsOnShow().then(() => {
+			over = true;
+		});
+		await microtasks();
+		expect(one.refreshFromWorkspace).toHaveBeenCalledOnce();
+		expect(two.refreshFromWorkspace).toHaveBeenCalledOnce();
+		expect(away.refreshFromWorkspace).not.toHaveBeenCalled();
+		expect(away.leaf.loadIfDeferred).not.toHaveBeenCalled();
+		expect(unloaded.loadIfDeferred).toHaveBeenCalledOnce();
+		first.resolve();
+		await microtasks();
+		expect(over).toBe(false);
+		second.resolve();
+		await microtasks();
+		expect(over).toBe(true);
+		stop();
+	});
+
+	it('waits for a stream on show to end the reading it began, and asks it for no other', async () => {
+		const { plugin, leaves, stop } = await host();
+		const reading = deferred();
+		const stream = (shown: boolean, refreshRun: Promise<void> | null) => {
+			const view = Object.create(SnowflakeManuscriptView.prototype) as SnowflakeManuscriptView;
+			const refresh = vi.fn(() => Promise.resolve());
+			Object.assign(view, { containerEl: { isShown: () => shown }, refreshRun, refresh });
+			return { leaf: { view }, refresh };
+		};
+		const busy = stream(true, reading.promise);
+		const idle = stream(true, null);
+		// Put away, and still reading: nothing on show waits for it.
+		const away = stream(false, new Promise<void>(() => undefined));
+		leaves.set(MANUSCRIPT_VIEW_TYPE, [busy.leaf, idle.leaf, away.leaf, { view: { containerEl: { isShown: () => true } } }]);
+
+		let over = false;
+		void plugin.streamsOnShowRead().then(() => {
+			over = true;
+		});
+		await microtasks();
+		expect(over).toBe(false);
+		reading.resolve();
+		await microtasks();
+		expect(over).toBe(true);
+		for (const each of [busy, idle, away]) expect(each.refresh).not.toHaveBeenCalled();
+		stop();
+	});
+
+	it('is not held up, or failed, by a stream whose reading failed', async () => {
+		const { plugin, leaves, stop } = await host();
+		const view = Object.create(SnowflakeManuscriptView.prototype) as SnowflakeManuscriptView;
+		const failing = Promise.reject(new Error('The manuscript could not be read.'));
+		// The reading's own asker reports it; here it is only waited out.
+		failing.catch(() => undefined);
+		Object.assign(view, { containerEl: { isShown: () => true }, refreshRun: failing });
+		leaves.set(MANUSCRIPT_VIEW_TYPE, [{ view }]);
+		await expect(plugin.streamsOnShowRead()).resolves.toBeUndefined();
+		// With no stream open at all, there is nothing to wait for.
+		leaves.set(MANUSCRIPT_VIEW_TYPE, []);
+		await expect(plugin.streamsOnShowRead()).resolves.toBeUndefined();
 		stop();
 	});
 });

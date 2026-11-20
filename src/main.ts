@@ -1842,15 +1842,33 @@ export default class SnowflakeMethodPlugin
 			void this.sessions.recoverAtStartup().catch((error: unknown) => {
 				this.showError(error);
 			});
-			void this.refreshVisibleDashboardsAfterLayout().catch(
-				(error: unknown) => {
+			const dashboards = this.drawDashboardsOnShow();
+			// Refreshing visible panes must not make every pane the current
+			// project. Restore context only from the most recent tab,
+			// including a popout, once the dashboards are drawn.
+			void dashboards
+				.then(() => this.activateProjectLeaf(this.app.workspace.getMostRecentLeaf()))
+				.catch((error: unknown) => {
 					this.showError(error);
-				},
-			);
+				});
 			void this.refreshManagedEditorLocalesAfterLayout().catch(
 				(error: unknown) => {
 					this.showError(error);
 				},
+			);
+			// Handed back for the app to wait on. From 1.15.1 it covers the
+			// window with a picture of the workspace as it last stood while it
+			// starts, and takes the picture away a tenth of a second after
+			// these callbacks are done, counting any promise one of them
+			// returns, and after a second and a half whatever they say. The
+			// dashboards read their project only now, so a callback that
+			// returned nothing had the picture lifted off panes still empty:
+			// the dashboard on show, then gone, then drawn. A failure is told
+			// above and holds nothing up, and an app before 1.15.1 makes
+			// nothing of what is returned.
+			return Promise.all([dashboards, this.streamsOnShowRead()]).then(
+				() => undefined,
+				() => undefined,
 			);
 		});
 	}
@@ -11074,7 +11092,8 @@ export default class SnowflakeMethodPlugin
 		this.activateProject(project.projectFile, project.locale, step());
 	}
 
-	private async refreshVisibleDashboardsAfterLayout(): Promise<void> {
+	/** Draws the dashboards on show, now that the layout is ready and a project may be read. */
+	private async drawDashboardsOnShow(): Promise<void> {
 		const visibleLeaves = this.app.workspace
 			.getLeavesOfType(DASHBOARD_VIEW_TYPE)
 			.filter((leaf) => leaf.view.containerEl.isShown());
@@ -11089,11 +11108,24 @@ export default class SnowflakeMethodPlugin
 				}
 			}),
 		);
+	}
 
-		// Refreshing visible panes must not make every pane the current project.
-		// Restore context only from the most recent tab, including a popout.
-		await this.activateProjectLeaf(
-			this.app.workspace.getMostRecentLeaf(),
+	/**
+	 * Done once the streams on show have read their manuscripts. A stream
+	 * began reading as the layout handed it its state, before the layout was
+	 * ready: it is waited for here, and asked for nothing. A visualization
+	 * workspace hands the app its own reading, in a callback of its own.
+	 */
+	private async streamsOnShowRead(): Promise<void> {
+		await Promise.all(
+			this.app.workspace
+				.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)
+				.filter((leaf) => leaf.view.containerEl.isShown())
+				.map((leaf) =>
+					leaf.view instanceof SnowflakeManuscriptView
+						? leaf.view.whenRead()
+						: Promise.resolve(),
+				),
 		);
 	}
 

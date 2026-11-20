@@ -389,9 +389,13 @@ export class SnowflakeStoryStructureView extends ItemView implements RelabelsHea
 		if (this.app.workspace.layoutReady) {
 			if (this.stateDelivered) await this.refresh();
 		} else {
-			this.app.workspace.onLayoutReady(() => {
-				if (this.opened && this.stateDelivered) void this.refresh();
-			});
+			// The reading is handed back for the app to wait on: from 1.15.1
+			// it keeps its picture of the last session over the window until
+			// what these callbacks return is done, and one that returned
+			// nothing had the picture lifted off a pane not yet drawn.
+			this.app.workspace.onLayoutReady(() =>
+				this.opened && this.stateDelivered ? this.refresh() : undefined,
+			);
 		}
 	}
 

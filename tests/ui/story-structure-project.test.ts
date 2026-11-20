@@ -67,7 +67,7 @@ function workspaceView() {
 	const workspace = {
 		layoutReady: true,
 		requestSaveLayout: vi.fn(),
-		onLayoutReady: vi.fn((_callback: () => void) => undefined),
+		onLayoutReady: vi.fn((_callback: () => unknown) => undefined),
 	};
 	const loadDashboardModel = vi.fn((path: string) => Promise.resolve({
 		path, projectId: path, title: path, locale: 'en',
@@ -253,6 +253,35 @@ describe('workspace project ownership', () => {
 
 		expect(loadDashboardModel).toHaveBeenCalledExactlyOnceWith(firstProject);
 		expect(view).toMatchObject({ model: { path: firstProject } });
+	});
+
+	it('hands the app its reading as the layout becomes ready, and nothing where it has none to do', async () => {
+		const { view, workspace, renderFrame, setRecent } = workspaceView();
+		workspace.layoutReady = false;
+		setRecent(null);
+		await view.onOpen();
+		await view.setState({ projectPath: firstProject }, { history: false });
+		const ready = workspace.onLayoutReady.mock.calls[0]?.[0];
+		workspace.layoutReady = true;
+		// From 1.15.1 the app keeps its picture of the last session over the
+		// window until what a callback hands back is done: the frame is drawn
+		// by then, and not a moment after the picture has gone.
+		const reading = ready?.();
+		expect(reading).toBeInstanceOf(Promise);
+		expect(renderFrame).not.toHaveBeenCalled();
+		await reading;
+		expect(renderFrame).toHaveBeenCalledOnce();
+
+		// A workspace whose state has yet to arrive has nothing to draw, and
+		// hands back nothing: the state draws it when it lands.
+		const early = workspaceView();
+		early.workspace.layoutReady = false;
+		early.setRecent(null);
+		await early.view.onOpen();
+		const unready = early.workspace.onLayoutReady.mock.calls[0]?.[0];
+		expect(unready).toBeDefined();
+		expect(unready?.()).toBeUndefined();
+		expect(early.loadDashboardModel).not.toHaveBeenCalled();
 	});
 
 	it('retains an explicitly empty project instead of adopting another dashboard', async () => {

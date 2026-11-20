@@ -32,6 +32,21 @@ describe('what the plugin hangs on the app as it starts', () => {
 		}
 	});
 
+	it('hands the app its panes drawn, for the picture of the last session to wait on', () => {
+		// The layout's callback ends by handing back the dashboards drawn and
+		// the streams read: the app, from 1.15.1, lifts its picture only then.
+		expect(main).toContain(
+			'\t\t\tconst dashboards = this.drawDashboardsOnShow();\n',
+		);
+		expect(main).toContain(
+			'\t\t\treturn Promise.all([dashboards, this.streamsOnShowRead()]).then(\n\t\t\t\t() => undefined,\n\t\t\t\t() => undefined,\n\t\t\t);\n\t\t});\n\t}\n\n\tonunload(): void {',
+		);
+		// The project in front is made the current one behind the dashboards alone.
+		expect(main).toContain(
+			'\t\t\tvoid dashboards\n\t\t\t\t.then(() => this.activateProjectLeaf(this.app.workspace.getMostRecentLeaf()))\n',
+		);
+	});
+
 	it('hears the index read a note again, for the snapshots and for the dashboards', () => {
 		for (const event of ['changed', 'deleted']) {
 			expect(main).toContain(

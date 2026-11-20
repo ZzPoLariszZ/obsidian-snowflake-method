@@ -845,6 +845,21 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	}
 
 	/**
+	 * The reading under way, over, however it ended; at once where there is
+	 * none. For the host as the app starts, which keeps the app's picture of
+	 * the last session over the window until the panes under it are drawn.
+	 * Nothing is asked for here, and a failure stays its asker's to report.
+	 */
+	whenRead(): Promise<void> {
+		return this.refreshRun === null
+			? Promise.resolve()
+			: this.refreshRun.then(
+					() => undefined,
+					() => undefined,
+				);
+	}
+
+	/**
 	 * Re-reads the manuscript and shows whatever changed.
 	 *
 	 * Called from every Vault event that touches the project, including the ones
