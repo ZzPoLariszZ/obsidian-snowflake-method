@@ -1259,4 +1259,20 @@ describe('what the second look at the recording turned up', () => {
 		expect(obs.borrowable()).toEqual(before);
 		expect(service.state().phase).toBe('idle');
 	});
+
+	it('holds a quitting Obsidian five seconds at most for an OBS that hangs under a recording', async () => {
+		const { clock, obs, kept, service } = rig({ preferences: { tool: 'obs' } });
+		await clock.drive(service.start());
+		obs.silent = true;
+		const from = clock.now;
+		await clock.drive(service.settle(), 100);
+		expect(clock.now - from).toBeLessThanOrEqual(5100);
+		// What OBS still holds of the plugin's stays written down, and so does whose recording it is.
+		expect(kept.journal?.loans.length).toBeGreaterThan(0);
+		expect(kept.journal?.recording).toEqual(expect.any(Number));
+		// Where Obsidian stays after all, the recording's end is told once the recorder has given OBS up.
+		expect(service.state().phase).toBe('stopping');
+		await clock.advance(30_000);
+		expect(service.state()).toMatchObject({ phase: 'idle', error: { code: 'obs-lost' } });
+	});
 });

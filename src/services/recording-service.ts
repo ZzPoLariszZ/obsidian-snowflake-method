@@ -29,6 +29,7 @@ import {
 	type RecorderEnd,
 	type RecorderHooks,
 	type RecorderStart,
+	type RecorderStop,
 	type RecordingTimers,
 } from './recording-driver';
 import { NativeRecorder, type NativeTake } from './recording-native';
@@ -110,6 +111,13 @@ export type RecordingEvent =
 const LAUNCH_WATCH_MS = 500;
 /** How long a quitting Obsidian waits for a start that was given up, or a look at OBS, to end and give back. */
 const SETTLE_WAIT_MS = 3000;
+/**
+ * How long a quitting Obsidian waits for a recording to be stopped and for
+ * what it borrowed to go back, whatever the recorder is doing: three
+ * seconds for the file, and a little for the giving back. A recorder that
+ * hangs is left there, and what it still owes stays written down.
+ */
+const SETTLE_STOP_MS = 5000;
 /** A window just opened may not have its number yet: it is asked for again this often, this many times. */
 const WINDOW_RETRY_MS = 400;
 const WINDOW_TRIES = 3;
@@ -396,9 +404,19 @@ export class ScreenRecordingService {
 		}
 		const run = this.run;
 		this.move({ phase: 'stopping' });
-		const stopped = this.current.tool === 'obs' ? await this.obs.settle() : await this.native.settle();
-		if (run !== this.run || stopped === null) return;
-		this.finish({ reason: 'stopped', ...stopped });
+		const settling = this.current.tool === 'obs' ? this.obs.settle() : this.native.settle();
+		const told = (stopped: RecorderStop | null): void => {
+			if (run !== this.run || stopped === null || this.current.phase !== 'stopping') return;
+			this.finish({ reason: 'stopped', ...stopped });
+		};
+		// The quit is held no longer than this, whatever the recorder answers or does not.
+		const stopped = await within(this.deps.timers, settling, SETTLE_STOP_MS);
+		if (stopped === null) {
+			// Still at it, or ending by itself. Where Obsidian stays after all, the end is told when it comes.
+			void settling.then(told);
+			return;
+		}
+		told(stopped);
 	}
 
 	/** The plugin is going away this instant: the recorders are told to stop, and nothing is waited for. */
