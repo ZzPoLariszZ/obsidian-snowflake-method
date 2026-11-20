@@ -8,6 +8,7 @@ import {
 	classifyNativeExit,
 	defaultRecordingPreferences,
 	displayIdentifierArguments,
+	displayOrderArguments,
 	folderTestArguments,
 	insideProjectRoot,
 	interruptArguments,
@@ -17,6 +18,7 @@ import {
 	obsLaunches,
 	processListArguments,
 	readDisplayIdentifiers,
+	readDisplayOrder,
 	readNativeLedger,
 	recordingFileNames,
 	recordingLaterFileName,
@@ -328,6 +330,50 @@ describe('the Mac recorder', () => {
 			expect(readDisplayIdentifiers(junk, 1)).toBeNull();
 		}
 		expect(readDisplayIdentifiers('', 0)).toBeNull();
+	});
+
+	it('asks the system for the order the recorder counts the screens in, with a second fixed script', () => {
+		const args = displayOrderArguments();
+		expect(args.slice(0, 3)).toEqual(['-l', 'JavaScript', '-e']);
+		expect(args).toHaveLength(4);
+		// The list the Mac's recorder itself reads its screens from.
+		expect(args[3]).toContain('CGGetActiveDisplayList');
+		expect(displayOrderArguments()[3]).toBe(args[3]);
+		expect(args[3]).not.toBe(displayIdentifierArguments([1])[3]);
+	});
+
+	it('reads the recorder’s order of the screens: how many, then their numbers', () => {
+		const words = (...numbers: number[]): string => {
+			const bytes = new Uint8Array(numbers.length * 4);
+			const view = new DataView(bytes.buffer);
+			numbers.forEach((number, index) => {
+				view.setUint32(index * 4, number, true);
+			});
+			return btoa(String.fromCharCode(...bytes));
+		};
+		// As this Mac answered: two screens, numbered 1 and 2, in room for thirty-two.
+		const room = Array.from({ length: 30 }, () => 0);
+		expect(words(2)).toBe('AgAAAA==');
+		expect(readDisplayOrder(`AgAAAA==\n${words(1, 2, ...room)}\n`)).toEqual([1, 2]);
+		// The system's order need not be the numbers' own.
+		expect(readDisplayOrder(`${words(3)}\n${words(69_734_662, 2, 5, 0, 0)}`)).toEqual([69_734_662, 2, 5]);
+		expect(readDisplayOrder(`  ${words(1)} \n ${words(7)}\n\n`)).toEqual([7]);
+		for (const junk of [
+			'',
+			'\n',
+			'execution error: Error: (-2700)',
+			words(2),
+			// More screens counted than listed, none at all, and a screen with no number.
+			`${words(3)}\n${words(1, 2)}`,
+			`${words(0)}\n${words(1, 2)}`,
+			`${words(2)}\n${words(1, 0)}`,
+			// Not whole numbers of four bytes, and not bytes at all.
+			`${words(1)}\nAQAA`,
+			`${words(1)}\n***`,
+			`${words(1, 1)}\n${words(1, 2)}`,
+		]) {
+			expect(readDisplayOrder(junk), JSON.stringify(junk)).toBeNull();
+		}
 	});
 
 	it('names one file for one screen, and a numbered file for each of several', () => {

@@ -466,10 +466,10 @@ export function interruptArguments(pid: number): string[] {
 }
 
 /**
- * The one script the Mac's runner is ever given, word for word: the
- * system's own identifier for a screen, from the screen's number. Nothing
- * of an author's is in it, and the number is handed over beside it, never
- * written into it.
+ * The two scripts the Mac's runner is ever given, word for word. The first
+ * says the system's own identifier for a screen, from the screen's number.
+ * Nothing of an author's is in either, and the numbers are handed over
+ * beside the script, never written into it.
  */
 const DISPLAY_IDENTIFIER_SCRIPT = [
 	'function run(argv) {',
@@ -499,6 +499,67 @@ export function readDisplayIdentifiers(text: string, count: number): string[] | 
 	if (count < 1 || lines.length !== count) return null;
 	const shaped = lines.every((line) => /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/iu.test(line));
 	return shaped ? lines.map((line) => line.toUpperCase()) : null;
+}
+
+/**
+ * The second script: every screen's number in the order the system keeps
+ * them. The Mac's recorder counts its screens off that same list, so a
+ * screen's place in it is the number the recorder knows the screen by.
+ * The list comes back as bytes, how many screens first.
+ */
+const DISPLAY_ORDER_SCRIPT = [
+	'function run() {',
+	'	ObjC.import("CoreGraphics");',
+	'	ObjC.import("Foundation");',
+	'	ObjC.bindFunction("CGGetActiveDisplayList", ["int", ["unsigned int", "void *", "void *"]]);',
+	'	const room = 32;',
+	'	const list = $.NSMutableData.dataWithLength(4 * room);',
+	'	const count = $.NSMutableData.dataWithLength(4);',
+	'	if ($.CGGetActiveDisplayList(room, list.mutableBytes, count.mutableBytes) !== 0) return "";',
+	'	const written = (data) => ObjC.unwrap(data.base64EncodedStringWithOptions(0));',
+	'	return written(count) + "\\n" + written(list);',
+	'}',
+].join('\n');
+
+/** What the Mac's runner of scripts is started with to say the order of the screens. */
+export function displayOrderArguments(): string[] {
+	return ['-l', 'JavaScript', '-e', DISPLAY_ORDER_SCRIPT];
+}
+
+/** Whole numbers out of bytes written in base64, four bytes to a number, the low byte first. Null where they are not that. */
+function wordsOf(text: string): number[] | null {
+	let binary: string;
+	try {
+		binary = atob(text);
+	} catch {
+		return null;
+	}
+	if (binary.length === 0 || binary.length % 4 !== 0) return null;
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+	const view = new DataView(bytes.buffer);
+	return Array.from({ length: binary.length / 4 }, (_unused, index) => view.getUint32(index * 4, true));
+}
+
+/**
+ * The screens' numbers in the recorder's own order, out of what the script
+ * printed: how many there are, then the list. Null where anything else
+ * came back, or a screen has no number.
+ */
+export function readDisplayOrder(text: string): number[] | null {
+	const lines = text
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+	const [counted, listed] = lines;
+	if (lines.length !== 2 || counted === undefined || listed === undefined) return null;
+	const count = wordsOf(counted);
+	const list = wordsOf(listed);
+	const screens = count?.[0];
+	if (count === null || list === null || count.length !== 1 || screens === undefined) return null;
+	if (screens < 1 || screens > list.length) return null;
+	const numbers = list.slice(0, screens);
+	return numbers.every((number) => number > 0) ? numbers : null;
 }
 
 /** What the end of the recorder's run means. */

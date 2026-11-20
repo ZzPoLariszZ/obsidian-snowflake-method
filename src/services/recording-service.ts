@@ -2,8 +2,10 @@ import {
 	IDLE_RECORDING_STATE,
 	MAC_SCRIPT_RUNNER,
 	displayIdentifierArguments,
+	displayOrderArguments,
 	obsLaunches,
 	readDisplayIdentifiers,
+	readDisplayOrder,
 	recordingFileNames,
 	recordingLaterFileName,
 	recordingStamp,
@@ -118,6 +120,8 @@ const SETTLE_WAIT_MS = 3000;
  * hangs is left there, and what it still owes stays written down.
  */
 const SETTLE_STOP_MS = 5000;
+/** How long one of the Mac's scripts is given to answer. It says what the system calls a screen, and takes a moment. */
+const SCRIPT_WAIT_MS = 5000;
 /** A window just opened may not have its number yet: it is asked for again this often, this many times. */
 const WINDOW_RETRY_MS = 400;
 const WINDOW_TRIES = 3;
@@ -463,7 +467,8 @@ export class ScreenRecordingService {
 		const hooks = this.hooks(run);
 		if (preferences.tool === 'native') {
 			if (system !== 'mac') return { ok: false, code: 'unavailable', detail: null };
-			const targets = this.nativeTargets(preferences.scope);
+			const targets = await this.nativeTargets(preferences.scope);
+			if (this.gone(run)) return { ok: false, code: 'cancelled', detail: null };
 			if (targets === null) return { ok: false, code: 'unavailable', detail: null };
 			const stem = recordingStamp(new Date(this.deps.now()));
 			const names = recordingFileNames(stem, targets.length);
@@ -514,10 +519,13 @@ export class ScreenRecordingService {
 	 * What the Mac's recorders are pointed at: each of Obsidian's windows,
 	 * the screen its main window is on, or every screen. Each window and each
 	 * screen takes a recorder of its own. The recorder counts the screens
-	 * itself, the main one first. Null where the main window cannot be named:
-	 * a recording of Obsidian with that one missing would be none.
+	 * itself, the main one first, off the system's own list. That list need
+	 * not be in the desktop's order, so a screen that is not the main one is
+	 * looked up there by its number, and only where the system would not say
+	 * is its place on the desktop taken. Null where the main window cannot
+	 * be named: a recording of Obsidian with that one missing would be none.
 	 */
-	private nativeTargets(scope: RecordingScope): { target: NativeTarget; window?: object }[] | null {
+	private async nativeTargets(scope: RecordingScope): Promise<{ target: NativeTarget; window?: object }[] | null> {
 		const shell = this.deps.shell();
 		if (scope === 'obsidian') {
 			const windows = this.deps.windows().all;
@@ -534,9 +542,10 @@ export class ScreenRecordingService {
 			return [{ target: { kind: 'main' } }];
 		}
 		const screen = shell?.screen() ?? null;
-		return [
-			{ target: screen === null || screen.index === 1 ? { kind: 'main' } : { kind: 'display', index: screen.index } },
-		];
+		if (screen === null || screen.index === 1) return [{ target: { kind: 'main' } }];
+		const order = screen.id === null ? null : await this.displayOrder();
+		const place = order === null || screen.id === null ? -1 : order.indexOf(screen.id);
+		return [{ target: { kind: 'display', index: place === -1 ? screen.index : place + 1 } }];
 	}
 
 	private hooks(run: number): RecorderHooks {
@@ -633,15 +642,35 @@ export class ScreenRecordingService {
 
 	/** What the system calls screens, by their numbers, in the order asked. Null where it would not say for every one. */
 	private async displayIdentifiers(numbers: readonly number[]): Promise<string[] | null> {
+		const said = await this.script(displayIdentifierArguments(numbers));
+		return said === null ? null : readDisplayIdentifiers(said, numbers.length);
+	}
+
+	/** The screens' numbers in the order the Mac's recorder counts them. Null where the system would not say. */
+	private async displayOrder(): Promise<number[] | null> {
+		const said = await this.script(displayOrderArguments());
+		return said === null ? null : readDisplayOrder(said);
+	}
+
+	/**
+	 * Runs one of the Mac's two scripts and hands back what it printed. Null
+	 * where it could not be run, ended badly, or never ended: one that hangs
+	 * is ended, so a start never waits on it for good.
+	 */
+	private async script(args: string[]): Promise<string | null> {
 		const runner = await this.deps.processes();
 		if (runner === null) return null;
-		const asked = runner.run(MAC_SCRIPT_RUNNER, displayIdentifierArguments(numbers));
+		const asked = runner.run(MAC_SCRIPT_RUNNER, args);
 		let said = '';
 		asked.onText('out', (text) => {
 			said += text;
 		});
-		const exit = await asked.closed;
-		return exit.error === null && exit.code === 0 ? readDisplayIdentifiers(said, numbers.length) : null;
+		const exit = await within(this.deps.timers, asked.closed, SCRIPT_WAIT_MS);
+		if (exit === null) {
+			asked.signal('SIGKILL');
+			return null;
+		}
+		return exit.error === null && exit.code === 0 ? said : null;
 	}
 
 	private password(preferences: RecordingPreferences): string | null {

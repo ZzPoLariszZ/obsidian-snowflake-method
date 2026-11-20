@@ -26,6 +26,16 @@ import { FakeClock } from '../helpers/fake-clock';
 import { FakeObs } from '../helpers/fake-obs';
 import { FakeProcessRunner, type FakeProcess } from '../helpers/fake-process';
 
+/** Whole numbers as the Mac's script writes them out: four bytes each, the low byte first, in base64. */
+function words(...numbers: number[]): string {
+	const bytes = new Uint8Array(numbers.length * 4);
+	const view = new DataView(bytes.buffer);
+	numbers.forEach((number, index) => {
+		view.setUint32(index * 4, number, true);
+	});
+	return btoa(String.fromCharCode(...bytes));
+}
+
 /** Obsidian's main window, and two a tab was moved out into. */
 const MAIN_WINDOW: DesktopWindow = { key: { window: 'main' }, id: 4321, title: 'Draft - Vault - Obsidian' };
 const SIDE_WINDOW: DesktopWindow = { key: { window: 'side' }, id: 4399, title: 'Notes - Vault - Obsidian' };
@@ -81,6 +91,11 @@ function rig(options: { system?: RecordingSystem | null; preferences?: Partial<R
 			string,
 			string
 		>,
+		/**
+		 * The screens' numbers in the order the Mac's recorder counts them, as
+		 * the system's own list has them. Null where the system will not say.
+		 */
+		order: [3] as number[] | null,
 		access: 'granted' as 'granted' | 'denied' | 'unknown',
 		shell: true,
 		runner: true,
@@ -93,6 +108,16 @@ function rig(options: { system?: RecordingSystem | null; preferences?: Partial<R
 		process.end(kept.folderThere ? 0 : 1);
 	});
 	runner.played.set(MAC_SCRIPT_RUNNER, (process) => {
+		// The script that says the recorder's order of the screens is handed no numbers.
+		if ((process.args[3] ?? '').includes('CGGetActiveDisplayList')) {
+			if (kept.order === null) {
+				process.end(1);
+				return;
+			}
+			process.say('out', `${words(kept.order.length)}\n${words(...kept.order, 0, 0)}\n`);
+			process.end(0);
+			return;
+		}
 		// The script's own words come first: the screens' numbers follow them.
 		const named = process.args.slice(4).map((number) => kept.screenNames[number]);
 		if (named.some((name) => name === undefined)) {
@@ -1209,6 +1234,55 @@ describe('the screen recording service', () => {
 });
 
 describe('what the second look at the recording turned up', () => {
+	it('numbers a screen for the Mac’s recorder by the system’s own list, not by its place on the desktop', async () => {
+		// Three screens. The desktop lists the one Obsidian is on third, the system's own list has it second.
+		const { clock, kept, runner, service, recorder } = rig();
+		kept.displays = [
+			{ frame: { x: 0, y: 0, width: 2560, height: 1440 }, id: 3 },
+			{ frame: { x: 2560, y: 0, width: 1920, height: 1080 }, id: 7 },
+			{ frame: { x: -1440, y: -560, width: 1440, height: 2560 }, id: 5 },
+		];
+		kept.screen = { origin: { x: -1440, y: -560 }, pixelOrigin: { x: -1440, y: -560 }, index: 3, id: 5 };
+		kept.order = [3, 5, 7];
+		await clock.drive(service.start());
+		expect(recorder().args.slice(0, 4)).toEqual(['-v', '-x', '-D', '2']);
+		expect(runner.of(MAC_SCRIPT_RUNNER)).toHaveLength(1);
+	});
+
+	it('takes the screen’s place on the desktop where the system will not say, or says nothing of that screen', async () => {
+		const silent = rig();
+		silent.kept.screen = { origin: { x: -1440, y: -560 }, pixelOrigin: { x: -1440, y: -560 }, index: 3, id: 5 };
+		silent.kept.order = null;
+		await silent.clock.drive(silent.service.start());
+		expect(silent.recorder().args.slice(0, 4)).toEqual(['-v', '-x', '-D', '3']);
+		const unlisted = rig();
+		unlisted.kept.screen = { origin: { x: -1440, y: -560 }, pixelOrigin: { x: -1440, y: -560 }, index: 2, id: 5 };
+		unlisted.kept.order = [3, 9];
+		await unlisted.clock.drive(unlisted.service.start());
+		expect(unlisted.recorder().args.slice(0, 4)).toEqual(['-v', '-x', '-D', '2']);
+		// A screen the desktop gives no number for cannot be looked up, and no script is run for it.
+		const nameless = rig();
+		nameless.kept.screen = { origin: { x: -1440, y: -560 }, pixelOrigin: { x: -1440, y: -560 }, index: 2, id: null };
+		await nameless.clock.drive(nameless.service.start());
+		expect(nameless.recorder().args.slice(0, 4)).toEqual(['-v', '-x', '-D', '2']);
+		expect(nameless.runner.of(MAC_SCRIPT_RUNNER)).toHaveLength(0);
+	});
+
+	it('runs no script for the main screen, and waits for none that hangs', async () => {
+		const main = rig();
+		await main.clock.drive(main.service.start());
+		expect(main.runner.of(MAC_SCRIPT_RUNNER)).toHaveLength(0);
+		// A script that never ends is ended after five seconds, and the recording begins all the same.
+		const hung = rig();
+		hung.kept.screen = { origin: { x: -1440, y: -560 }, pixelOrigin: { x: -1440, y: -560 }, index: 2, id: 5 };
+		hung.runner.played.delete(MAC_SCRIPT_RUNNER);
+		const from = hung.clock.now;
+		expect(await hung.clock.drive(hung.service.start(), 100)).toBeNull();
+		expect(hung.runner.of(MAC_SCRIPT_RUNNER)[0]?.signals).toEqual(['SIGKILL']);
+		expect(hung.recorder().args.slice(0, 4)).toEqual(['-v', '-x', '-D', '2']);
+		expect(hung.clock.now - from).toBeLessThan(8000);
+	});
+
 	it('waits for a look at OBS under way before it starts, and starts then', async () => {
 		const { clock, obs, service, events } = rig({ preferences: { tool: 'obs' } });
 		obs.holdNext('GetSourceScreenshot');
