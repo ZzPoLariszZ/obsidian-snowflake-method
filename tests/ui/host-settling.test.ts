@@ -19,6 +19,8 @@ vi.mock('obsidian', async (importOriginal) => {
 	};
 });
 
+import { FileSystemAdapter } from 'obsidian';
+
 import SnowflakeMethodPlugin from '../../src/main';
 import { DEFAULT_SETTINGS, type SnowflakeSettings } from '../../src/settings';
 import { SnowflakeProjectService } from '../../src/services';
@@ -36,6 +38,7 @@ interface Host {
 	scanProjects(): Promise<unknown[]>;
 	settleForQuit(): Promise<void> | null;
 	settleOutOfSight(): void;
+	registerSettling(): void;
 	requireProject(projectPath?: string): Promise<unknown>;
 	mutateDocument<T>(
 		bell: { ring(): void },
@@ -82,14 +85,30 @@ async function host() {
 	const settleAll = vi.fn<() => Promise<void> | null>(() => null);
 	let graphWrite: Promise<void> | null = null;
 	let saving: Promise<void> = Promise.resolve();
+	// What the plugin listens to, as the app would hand it over: the quit the
+	// workspace announces, and the page's own events.
+	const quitListeners: ((tasks: { add(callback: () => Promise<unknown>): void }) => void)[] = [];
+	const heard: { target: EventTarget; type: string; listener: EventListener }[] = [];
+	const vault: { adapter: object } = { adapter: {} };
 	const plugin = Object.create(SnowflakeMethodPlugin.prototype) as SnowflakeMethodPlugin;
 	Object.assign(plugin, {
 		app: {
+			vault,
 			workspace: {
 				getLeavesOfType: (type: string) => leaves.get(type) ?? [],
 				containerEl: { win: window, doc: document },
+				on: (name: string, listener: (typeof quitListeners)[number]) => {
+					if (name === 'quit') quitListeners.push(listener);
+					return {};
+				},
 			},
 		},
+		registerEvent: () => undefined,
+		registerDomEvent: (target: EventTarget, type: string, listener: EventListener) => {
+			target.addEventListener(type, listener);
+			heard.push({ target, type, listener });
+		},
+		pageLeaving: false,
 		projects: service,
 		settings: { ...DEFAULT_SETTINGS, projectRoot: 'Novels' },
 		saveData: (data: SnowflakeSettings) => {
@@ -143,7 +162,29 @@ async function host() {
 			saving = gate.promise;
 			return gate.resolve;
 		},
+		/** The vault is a folder on this computer's disk, as on the desktop. */
+		onDisk: (): void => {
+			vault.adapter = new FileSystemAdapter();
+		},
+		/** The app announces its quit, and hands over the list a listener adds its tasks to. */
+		quit: (): Promise<unknown>[] => {
+			const tasks: Promise<unknown>[] = [];
+			for (const listener of quitListeners) {
+				listener({ add: (callback) => void tasks.push(callback()) });
+			}
+			return tasks;
+		},
+		/** Takes the plugin's listeners off the page these tests share. */
+		unhook: (): void => {
+			for (const { target, type, listener } of heard) target.removeEventListener(type, listener);
+		},
 	};
+}
+
+/** The page reports itself hidden, or shown again. */
+function setHidden(hidden: boolean): void {
+	Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+	document.dispatchEvent(new Event('visibilitychange'));
 }
 
 describe('what the host counts as a change to what a dashboard draws', () => {
@@ -605,5 +646,105 @@ describe('what the host does as the app goes out of sight', () => {
 		expect(settleForUnload).not.toHaveBeenCalled();
 		stop();
 		vi.useRealTimers();
+	});
+});
+
+describe('what the host hears of the page going out of sight, and of its going for good', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		setHidden(false);
+		vi.useRealTimers();
+	});
+
+	/** A stream holding words its note does not, and a setting waiting on its timer. */
+	async function owing() {
+		const made = await host();
+		const stream = Object.create(SnowflakeManuscriptView.prototype) as SnowflakeManuscriptView;
+		const settleSaves = vi.fn(() => Promise.resolve());
+		Object.assign(stream, { settleSaves });
+		made.leaves.set(MANUSCRIPT_VIEW_TYPE, [{ view: stream }]);
+		await made.plugin.selectStep(3);
+		made.plugin.registerSettling();
+		return { ...made, settleSaves };
+	}
+
+	it('settles what was typed when the page is hidden, and not when it is shown again', async () => {
+		const { settleSaves, saved, unhook, stop } = await owing();
+		setHidden(true);
+		await microtasks();
+		expect(settleSaves).toHaveBeenCalledTimes(1);
+		expect(saved).toHaveLength(1);
+		setHidden(false);
+		await microtasks();
+		expect(settleSaves).toHaveBeenCalledTimes(1);
+		unhook();
+		stop();
+	});
+
+	it('starts nothing in a page that is being reloaded or closed', async () => {
+		const { settleSaves, settleAll, sessions, saved, unhook, stop } = await owing();
+		// A page on its way out says so first, and only then reports itself
+		// hidden. No quit is announced for a reload.
+		window.dispatchEvent(new Event('pagehide'));
+		setHidden(true);
+		await microtasks();
+		expect(saved).toHaveLength(0);
+		expect(settleSaves).not.toHaveBeenCalled();
+		expect(settleAll).not.toHaveBeenCalled();
+		expect(sessions.checkpoint).not.toHaveBeenCalled();
+		unhook();
+		stop();
+	});
+
+	it('still settles as a page set aside for a return goes out of sight', async () => {
+		const { settleSaves, saved, unhook, stop } = await owing();
+		// Kept whole, to be shown again: not a page on its way out.
+		const kept = new Event('pagehide');
+		Object.defineProperty(kept, 'persisted', { value: true });
+		window.dispatchEvent(kept);
+		setHidden(true);
+		await microtasks();
+		expect(settleSaves).toHaveBeenCalledTimes(1);
+		expect(saved).toHaveLength(1);
+		unhook();
+		stop();
+	});
+
+	it('starts nothing more once a quit has been announced', async () => {
+		const { quit, settleSaves, saved, unhook, stop } = await owing();
+		const tasks = quit();
+		await microtasks();
+		// The quit itself sent what was owed, once.
+		expect(tasks).toHaveLength(1);
+		expect(settleSaves).toHaveBeenCalledTimes(1);
+		expect(saved).toHaveLength(1);
+		// The window then goes, and is hidden as it does.
+		setHidden(true);
+		await microtasks();
+		expect(settleSaves).toHaveBeenCalledTimes(1);
+		expect(saved).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(3000);
+		await Promise.all(tasks);
+		unhook();
+		stop();
+	});
+
+	it('leaves the settings file to its timer where the vault is on this computer’s disk', async () => {
+		const { onDisk, settleSaves, saved, unhook, stop } = await owing();
+		onDisk();
+		setHidden(true);
+		await microtasks();
+		// The words still go to their notes, whose saves read before they write.
+		expect(settleSaves).toHaveBeenCalledTimes(1);
+		// The settings file is written in place, and is not begun here.
+		expect(saved).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(400);
+		expect(saved).toHaveLength(1);
+		expect(saved[0]?.recentStep).toBe(3);
+		unhook();
+		stop();
 	});
 });

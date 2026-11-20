@@ -947,6 +947,14 @@ export default class SnowflakeMethodPlugin
 	private writingCountField: Element | null = null;
 	/** Set on teardown: no count may paint into a status bar that is gone. */
 	private unloading = false;
+	/**
+	 * True once the page is on its way out: a quit has been announced, or
+	 * the page is being reloaded or closed. A page going away reports itself
+	 * hidden as it goes, and nothing may be started then: a write begun in a
+	 * dying page is cut after its file has been emptied and before a word of
+	 * it is written.
+	 */
+	private pageLeaving = false;
 	/** What is selected in the focused native Markdown editor, or null. */
 	private editorFocus: EditorFocusReport | null = null;
 	/** The selection a right-click found in a box, for the menu over it. */
@@ -12425,6 +12433,9 @@ export default class SnowflakeMethodPlugin
 		this.registerEvent(
 			this.app.workspace.on('quit', (tasks) => {
 				holdQuit(tasks, this.settleForQuit(), window);
+				// What is owed has been sent, and the window that now goes out
+				// of sight is going for good: nothing more is started in it.
+				this.pageLeaving = true;
 			}),
 		);
 		// A phone takes a hidden app away without a word, and its timers may
@@ -12432,9 +12443,22 @@ export default class SnowflakeMethodPlugin
 		// sight, and the editors are left exactly as they stand for its
 		// return. On the desktop the same costs a write the timer would have
 		// made a moment later.
+		//
+		// A page being reloaded or closed reports itself hidden as well, after
+		// saying it is leaving, and no quit is announced for a reload. A
+		// write started then never finishes: the app writes a file in place,
+		// so the settings file was left empty, and the next load took its
+		// defaults for what the author had chosen. So the leaving is heard
+		// first, and nothing is settled once it has been said.
 		const doc = this.app.workspace.containerEl.doc;
+		this.registerDomEvent(this.app.workspace.containerEl.win, 'pagehide', (event) => {
+			// Only a page being thrown away is leaving. One set aside whole,
+			// to be shown again, is still to write what it holds as it goes
+			// out of sight.
+			if (!event.persisted) this.pageLeaving = true;
+		});
 		this.registerDomEvent(doc, 'visibilitychange', () => {
-			if (doc.hidden) this.settleOutOfSight();
+			if (doc.hidden && !this.pageLeaving) this.settleOutOfSight();
 		});
 	}
 
@@ -12466,10 +12490,17 @@ export default class SnowflakeMethodPlugin
 
 	/** The app went out of sight: what was typed goes to the disk, and nothing is taken down. */
 	private settleOutOfSight(): void {
-		if (this.unloading) return;
+		if (this.unloading || this.pageLeaving) return;
 		const steps: (() => void)[] = [
 			() => void this.settleWriting(),
-			() => void this.settleSettings()?.catch(() => undefined),
+			// Not where the vault is a folder on this computer's disk. There
+			// the settings file is written in place, emptied first, and a hidden
+			// window is the one place the app can die mid-write with no word
+			// said; the timer the save waits on fires all the same while the
+			// app lives. A note's save reads its note first, and cannot empty it.
+			() => {
+				if (this.vaultDisk() === null) void this.settleSettings()?.catch(() => undefined);
+			},
 			() => this.sessions.checkpoint(),
 			() => {
 				for (const layer of this.stickyLayers.values()) layer.settle();

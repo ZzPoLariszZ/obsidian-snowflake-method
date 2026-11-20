@@ -44,6 +44,9 @@ export class AbstractInputSuggest {
 	setValue(_value: string): void {}
 }
 
+/** The desktop's vault on disk: only ever asked whether an adapter is one. */
+export class FileSystemAdapter {}
+
 /** Only `locale()` is reached from the code under test. */
 export const moment = { locale: (): string => 'en' };
 
