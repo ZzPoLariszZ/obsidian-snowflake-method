@@ -328,6 +328,11 @@ export class ObsRecorder {
 		this.left = true;
 		if (this.recording) {
 			void this.ask('StopRecord');
+			// The scene on air goes back to the author's first. Taken away while
+			// it is on air, OBS would choose another scene itself, and the ledger
+			// could not tell that from a change of the author's.
+			const scene = this.loans.find((loan) => loan.kind === 'scene');
+			if (scene !== undefined) void this.returnLoan(scene);
 			// Its scene goes too, unwaited for, or its source would capture on with nobody to end it.
 			void this.tidy();
 			this.finish();

@@ -2227,3 +2227,26 @@ describe('an OBS that will not say what it is doing', () => {
 		expect(obs.types().filter((type) => type === 'GetReplayBufferStatus')).toHaveLength(2);
 	});
 });
+
+describe('a plugin that goes under a recording', () => {
+	it('puts the author’s scene back on air as it goes, before its own is taken away', async () => {
+		const { obs, clock, recorder, hooks, ledger, again } = rig();
+		// The author has two scenes, and the second is on air.
+		obs.scenes = [
+			{ name: 'Intro', items: [] },
+			{ name: 'Scene', items: [] },
+		];
+		await clock.drive(recorder.start(request(), hooks));
+		expect(obs.program).toBe(OBS_SCENES.screen.scene);
+		recorder.abandon();
+		await clock.settle();
+		// Left to itself, OBS would have fallen to its first scene.
+		expect(obs.program).toBe('Scene');
+		expect(obs.scenes.map((scene) => scene.name)).toEqual(['Intro', 'Scene']);
+		expect(obs.recording).toBe(false);
+		// The next conversation finds the scene given back already, and settles the rest.
+		expect((await clock.drive(again().probe({ ...LOOK, scope: 'obs' }))).ok).toBe(true);
+		expect(obs.program).toBe('Scene');
+		expect(ledger.value).toBeNull();
+	});
+});
