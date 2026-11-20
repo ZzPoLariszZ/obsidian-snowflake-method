@@ -1566,6 +1566,9 @@ export function renderBoard<
 			}
 			return false;
 		},
+		settle: () => {
+			if (!disposed) deck.keep();
+		},
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;

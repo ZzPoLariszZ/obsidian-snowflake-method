@@ -3021,6 +3021,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			canvas.remeasure();
 		},
 		saveFocusedBody: () => faces.keepFocused() || keepFocusedCard(),
+		settle: () => {
+			if (disposed) return;
+			// What is typed in a node, and where nodes were left, go to the view
+			// first, and then the cards' own words.
+			canvas.settle();
+			deck.keep();
+			entityDeck.keep();
+		},
 		dispose: () => {
 			if (disposed) return;
 			// The order is a rule, as it is the timeline's: the bell, the keys,

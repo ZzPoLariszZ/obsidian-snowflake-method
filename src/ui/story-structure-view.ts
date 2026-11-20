@@ -856,6 +856,17 @@ export class SnowflakeStoryStructureView extends ItemView implements RelabelsHea
 		return this.timelineBridge.bridge;
 	}
 
+	/**
+	 * The app went out of sight: what is typed on the board goes to its notes
+	 * and the board stands as it is. A card's words are otherwise written on
+	 * a blur, which a tablet sent to the background may never send, and the
+	 * teardown below is no answer where the app usually comes back.
+	 */
+	settleOutOfSight(): void {
+		if (this.unloading) return;
+		this.board?.settle();
+	}
+
 	/** Settle typed words before plugin teardown; any later refusal must remain outside a dialog. */
 	settleForUnload(): void {
 		this.unloading = true;

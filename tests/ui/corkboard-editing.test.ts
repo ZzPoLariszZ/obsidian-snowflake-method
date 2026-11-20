@@ -504,6 +504,69 @@ describe('corkboard text revisions', () => {
 	});
 });
 
+describe('a corkboard asked to keep what is typed, the app going out of sight', () => {
+	it('writes a conflict still being typed, with no blur, and leaves the board standing', async () => {
+		const fixture = board();
+		fixture.typeConflict('Typed and never left');
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.host.patchScene.mock.calls).toEqual([
+			['scene', { conflict: 'Typed and never left', expectedRevision: 'initial' }, PROJECT],
+		]);
+		expect(fixture.stored().conflict).toBe('Typed and never left');
+		// Nothing was taken down: the card is there, and takes more words.
+		expect(fixture.dom.container.querySelector('.snowflake-method-corkboard-card')).toBe(fixture.card);
+		fixture.typeConflict('Typed and never left, and then some');
+		fixture.conflict.dispatch('blur');
+		await settle();
+		expect(fixture.stored().conflict).toBe('Typed and never left, and then some');
+		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it('writes a name being typed where it can be kept, and nothing where nothing was typed', async () => {
+		const fixture = board();
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+		fixture.title.dispatch('click');
+		fixture.titleInput.value = 'A new name';
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledTimes(1);
+		expect(fixture.stored().title).toBe('A new name');
+		// Asked again with nothing new typed, it writes nothing more.
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves a name that cannot be kept in its box, and asks the author nothing', async () => {
+		const opened: CorkboardDraftModal[] = [];
+		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
+		const fixture = board();
+		fixture.title.dispatch('click');
+		fixture.titleInput.value = '   ';
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+		// No notice and no dialog: the app is out of sight, and the box is as it was left.
+		expect(notices).not.toHaveBeenCalled();
+		expect(opened).toHaveLength(0);
+		expect(fixture.titleInput.value).toBe('   ');
+	});
+
+	it('does nothing once the board is gone', async () => {
+		const fixture = board();
+		fixture.typeConflict('Final draft');
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledTimes(1);
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('corkboard disposal saves', () => {
 	it('drains committed and final dirty conflicts in order for the original project', async () => {
 		const fixture = board();

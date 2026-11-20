@@ -12528,7 +12528,21 @@ export default class SnowflakeMethodPlugin
 			() => {
 				for (const layer of this.stickyLayers.values()) layer.settle();
 			},
+			// The reconcile a note's write asked for a moment ago: its timer is
+			// one more that a hidden app may never see fire.
+			() => void this.settleFieldsReconcile(),
 		];
+		// The workspaces' boards, each on its own as the streams are: a card's
+		// words are written on a blur, which a tablet sent to the background
+		// may never send. Nothing is taken down; the board stands for the return.
+		for (const leaf of this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)) {
+			const view = leaf.view;
+			if (view instanceof SnowflakeStoryStructureView) {
+				steps.push(() => {
+					view.settleOutOfSight();
+				});
+			}
+		}
 		for (const step of steps) {
 			try {
 				step();

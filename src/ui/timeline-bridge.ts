@@ -145,6 +145,12 @@ export interface TimelineHandle {
 	remeasure(): void;
 	/** Saves the body box holding the focus, for the view's own key scope. */
 	saveFocusedBody(): boolean;
+	/**
+	 * Sends what is typed here to its notes, and what waits on a timer to its
+	 * file, and leaves everything standing: for the app going out of sight,
+	 * where no blur may come and the app may never be woken again.
+	 */
+	settle(): void;
 	dispose(): void;
 }
 

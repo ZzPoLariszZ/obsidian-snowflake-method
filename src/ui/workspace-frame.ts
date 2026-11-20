@@ -953,6 +953,8 @@ export interface ScenePool {
 	reveal: (id: string) => void;
 	remeasure: () => void;
 	saveFocusedBody: () => boolean;
+	/** Sends what is typed in the pool's cards to their notes, and leaves the pool standing. */
+	settle: () => void;
 	dispose: () => void;
 }
 
@@ -1055,6 +1057,9 @@ export function createScenePool(deps: ScenePoolDeps): ScenePool {
 			handle?.remeasure();
 		},
 		saveFocusedBody: () => handle?.saveFocusedBody() ?? false,
+		settle: () => {
+			handle?.settle();
+		},
 		dispose: () => {
 			handle?.dispose();
 			handle = null;

@@ -40,7 +40,7 @@ function mount(phone: () => boolean) {
 	const throwing = (): never => {
 		throw new Error('The frame is stubbed in this test.');
 	};
-	const handle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, dispose: vi.fn() };
+	const handle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: () => false, settle: vi.fn(), dispose: vi.fn() };
 	const corkboard = vi.fn(() => handle);
 	const selectProject = vi.fn(() => Promise.resolve());
 	const view = new SnowflakeStoryStructureView(

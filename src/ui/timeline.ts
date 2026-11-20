@@ -1936,6 +1936,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		reveal: frame.reveal,
 		remeasure: frame.remeasure,
 		saveFocusedBody: () => focus.saveConflict() || pool.saveFocusedBody(),
+		settle: () => {
+			if (disposed) return;
+			focus.saveConflict();
+			pool.settle();
+			// The rows and the cells' feet go the way a leave sends them, and
+			// the lanes' cards keep what is typed in them.
+			cells.settle();
+			deck.keep();
+		},
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;

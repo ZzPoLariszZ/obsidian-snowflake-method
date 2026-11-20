@@ -1046,6 +1046,11 @@ export function renderRelationshipGraph(
 			engine?.remeasure();
 		},
 		saveFocusedBody: () => false,
+		settle: () => {
+			if (disposed) return;
+			flushState();
+			flushViewport();
+		},
 		dispose: () => {
 			disposed = true;
 			stopPlay();

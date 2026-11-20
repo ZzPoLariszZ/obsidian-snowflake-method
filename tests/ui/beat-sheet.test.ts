@@ -317,7 +317,7 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 	};
 	let handle: ReturnType<typeof renderBeatSheet>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), settle: vi.fn(), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
 	/** What the lent popover is asked to hang, kept by its own name so a test may ask what it was handed. */
@@ -2316,6 +2316,25 @@ describe('the beat sheet workspace owns its dialogs and the words in it', () => 
 		await settle();
 		expect(fixture.bridge.addAct).not.toHaveBeenCalled();
 		expect(fixture.bridge.addBeat).not.toHaveBeenCalled();
+	});
+
+	it('writes the words at a foot when the app goes out of sight, and stands as it was', async () => {
+		const fixture = laid();
+		await settle();
+		const input = trailingInput(fixture.cell('b2'));
+		input.value = 'Typed and never left';
+		input.dispatch('input');
+		// No blur comes from an app sent to the background.
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('s', 'b2', 'Typed and never left', null);
+		// The pool keeps what is typed in its cards too, and nothing is taken down.
+		expect(fixture.poolHandle.settle).toHaveBeenCalledTimes(1);
+		expect(fixture.poolHandle.dispose).not.toHaveBeenCalled();
+		// Asked once the sheet has gone, it does nothing.
+		fixture.handle.dispose();
+		fixture.handle.settle();
+		expect(fixture.poolHandle.settle).toHaveBeenCalledTimes(1);
 	});
 
 	it('lets a dismissed form lie, and disposes once', async () => {

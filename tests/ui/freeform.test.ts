@@ -3666,6 +3666,23 @@ describe('the workspace going', () => {
 		expect(fixture.canvas.disposed).toBe(1);
 	});
 
+	it('keeps what is being typed when the app goes out of sight, and takes nothing down', async () => {
+		const fixture = await laid();
+		fixture.port().open({ kind: 'node', id: 't2' }, {} as MouseEvent);
+		fixture.field('t2')!.value = 'Typed and never left';
+		const settled = fixture.canvas.settled;
+		// No blur comes from an app sent to the background.
+		fixture.handle.settle();
+		expect(fixture.canvas.settled).toBe(settled + 1);
+		expect(fixture.canvas.disposed).toBe(0);
+		expect(fixture.dom.container.querySelector('.snowflake-method-freeform')).not.toBeNull();
+		// Once the workspace has gone there is nothing left to keep.
+		fixture.handle.dispose();
+		const after = fixture.canvas.settled;
+		fixture.handle.settle();
+		expect(fixture.canvas.settled).toBe(after);
+	});
+
 	it('writes where a gesture cut short left its nodes, as the engine hands them over on its way out', async () => {
 		const fixture = await laid();
 		const dispose = fixture.canvas.disposed;

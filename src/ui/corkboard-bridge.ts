@@ -87,6 +87,12 @@ export interface CorkboardHandle {
 	 * when a box was saved.
 	 */
 	saveFocusedBody(): boolean;
+	/**
+	 * Sends what is typed here to its notes, and what waits on a timer to its
+	 * file, and leaves everything standing: for the app going out of sight,
+	 * where no blur may come and the app may never be woken again.
+	 */
+	settle(): void;
 	dispose(): void;
 }
 

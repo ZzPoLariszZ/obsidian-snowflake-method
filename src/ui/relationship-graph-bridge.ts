@@ -111,6 +111,12 @@ export interface RelationshipGraphHandle {
 	remeasure(): void;
 	/** Nothing on the graph is typed into, so there is never a body to save. */
 	saveFocusedBody(): boolean;
+	/**
+	 * Sends the controls and the picture's place, where either still waits
+	 * on its timer, to the file, and leaves the graph standing: for the app
+	 * going out of sight, where the timer may never fire.
+	 */
+	settle(): void;
 	dispose(): void;
 }
 

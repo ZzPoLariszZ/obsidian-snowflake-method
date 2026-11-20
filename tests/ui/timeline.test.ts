@@ -293,7 +293,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	};
 	let handle: ReturnType<typeof renderTimeline>;
 	const refresh = vi.fn(async () => { handle.refresh(); });
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => false), settle: vi.fn(), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
 	/** What the lent popover is asked to hang, kept by its own name so a test may ask what it was handed. */
@@ -2870,6 +2870,20 @@ describe('words typed at the foot of a cell whose write does not land', () => {
 		expect(input.value).toBe('ni');
 		input.dispatch('compositionend');
 		expect(input.value).toBe('Leaves\nni');
+	});
+
+	it('writes the words at a foot when the app goes out of sight, and stands as it was', async () => {
+		const fixture = laid();
+		await settle();
+		const input = trailingInput(fixture.cell('time-1', 'a'));
+		input.value = 'Typed and never left';
+		input.dispatch('input');
+		// No blur comes from an app sent to the background.
+		fixture.handle.settle();
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-1', 'Typed and never left', null);
+		expect(fixture.poolHandle.settle).toHaveBeenCalledTimes(1);
+		expect(fixture.poolHandle.dispose).not.toHaveBeenCalled();
 	});
 
 	it('writes the words to the lane they were typed on, where a lane\'s id carries the mark keys are joined on', async () => {

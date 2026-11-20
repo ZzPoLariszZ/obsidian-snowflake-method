@@ -64,6 +64,7 @@ function workspaceView() {
 		refresh: vi.fn(), dispose: vi.fn(), remeasure: vi.fn(),
 		reveal: vi.fn(),
 		saveFocusedBody: () => false,
+		settle: vi.fn(),
 	};
 	const view = new SnowflakeStoryStructureView({ app: { scope: {}, workspace } } as unknown as WorkspaceLeaf, {
 		host,

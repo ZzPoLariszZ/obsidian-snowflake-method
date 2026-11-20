@@ -350,6 +350,13 @@ export interface MemberCardDeck<Member extends CardMember, Card extends MemberCa
 	/** Lets the controls drag again once a press on one has ended. */
 	releasePress: () => void;
 	closeColorPanel: () => void;
+	/**
+	 * Sends what is typed in the cards to their notes and leaves every card
+	 * standing: for the app going out of sight, where no blur may come and the
+	 * app may never be woken again. A name that cannot be kept stays in its
+	 * box as it is, and nothing is asked of the author.
+	 */
+	keep: () => void;
 	/** Drains every editor into the queue, which keeps running after the board is gone. */
 	dispose: () => void;
 }
@@ -1326,6 +1333,22 @@ export function createMemberCardDeck<
 		commitBody,
 		releasePress,
 		closeColorPanel,
+		keep: () => {
+			if (disposed) return;
+			for (const card of cards.values()) {
+				// A card that cannot be written is left to the blur or the
+				// leave that would hand its words back: nothing is asked here.
+				if (!kind.membersById().has(card.id) || !editable(card)) continue;
+				if (card.editingTitle) {
+					const typed = card.titleInput.value.trim();
+					const current = kind.title(card.member);
+					const changed = typed !== card.titleOriginal;
+					const refused = typed.length === 0 || (typed !== current && kind.taken(typed, card.id));
+					if (changed && !refused) commitTitle(card, false);
+				}
+				if (card.bodyDirty) commitBody(card);
+			}
+		},
 		dispose: () => {
 			disposed = true;
 			closeColorPanel();

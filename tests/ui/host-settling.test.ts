@@ -817,8 +817,22 @@ describe('what the host does as the app goes out of sight', () => {
 		leaves.set(MANUSCRIPT_VIEW_TYPE, [{ view: stream }]);
 		const board = Object.create(SnowflakeStoryStructureView.prototype) as SnowflakeStoryStructureView;
 		const settleForUnload = vi.fn();
-		Object.assign(board, { settleForUnload });
-		leaves.set(STORY_STRUCTURE_VIEW_TYPE, [{ view: board }]);
+		const keepBoard = vi.fn();
+		Object.assign(board, { settleForUnload, settleOutOfSight: keepBoard });
+		// One board that cannot answer does not leave the next one unasked.
+		const broken = Object.create(SnowflakeStoryStructureView.prototype) as SnowflakeStoryStructureView;
+		Object.assign(broken, {
+			settleOutOfSight: () => {
+				throw new Error('this board is in a bad way');
+			},
+		});
+		leaves.set(STORY_STRUCTURE_VIEW_TYPE, [{ view: broken }, { view: board }]);
+		const said = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const drained = vi.fn(() => Promise.resolve());
+		Object.assign(plugin, {
+			drainFieldsBlockReconciles: drained,
+			fieldsReconcileTimer: window.setTimeout(() => undefined, 1000),
+		});
 		await plugin.selectStep(2);
 
 		plugin.settleOutOfSight();
@@ -829,7 +843,14 @@ describe('what the host does as the app goes out of sight', () => {
 		// A checkpoint, which ends nothing: the app usually comes back.
 		expect(sessions.checkpoint).toHaveBeenCalledTimes(1);
 		expect(sessions.markShutdown).not.toHaveBeenCalled();
+		// The boards keep what is typed on them, and are not taken down.
+		expect(keepBoard).toHaveBeenCalledTimes(1);
 		expect(settleForUnload).not.toHaveBeenCalled();
+		expect(said).toHaveBeenCalledTimes(1);
+		// The reconcile a note's write asked for is run, its timer gone.
+		expect(drained).toHaveBeenCalledTimes(1);
+		expect(plugin.fieldsReconcileTimer).toBeNull();
+		said.mockRestore();
 		stop();
 		vi.useRealTimers();
 	});

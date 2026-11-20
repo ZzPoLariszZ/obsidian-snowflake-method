@@ -109,7 +109,7 @@ const modelOf = (ids: string[]): ProjectDashboardModel => ({
 function controlsOf() {
 	const state = { projectPath: 'P' as string | null, unloading: false };
 	const resolved = vi.fn((target: string, _source: string) => ({ path: `Draft/${target}.md` }));
-	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => true), dispose: vi.fn() };
+	const poolHandle = { refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedBody: vi.fn(() => true), settle: vi.fn(), dispose: vi.fn() };
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const memory: FrameMemory = {
 		pool: corkboardMemory({ mode: 'compact', group: '', reversed: false }),

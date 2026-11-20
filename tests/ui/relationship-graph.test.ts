@@ -667,6 +667,25 @@ describe('the entities view', () => {
 		expect(fixture.bridge.updateEntities).not.toHaveBeenCalled();
 	});
 
+	it('writes a move still owed when the app goes out of sight, and leaves the graph standing', async () => {
+		const fixture = mount({ members: family() });
+		await settle();
+		const engine = fixture.engines[0]!;
+		engine.port.viewportMoved({ x: 5, y: 6, k: 1 });
+		expect(fixture.bridge.updateEntities).not.toHaveBeenCalled();
+		// The timer the move waits on may never fire in a hidden app.
+		fixture.handle.settle();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledWith({ viewport: { x: 5, y: 6, k: 1 } });
+		expect(engine.calls).not.toContain('dispose');
+		// The timer was let go with the write: nothing is written twice.
+		fixture.dom.flushFrame();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+		// Asked with nothing owed, it writes nothing.
+		fixture.handle.settle();
+		expect(fixture.bridge.updateEntities).toHaveBeenCalledTimes(1);
+	});
+
 	it('settles a move still owed when the tab closes, and keeps where the nodes stand', async () => {
 		const fixture = mount({ members: family() });
 		await settle();
