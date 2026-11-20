@@ -631,15 +631,16 @@ export type ObsLoan =
  * struck out entry by entry as each is given back, so a crash of either
  * program leaves a list the next conversation with OBS can finish.
  *
- * `recording` is written before OBS is asked to record, and struck out once
- * OBS is known to have stopped. A recording found running in OBS is the
- * plugin's own only while it stands: one the author began in OBS is theirs,
- * whatever else the ledger still holds.
+ * `recording` is the moment OBS was asked to record, written before it is
+ * asked and struck out once OBS took a stop or is known to have stopped. A
+ * recording found running in OBS is the plugin's own only while it stands
+ * and the recording is as old as it says: one the author began in OBS is
+ * theirs, whatever else the ledger still holds.
  */
 export interface ObsJournal {
 	version: 1;
 	loans: ObsLoan[];
-	recording?: true;
+	recording?: number;
 }
 
 const isSize = (value: unknown): value is ObsSize =>
@@ -699,8 +700,33 @@ export function readObsJournal(raw: unknown): ObsJournal | null {
 		const loan = readLoan(entry);
 		if (loan !== null) loans.push(loan);
 	}
-	if (raw.recording === true) return { version: 1, loans, recording: true };
+	if (typeof raw.recording === 'number' && Number.isFinite(raw.recording)) {
+		return { version: 1, loans, recording: raw.recording };
+	}
 	return loans.length === 0 ? null : { version: 1, loans };
+}
+
+/**
+ * How far the age of a recording found in OBS may be from the time since
+ * the plugin asked for one, and still be that one: OBS begins a moment
+ * after it is asked, and counts a little less than the clock does over a
+ * long recording, by the pictures it could not keep up with.
+ */
+const OWN_RECORDING_SLACK_MS = 10_000;
+const OWN_RECORDING_DRIFT = 0.02;
+
+/**
+ * Whether a recording found running in OBS is the one the plugin asked for
+ * at a moment it kept. The mark alone does not say: it outlives a recording
+ * whose end nobody saw, a plugin switched off or an OBS that went away,
+ * and the author may have begun a recording of their own since. That one
+ * is younger than the mark by all the time between. Where OBS does not say
+ * how long it has recorded, the recording is taken for nobody's.
+ */
+export function obsRecordingIsOwn(askedAt: number, now: number, durationMs: number | null): boolean {
+	if (durationMs === null) return false;
+	const since = now - askedAt;
+	return Math.abs(since - durationMs) <= Math.max(OWN_RECORDING_SLACK_MS, since * OWN_RECORDING_DRIFT);
 }
 
 /** What two entries of the ledger must share to be about the same thing of OBS's. */

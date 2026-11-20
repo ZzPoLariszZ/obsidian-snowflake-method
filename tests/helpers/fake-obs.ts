@@ -129,6 +129,8 @@ export class FakeObs {
 	videoResets = 0;
 	/** OBS says yes to a start and records nothing, as it does into a folder that is not there. */
 	startsNothing = false;
+	/** The clock OBS counts a recording's length by, where a test hands it one. Without it the length is `duration`. */
+	now: (() => number) | null = null;
 	/** How many more looks at the recording find it still running after a stop was asked. */
 	stopsLate = 0;
 	/** Another output of OBS runs, so it will not change the size it writes at. */
@@ -222,6 +224,8 @@ export class FakeObs {
 	private readonly sockets: FakeSocket[] = [];
 	private nextItem = 1;
 	private stopAsked = false;
+	/** When the recording that runs began, on the clock handed in. */
+	private began: number | null = null;
 
 	/** The socket factory to hand the plugin. */
 	readonly open = (_url: string): SocketLike => {
@@ -344,6 +348,18 @@ export class FakeObs {
 		);
 	}
 
+	/** A recording is started in OBS itself: by the author, or by a start that had only been slow. */
+	startFromInside(): void {
+		this.recording = true;
+		this.stopAsked = false;
+		this.began = this.now?.() ?? null;
+		this.emit('RecordStateChanged', {
+			outputActive: true,
+			outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
+			outputPath: this.recordPath,
+		});
+	}
+
 	/** The recording was stopped in OBS itself. */
 	stopFromInside(): void {
 		this.recording = false;
@@ -426,7 +442,9 @@ export class FakeObs {
 					this.stopsLate -= 1;
 					active = true;
 				}
-				return ok({ outputActive: active, outputDuration: this.duration, outputBytes: this.bytes });
+				// How long it has recorded, by the clock where one was handed in and the recording was seen to begin.
+				const length = this.now !== null && this.began !== null && this.recording ? this.now() - this.began : this.duration;
+				return ok({ outputActive: active, outputDuration: length, outputBytes: this.bytes });
 			}
 			case 'GetOutputList':
 				return ok({
@@ -656,6 +674,7 @@ export class FakeObs {
 				if (this.parameters['SimpleOutput/RecQuality'] !== this.builtQuality) return ok();
 				this.recording = true;
 				this.stopAsked = false;
+				this.began = this.now?.() ?? null;
 				this.emit('RecordStateChanged', {
 					outputActive: true,
 					outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',

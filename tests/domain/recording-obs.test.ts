@@ -27,6 +27,7 @@ import {
 	obsOutputSize,
 	pickObsListItem,
 	pickObsWindow,
+	obsRecordingIsOwn,
 	readObsJournal,
 	resolveObsKind,
 	type ObsLoan,
@@ -618,14 +619,36 @@ describe('the ledger of what is borrowed from OBS', () => {
 		}
 	});
 
-	it('keeps the mark of a recording the plugin asked for, with loans beside it or with none', () => {
-		const marked = { version: 1, loans: [folder], recording: true };
+	it('keeps the moment a recording was asked for, with loans beside it or with none', () => {
+		const marked = { version: 1, loans: [folder], recording: 1_795_000_000_000 };
 		expect(readObsJournal(JSON.parse(JSON.stringify(marked)))).toEqual(marked);
 		// A recording that borrowed nothing is the plugin's own all the same.
-		expect(readObsJournal({ version: 1, loans: [], recording: true })).toEqual({ version: 1, loans: [], recording: true });
-		// Anything but a plain yes is no mark, and a ledger an earlier build wrote carries none.
-		expect(readObsJournal({ version: 1, loans: [folder], recording: 'yes' })).toEqual({ version: 1, loans: [folder] });
-		expect(readObsJournal({ version: 1, loans: [], recording: false })).toBeNull();
+		expect(readObsJournal({ version: 1, loans: [], recording: 5 })).toEqual({ version: 1, loans: [], recording: 5 });
+		// Anything but a moment is no mark, and a ledger an earlier build wrote carries none.
+		for (const junk of ['yes', true, false, null, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(readObsJournal({ version: 1, loans: [folder], recording: junk })).toEqual({ version: 1, loans: [folder] });
+			expect(readObsJournal({ version: 1, loans: [], recording: junk })).toBeNull();
+		}
+	});
+
+	it('knows its own recording by its age: as old as the mark, give or take what OBS loses', () => {
+		const asked = 1_795_000_000_000;
+		const minute = 60_000;
+		// OBS begins a moment after it is asked, and counts from there.
+		expect(obsRecordingIsOwn(asked, asked + 4000, 2900)).toBe(true);
+		expect(obsRecordingIsOwn(asked, asked + 90 * minute, 90 * minute - 1100)).toBe(true);
+		// Over hours it counts a little less than the clock, by the pictures it could not keep up with.
+		expect(obsRecordingIsOwn(asked, asked + 180 * minute, 180 * minute * 0.985)).toBe(true);
+		// A recording the author began later is younger than the mark by all the time between.
+		expect(obsRecordingIsOwn(asked, asked + 3 * minute, 20_000)).toBe(false);
+		expect(obsRecordingIsOwn(asked, asked + 180 * minute, 170 * minute)).toBe(false);
+		expect(obsRecordingIsOwn(asked, asked + minute, 0)).toBe(false);
+		// One older than the mark cannot be the one the mark was written for.
+		expect(obsRecordingIsOwn(asked, asked + minute, 5 * minute)).toBe(false);
+		// Where OBS does not say how long it has recorded, the recording is nobody's.
+		expect(obsRecordingIsOwn(asked, asked + 4000, null)).toBe(false);
+		// A clock that went back a little between the two is no change of owner.
+		expect(obsRecordingIsOwn(asked, asked - 2000, 1500)).toBe(true);
 	});
 
 	it('drops an entry it cannot read and keeps the rest', () => {

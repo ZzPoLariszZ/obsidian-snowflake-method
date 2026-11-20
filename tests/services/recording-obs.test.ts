@@ -70,9 +70,13 @@ const TWO_SCREENS: ObsMacTarget = {
 	],
 };
 
-function rig(options: { system?: RecordingSystem; obs?: FakeObs; ledger?: ObsJournal | null } = {}): Rig {
+function rig(
+	options: { system?: RecordingSystem; obs?: FakeObs; ledger?: ObsJournal | null; clock?: FakeClock } = {},
+): Rig {
 	const obs = options.obs ?? new FakeObs();
-	const clock = new FakeClock();
+	const clock = options.clock ?? new FakeClock();
+	// OBS counts how long it has recorded by the same clock the plugin reads.
+	obs.now = () => clock.now;
 	const ledger = { value: options.ledger ?? null, saves: 0 };
 	const opened = { count: 0, works: true, then: (): void => {} };
 	const seen: Rig['seen'] = {
@@ -777,7 +781,7 @@ describe('recording through OBS', () => {
 
 	it('asks again for a name OBS has not let go of yet, after taking away what a lost recording left', async () => {
 		// As a real OBS came back after it was ended under a recording: the plugin's scene on air, its source in it.
-		const { obs, clock, recorder, hooks } = rig({ ledger: { version: 1, loans: [], recording: true } });
+		const { obs, clock, recorder, hooks } = rig({ ledger: { version: 1, loans: [], recording: 940_000 } });
 		obs.scenes.push({ name: OBS_SCENES.screen.scene, items: [{ id: 90, source: OBS_SCENES.screen.input }] });
 		obs.inputs[OBS_SCENES.screen.input] = { kind: 'screen_capture', settings: {}, muted: true };
 		obs.program = OBS_SCENES.screen.scene;
@@ -1296,12 +1300,14 @@ describe('recording through OBS', () => {
 	it('takes up a recording an earlier run of the plugin left in OBS', async () => {
 		const first = rig();
 		await first.clock.drive(first.recorder.start(request(), first.hooks));
-		// The plugin goes away without a word; OBS records on.
+		// The plugin goes away without a word; OBS records on, for a minute and a half.
 		const before = first.obs.writes().length;
-		first.obs.duration = 90_000;
-		const second = rig({ obs: first.obs, ledger: first.ledger.value });
+		const asked = first.ledger.value?.recording;
+		await first.clock.advance(90_000);
+		const second = rig({ obs: first.obs, ledger: first.ledger.value, clock: first.clock });
 		const started = await second.clock.drive(second.recorder.start(request(), second.hooks));
-		expect(started).toEqual({ ok: true, startedAt: second.clock.now - 90_000, path: null });
+		// It began when OBS was asked, by OBS's own count of how long it has run.
+		expect(started).toEqual({ ok: true, startedAt: asked, path: null });
 		expect(first.obs.writes()).toHaveLength(before);
 		// It records already: there is nothing to count the author in for.
 		expect(second.seen.held).toBe(0);
@@ -1688,9 +1694,11 @@ describe('an OBS busy with something of the author’s own', () => {
 		first.obs.parameters['Output/FilenameFormatting'] = '%CCYY-%MM-%DD %hh.%mm.%ss';
 		first.obs.scenes[0]?.items.push({ id: 7, source: 'The author’s own capture' });
 		await first.clock.drive(first.recorder.start(request({ scope: 'obs' }), first.hooks));
-		expect(first.ledger.value).toEqual({ version: 1, loans: [], recording: true });
-		// The plugin goes away without a word, and comes back.
-		const second = rig({ obs: first.obs, ledger: first.ledger.value });
+		// The mark is the moment OBS was asked.
+		expect(first.ledger.value).toEqual({ version: 1, loans: [], recording: expect.any(Number) as number });
+		// The plugin goes away without a word, and comes back a while later.
+		await first.clock.advance(90_000);
+		const second = rig({ obs: first.obs, ledger: first.ledger.value, clock: first.clock });
 		expect((await second.clock.drive(second.recorder.start(request({ scope: 'obs' }), second.hooks))).ok).toBe(true);
 		expect(second.seen.held).toBe(0);
 		// A look at it finds nothing in the way: the recording is the plugin's own.
@@ -1702,7 +1710,7 @@ describe('an OBS busy with something of the author’s own', () => {
 	it('strikes its mark out once OBS is seen not to record: after a stop, a stop in OBS, or OBS quitting', async () => {
 		const stopped = rig();
 		await stopped.clock.drive(stopped.recorder.start(request(), stopped.hooks));
-		expect(stopped.ledger.value?.recording).toBe(true);
+		expect(stopped.ledger.value?.recording).toEqual(expect.any(Number));
 		await stopped.clock.drive(stopped.recorder.stop());
 		expect(stopped.ledger.value).toBeNull();
 
@@ -1732,7 +1740,7 @@ describe('an OBS busy with something of the author’s own', () => {
 		obs.drop();
 		await clock.advance(20_000);
 		expect(seen.ended).toEqual([{ reason: 'lost', path: null, error: 'obs-lost' }]);
-		expect(ledger.value?.recording).toBe(true);
+		expect(ledger.value?.recording).toEqual(expect.any(Number));
 		obs.closed = false;
 		const next = again();
 		expect((await clock.drive(next.start(request(), hooks))).ok).toBe(true);
@@ -1755,7 +1763,7 @@ describe('a stop OBS may not have heard', () => {
 		// OBS was told nothing and records on. The ledger keeps what is still borrowed, and whose recording it is.
 		expect(obs.recording).toBe(true);
 		expect(seen.notices).toEqual(['return-pending']);
-		expect(ledger.value?.recording).toBe(true);
+		expect(ledger.value?.recording).toEqual(expect.any(Number));
 		expect(ledger.value?.loans.length).toBeGreaterThan(0);
 	});
 
@@ -2009,5 +2017,54 @@ describe('a look at OBS', () => {
 		expect(own).toMatchObject({ ok: true, problem: null, picture: 'data:image/jpg;base64,AAAA' });
 		expect(obs.program).toBe('Scene');
 		expect(obs.writes()).not.toContain('SetCurrentProgramScene');
+	});
+});
+
+const LOOK = { port: 4455, password: null, scope: 'screen', mayOpen: false } as const;
+
+describe('a recording nobody saw begin or end', () => {
+	it('strikes its mark out once OBS took the stop, though the file is not closed in time', async () => {
+		const { obs, clock, recorder, hooks, ledger, again } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		expect(ledger.value?.recording).toEqual(expect.any(Number));
+		// A quitting Obsidian waits three looks for the file, and OBS needs longer.
+		obs.stopsLate = 90;
+		expect(await clock.drive(recorder.settle())).toEqual({ path: obs.recordPath, error: null });
+		// What was borrowed waits for the next conversation. The recording does not: OBS took its stop.
+		expect(ledger.value?.loans.length).toBeGreaterThan(0);
+		expect(ledger.value?.recording).toBeUndefined();
+		// So a recording the author begins in OBS afterwards is theirs.
+		obs.stopsLate = 0;
+		obs.startFromInside();
+		const asked = obs.writes().length;
+		expect(await clock.drive(again().start(request(), hooks))).toEqual({
+			ok: false,
+			code: 'obs-recording',
+			detail: null,
+		});
+		expect(obs.writes()).toHaveLength(asked);
+		expect(obs.recording).toBe(true);
+	});
+
+	it('takes a younger recording for the author’s own, though its mark still stands', async () => {
+		const { obs, clock, recorder, hooks, ledger, again } = rig();
+		await clock.drive(recorder.start(request(), hooks));
+		await clock.advance(30_000);
+		// The plugin is switched off under the recording: OBS is told to stop, and nobody waits to hear that it did.
+		recorder.abandon();
+		await clock.settle();
+		expect(obs.recording).toBe(false);
+		expect(ledger.value?.recording).toEqual(expect.any(Number));
+		// Minutes later the author records something of their own, and the plugin is asked to record.
+		await clock.advance(120_000);
+		obs.startFromInside();
+		await clock.advance(20_000);
+		const asked = obs.writes().length;
+		const next = again();
+		expect(await clock.drive(next.start(request(), hooks))).toEqual({ ok: false, code: 'obs-recording', detail: null });
+		expect(await clock.drive(next.probe(LOOK))).toMatchObject({ ok: true, problem: 'obs-recording' });
+		// Their recording goes on untouched: not taken up, not stopped, and nothing given back under it.
+		expect(obs.writes()).toHaveLength(asked);
+		expect(obs.recording).toBe(true);
 	});
 });
