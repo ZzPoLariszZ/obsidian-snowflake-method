@@ -675,6 +675,15 @@ describe('Obsidian alone, a recorder for each of its windows', () => {
 		expect(await recorder.add(THIRD)).toBe(false);
 	});
 
+	it('holds every recorder’s input open: one that waits there for a key would take its end for one', async () => {
+		const { runner, recorder, begin } = rig();
+		await begin({ takes: BOTH_WINDOWS });
+		expect(await recorder.add(THIRD)).toBe(true);
+		expect(runner.of(NATIVE_RECORDER).map((process) => process.options.heldInput)).toEqual([true, true, true]);
+		// The small programs around them are only asked a question, and find their input closed.
+		expect(runner.of(MAC_FOLDER_TEST)[0]?.options.heldInput).toBeUndefined();
+	});
+
 	it('takes a window’s recorder that fails as that window’s file lost and no more', async () => {
 		const { clock, runner, recorder, seen, begin } = rig();
 		await begin({ takes: BOTH_WINDOWS });

@@ -32,6 +32,13 @@ import {
  * that will not end. The Mac may end it by itself too: when the screen
  * locks, or when the stop in the menu bar is pressed.
  *
+ * At a terminal the recorder also waits for a key as its stop. The one of
+ * macOS 14 waits with no terminal too, and takes the end of its input for
+ * that key: given a closed input it ended its recording a tenth of a second
+ * in and saved that moment. So every recorder is started with an input
+ * that stays open and is never written to. That input ends with Obsidian,
+ * which such a recorder takes as its stop, saving its file.
+ *
  * The recorder writes somewhere of its own while it records and moves the
  * file into place at the end. A folder that is not there is found out only
  * then, with the whole recording lost, so the folder is looked at first.
@@ -321,7 +328,8 @@ export class NativeRecorder {
 
 	/** Starts one recorder and reads what it says and how it ends. */
 	private launch(runner: ProcessRunner, asked: NativeTake, loose: boolean, startedAt: number): Take {
-		const child = runner.run(NATIVE_RECORDER, nativeArguments(asked.file, asked.target));
+		// Its input is held open: a recorder that waits there for a key must never find it ended.
+		const child = runner.run(NATIVE_RECORDER, nativeArguments(asked.file, asked.target), { heldInput: true });
 		const take: Take = {
 			child,
 			file: asked.file,

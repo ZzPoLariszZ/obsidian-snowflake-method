@@ -58,6 +58,25 @@ describe.skipIf(windows)('a program started for real', () => {
 		expect(heard).toBe('');
 	});
 
+	it('holds the input open where asked: one that reads goes on waiting', async () => {
+		const program = (await runner()).run('/bin/cat', [], { heldInput: true });
+		const waiting = new Promise<'waiting'>((resolve) => {
+			setTimeout(() => {
+				resolve('waiting');
+			}, 200);
+		});
+		// It finds no end to read, and nothing is ever written for it.
+		expect(await Promise.race([program.closed.then(() => 'ended' as const), waiting])).toBe('waiting');
+		program.signal('SIGTERM');
+		expect(await program.closed).toEqual({ code: null, signal: 'SIGTERM', error: null });
+	});
+
+	it('holds no input for a program left to itself', async () => {
+		const program = (await runner()).run('/bin/cat', [], { detached: true, heldInput: true });
+		// Its input is closed all the same: it reads the end at once and goes.
+		expect(await program.closed).toEqual({ code: 0, signal: null, error: null });
+	});
+
 	it('knows the program by the system’s number for it', async () => {
 		const program = (await runner()).run('/bin/sleep', ['30']);
 		expect(Number.isSafeInteger(program.pid)).toBe(true);

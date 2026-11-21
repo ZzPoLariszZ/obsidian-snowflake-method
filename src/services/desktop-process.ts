@@ -38,6 +38,14 @@ export interface ProcessOptions {
 	cwd?: string;
 	/** The program is to outlive Obsidian, and is not followed: another application being opened. */
 	detached?: boolean;
+	/**
+	 * The program's input is held open and never written to, where it would
+	 * otherwise be closed. One that waits there for a key takes the end of a
+	 * closed input for one: the Mac's recorder on macOS 14 ended its
+	 * recording a tenth of a second in. The input ends with Obsidian, or
+	 * with the program. One left to itself has no input to hold.
+	 */
+	heldInput?: boolean;
 }
 
 export interface ProcessRunner {
@@ -53,6 +61,8 @@ interface PipeLike {
 
 interface ChildLike {
 	pid?: number;
+	/** The program's input, where it was held open. Nothing is ever written to it. */
+	stdin: { on(event: 'error', listener: (error: unknown) => void): unknown } | null;
 	stdout: PipeLike | null;
 	stderr: PipeLike | null;
 	kill(signal: string): boolean;
@@ -101,6 +111,8 @@ function follow(child: ChildLike, detached: boolean): RunningProcess {
 			for (const listener of listeners[stream]) listener(said);
 		});
 	}
+	// An input held open ends with the program, and what it raises then is not the window's to hear either.
+	child.stdin?.on('error', () => {});
 	if (detached) child.unref();
 	return {
 		pid: typeof child.pid === 'number' ? child.pid : null,
@@ -141,9 +153,12 @@ export async function desktopProcessRunner(): Promise<ProcessRunner | null> {
 					node.spawn(command, [...args], {
 						...(options.cwd === undefined ? {} : { cwd: options.cwd }),
 						detached,
-						// No program is ever typed to: its input is closed. One left
-						// to itself is given no pipe to fill either.
-						stdio: detached ? ['ignore', 'ignore', 'ignore'] : ['ignore', 'pipe', 'pipe'],
+						// No program is ever typed to: its input is closed, or held
+						// open and left silent where that was asked. One left to
+						// itself is given no pipe to fill either.
+						stdio: detached
+							? ['ignore', 'ignore', 'ignore']
+							: [options.heldInput === true ? 'pipe' : 'ignore', 'pipe', 'pipe'],
 						windowsHide: true,
 						shell: false,
 					}),
