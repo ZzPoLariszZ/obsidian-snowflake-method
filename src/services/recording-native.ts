@@ -5,6 +5,7 @@ import {
 	NATIVE_CAP_MS,
 	NATIVE_RECORDER,
 	classifyNativeExit,
+	fileTestArguments,
 	folderTestArguments,
 	interruptArguments,
 	isNativeRecorderLine,
@@ -413,23 +414,37 @@ export class NativeRecorder {
 		return classifyNativeExit({
 			stderr: take.said,
 			code: take.exit?.code ?? null,
+			signal: take.exit?.signal ?? null,
 			spawnError: take.exit?.error ?? null,
 			stopAsked,
 			early,
+			interrupted: take.interrupted,
 		});
+	}
+
+	/** Whether a recorder's file is there with something in it. Not where the look itself could not be made. */
+	private async fileThere(file: string): Promise<boolean> {
+		const runner = await this.deps.processes();
+		if (runner === null) return false;
+		const exit = await runner.run(MAC_FOLDER_TEST, fileTestArguments(file)).closed;
+		return exit.error === null && exit.code === 0;
 	}
 
 	/**
 	 * What a recording that has ended left: its files, or why it kept none.
 	 * One screen lost is the recording lost. A window that came and went
-	 * costs its own file at most.
+	 * costs its own file at most. A recorder that answered its stop the
+	 * older way is believed where its file is there.
 	 */
-	private outcome(takes: readonly Take[], stopAsked: boolean): RecorderStop {
+	private async outcome(takes: readonly Take[], stopAsked: boolean): Promise<RecorderStop> {
 		const saved: Take[] = [];
 		for (const take of takes) {
 			const verdict = this.read(take, stopAsked, false);
-			if (verdict.kind === 'ended') saved.push(take);
-			else if (!take.loose) return { path: null, error: verdict.code };
+			if (verdict.kind === 'ended' || (verdict.kind === 'interrupted' && (await this.fileThere(take.file)))) {
+				saved.push(take);
+			} else if (!take.loose) {
+				return { path: null, error: verdict.kind === 'failed' ? verdict.code : 'recorder-failed' };
+			}
 		}
 		return { ...kept(saved), error: null };
 	}
@@ -498,6 +513,6 @@ export class NativeRecorder {
 			return;
 		}
 		this.deps.ledger.save(null);
-		hooks?.ended({ reason: 'external', ...this.outcome(takes, false) });
+		hooks?.ended({ reason: 'external', ...(await this.outcome(takes, false)) });
 	}
 }

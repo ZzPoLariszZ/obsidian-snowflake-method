@@ -65,7 +65,16 @@ describe('the screen recording’s reach', () => {
 			[...(sources[path] ?? '').matchAll(/\brunner\.run\(([^,)]+)/gu)].map((match) => match[1]),
 		);
 		expect(started.sort()).toEqual(
-			['MAC_FOLDER_TEST', 'MAC_PROCESS_LIST', 'MAC_SCRIPT_RUNNER', 'MAC_SIGNAL', 'NATIVE_RECORDER', 'launch.command'].sort(),
+			[
+				// Asked twice: after the folder, and after a recorder's file.
+				'MAC_FOLDER_TEST',
+				'MAC_FOLDER_TEST',
+				'MAC_PROCESS_LIST',
+				'MAC_SCRIPT_RUNNER',
+				'MAC_SIGNAL',
+				'NATIVE_RECORDER',
+				'launch.command',
+			].sort(),
 		);
 	});
 

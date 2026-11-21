@@ -38,12 +38,16 @@ function rig(options: { access?: 'granted' | 'denied' | 'unknown'; runner?: bool
 		trashWorks: true,
 		/** The folder is there and can be written to. */
 		folder: true,
+		/** A recorder's file is there, with something in it, once the recorder has ended. */
+		saved: true,
 		/** What the device keeps of the recorder that runs, and every value it was given. */
 		kept: (options.kept ?? null) as unknown,
 		keeps: [] as (NativeLedger[] | null)[],
 	};
 	runner.played.set(MAC_FOLDER_TEST, (process) => {
-		process.end(seen.folder ? 0 : 1);
+		// The same small program looks at a folder, and at a recorder's file with `-s`.
+		if (process.args[0] === '-s') process.end(seen.saved ? 0 : 1);
+		else process.end(seen.folder ? 0 : 1);
 	});
 	const recorder = new NativeRecorder({
 		processes: () => Promise.resolve(options.runner === false ? null : runner),
@@ -282,6 +286,41 @@ describe('recording with the Mac’s own recorder', () => {
 		expect(clock.waiting).toBe(0);
 	});
 
+	it('takes an older recorder’s answer to its stop as a stop: it ends with 2 and its file is there', async () => {
+		const { clock, runner, recorder, begin } = rig();
+		const process = await begin();
+		// The recorder of macOS 14 ends on an interrupt with 2, its file saved all the same.
+		process.onSignal = { SIGINT: 2 };
+		expect(await clock.drive(recorder.stop())).toEqual({ path: FILE, error: null });
+		// The file was looked at before it was believed.
+		expect(runner.of(MAC_FOLDER_TEST).map((look) => look.args)).toContainEqual(['-s', FILE]);
+	});
+
+	it('takes one the interrupt itself ended the same way, where its file is there', async () => {
+		const { clock, recorder, begin } = rig();
+		const process = await begin();
+		process.onSignal = { SIGINT: 'killed' };
+		expect(await clock.drive(recorder.stop())).toEqual({ path: FILE, error: null });
+	});
+
+	it('says the recording was not kept where such a recorder left no file', async () => {
+		const { clock, recorder, seen, begin } = rig();
+		const process = await begin();
+		process.onSignal = { SIGINT: 2 };
+		seen.saved = false;
+		expect(await clock.drive(recorder.stop())).toEqual({ path: null, error: 'recorder-failed' });
+	});
+
+	it('never takes 2 for a stop from a recorder that was sent none, and looks at no file for it', async () => {
+		const { clock, runner, seen, begin } = rig();
+		const process = await begin();
+		// It went by itself with a fault: nothing was asked of it.
+		process.end(2);
+		await clock.settle();
+		expect(seen.ended).toEqual([{ reason: 'external', path: null, error: 'recorder-failed' }]);
+		expect(runner.of(MAC_FOLDER_TEST).filter((look) => look.args[0] === '-s')).toHaveLength(0);
+	});
+
 	it('gives an interrupted recorder ten minutes for its file before anything harder', async () => {
 		const { clock, recorder, begin } = rig();
 		const process = await begin();
@@ -450,6 +489,25 @@ describe('every screen at once, a recorder for each', () => {
 		expect(runner.of(NATIVE_RECORDER).map((process) => process.signals)).toEqual([['SIGINT'], ['SIGINT']]);
 		expect(seen.kept).toBeNull();
 		expect(clock.waiting).toBe(0);
+	});
+
+	it('names every screen’s file where each recorder answered its stop the older way', async () => {
+		const { clock, runner, recorder, begin } = rig();
+		await begin({ takes: BOTH_SCREENS });
+		for (const process of runner.of(NATIVE_RECORDER)) process.onSignal = { SIGINT: 2 };
+		expect(await clock.drive(recorder.stop())).toEqual({ path: SCREEN_1, more: 1, error: null });
+		expect(runner.of(MAC_FOLDER_TEST).filter((look) => look.args[0] === '-s')).toHaveLength(2);
+	});
+
+	it('keeps every file where the Mac ended one screen and the other answered its stop the older way', async () => {
+		const { clock, runner, seen, begin } = rig();
+		await begin({ takes: BOTH_SCREENS });
+		const [first, second] = runner.of(NATIVE_RECORDER);
+		if (first !== undefined) first.onSignal = { SIGINT: 2 };
+		second?.end(0);
+		await clock.settle();
+		expect(first?.signals).toEqual(['SIGINT']);
+		expect(seen.ended).toEqual([{ reason: 'external', path: SCREEN_1, more: 1, error: null }]);
 	});
 
 	it('waits for the slowest of them before it says the recording is saved', async () => {

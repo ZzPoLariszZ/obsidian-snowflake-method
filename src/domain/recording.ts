@@ -394,6 +394,11 @@ export function folderTestArguments(folder: string): string[] {
 	return ['-d', folder, '-a', '-w', folder];
 }
 
+/** What is asked to learn that a recorder's file is there with something in it. */
+export function fileTestArguments(file: string): string[] {
+	return ['-s', file];
+}
+
 /**
  * A recorder that runs, as the device keeps it: enough to find it again and
  * end it. `stopped` says it was sent its stop already and is saving its
@@ -565,6 +570,12 @@ export function readDisplayOrder(text: string): number[] | null {
 /** What the end of the recorder's run means. */
 export type NativeExit =
 	| { kind: 'ended'; reason: 'stopped' | 'external' }
+	/**
+	 * It ended on the stop it was sent the way an older recorder does: with
+	 * 2, or with the interrupt itself. Its file is saved all the same, which
+	 * is believed where the file is there.
+	 */
+	| { kind: 'interrupted' }
 	| { kind: 'failed'; code: RecordingErrorCode; detail: string | null };
 
 /** The last thing the recorder said, short enough to show. */
@@ -594,6 +605,10 @@ export function classifyNativeExit(run: {
 	stopAsked: boolean;
 	/** It ended within the grace of its start, unasked. */
 	early: boolean;
+	/** The signal that ended it, where one did. */
+	signal?: string | null;
+	/** It was sent its stop, the interrupt. */
+	interrupted?: boolean;
 }): NativeExit {
 	if (run.spawnError !== null) {
 		return { kind: 'failed', code: 'recorder-failed', detail: run.spawnError.slice(0, 200) };
@@ -606,6 +621,10 @@ export function classifyNativeExit(run: {
 	}
 	if (said.includes('failed to save') || said.includes('cannot write') || said.includes('intended destination')) {
 		return { kind: 'failed', code: 'folder', detail: null };
+	}
+	// The recorder of macOS 14 answers its stop with a code that is not 0, and has saved its file.
+	if (run.interrupted === true && !run.early && (run.code === 2 || (run.code === null && run.signal === 'SIGINT'))) {
+		return { kind: 'interrupted' };
 	}
 	return { kind: 'failed', code: 'recorder-failed', detail: lastLine(run.stderr) };
 }

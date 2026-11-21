@@ -9,6 +9,7 @@ import {
 	defaultRecordingPreferences,
 	displayIdentifierArguments,
 	displayOrderArguments,
+	fileTestArguments,
 	folderTestArguments,
 	insideProjectRoot,
 	interruptArguments,
@@ -440,6 +441,27 @@ describe('the Mac recorder', () => {
 		expect(isNativeRecorderLine(`05:23 /bin/echo /usr/sbin/screencapture -v -x ${file}`, kept, later)).toBe(false);
 		expect(isNativeRecorderLine('', kept, later)).toBe(false);
 		expect(isNativeRecorderLine('05:23', kept, later)).toBe(false);
+	});
+
+	it('reads an older recorder’s answer to its stop: 2, or the interrupt itself, where it was sent one', () => {
+		const stopped = { stderr: '', spawnError: null, stopAsked: true, early: false, interrupted: true };
+		expect(classifyNativeExit({ ...stopped, code: 2 })).toEqual({ kind: 'interrupted' });
+		expect(classifyNativeExit({ ...stopped, code: null, signal: 'SIGINT' })).toEqual({ kind: 'interrupted' });
+		// A recorder nobody stopped, another code, another signal, or an end within the grace: a failure as before.
+		expect(classifyNativeExit({ ...stopped, code: 2, interrupted: false }).kind).toBe('failed');
+		expect(classifyNativeExit({ ...stopped, code: 1 }).kind).toBe('failed');
+		expect(classifyNativeExit({ ...stopped, code: null, signal: 'SIGKILL' }).kind).toBe('failed');
+		expect(classifyNativeExit({ ...stopped, code: 2, early: true }).kind).toBe('failed');
+		// What it said of its fault still names the cause.
+		expect(classifyNativeExit({ ...stopped, code: 2, stderr: 'Failed to save to final location' })).toEqual({
+			kind: 'failed',
+			code: 'folder',
+			detail: null,
+		});
+		// And a clean end is a clean end.
+		expect(classifyNativeExit({ ...stopped, code: 0 })).toEqual({ kind: 'ended', reason: 'stopped' });
+		// Such an answer is believed where the file is there with something in it.
+		expect(fileTestArguments('/Users/ada/Movies/a.mov')).toEqual(['-s', '/Users/ada/Movies/a.mov']);
 	});
 
 	it('knows the recorder by the time it has run where the list spells its file’s name its own way', () => {
