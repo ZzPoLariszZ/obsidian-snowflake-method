@@ -317,7 +317,7 @@ Writing is easier to keep up when you can see it. The dashboard's **Data statist
 
 The choices are in the plugin's settings, under **Screen recording**. On a Mac the tool can be macOS's own recorder. On Windows, macOS and Linux it can be [OBS Studio](https://obsproject.com), which you install yourself. A guide there covers the one switch OBS needs, and **Test connection** shows what OBS will record. After that, the plugin opens OBS itself whenever it is closed. Recordings go to **Snowflake Recordings** beside your projects, where sync carries them unless you exclude them, or to a folder outside the Vault.
 
-A recording shows **Obsidian only** unless you choose **Current screen**, **All screens** or, with OBS, **As set in OBS Studio**, which alone can record sound. **Obsidian only** takes in the tabs you moved into windows of their own. With **All screens**, macOS's recorder saves a file for each screen, and OBS fits them all into one video. With OBS, **Video quality** starts at **1080p**. It can also be **2K**, **720p**, **Native** for the full size of what is recorded, or OBS's own size. OBS takes at most 4096 pixels a side from the plugin, so a larger screen is brought down to that.
+A recording shows **Obsidian only** unless you choose **Current screen**, **All screens** or, with OBS, **As set in OBS Studio**, which alone can record sound. **Obsidian only** takes in the tabs you moved into windows of their own. With macOS's recorder it needs macOS 26 or later. An older macOS can only film the whole screen, so choose **Current screen** there or record with OBS. With **All screens**, macOS's recorder saves a file for each screen, and OBS fits them all into one video. With OBS, **Video quality** starts at **1080p**. It can also be **2K**, **720p**, **Native** for the full size of what is recorded, or OBS's own size. OBS takes at most 4096 pixels a side from the plugin, so a larger screen is brought down to that.
 
 ### Import and series
 
@@ -1108,7 +1108,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 各项选择都在插件设置的**屏幕录制**一节里。Mac 上可以用 macOS 自带的录屏工具。Windows、macOS 和 Linux 上可以用 [OBS Studio](https://obsproject.com)，需要你自行安装。设置里有一份指引，带你打开 OBS 需要的那一个开关，**测试连接**会显示它将要录下的画面。此后 OBS 没有打开时，插件会替你打开它。录屏默认保存到项目旁的 **Snowflake Recordings**，同步会带上录屏文件（除非明确排除它们）。也可以改为保存到仓库之外的文件夹。
 
-录制内容默认是**仅 Obsidian**，也可以选**当前屏幕**、**所有屏幕**，使用 OBS 时还有**按 OBS Studio 中的设置**，只有这一种可能录到声音。**仅 Obsidian**也会录下移到独立窗口里的标签页。选**所有屏幕**时，macOS 自带的工具为每个屏幕各存一个文件，OBS 则把它们拼进同一段视频。使用 OBS 时，**视频质量**默认是 **1080p**，也可以选 **2K**、**720p**、按所录内容原本大小录制的**原生**，或者沿用 OBS 自己的尺寸。OBS 接受插件设置的尺寸每边最多 4096 像素，更大的屏幕会缩到这个尺寸。
+录制内容默认是**仅 Obsidian**，也可以选**当前屏幕**、**所有屏幕**，使用 OBS 时还有**按 OBS Studio 中的设置**，只有这一种可能录到声音。**仅 Obsidian**也会录下移到独立窗口里的标签页。使用 macOS 自带的工具时，这一项需要 macOS 26 或更高版本。更早的系统只能录下整个屏幕，请改选**当前屏幕**，或改用 OBS。选**所有屏幕**时，macOS 自带的工具为每个屏幕各存一个文件，OBS 则把它们拼进同一段视频。使用 OBS 时，**视频质量**默认是 **1080p**，也可以选 **2K**、**720p**、按所录内容原本大小录制的**原生**，或者沿用 OBS 自己的尺寸。OBS 接受插件设置的尺寸每边最多 4096 像素，更大的屏幕会缩到这个尺寸。
 
 ### 导入与系列
 
