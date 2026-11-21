@@ -8,6 +8,18 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.1]
+
+### Changed
+
+- In the **Screen recording** settings, a warning under **macOS native** now gives each sentence a line of its own. Before, a sentence could break in the middle beside the **Open system settings** button.
+
+### Fixed
+
+- On a macOS earlier than 26, macOS's own recorder now records until you stop it. Before, every start ended at once with **The recorder stopped as soon as it started.** Each try also left a video a fraction of a second long, which you can delete.
+- Stopping a recording there no longer shows that same error. The video was saved all along, and the plugin now says so.
+- **Obsidian only** with **macOS native** now needs macOS 26 or later. On an older macOS the recorder filmed the whole screen instead of Obsidian alone. The start is now refused with a message, and the settings warn as soon as you choose it. Choose **Current screen** there, or record with OBS Studio.
+
 ## [0.33.0]
 
 ### Added
@@ -810,6 +822,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.33.1]
+
+### 变更
+
+- **屏幕录制**设置里，**macOS 原生**下方的警告现在每句话各占一行。以前一句话可能在**打开系统设置**按钮旁从中间断开。
+
+### 修复
+
+- 在早于 macOS 26 的系统上，macOS 自带的录屏工具现在会一直录到你停止为止。以前每次开始都会立刻结束，并提示**录制工具刚启动就停止了。** 每次尝试还会留下一段不到一秒的视频，可以直接删掉。
+- 在这些系统上停止录制时，不再出现同样的错误提示。视频其实一直都保存了下来，插件现在会如实告知。
+- 使用 **macOS 原生**录制**仅 Obsidian**，现在需要 macOS 26 或更高版本。在更早的系统上，录屏工具录下的是整个屏幕，而不只是 Obsidian。现在插件会拒绝开始并给出提示，在设置里选中这一项时也会立刻显示警告。这时请改选**当前屏幕**，或改用 OBS Studio 录制。
 
 ## [0.33.0]
 
