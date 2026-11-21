@@ -202,13 +202,15 @@ describe('recording with the Mac’s own recorder', () => {
 		});
 		// Nothing is left on the device of a recorder that never recorded.
 		expect(seen.kept).toBeNull();
+		// It ended in failure and saved nothing: there is no file of its to throw away.
+		expect(seen.trashed).toEqual([]);
 		// A failed start leaves the recorder free for the next.
 		runner.played.delete(NATIVE_RECORDER);
 		expect((await clock.drive(recorder.start(request(), hooks))).ok).toBe(true);
 	});
 
-	it('takes even a clean end within the grace as a failure: nothing was recorded', async () => {
-		const { clock, runner, recorder, hooks } = rig();
+	it('takes even a clean end within the grace as a failure, and throws away the moment it saved', async () => {
+		const { clock, runner, recorder, hooks, seen } = rig();
 		runner.played.set(NATIVE_RECORDER, (process) => {
 			process.end(0);
 		});
@@ -217,6 +219,8 @@ describe('recording with the Mac’s own recorder', () => {
 			code: 'recorder-failed',
 			detail: null,
 		});
+		// A recorder that ends cleanly saves what it has: macOS 14's left a file a twentieth of a second long.
+		expect(seen.trashed).toEqual([FILE]);
 	});
 
 	it('reads a recorder that could not be started as a failure', async () => {

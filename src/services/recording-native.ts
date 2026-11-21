@@ -190,6 +190,8 @@ export class NativeRecorder {
 			// with a screen missing is none: the rest end with it, and what
 			// they wrote in that moment is thrown away.
 			await this.halt(takes.filter((take) => take !== early));
+			// One that ended by itself, cleanly, saved its moment as a file too.
+			if (early.exit?.code === 0) void this.deps.trash(early.file);
 			this.clear();
 			this.deps.ledger.save(null);
 			const verdict = this.read(early, false, true);
