@@ -929,6 +929,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'recording.error.folder-in-project': '录屏不能保存到项目自己的文件夹里，请另选一个。',
 	'recording.error.busy': '这台电脑上已有另一段屏幕录制正在进行。',
 	'recording.error.recorder-failed': '录制工具刚启动就停止了。',
+	'recording.error.window-unsupported': '在低于 macOS 26 的系统上，录制工具无法只录制 Obsidian。\n请选择“当前屏幕”，或改用 OBS Studio。',
 	'recording.error.obs-closed': 'OBS Studio 没有响应。请打开 OBS Studio，并确认它的 WebSocket 服务器已经开启。',
 	'recording.error.obs-password': 'OBS Studio 没有接受这个密码。',
 	'recording.error.obs-old': '这个 OBS Studio 版本太旧，请将 OBS Studio 更新到 28 或更高版本。',

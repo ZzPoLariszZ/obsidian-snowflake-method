@@ -89,6 +89,7 @@ export default defineConfig(
 						// The recording's choice quoted as it is written, its closing
 						// mark against the recorder's name.
 						'“As set in OBS Studio”',
+						'“Current screen”',
 						// A secret's name as Obsidian's keychain takes one: lowercase.
 						'obs-studio',
 						// The key as its cap is marked.

@@ -54,6 +54,8 @@ describe('the screen recording’s reach', () => {
 			'/bin/kill',
 			// What the system calls a screen, for OBS on a Mac.
 			'/usr/bin/osascript',
+			// Which macOS this is: an older one's recorder cannot film a single window.
+			'/usr/bin/sw_vers',
 			// OBS on Linux, as a package of the system's or a Flatpak.
 			'/usr/bin/obs',
 			'/usr/bin/flatpak',
@@ -72,6 +74,7 @@ describe('the screen recording’s reach', () => {
 				'MAC_PROCESS_LIST',
 				'MAC_SCRIPT_RUNNER',
 				'MAC_SIGNAL',
+				'MAC_VERSION_TOOL',
 				'NATIVE_RECORDER',
 				'launch.command',
 			].sort(),

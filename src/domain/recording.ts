@@ -80,6 +80,8 @@ export const RECORDING_ERROR_CODES = [
 	'busy',
 	/** The Mac's recorder ended as soon as it began. */
 	'recorder-failed',
+	/** The Mac's recorder of this system films the whole screen, whichever window it is pointed at. */
+	'window-unsupported',
 	/** OBS did not answer: closed, or its WebSocket server is off. */
 	'obs-closed',
 	/** OBS wants a password and has none it accepts. */
@@ -348,6 +350,32 @@ export const MAC_PROCESS_LIST = '/bin/ps';
 export const MAC_SIGNAL = '/bin/kill';
 /** The Mac's own runner of scripts, asked one thing only: what the system calls a screen. */
 export const MAC_SCRIPT_RUNNER = '/usr/bin/osascript';
+/** The Mac's own teller of its system's version. */
+export const MAC_VERSION_TOOL = '/usr/bin/sw_vers';
+
+export function macVersionArguments(): string[] {
+	return ['-productVersion'];
+}
+
+/** The system's first number out of what the teller prints: 14 out of `14.7`. Null where it printed no version. */
+export function readMacVersion(text: string): number | null {
+	const match = /^\s*(\d{1,3})(?:\.\d+)*\s*$/u.exec(text);
+	return match === null ? null : Number(match[1]);
+}
+
+/**
+ * The first macOS whose recorder films one window alone: the one that
+ * brought recording a single window to the Mac. It was measured to on 26.5
+ * and 27.2. The recorder of macOS 15 and before takes a window's number
+ * and films the whole screen all the same, as it did on 14.7 and on 15.7,
+ * so Obsidian alone is refused there: nothing is ever filmed beyond what
+ * was chosen. A system that will not say its version is refused too.
+ */
+export const NATIVE_WINDOW_SINCE = 26;
+
+export function nativeFilmsWindows(version: number | null): boolean {
+	return version !== null && version >= NATIVE_WINDOW_SINCE;
+}
 
 /** How long one recording may run before the plugin ends it. */
 export const NATIVE_CAP_MS = 12 * 60 * 60 * 1000;

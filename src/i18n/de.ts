@@ -908,6 +908,8 @@ export const de = (): Readonly<Record<TranslationKey, string>> => ({
 		'Aufnahmen können nicht im eigenen Ordner eines Projekts liegen. Wähle einen anderen.',
 	'recording.error.busy': 'Auf diesem Computer läuft bereits eine andere Bildschirmaufnahme.',
 	'recording.error.recorder-failed': 'Das Aufnahmewerkzeug hat sich gleich nach dem Start beendet.',
+	'recording.error.window-unsupported':
+		'Vor macOS 26 kann das Aufnahmewerkzeug nicht nur Obsidian aufnehmen.\nWähle „Aktueller Bildschirm“ oder nimm mit OBS Studio auf.',
 	'recording.error.obs-closed':
 		'OBS Studio hat nicht geantwortet. Öffne OBS Studio und prüfe, ob sein WebSocket-Server eingeschaltet ist.',
 	'recording.error.obs-password': 'OBS Studio hat das Passwort nicht akzeptiert.',

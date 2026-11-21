@@ -6,6 +6,7 @@ import {
 	MAC_PROCESS_LIST,
 	MAC_SCRIPT_RUNNER,
 	MAC_SIGNAL,
+	MAC_VERSION_TOOL,
 	NATIVE_RECORDER,
 	OBS_SCENES,
 	defaultRecordingPreferences,
@@ -71,6 +72,8 @@ function rig(options: { system?: RecordingSystem | null; preferences?: Partial<R
 		secrets: new Map<string, string>(),
 		made: [] as string[],
 		window: 'window:4321:0' as string | null,
+		/** What the system says when asked which macOS it is. Null where it will not say. */
+		macVersion: '27.2.1' as string | null,
 		/** Obsidian's own windows, the main one first, and the one in use. */
 		windows: [MAIN_WINDOW] as DesktopWindow[],
 		inUse: MAIN_WINDOW as DesktopWindow | null,
@@ -106,6 +109,15 @@ function rig(options: { system?: RecordingSystem | null; preferences?: Partial<R
 	};
 	runner.played.set(MAC_FOLDER_TEST, (process) => {
 		process.end(kept.folderThere ? 0 : 1);
+	});
+	// The system says which macOS it is: one whose recorder films a single window, unless a test says otherwise.
+	runner.played.set(MAC_VERSION_TOOL, (process) => {
+		if (kept.macVersion === null) {
+			process.end(1);
+			return;
+		}
+		process.say('out', `${kept.macVersion}\n`);
+		process.end(0);
 	});
 	runner.played.set(MAC_SCRIPT_RUNNER, (process) => {
 		// The script that says the recorder's order of the screens is handed no numbers.
@@ -286,11 +298,67 @@ describe('the screen recording service', () => {
 		expect(own.recorder().args.slice(0, 5)).toEqual(['-v', '-x', '-o', '-l', '4321']);
 	});
 
+	it('will not record Obsidian alone where the Mac’s recorder films the whole screen instead', async () => {
+		// The recorder of macOS 15 takes a window's number and films the screen all the same, as macOS 14's does.
+		const later = rig({ preferences: { scope: 'obsidian' } });
+		later.kept.macVersion = '15.7';
+		expect(await later.clock.drive(later.service.start())).toBe('window-unsupported');
+		expect(later.runner.of(NATIVE_RECORDER)).toHaveLength(0);
+		const { clock, runner, kept, service, events } = rig({ preferences: { scope: 'obsidian' } });
+		kept.macVersion = '14.7';
+		expect(await clock.drive(service.start())).toBe('window-unsupported');
+		// Nothing was started, and the author was never counted in.
+		expect(runner.runs.map((run) => run.command)).toEqual([MAC_VERSION_TOOL]);
+		expect(runner.of(MAC_VERSION_TOOL)[0]?.args).toEqual(['-productVersion']);
+		expect(kept.counts).toBe(0);
+		expect(service.state()).toMatchObject({ phase: 'idle', error: { code: 'window-unsupported', detail: null } });
+		expect(events).toContainEqual({ kind: 'failed', code: 'window-unsupported', detail: null });
+		// The answer is kept: the system is not asked a second time.
+		expect(await clock.drive(service.start())).toBe('window-unsupported');
+		expect(runner.of(MAC_VERSION_TOOL)).toHaveLength(1);
+	});
+
+	it('records a screen on that Mac all the same, and never asks which macOS it is', async () => {
+		const { clock, runner, kept, service } = rig();
+		kept.macVersion = '14.7';
+		expect(await clock.drive(service.start())).toBeNull();
+		expect(runner.of(MAC_VERSION_TOOL)).toHaveLength(0);
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(1);
+	});
+
+	it('records Obsidian alone from macOS 26 on, and asks the system once', async () => {
+		const { clock, runner, kept, service } = rig({ preferences: { scope: 'obsidian' } });
+		kept.macVersion = '26.0';
+		expect(await clock.drive(service.start())).toBeNull();
+		await clock.drive(service.stop());
+		expect(await clock.drive(service.start())).toBeNull();
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(2);
+		expect(runner.of(MAC_VERSION_TOOL)).toHaveLength(1);
+	});
+
+	it('refuses Obsidian alone where the system will not say which macOS it is, and asks again the next time', async () => {
+		const { clock, runner, kept, service } = rig({ preferences: { scope: 'obsidian' } });
+		kept.macVersion = null;
+		expect(await clock.drive(service.start())).toBe('window-unsupported');
+		expect(runner.of(NATIVE_RECORDER)).toHaveLength(0);
+		kept.macVersion = '27.2.1';
+		expect(await clock.drive(service.start())).toBeNull();
+		expect(runner.of(MAC_VERSION_TOOL)).toHaveLength(2);
+	});
+
+	it('leaves OBS Studio to film Obsidian alone on any macOS, and asks the system nothing', async () => {
+		const { clock, runner, kept, service } = rig({ preferences: { tool: 'obs', scope: 'obsidian' } });
+		kept.macVersion = '14.7';
+		expect(await clock.drive(service.start())).toBeNull();
+		expect(runner.of(MAC_VERSION_TOOL)).toHaveLength(0);
+	});
+
 	it('will not record Obsidian alone where the window cannot be named', async () => {
 		const { clock, runner, kept, service } = rig({ preferences: { scope: 'obsidian' } });
 		kept.windows = [{ ...MAIN_WINDOW, id: null }, SIDE_WINDOW];
 		expect(await clock.drive(service.start())).toBe('unavailable');
-		expect(runner.runs).toHaveLength(0);
+		// Only the system was asked which macOS it is.
+		expect(runner.runs.map((run) => run.command)).toEqual([MAC_VERSION_TOOL]);
 		expect(service.state()).toMatchObject({ phase: 'idle', error: { code: 'unavailable' } });
 	});
 

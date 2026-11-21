@@ -4,7 +4,9 @@ import {
 	OBS_FILE_NAME_FORMAT,
 	DEFAULT_OBS_PORT,
 	MAC_OPENER,
+	MAC_VERSION_TOOL,
 	NATIVE_CAP_MS,
+	NATIVE_WINDOW_SINCE,
 	classifyNativeExit,
 	defaultRecordingPreferences,
 	displayIdentifierArguments,
@@ -14,12 +16,15 @@ import {
 	insideProjectRoot,
 	interruptArguments,
 	isNativeRecorderLine,
+	macVersionArguments,
 	nativeArguments,
+	nativeFilmsWindows,
 	nativeWindowId,
 	obsLaunches,
 	processListArguments,
 	readDisplayIdentifiers,
 	readDisplayOrder,
+	readMacVersion,
 	readNativeLedger,
 	recordingFileNames,
 	recordingLaterFileName,
@@ -260,6 +265,26 @@ describe('recording place', () => {
 });
 
 describe('the Mac recorder', () => {
+	it('reads the system’s first number out of what it says of its version', () => {
+		expect(MAC_VERSION_TOOL).toBe('/usr/bin/sw_vers');
+		expect(macVersionArguments()).toEqual(['-productVersion']);
+		expect(readMacVersion('14.7\n')).toBe(14);
+		expect(readMacVersion('27.2.1\n')).toBe(27);
+		expect(readMacVersion('15')).toBe(15);
+		// Anything that is not a version alone is no answer.
+		expect(readMacVersion('')).toBeNull();
+		expect(readMacVersion('14.7 (23H124)')).toBeNull();
+		expect(readMacVersion('sw_vers: command not found')).toBeNull();
+	});
+
+	it('takes the recorder to film one window alone from macOS 26 on, and never where the system is unknown', () => {
+		expect(NATIVE_WINDOW_SINCE).toBe(26);
+		// macOS 14.7 and 15.7 both filmed the whole screen under a window's number.
+		expect([13, 14, 15].map((version) => nativeFilmsWindows(version))).toEqual([false, false, false]);
+		expect([26, 27].map((version) => nativeFilmsWindows(version))).toEqual([true, true]);
+		expect(nativeFilmsWindows(null)).toBe(false);
+	});
+
 	it('is asked for video with no sound of any kind and no limit of its own, the file last', () => {
 		expect(nativeArguments('/Users/ada/Movies/a.mov', { kind: 'main' })).toEqual([
 			'-v', '-x', '/Users/ada/Movies/a.mov',

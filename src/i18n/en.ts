@@ -1006,6 +1006,8 @@ export const en = {
 		'Recordings can’t go into a project’s own folder. Choose another one.',
 	'recording.error.busy': 'Another screen recording is already running on this computer.',
 	'recording.error.recorder-failed': 'The recorder stopped as soon as it started.',
+	'recording.error.window-unsupported':
+		'On macOS earlier than 26, the recorder can’t record Obsidian alone.\nChoose “Current screen”, or record with OBS Studio.',
 	'recording.error.obs-closed':
 		'OBS Studio didn’t answer. Open OBS Studio and check that its WebSocket server is turned on.',
 	'recording.error.obs-password': 'OBS Studio didn’t accept the password.',

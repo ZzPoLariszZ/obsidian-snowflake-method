@@ -904,6 +904,7 @@ export const ko = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.folder-in-project': '녹화는 프로젝트 자체의 폴더에 저장할 수 없습니다. 다른 폴더를 선택하세요.',
 	'recording.error.busy': '이 컴퓨터에서 다른 화면 녹화가 이미 진행 중입니다.',
 	'recording.error.recorder-failed': '녹화 도구가 시작하자마자 멈췄습니다.',
+	'recording.error.window-unsupported': 'macOS 26보다 낮은 버전에서는 녹화 도구로 Obsidian만 녹화할 수 없습니다.\n“현재 화면”을 선택하거나 OBS Studio로 녹화하세요.',
 	'recording.error.obs-closed': 'OBS Studio가 응답하지 않습니다. OBS Studio를 열고 WebSocket 서버가 켜져 있는지 확인하세요.',
 	'recording.error.obs-password': 'OBS Studio가 비밀번호를 받아들이지 않았습니다.',
 	'recording.error.obs-old': '이 OBS Studio는 너무 오래되었습니다. OBS Studio를 28 이상 버전으로 업데이트하세요.',

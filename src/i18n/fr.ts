@@ -911,6 +911,8 @@ export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.busy':
 		'Un autre enregistrement de l\'écran est déjà en cours sur cet ordinateur.',
 	'recording.error.recorder-failed': 'L\'outil d\'enregistrement s\'est arrêté dès son démarrage.',
+	'recording.error.window-unsupported':
+		'Avant macOS 26, l\'outil d\'enregistrement ne peut pas enregistrer Obsidian seul.\nChoisissez « Écran actuel » ou enregistrez avec OBS Studio.',
 	'recording.error.obs-closed':
 		'OBS Studio n\'a pas répondu. Ouvrez OBS Studio et vérifiez que son serveur WebSocket est activé.',
 	'recording.error.obs-password': 'OBS Studio n\'a pas accepté le mot de passe.',

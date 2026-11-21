@@ -903,6 +903,7 @@ export const ja = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.folder-in-project': '収録はプロジェクト自身のフォルダには保存できません。別のフォルダを選んでください。',
 	'recording.error.busy': 'このコンピュータでは、すでに別の画面収録が進行中です。',
 	'recording.error.recorder-failed': '収録ツールが開始直後に停止しました。',
+	'recording.error.window-unsupported': 'macOS 26より前のシステムでは、収録ツールでObsidianだけを収録できません。\n「現在の画面」を選ぶか、OBS Studioで収録してください。',
 	'recording.error.obs-closed': 'OBS Studioから応答がありません。OBS Studioを起動し、WebSocketサーバーが有効になっているか確認してください。',
 	'recording.error.obs-password': 'OBS Studioがパスワードを受け付けませんでした。',
 	'recording.error.obs-old': 'このOBS Studioは古すぎます。OBS Studioをバージョン28以降に更新してください。',

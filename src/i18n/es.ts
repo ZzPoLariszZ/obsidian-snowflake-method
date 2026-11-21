@@ -907,6 +907,8 @@ export const es = (): Readonly<Record<TranslationKey, string>> => ({
 		'Las grabaciones no pueden ir a la carpeta propia de un proyecto. Elige otra.',
 	'recording.error.busy': 'Ya hay otra grabación de pantalla en curso en este ordenador.',
 	'recording.error.recorder-failed': 'La herramienta de grabación se detuvo nada más empezar.',
+	'recording.error.window-unsupported':
+		'Antes de macOS 26, la herramienta de grabación no puede grabar solo Obsidian.\nElige “Pantalla actual” o graba con OBS Studio.',
 	'recording.error.obs-closed':
 		'OBS Studio no respondió. Abre OBS Studio y comprueba que su servidor WebSocket está activado.',
 	'recording.error.obs-password': 'OBS Studio no aceptó la contraseña.',

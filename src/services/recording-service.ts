@@ -1,11 +1,15 @@
 import {
 	IDLE_RECORDING_STATE,
 	MAC_SCRIPT_RUNNER,
+	MAC_VERSION_TOOL,
 	displayIdentifierArguments,
 	displayOrderArguments,
+	macVersionArguments,
+	nativeFilmsWindows,
 	obsLaunches,
 	readDisplayIdentifiers,
 	readDisplayOrder,
+	readMacVersion,
 	recordingFileNames,
 	recordingLaterFileName,
 	recordingStamp,
@@ -24,7 +28,7 @@ import {
 	type RecordingSystem,
 } from '../domain';
 import type { DesktopShell } from './desktop-shell';
-import type { ProcessRunner } from './desktop-process';
+import type { ProcessRunner, RunningProcess } from './desktop-process';
 import { ObsSocket, type SocketLike } from './obs-socket';
 import {
 	within,
@@ -159,6 +163,8 @@ export class ScreenRecordingService {
 	private ending: Promise<void> | null = null;
 	/** The recording of Obsidian's windows that runs, while one does. */
 	private windowed: WindowedRecording | null = null;
+	/** Whether this Mac's recorder films one window alone, once the system has said which macOS it is. */
+	private windowFilming: boolean | null = null;
 
 	constructor(private readonly deps: RecordingServiceDeps) {
 		this.native = new NativeRecorder({
@@ -520,6 +526,10 @@ export class ScreenRecordingService {
 		const hooks = this.hooks(run);
 		if (preferences.tool === 'native') {
 			if (system !== 'mac') return { ok: false, code: 'unavailable', detail: null };
+			// An older Mac's recorder films the whole screen under a window's number: Obsidian alone is refused there.
+			if (preferences.scope === 'obsidian' && !(await this.filmsWindows())) {
+				return { ok: false, code: 'window-unsupported', detail: null };
+			}
 			const targets = await this.nativeTargets(preferences.scope);
 			if (this.gone(run)) return { ok: false, code: 'cancelled', detail: null };
 			if (targets === null) return { ok: false, code: 'unavailable', detail: null };
@@ -703,14 +713,31 @@ export class ScreenRecordingService {
 	}
 
 	/**
-	 * Runs one of the Mac's two scripts and hands back what it printed. Null
+	 * Whether this Mac's recorder films one window alone. The system is asked
+	 * its version once and the answer is kept. One that would not say is
+	 * taken as one that cannot, and is asked again the next time.
+	 */
+	private async filmsWindows(): Promise<boolean> {
+		if (this.windowFilming !== null) return this.windowFilming;
+		const runner = await this.deps.processes();
+		const said = runner === null ? null : await this.heard(runner.run(MAC_VERSION_TOOL, macVersionArguments()));
+		const version = said === null ? null : readMacVersion(said);
+		if (version !== null) this.windowFilming = nativeFilmsWindows(version);
+		return nativeFilmsWindows(version);
+	}
+
+	/** Runs one of the Mac's two scripts and hands back what it printed. */
+	private async script(args: string[]): Promise<string | null> {
+		const runner = await this.deps.processes();
+		return runner === null ? null : this.heard(runner.run(MAC_SCRIPT_RUNNER, args));
+	}
+
+	/**
+	 * What one of the system's small tools printed, once it has ended. Null
 	 * where it could not be run, ended badly, or never ended: one that hangs
 	 * is ended, so a start never waits on it for good.
 	 */
-	private async script(args: string[]): Promise<string | null> {
-		const runner = await this.deps.processes();
-		if (runner === null) return null;
-		const asked = runner.run(MAC_SCRIPT_RUNNER, args);
+	private async heard(asked: RunningProcess): Promise<string | null> {
 		let said = '';
 		asked.onText('out', (text) => {
 			said += text;

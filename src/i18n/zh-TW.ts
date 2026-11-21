@@ -903,6 +903,7 @@ export const zhTW = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.error.folder-in-project': '錄影不能儲存到專案自己的資料夾裡，請另選一個。',
 	'recording.error.busy': '這台電腦上已有另一段螢幕錄製正在進行。',
 	'recording.error.recorder-failed': '錄製工具剛啟動就停止了。',
+	'recording.error.window-unsupported': '在低於 macOS 26 的系統上，錄製工具無法只錄製 Obsidian。\n請選擇「目前螢幕」，或改用 OBS Studio。',
 	'recording.error.obs-closed': 'OBS Studio 沒有回應。請開啟 OBS Studio，並確認它的 WebSocket 伺服器已經啟用。',
 	'recording.error.obs-password': 'OBS Studio 沒有接受這個密碼。',
 	'recording.error.obs-old': '這個 OBS Studio 版本太舊，請將 OBS Studio 更新到 28 或更新的版本。',
