@@ -19,12 +19,14 @@ import {
 	freshRecordingSettingsMemory,
 	recordingPermissionShown,
 	recordingScopeHint,
+	recordingWindowWarningShown,
 	renderObsGuide,
 	renderObsPassword,
 	renderObsTest,
 	renderRecordingNotes,
 	renderRecordingOutsideFolder,
 	renderRecordingPermission,
+	renderRecordingWindowWarning,
 } from '../../src/ui/recording-settings';
 import { installObsidianDom } from '../helpers/obsidian-dom';
 
@@ -85,6 +87,9 @@ function rig(system: RecordingSystem = 'mac') {
 		storage: RecordingStorage;
 		figures: { files: number; bytes: number } | null;
 		access: 'granted' | 'denied' | 'unknown';
+		/** What is known of whether the Mac's recorder films one window alone, and what the system answers when asked. */
+		filming: boolean | null;
+		films: boolean;
 		probe: ObsProbe;
 		/** What Obsidian's field for a secret calls when another secret is chosen. */
 		secretChanged: () => void;
@@ -94,6 +99,8 @@ function rig(system: RecordingSystem = 'mac') {
 		storage: { mode: 'default', path: '/Users/ada/Movies' },
 		figures: null,
 		access: 'granted',
+		filming: null,
+		films: true,
 		probe: { ok: true, version: '33.0.1', picture: 'data:image/jpeg;base64,AAAA', problem: null },
 		secretChanged: () => {},
 	};
@@ -122,6 +129,15 @@ function rig(system: RecordingSystem = 'mac') {
 		screenAccess: () => held.access,
 		openScreenPrivacy: () => {
 			calls.push('openScreenPrivacy');
+		},
+		windowFilming: () => held.filming,
+		learnWindowFilming: () => {
+			calls.push('learnWindowFilming');
+			// The system takes a moment to answer: nothing is known until it has.
+			return Promise.resolve().then(() => {
+				held.filming = held.films;
+				return held.films;
+			});
 		},
 		testObs: () => {
 			calls.push('testObs');
@@ -218,6 +234,82 @@ describe('the screen recording’s rows in the settings', () => {
 			'macOS asks for permission the first time you record.',
 			'Restart Obsidian after you allow it.',
 		]);
+	});
+
+	it('warns that Obsidian alone cannot be recorded where the Mac’s recorder films the whole screen, once the system has said so', async () => {
+		const { bridge, held, calls, refreshed, refresh } = rig();
+		const memory = freshRecordingSettingsMemory();
+		held.preferences = { ...held.preferences, tool: 'native', scope: 'obsidian' };
+		held.films = false;
+		// Nothing is known yet: the row says nothing, and asks the system.
+		const first = new Row();
+		renderRecordingWindowWarning(first.setting, bridge, t, memory, refresh);
+		expect(recordingWindowWarningShown(bridge)).toBe(false);
+		expect(first.settingEl.querySelector('.snowflake-method-history-notice')).toBeNull();
+		expect(calls).toEqual(['learnWindowFilming']);
+		await settle();
+		// The answer was a no: the page is drawn again, and the row warns.
+		expect(refreshed.count).toBe(1);
+		expect(recordingWindowWarningShown(bridge)).toBe(true);
+		const again = new Row();
+		renderRecordingWindowWarning(again.setting, bridge, t, memory, refresh);
+		const line = again.settingEl.querySelector<HTMLElement>('.snowflake-method-history-notice');
+		expect(line?.dataset.tone).toBe('warning');
+		expect(sentences(line)).toEqual([
+			'On macOS earlier than 26, the recorder can’t record Obsidian alone.',
+			'Choose “Current screen”, or record with OBS Studio.',
+		]);
+		// It has no way out of its own: the choice stands a row above.
+		expect(line?.querySelector('button')).toBeNull();
+		// The system was asked once.
+		expect(calls).toEqual(['learnWindowFilming']);
+		// Another choice, and there is nothing to warn of.
+		held.preferences = { ...held.preferences, scope: 'screen' };
+		expect(recordingWindowWarningShown(bridge)).toBe(false);
+		const quiet = new Row();
+		renderRecordingWindowWarning(quiet.setting, bridge, t, memory, refresh);
+		expect(quiet.settingEl.querySelector('.snowflake-method-history-notice')).toBeNull();
+	});
+
+	it('says nothing of windows where the recorder films one, and draws no page again for the answer', async () => {
+		const { bridge, held, calls, refreshed, refresh } = rig();
+		const memory = freshRecordingSettingsMemory();
+		held.preferences = { ...held.preferences, tool: 'native', scope: 'obsidian' };
+		renderRecordingWindowWarning(new Row().setting, bridge, t, memory, refresh);
+		await settle();
+		expect(calls).toEqual(['learnWindowFilming']);
+		expect(refreshed.count).toBe(0);
+		expect(recordingWindowWarningShown(bridge)).toBe(false);
+		const row = new Row();
+		renderRecordingWindowWarning(row.setting, bridge, t, memory, refresh);
+		expect(row.settingEl.querySelector('.snowflake-method-history-notice')).toBeNull();
+	});
+
+	it('asks the system nothing where a screen is recorded, or OBS does the recording', () => {
+		const { bridge, held, calls, refresh } = rig();
+		const memory = freshRecordingSettingsMemory();
+		held.preferences = { ...held.preferences, tool: 'native', scope: 'screen' };
+		renderRecordingWindowWarning(new Row().setting, bridge, t, memory, refresh);
+		held.preferences = { ...held.preferences, tool: 'obs', scope: 'obsidian' };
+		renderRecordingWindowWarning(new Row().setting, bridge, t, memory, refresh);
+		expect(calls).toEqual([]);
+		expect(memory.windowAsked).toBe(false);
+	});
+
+	it('asks a system that would not say only once a page', async () => {
+		const { bridge, held, calls, refresh } = rig();
+		const memory = freshRecordingSettingsMemory();
+		held.preferences = { ...held.preferences, tool: 'native', scope: 'obsidian' };
+		// It would not say: nothing is known after the asking either.
+		bridge.learnWindowFilming = () => {
+			calls.push('learnWindowFilming');
+			return Promise.resolve(false);
+		};
+		renderRecordingWindowWarning(new Row().setting, bridge, t, memory, refresh);
+		await settle();
+		renderRecordingWindowWarning(new Row().setting, bridge, t, memory, refresh);
+		await settle();
+		expect(calls).toEqual(['learnWindowFilming']);
 	});
 
 	it('listens for nothing while it is out of sight: with OBS as the recorder, or once macOS has said yes', () => {

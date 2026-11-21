@@ -139,9 +139,11 @@ import {
 	renderObsTest,
 	renderRecordingNotes,
 	recordingPermissionShown,
+	recordingWindowWarningShown,
 	renderRecordingOutsideFolder,
 	renderRecordingScope,
 	renderRecordingPermission,
+	renderRecordingWindowWarning,
 } from './ui/recording-settings';
 import { RECORDING_NOTES } from './ui/recording-rows';
 import { wireCardDrag } from './ui/entity-form';
@@ -2709,6 +2711,14 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						desc: this.t('recording.permission.denied'),
 						visible: () => recordingPermissionShown(bridge),
 						render: (setting) => renderRecordingPermission(setting, bridge, t, refresh),
+					},
+					{
+						name: this.t('recording.scope.obsidian'),
+						desc: this.t('recording.error.window-unsupported'),
+						visible: () => recordingWindowWarningShown(bridge),
+						render: (setting) => {
+							renderRecordingWindowWarning(setting, bridge, t, this.recordingMemory, refresh);
+						},
 					},
 					{
 						name: this.t('recording.quality'),

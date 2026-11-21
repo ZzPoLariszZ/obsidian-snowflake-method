@@ -35,6 +35,13 @@ export interface RecordingSettingsBridge {
 	/** Opens the system's own page on what may record the screen. */
 	openScreenPrivacy(): void;
 	/**
+	 * What is known of whether this Mac's own recorder films one window
+	 * alone, without asking the system: null where it was never asked.
+	 */
+	windowFilming(): boolean | null;
+	/** Asks the system, once, and answers whether it does. */
+	learnWindowFilming(): Promise<boolean>;
+	/**
 	 * Looks at OBS without recording: whether it answers and what it would
 	 * record. `onOpening` is told where OBS was closed and is being opened
 	 * for the look.

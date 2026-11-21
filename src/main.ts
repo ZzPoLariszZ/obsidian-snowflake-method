@@ -6108,6 +6108,8 @@ export default class SnowflakeMethodPlugin
 			openScreenPrivacy: () => {
 				this.desktopParts()?.openScreenPrivacy();
 			},
+			windowFilming: () => service.windowFilmingKnown(),
+			learnWindowFilming: () => service.filmsWindows(),
 			testObs: (onOpening) => service.testObs(onOpening),
 			mountSecret: (host, changed) => {
 				// Obsidian's own field: the author picks or makes a secret there,

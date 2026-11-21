@@ -165,6 +165,8 @@ export class ScreenRecordingService {
 	private windowed: WindowedRecording | null = null;
 	/** Whether this Mac's recorder films one window alone, once the system has said which macOS it is. */
 	private windowFilming: boolean | null = null;
+	/** The last answer given to that question, where it was ever asked: a system that would not say was answered no. */
+	private windowAnswer: boolean | null = null;
 
 	constructor(private readonly deps: RecordingServiceDeps) {
 		this.native = new NativeRecorder({
@@ -715,15 +717,22 @@ export class ScreenRecordingService {
 	/**
 	 * Whether this Mac's recorder films one window alone. The system is asked
 	 * its version once and the answer is kept. One that would not say is
-	 * taken as one that cannot, and is asked again the next time.
+	 * taken as one that cannot, and is asked again the next time. The
+	 * settings ask too, to warn before a start is refused.
 	 */
-	private async filmsWindows(): Promise<boolean> {
+	async filmsWindows(): Promise<boolean> {
 		if (this.windowFilming !== null) return this.windowFilming;
 		const runner = await this.deps.processes();
 		const said = runner === null ? null : await this.heard(runner.run(MAC_VERSION_TOOL, macVersionArguments()));
 		const version = said === null ? null : readMacVersion(said);
 		if (version !== null) this.windowFilming = nativeFilmsWindows(version);
-		return nativeFilmsWindows(version);
+		this.windowAnswer = nativeFilmsWindows(version);
+		return this.windowAnswer;
+	}
+
+	/** What is known of that without asking: the last answer, or null where the system was never asked. */
+	windowFilmingKnown(): boolean | null {
+		return this.windowAnswer;
 	}
 
 	/** Runs one of the Mac's two scripts and hands back what it printed. */

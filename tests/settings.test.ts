@@ -1119,6 +1119,8 @@ describe('the screen recording’s section of the settings', () => {
 			preferences: RecordingPreferences;
 			state: RecordingState;
 			access: 'granted' | 'denied' | 'unknown';
+			/** What is known of whether the Mac's recorder films one window alone. */
+			filming: boolean | null;
 			/** What Obsidian's field for a secret calls when another secret is chosen, once the row is drawn. */
 			secretChanged: () => void;
 		} = {
@@ -1133,6 +1135,7 @@ describe('the screen recording’s section of the settings', () => {
 			},
 			state: { ...IDLE_RECORDING_STATE },
 			access: 'granted',
+			filming: true,
 			secretChanged: () => {},
 		};
 		const bridge: RecordingSettingsBridge = {
@@ -1152,6 +1155,8 @@ describe('the screen recording’s section of the settings', () => {
 			openFolder: () => {},
 			screenAccess: () => held.access,
 			openScreenPrivacy: () => {},
+			windowFilming: () => held.filming,
+			learnWindowFilming: () => Promise.resolve(held.filming ?? true),
 			testObs: () => Promise.resolve({ ok: false, code: 'obs-closed' }),
 			mountSecret: (_host, changed) => {
 				held.secretChanged = changed;

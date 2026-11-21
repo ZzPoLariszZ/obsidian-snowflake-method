@@ -40,6 +40,8 @@ export interface RecordingSettingsMemory {
 	guideOpen: boolean;
 	/** What the vault's folder was last counted to hold, and what it was counted for. Counted once, not at every drawing. */
 	figures: { key: string; counted: Promise<{ files: number; bytes: number } | null> } | null;
+	/** The system was asked whether its recorder films one window alone. Asked once a page, whatever it answers. */
+	windowAsked: boolean;
 }
 
 export const freshRecordingSettingsMemory = (): RecordingSettingsMemory => ({
@@ -49,6 +51,7 @@ export const freshRecordingSettingsMemory = (): RecordingSettingsMemory => ({
 	stamp: 0,
 	guideOpen: false,
 	figures: null,
+	windowAsked: false,
 });
 
 /**
@@ -173,6 +176,44 @@ export function renderRecordingPermission(
 	return () => {
 		win.removeEventListener('focus', refresh);
 	};
+}
+
+/**
+ * Whether the row on what this Mac's recorder cannot film has anything to
+ * say: with the Mac's own recorder and Obsidian alone chosen, on a system
+ * whose recorder is known to film the whole screen instead.
+ */
+export function recordingWindowWarningShown(bridge: RecordingSettingsBridge): boolean {
+	const choices = bridge.preferences();
+	return choices.tool === 'native' && choices.scope === 'obsidian' && bridge.windowFilming() === false;
+}
+
+/**
+ * The warning that Obsidian alone cannot be recorded here, said in the
+ * settings before a start is refused for it. The page cannot know it
+ * without asking the system, which takes a moment: the row asks once, and
+ * has the page drawn again where the answer is a no.
+ */
+export function renderRecordingWindowWarning(
+	setting: Setting,
+	bridge: RecordingSettingsBridge,
+	t: Translate,
+	memory: RecordingSettingsMemory,
+	refresh: () => void,
+): void {
+	const row = bare(setting, 'snowflake-method-settings-recording-permission');
+	const choices = bridge.preferences();
+	if (choices.tool !== 'native' || choices.scope !== 'obsidian') return;
+	if (bridge.windowFilming() === null) {
+		if (memory.windowAsked) return;
+		memory.windowAsked = true;
+		void bridge.learnWindowFilming().then((films) => {
+			if (!films) refresh();
+		});
+		return;
+	}
+	if (!recordingWindowWarningShown(bridge)) return;
+	recordingNotice(row, 'warning', t('recording.error.window-unsupported'));
 }
 
 /** What the row of a folder says under its name: the folder, then what keeping recordings there comes to. */
