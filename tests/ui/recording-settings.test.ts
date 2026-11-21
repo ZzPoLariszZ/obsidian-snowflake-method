@@ -146,6 +146,10 @@ function rig(system: RecordingSystem = 'mac') {
 	};
 }
 
+/** A notice's words, a line for each sentence. */
+const sentences = (notice: Element | null | undefined): (string | null)[] =>
+	[...(notice?.querySelectorAll('.snowflake-method-history-notice-text > div') ?? [])].map((line) => line.textContent);
+
 const settle = async (): Promise<void> => {
 	await Promise.resolve();
 	await Promise.resolve();
@@ -191,9 +195,11 @@ describe('the screen recording’s rows in the settings', () => {
 		const release = renderRecordingPermission(denied.setting, bridge, t, refresh);
 		const line = denied.settingEl.querySelector<HTMLElement>('.snowflake-method-history-notice');
 		expect(line?.dataset.tone).toBe('warning');
-		expect(line?.querySelector('.snowflake-method-history-notice-text')?.textContent).toBe(
-			'macOS has not allowed Obsidian to record the screen. Allow it in the system settings, then restart Obsidian.',
-		);
+		// One sentence a line.
+		expect(sentences(line)).toEqual([
+			'macOS has not allowed Obsidian to record the screen.',
+			'Allow it in the system settings, then restart Obsidian.',
+		]);
 		line?.querySelector('button')?.click();
 		expect(calls).toEqual(['openScreenPrivacy']);
 		// The author comes back from the system's settings.
@@ -208,9 +214,10 @@ describe('the screen recording’s rows in the settings', () => {
 		renderRecordingPermission(unasked.setting, bridge, t, refresh)();
 		const quiet = unasked.settingEl.querySelector<HTMLElement>('.snowflake-method-history-notice');
 		expect(quiet?.dataset.tone).toBe('muted');
-		expect(quiet?.querySelector('.snowflake-method-history-notice-text')?.textContent).toBe(
-			'macOS asks for permission the first time you record. Restart Obsidian after you allow it.',
-		);
+		expect(sentences(quiet)).toEqual([
+			'macOS asks for permission the first time you record.',
+			'Restart Obsidian after you allow it.',
+		]);
 	});
 
 	it('listens for nothing while it is out of sight: with OBS as the recorder, or once macOS has said yes', () => {

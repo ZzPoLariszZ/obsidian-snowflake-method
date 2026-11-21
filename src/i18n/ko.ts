@@ -873,8 +873,8 @@ export const ko = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.quality.obs': 'OBS Studio 설정대로',
 	'recording.quality.native': '영상 품질은 macOS가 정합니다. 직접 고르려면 OBS Studio로 녹화하세요.',
 	'recording.permission.denied':
-		'macOS가 Obsidian의 화면 녹화를 허용하지 않았습니다. 시스템 설정에서 허용한 다음 Obsidian을 다시 시작하세요.',
-	'recording.permission.unknown': '처음 녹화할 때 macOS가 권한을 요청합니다. 허용한 뒤 Obsidian을 다시 시작하세요.',
+		'macOS가 Obsidian의 화면 녹화를 허용하지 않았습니다.\n시스템 설정에서 허용한 다음 Obsidian을 다시 시작하세요.',
+	'recording.permission.unknown': '처음 녹화할 때 macOS가 권한을 요청합니다.\n허용한 뒤 Obsidian을 다시 시작하세요.',
 	'recording.permission.open': '시스템 설정 열기',
 	'recording.obs.port': '포트',
 	'recording.obs.portHint': 'OBS Studio의 WebSocket 서버 포트입니다. 기본값은 4455입니다.',

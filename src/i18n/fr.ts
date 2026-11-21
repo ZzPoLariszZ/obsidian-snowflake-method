@@ -875,9 +875,9 @@ export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 	'recording.quality.native':
 		'macOS règle lui-même la qualité vidéo. Pour la choisir, enregistrez avec OBS Studio.',
 	'recording.permission.denied':
-		'macOS n\'a pas autorisé Obsidian à enregistrer l\'écran. Autorisez-le dans les réglages du système, puis redémarrez Obsidian.',
+		'macOS ne laisse pas Obsidian enregistrer l\'écran.\nAutorisez-le dans macOS et redémarrez Obsidian.',
 	'recording.permission.unknown':
-		'macOS demande l\'autorisation au premier enregistrement. Redémarrez Obsidian après l\'avoir accordée.',
+		'macOS demande l\'autorisation la première fois.\nRedémarrez Obsidian après l\'avoir accordée.',
 	'recording.permission.open': 'Ouvrir les réglages du système',
 	'recording.obs.port': 'Port',
 	'recording.obs.portHint': 'Port du serveur WebSocket d\'OBS Studio. Par défaut, 4455.',

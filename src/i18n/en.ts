@@ -973,9 +973,9 @@ export const en = {
 	'recording.quality.obs': 'As set in OBS Studio',
 	'recording.quality.native': 'macOS sets the video quality itself. Record with OBS Studio to choose it.',
 	'recording.permission.denied':
-		'macOS has not allowed Obsidian to record the screen. Allow it in the system settings, then restart Obsidian.',
+		'macOS has not allowed Obsidian to record the screen.\nAllow it in the system settings, then restart Obsidian.',
 	'recording.permission.unknown':
-		'macOS asks for permission the first time you record. Restart Obsidian after you allow it.',
+		'macOS asks for permission the first time you record.\nRestart Obsidian after you allow it.',
 	'recording.permission.open': 'Open system settings',
 	'recording.obs.port': 'Port',
 	'recording.obs.portHint': 'Port of OBS Studio’s WebSocket server. The default is 4455.',
