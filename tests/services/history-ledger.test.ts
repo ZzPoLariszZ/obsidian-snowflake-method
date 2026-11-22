@@ -401,6 +401,38 @@ describe("HistoryLedger", () => {
 		expect(filed()).toHaveLength(3);
 	});
 
+	it("lets a moved project be when Obsidian tells the move again for every folder and note in it", async () => {
+		const scene = await projects.createScene(project, { title: "Arrival" });
+		const character = await projects.createCharacter(project, { name: "Ada" });
+		await ledger.flushNow();
+		const before = filed()?.length ?? 0;
+		const oldRoot = project.rootPath;
+		const moved = (path: string): string => `Moved${path.slice(oldRoot.length)}`;
+
+		// Obsidian moves the folder, tells of it, and then tells of everything that went with it.
+		fakeVault.rename(oldRoot, "Moved");
+		ledger.noteRenamed(oldRoot, "Moved");
+		ledger.noteRenamed(folderOf(scene.path), moved(folderOf(scene.path)));
+		for (const path of [scene.path, character.path, project.projectFile]) ledger.noteRenamed(path, moved(path));
+		await ledger.flushNow();
+		await timers.flush();
+
+		// Nothing happened to the book, so nothing is written down, least of all under the name the project left.
+		expect(pendingStore.value).toBeNull();
+		expect([...fakeVault.contents.keys()].filter((path) => path.startsWith(`${oldRoot}/`))).toEqual([]);
+		const file = fakeVault.contents.get(`Moved/${HISTORY_DIR}/${EVENT_FILE}`);
+		expect((JSON.parse(file ?? "{}") as { events?: unknown[] }).events).toHaveLength(before);
+
+		// The plugin learns where the project stands, and a note that then leaves it is written down as ever.
+		projectRefs = [{ ...project, rootPath: "Moved", projectFile: moved(project.projectFile) }];
+		fakeVault.rename(moved(scene.path), "Arrival.md");
+		ledger.noteRenamed(moved(scene.path), "Arrival.md");
+		await ledger.flushNow();
+		const after = (JSON.parse(fakeVault.contents.get(`Moved/${HISTORY_DIR}/${EVENT_FILE}`) ?? "{}") as { events: HistoryEventRecord[] }).events;
+		expect(after).toHaveLength(before + 1);
+		expect(after[after.length - 1]).toMatchObject({ event: "deleted", subject: { path: rel(scene.path) } });
+	});
+
 	it("writes a folder's move down once for each note, however it is told", async () => {
 		const first = await projects.createScene(project, { title: "A" });
 		const second = await projects.createScene(project, { title: "B" });

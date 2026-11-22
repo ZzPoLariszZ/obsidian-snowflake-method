@@ -210,6 +210,13 @@ export class HistoryLedger {
 			this.followRoot(oldPath, newPath);
 			return;
 		}
+		// Obsidian tells a folder's move once for the folder and once more
+		// for every folder and note in it. A note told of after its whole
+		// project went is that same move, and no change to the book. Taken
+		// for a note leaving its project, it was written down as deleted
+		// under the name the project had left, and filing that raised the
+		// old folder from the dead.
+		if (this.wentWithItsProject(oldPath)) return;
 		const folder = this.deps.repository.getFile(newPath) === null;
 		const moved = folder
 			? this.deps.repository.listFilesBelow(newPath).map((file) => ({
@@ -458,6 +465,17 @@ export class HistoryLedger {
 		if (project === null || project.readOnly) return null;
 		const rel = pathUnderRoot(path, project.rootPath);
 		return rel === null ? null : { project, rel };
+	}
+
+	/**
+	 * Whether a path was carried off with the project it stood in: the
+	 * project's folder no longer stands where the plugin last knew it. The
+	 * plugin learns where a project went a moment after the move, and
+	 * Obsidian tells of everything inside it before that.
+	 */
+	private wentWithItsProject(path: string): boolean {
+		const project = this.deps.projectAtPath(path);
+		return project !== null && this.deps.repository.getFolder(project.rootPath) === null;
 	}
 
 	/** A note moved from one vault path to another, the project or a folder above it standing still. */
