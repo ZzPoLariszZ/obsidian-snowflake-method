@@ -1,4 +1,4 @@
-import type { DerivedTaskSources, MentionSource, ProjectLanguage, WritingSessionScope } from '../src/domain';
+import type { ChapterNumbering, DerivedTaskSources, MentionSource, ProjectLanguage, WritingSessionScope } from '../src/domain';
 import type {
 	AnalysisConfig,
 	ModificationHistoryService,
@@ -90,6 +90,22 @@ export interface ApiHost {
 	 * runs is put down to the plugin instead.
 	 */
 	asPlugin<T>(run: () => Promise<T>): Promise<T>;
+	/**
+	 * What the author has typed into these notes and not yet saved is
+	 * written to their files, the editors left as they stand. Asked before a
+	 * note is changed, so that the change is made against the author's
+	 * latest words and never over them.
+	 */
+	settleNotes(paths: readonly string[]): Promise<void>;
+	/**
+	 * The plugin's own editor on each of these notes is closed, where one
+	 * is open. Asked once a change is sure to be made: an editor left
+	 * standing would write its own text back over the change the next time
+	 * the author typed.
+	 */
+	releaseNotes(paths: readonly string[]): Promise<void>;
+	/** The author's chapter numbering rule, or null while none is switched on. */
+	chapterNumbering(): ChapterNumbering | null;
 	/**
 	 * The work of the plugin's project manager, without its words: each does
 	 * what a button there does, under the folder the author keeps projects

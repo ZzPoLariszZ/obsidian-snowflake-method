@@ -113,6 +113,17 @@ tags:
       chapter, a scene, or whatever unit the author writes in. It has no id.
       It is addressed by where it stands inside the project, and renaming it
       changes that address.
+
+      The author may have a note open for writing in the plugin when a change
+      to it arrives. What they typed and had not saved is saved first. The
+      change is then made only against that latest text, which is what the
+      `etag` in `If-Match` is for, and the plugin's editor on the note is
+      closed so that nothing typed afterwards can undo the change.
+
+      Where the author has a chapter numbering rule switched on, a note made
+      among numbered ones, or taken from among them, renames the numbered
+      notes after it by one. Every operation that can do so says what it
+      renamed, and `renumber` set to false leaves the other names alone.
   - name: Tasks
     description: |
       The author's own to-do list for a project, as the cards of its task
@@ -1543,6 +1554,40 @@ paths:
                 $ref: "#/components/schemas/ManuscriptNotePage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createManuscriptNote
+      tags: [Manuscript]
+      summary: Create a manuscript note
+      description: |
+        Makes a note in the manuscript: after another note, at the start, or
+        at the end, which is where it goes when nothing is said. It holds the
+        text sent with it, or the plugin's own first line for a new note. Left
+        without a title, it takes the numbered name the author's numbering rule
+        offers at that place.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptNoteCreate"
+      responses:
+        "201":
+          description: The note that was made, and what was renamed around it.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNoteResult"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/manuscript/notes/{notePath}:
     parameters:
@@ -1570,6 +1615,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManuscriptNote"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteManuscriptNote
+      tags: [Manuscript]
+      summary: Delete a manuscript note
+      description: |
+        Sends one manuscript note to the trash the author chose in
+        Obsidian's settings, with everything written in it. Send the `etag` the
+        note was read with in `If-Match`. Its words count as deleted in the
+        author's writing statistics, as they do however a note is deleted.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+        - name: renumber
+          in: query
+          description: "Whether the numbered notes after it are renamed by one to keep the count, where the author's numbering rule is on."
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: What was deleted and what was renamed after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNoteDeletion"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -2661,6 +2736,204 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DefinitionNode"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/numbering:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: planManuscriptNumbering
+      tags: [Manuscript]
+      summary: Plan the numbering around a new or a leaving note
+      description: |
+        What the author's chapter numbering rule would do if a note were made
+        at a place in the manuscript, or one were taken from it: the numbered
+        name the new note is offered, and the notes after it that would be
+        renamed by one. Say one of `after`, `position` or `remove`. Nothing is
+        changed.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: after
+          in: query
+          description: "Plan for a new note after this one, by its `relativePath`."
+          schema:
+            type: string
+            minLength: 1
+        - name: position
+          in: query
+          description: "Plan for a new note at the start or at the end of the manuscript."
+          schema:
+            type: string
+            enum: [start, end]
+        - name: remove
+          in: query
+          description: "Plan for this note leaving the manuscript, by its `relativePath`."
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: What the rule would do.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NumberingPlan"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/body:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    put:
+      operationId: writeManuscriptNoteBody
+      tags: [Manuscript]
+      summary: Write the text of a manuscript note
+      description: |
+        Replaces the whole text of one manuscript note. Send the `etag` the
+        note was read with in `If-Match`. Where the author has typed in the note
+        since, the answer is `412` with the version it now stands at, and
+        nothing is written. To propose a change and leave the text to the author,
+        make a revision instead.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptNoteBody"
+      responses:
+        "200":
+          description: The note as it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNote"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/rename:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    post:
+      operationId: renameManuscriptNote
+      tags: [Manuscript]
+      summary: Rename a manuscript note
+      description: |
+        Gives one manuscript note a new title. The note keeps its place in
+        the reading order and takes a new address, which the answer gives, and
+        every link to it follows. Its first heading takes the title too where it
+        said the old one, unless `heading` says otherwise.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptNoteRename"
+      responses:
+        "200":
+          description: The note under its new title.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNoteResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/split:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    post:
+      operationId: splitManuscriptNote
+      tags: [Manuscript]
+      summary: Split a manuscript note in two
+      description: |
+        Cuts one manuscript note in two. What stands from the cut onwards
+        moves into a new note right after it, and the revisions and
+        foreshadowing marked there move with it. Say where to cut by the words
+        the second note should begin with, or by a place in the text. Send the
+        `etag` the note was read with in `If-Match`.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict, passage-not-found, ambiguous-passage]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptNoteSplit"
+      responses:
+        "201":
+          description: The new note, and what was renamed around it.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNoteResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/merge-next:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    post:
+      operationId: mergeManuscriptNoteWithNext
+      tags: [Manuscript]
+      summary: Merge a manuscript note with the one after it
+      description: |
+        Joins a manuscript note with the note after it. The earlier note
+        keeps its title and its place and takes the later one's text after its
+        own, with what was marked there. The later note goes to the trash. The
+        words are counted as moved and not as written.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, nothing-to-merge, path-conflict]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptNoteMerge"
+      responses:
+        "200":
+          description: The note that took both, and what was renamed around it.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNoteResult"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -6990,6 +7263,186 @@ components:
         default:
           type: boolean
 
+    NoteRename:
+      type: object
+      description: One manuscript note renamed, by its address before and after.
+      required: [from, to]
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+
+    NumberingPlan:
+      type: object
+      required: [rule, head, renames]
+      additionalProperties: false
+      properties:
+        rule:
+          type: boolean
+          description: Whether the author has a numbering rule switched on. Without one nothing is offered and nothing renamed.
+        head:
+          type: [string, "null"]
+          description: The numbered name a new note at that place is offered, such as `Chapter 3`. Null where the rule offers none, and for a note leaving.
+        renames:
+          type: array
+          description: The notes that would be renamed, in reading order.
+          items:
+            $ref: "#/components/schemas/NoteRename"
+
+    ManuscriptNoteResult:
+      type: object
+      required: [note, renumbered, skipped]
+      additionalProperties: false
+      properties:
+        note:
+          $ref: "#/components/schemas/ManuscriptNote"
+        renumbered:
+          type: array
+          description: The other notes that were renamed to keep the count.
+          items:
+            $ref: "#/components/schemas/NoteRename"
+        skipped:
+          type: array
+          description: Notes that should have been renamed and were left, because a newer version of the plugin wrote them. Each by its address.
+          items:
+            type: string
+        source:
+          type: object
+          description: After a split, the note that was cut, which keeps its head. After a merge, nothing.
+          required: [relativePath, etag]
+          additionalProperties: false
+          properties:
+            relativePath:
+              type: string
+            etag:
+              type: string
+        removed:
+          type: string
+          description: After a merge, the address the note that went to the trash had.
+
+    ManuscriptNoteCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+          description: The note's name. Left out, the numbered name the author's rule offers is taken, and where it offers none the call is refused.
+        after:
+          type: string
+          minLength: 1
+          description: The `relativePath` of the note it should come after.
+        position:
+          type: string
+          enum: [start, end]
+          description: Where it goes when `after` is not sent. The end where neither is.
+        body:
+          type: string
+          description: The text the note holds. Left out, it holds the plugin's own first line for a new note.
+        renumber:
+          type: boolean
+          default: true
+          description: "Whether the numbered notes after it are renamed by one to keep the count, where the author's numbering rule is on."
+
+    ManuscriptNoteBody:
+      type: object
+      description: The whole text of a note. A note read and sent back whole is taken, and only `body` is looked at.
+      required: [body]
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/ManuscriptNote"
+      properties:
+        body:
+          type: string
+          description: The text, as Markdown. It replaces all the note says.
+
+    ManuscriptNoteRename:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        heading:
+          type: boolean
+          description: Whether the note's first heading takes the title too. Left out, it does where it said the old title.
+
+    SplitPoint:
+      description: Where a note is cut. Either the words the second note begins with, or a place in the text.
+      oneOf:
+        - type: object
+          required: [exact]
+          additionalProperties: false
+          properties:
+            exact:
+              type: string
+              minLength: 1
+              description: The words the second note should begin with, exactly as the note has them.
+            prefix:
+              type: string
+              description: A few words that stand right before them, where the note says them more than once.
+            suffix:
+              type: string
+              description: A few words that stand right after them.
+        - type: object
+          required: [offset]
+          additionalProperties: false
+          properties:
+            offset:
+              type: integer
+              minimum: 0
+              description: The place in the note's `body`, in UTF-16 code units, where the second note begins.
+
+    ManuscriptNoteSplit:
+      type: object
+      required: [at]
+      additionalProperties: false
+      properties:
+        at:
+          $ref: "#/components/schemas/SplitPoint"
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+          description: The new note's name. Left out, the numbered name the author's rule offers is taken, and where it offers none the call is refused.
+        renumber:
+          type: boolean
+          default: true
+          description: "Whether the numbered notes after it are renamed by one to keep the count, where the author's numbering rule is on."
+
+    ManuscriptNoteMerge:
+      type: object
+      additionalProperties: false
+      properties:
+        renumber:
+          type: boolean
+          default: true
+          description: "Whether the numbered notes after it are renamed by one to keep the count, where the author's numbering rule is on."
+
+    ManuscriptNoteDeletion:
+      type: object
+      required: [removed, neighbour, renumbered, skipped]
+      additionalProperties: false
+      properties:
+        removed:
+          type: string
+          description: The address the note had.
+        neighbour:
+          type: [string, "null"]
+          description: The address of the note that stood before it, or after it where it was the first. Null where it was the only one.
+        renumbered:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteRename"
+        skipped:
+          type: array
+          items:
+            type: string
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -7054,6 +7507,9 @@ x-snowflake-problems:
   kind-limit-reached:
     status: 409
     title: The project holds as many kinds as it can.
+  nothing-to-merge:
+    status: 409
+    title: No manuscript note stands after that one.
   concurrent-change:
     status: 412
     title: The note has changed since it was read.
@@ -7090,6 +7546,12 @@ x-snowflake-problems:
   duplicate-field-title:
     status: 422
     title: Two of the fields share a title.
+  passage-not-found:
+    status: 422
+    title: The note does not say those words.
+  ambiguous-passage:
+    status: 422
+    title: The note says those words in more than one place.
   precondition-required:
     status: 428
     title: The change must say which version of the note it is made against.

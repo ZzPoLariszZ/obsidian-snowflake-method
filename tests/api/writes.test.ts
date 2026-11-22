@@ -99,7 +99,33 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 		send: (projectId) => ({ params: { projectId, kindId: 'scene', templateName: 'Beats' }, body: { fields: [{ title: 'Turn', content: 'Late.' }] } }),
 	},
 	deleteFieldTemplate: { of: 'project', send: (projectId) => ({ params: { projectId, kindId: 'character', templateName: 'Voice sheet' } }) },
+	createManuscriptNote: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { title: 'Epilogue', body: 'The thaw came.\n' } }) },
+	writeManuscriptNoteBody: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 1.md' }, body: { body: 'The clock stopped at noon.\n' }, ifMatch: '*' }),
+	},
+	renameManuscriptNote: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Draft.md' }, body: { title: 'Prologue' } }),
+	},
+	splitManuscriptNote: {
+		of: 'project',
+		send: (projectId) => ({
+			params: { projectId, notePath: '50_Manuscript/Chapter 2.md' },
+			body: { at: { exact: 'Nobody asked why.' }, title: 'Aftermath' },
+			ifMatch: '*',
+		}),
+	},
+	mergeManuscriptNoteWithNext: { of: 'project', send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 2.md' } }) },
+	deleteManuscriptNote: { of: 'project', send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 1.md' }, ifMatch: '*' }) },
 };
+
+/**
+ * The one change that is told as the author's own words: a merge writes no
+ * word of its own, and moves theirs from one note into another. The
+ * manuscript's own tests say why.
+ */
+const MOVES_THE_AUTHORS_WORDS = ['mergeManuscriptNoteWithNext'];
 
 const changing = operations.filter((operation) => operation.available && operation.access !== 'read');
 const send = (golden: Golden, operationId: string, projectId: string) => {
@@ -174,7 +200,8 @@ describe('every operation that changes something', () => {
 		golden.host.origins.length = 0;
 		// What moves or puts away the project itself comes last, so the rest find it where it was.
 		const last = ['updateProject', 'archiveProject'];
-		const ordered = [...changing.filter((entry) => !last.includes(entry.id)), ...changing.filter((entry) => last.includes(entry.id))];
+		const told = changing.filter((entry) => !MOVES_THE_AUTHORS_WORDS.includes(entry.id));
+		const ordered = [...told.filter((entry) => !last.includes(entry.id)), ...told.filter((entry) => last.includes(entry.id))];
 		const landed: string[] = [];
 		for (const operation of ordered) {
 			const reply = await send(golden, operation.id, WRITES[operation.id]?.of === 'archived' ? golden.archived.id : golden.project.id);

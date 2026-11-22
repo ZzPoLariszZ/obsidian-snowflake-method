@@ -6085,6 +6085,9 @@ export default class SnowflakeMethodPlugin
 			isReady: () => this.projectScanIsReady,
 			leaving: () => this.unloading || this.pageLeaving,
 			asPlugin: (run) => this.history.asPlugin(run),
+			settleNotes: (paths) => this.settleNotesForWriter(paths),
+			releaseNotes: (paths) => this.releaseNotesForWriter(paths),
+			chapterNumbering: () => this.chapterNumbering(),
 			createProject: (request) => this.performProjectCreate(request, NOT_THE_AUTHOR),
 			renameProject: (project, title) =>
 				this.performProjectRename({ path: project.projectFile, rootPath: project.rootPath }, title, NOT_THE_AUTHOR),
@@ -6107,6 +6110,31 @@ export default class SnowflakeMethodPlugin
 				this.settingTab?.refreshRows();
 			},
 		});
+	}
+
+	/**
+	 * What the author has typed into these notes and not saved, sent to
+	 * their files before another writer changes them: a tab the app itself
+	 * holds one of them in, every stream, and every sticky note. The streams
+	 * and the sticky notes write whatever they hold, since each knows its
+	 * own notes and asking costs nothing where there is nothing to write.
+	 * Every editor is left open.
+	 */
+	private async settleNotesForWriter(paths: readonly string[]): Promise<void> {
+		const wanted = new Set(paths);
+		for (const note of this.openNotes()) {
+			if (note.path !== null && wanted.has(note.path)) await note.save();
+		}
+		await this.settleWriting();
+	}
+
+	/** The stream's editor on each of these notes closed, where a stream has one open on it. */
+	private async releaseNotesForWriter(paths: readonly string[]): Promise<void> {
+		for (const leaf of this.app.workspace.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)) {
+			const view = leaf.view;
+			if (!(view instanceof SnowflakeManuscriptView)) continue;
+			for (const path of paths) await view.releaseSegment(path);
+		}
 	}
 
 	/**

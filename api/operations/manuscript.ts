@@ -4,6 +4,7 @@ import { getProjectPathLayout, type ManuscriptSegmentRecord, type ProjectSnapsho
 import { countingOf, manuscriptNoteOf, manuscriptNoteSummaryOf, writingCountOf } from '../dto/manuscript';
 import { namesHold } from '../dto/member';
 import { ApiError } from '../errors';
+import type { JsonObject } from '../json';
 import { pageOf } from '../paging';
 import { listParam, optionalTextParam, textParam, type ApiContext, type OperationCall, type OperationGroup } from './context';
 
@@ -79,23 +80,38 @@ export const manuscriptOperations: OperationGroup = {
 
 	getManuscriptNote: async (call, context) => {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
-		const { segments, index, segment } = await findManuscriptNote(context, project, call);
-		const manuscript = context.host.projects.manuscript;
-		const options = context.host.countOptions();
-		const content = await manuscript.readSegment(segment.path);
-		const naming = await manuscript.segmentNaming(segment.path);
-		const count = await context.host.projects.writingCount.countNote(segment.path, options);
-		return {
-			status: 200,
-			body: manuscriptNoteOf(
-				project,
-				content,
-				{ index, previous: segments[index - 1]?.path ?? null, next: segments[index + 1]?.path ?? null },
-				naming,
-				count,
-				options,
-			),
-			etag: content.revision,
-		};
+		const { segments, segment } = await findManuscriptNote(context, project, call);
+		return { status: 200, ...(await tellManuscriptNote(context, project, segment.path, segments)) };
 	},
 };
+
+/**
+ * One manuscript note told in full, as it stands in its file: its text, its
+ * version, its size and the notes on either side of it. `segments` is the
+ * manuscript in reading order where the caller has it in hand already.
+ */
+export async function tellManuscriptNote(
+	context: ApiContext,
+	project: ProjectSnapshot,
+	path: string,
+	segments?: readonly ManuscriptSegmentRecord[],
+): Promise<{ body: JsonObject; etag: string }> {
+	const order = segments ?? (await segmentsOf(context, project));
+	const index = order.findIndex((segment) => segment.path === path);
+	const manuscript = context.host.projects.manuscript;
+	const options = context.host.countOptions();
+	const content = await manuscript.readSegment(path);
+	const naming = await manuscript.segmentNaming(path);
+	const count = await context.host.projects.writingCount.countNote(path, options);
+	return {
+		body: manuscriptNoteOf(
+			project,
+			content,
+			{ index, previous: order[index - 1]?.path ?? null, next: order[index + 1]?.path ?? null },
+			naming,
+			count,
+			options,
+		),
+		etag: content.revision,
+	};
+}

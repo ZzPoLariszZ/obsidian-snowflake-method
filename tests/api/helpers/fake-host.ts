@@ -3,7 +3,9 @@ import type { Access } from '../../../api/spec/operations';
 import {
 	DEFAULT_STOPWORDS,
 	DIALOGUE_STYLE_TOKENS,
+	compileChapterNumbering,
 	parseQuotePair,
+	type ChapterNumberingSettings,
 	type DerivedTaskSources,
 	type DialogueStyle,
 	type MentionSource,
@@ -84,6 +86,8 @@ export interface FakeHost extends ApiHost {
 		 * be asked, so a test says what they would have found.
 		 */
 		derived: { sources: DerivedTaskSources; failed: boolean };
+		/** The author's chapter numbering rule. */
+		numbering: ChapterNumberingSettings;
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -91,6 +95,17 @@ export interface FakeHost extends ApiHost {
 	becomeReady(): void;
 	/** How many pieces of work ran as the plugin's own. */
 	ranAsPlugin: number;
+	/**
+	 * What was asked of the author's editors, in the order it was asked,
+	 * with each body written set among it: `settle` and `release` with the
+	 * notes named, and `write` with the note written.
+	 */
+	readonly editors: string[];
+	/**
+	 * What the author has typed and not saved, by note. Settling writes it
+	 * to the note as the author's own, as a stream does, and forgets it.
+	 */
+	readonly typed: Map<string, string>;
 	/**
 	 * Whose words each write carried, as the repository told it of every
 	 * body written and every note made: true for the author's own typing. A
@@ -115,6 +130,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		stopwords: [],
 		sessionScope: 'project',
 		goalScope: 'manuscript',
+		numbering: { style: 'english', rules: [] },
 		derived: {
 			sources: {
 				dailyGoal: 0,
@@ -150,8 +166,11 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 	};
 	const nothingKept = { load: (): unknown => null, save: (): void => undefined };
 	const origins: boolean[] = [];
-	projects.repository.onBodyWrite = (_path, _before, _after, userInput) => {
+	const editors: string[] = [];
+	const typed = new Map<string, string>();
+	projects.repository.onBodyWrite = (path, _before, _after, userInput) => {
 		origins.push(userInput);
+		editors.push(`write ${path}`);
 	};
 	projects.repository.onManagedFileCreated = (_path, _content, userInput) => {
 		origins.push(userInput);
@@ -209,6 +228,8 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		environment,
 		ranAsPlugin: 0,
 		origins,
+		editors,
+		typed,
 		becomeReady: () => {
 			state.ready = true;
 			release?.();
@@ -253,6 +274,20 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 			host.ranAsPlugin += 1;
 			return history.asPlugin(run);
 		},
+		settleNotes: async (paths) => {
+			editors.push(`settle ${paths.join(', ')}`);
+			// A stream writes every note it holds typing for, whichever was asked after.
+			for (const [path, body] of [...typed]) {
+				typed.delete(path);
+				const standing = await projects.manuscript.readSegment(path);
+				await projects.manuscript.writeSegment(path, body, standing.revision);
+			}
+		},
+		releaseNotes: (paths) => {
+			editors.push(`release ${paths.join(', ')}`);
+			return Promise.resolve();
+		},
+		chapterNumbering: () => compileChapterNumbering(state.numbering),
 		// The project manager's work as the plugin does it, less the screens it keeps in step.
 		createProject: (request) => projects.createProject({ ...request, userInput: false }),
 		renameProject: async (project, title) => {
