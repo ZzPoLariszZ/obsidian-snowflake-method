@@ -2,7 +2,10 @@ import type {
 	CanvasExportWords,
 	ChapterNumbering,
 	DerivedTaskSources,
+	DialoguePresentation,
 	DialogueStyle,
+	ManuscriptPresentation,
+	MentionHighlightMode,
 	MentionSource,
 	ProjectLanguage,
 	WritingMode,
@@ -36,9 +39,9 @@ export type MintedRecord = 'task' | 'foreshadowing' | 'occurrence' | 'revision';
 export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript' | 'timeline' | 'beatSheets' | 'freeform' | 'relationshipGraph' | 'mentions';
 
 /**
- * The author's settings that change what the API answers, and what a
- * session falls back on where a call leaves something out. They are the
- * author's own for every project of the vault.
+ * The author's settings that change what the API answers, what a session
+ * falls back on where a call leaves something out, and how the manuscript's
+ * page looks. They are the author's own for every project of the vault.
  */
 export interface AuthorSettings {
 	counting: NoteCountOptions;
@@ -56,14 +59,50 @@ export interface AuthorSettings {
 	};
 	dialogueMarks: readonly DialogueStyle[];
 	sensitiveWords: readonly string[];
+	page: PageSettings;
 }
 
-/** The few of them a caller may change. What is left out stays as it is. */
+/** How far focus mode fades the page about the paragraph being written. */
+export type PageFocus = 'off' | 'on' | 'deep' | 'solo';
+
+/** Which marks the page wears, as the bar's own menu of them sets it. */
+export interface PageMarks {
+	/** Which mentions of the project's notes are marked. */
+	mentions: MentionHighlightMode;
+	/** Whether the words the author watches for are marked. */
+	sensitiveWords: boolean;
+	/** How dialogue is shown. */
+	dialogue: DialoguePresentation;
+	/** Whether the author's own highlight rules are drawn. */
+	customHighlights: boolean;
+}
+
+/**
+ * How the manuscript's page looks and behaves: what the bar over the
+ * stream, and over a note that wears the same dress, sets.
+ */
+export interface PageSettings {
+	typewriter: boolean;
+	focus: PageFocus;
+	/** Whether Enter begins a new paragraph with a blank line between. */
+	enterParagraph: boolean;
+	appearance: ManuscriptPresentation;
+	marks: PageMarks;
+}
+
+/** The ones a caller may change. What is left out stays as it is. */
 export interface AuthorSettingsChange {
 	counting?: Partial<NoteCountOptions>;
 	dailyGoals?: { project?: number; manuscript?: number; scope?: WritingSessionScope };
 	sessionScope?: WritingSessionScope;
 	sensitiveWords?: readonly string[];
+	page?: {
+		typewriter?: boolean;
+		focus?: PageFocus;
+		enterParagraph?: boolean;
+		appearance?: Partial<ManuscriptPresentation>;
+		marks?: Partial<PageMarks>;
+	};
 }
 
 /** A session to start. What is null is as the author has it set. */

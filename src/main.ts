@@ -6171,7 +6171,7 @@ export default class SnowflakeMethodPlugin
 		});
 	}
 
-	/** The settings a caller of the local API is told: the ones that change what it is answered. */
+	/** The settings a caller of the local API is told: the ones that change what it is answered, and how the manuscript's page looks. */
 	private settingsForCaller(): AuthorSettings {
 		const held = this.settings;
 		return {
@@ -6193,14 +6193,27 @@ export default class SnowflakeMethodPlugin
 			},
 			dialogueMarks: this.dialogueStylesFromSettings(),
 			sensitiveWords: parseSensitiveWords(held.sensitiveWords),
+			page: {
+				typewriter: held.manuscriptTypewriter,
+				focus: held.manuscriptFocusLevel,
+				enterParagraph: held.manuscriptEnterParagraph,
+				appearance: this.manuscriptPresentation(),
+				marks: {
+					mentions: held.manuscriptMentionHighlight,
+					sensitiveWords: held.sensitiveHighlight,
+					dialogue: held.dialoguePresentation,
+					customHighlights: held.customHighlightsEnabled,
+				},
+			},
 		};
 	}
 
 	/**
-	 * The few settings a caller of the local API may change, changed as the
-	 * settings page changes them: held to the bounds the page holds them to,
-	 * saved once, and each one that moved told to the screens that show it.
-	 * One sent as it already stands is neither saved nor told.
+	 * The settings a caller of the local API may change, changed as the
+	 * settings page and the bar over the manuscript change them: held to the
+	 * bounds those hold them to, saved once, and each one that moved told to
+	 * the screens that show it. One sent as it already stands is neither
+	 * saved nor told.
 	 */
 	private async changeSettingsForCaller(change: AuthorSettingsChange): Promise<void> {
 		const asked: Partial<SnowflakeSettings> = {};
@@ -6211,10 +6224,35 @@ export default class SnowflakeMethodPlugin
 		if (change.dailyGoals?.scope !== undefined) asked.sessionDailyGoalScope = change.dailyGoals.scope;
 		if (change.sessionScope !== undefined) asked.sessionScope = change.sessionScope;
 		if (change.sensitiveWords !== undefined) asked.sensitiveWords = change.sensitiveWords.join('\n');
+		const page = change.page;
+		if (page?.typewriter !== undefined) asked.manuscriptTypewriter = page.typewriter;
+		if (page?.focus !== undefined) asked.manuscriptFocusLevel = page.focus;
+		if (page?.enterParagraph !== undefined) asked.manuscriptEnterParagraph = page.enterParagraph;
+		const look = page?.appearance;
+		if (look?.fontFamily !== undefined) asked.manuscriptFontFamily = look.fontFamily;
+		if (look?.fontSize !== undefined) asked.manuscriptFontSize = look.fontSize;
+		if (look?.lineHeight !== undefined) asked.manuscriptLineHeight = look.lineHeight;
+		if (look?.contentWidth !== undefined) asked.manuscriptContentWidth = look.contentWidth;
+		if (look?.paragraphSpacing !== undefined) asked.manuscriptParagraphSpacing = look.paragraphSpacing;
+		if (look?.firstLineIndent !== undefined) asked.manuscriptFirstLineIndent = look.firstLineIndent;
+		if (look?.textAlign !== undefined) asked.manuscriptTextAlign = look.textAlign;
+		if (look?.hyphenation !== undefined) asked.manuscriptHyphenation = look.hyphenation;
+		if (look?.tintLight !== undefined) asked.manuscriptTintLight = look.tintLight;
+		if (look?.tintDark !== undefined) asked.manuscriptTintDark = look.tintDark;
+		if (look?.guide !== undefined) asked.manuscriptGuide = look.guide;
+		const marks = page?.marks;
+		if (marks?.mentions !== undefined) asked.manuscriptMentionHighlight = marks.mentions;
+		if (marks?.sensitiveWords !== undefined) asked.sensitiveHighlight = marks.sensitiveWords;
+		if (marks?.dialogue !== undefined) asked.dialoguePresentation = marks.dialogue;
+		if (marks?.customHighlights !== undefined) asked.customHighlightsEnabled = marks.customHighlights;
 		const kept = sanitizeSettings({ ...this.settings, ...asked });
 		const moved = (Object.keys(asked) as (keyof SnowflakeSettings)[]).filter((key) => kept[key] !== this.settings[key]);
 		if (moved.length === 0) return;
 		Object.assign(this.settings, Object.fromEntries(moved.map((key) => [key, kept[key]])));
+		// A face newly set goes to the top of the font picker's list, as it does when the author picks one.
+		if (moved.includes('manuscriptFontFamily')) {
+			this.settings.manuscriptRecentFonts = rememberFontFamily(this.settings.manuscriptRecentFonts, this.settings.manuscriptFontFamily);
+		}
 		await this.saveSettings();
 		for (const key of moved) await this.handleSettingsChanged(key);
 		this.settingTab?.refreshRows();

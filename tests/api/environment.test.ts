@@ -31,6 +31,25 @@ describe('the author’s settings', () => {
 				{ open: '"', close: '"' },
 			],
 			sensitiveWords: ['suddenly'],
+			page: {
+				typewriter: true,
+				focus: 'off',
+				enterParagraph: true,
+				appearance: {
+					fontFamily: '',
+					fontSize: 0,
+					lineHeight: 0,
+					contentWidth: 0,
+					paragraphSpacing: 1,
+					firstLineIndent: 0,
+					textAlign: 'justify',
+					hyphenation: false,
+					tintLight: '',
+					tintDark: '',
+					guide: 'none',
+				},
+				marks: { mentions: 'off', sensitiveWords: true, dialogue: 'off', customHighlights: true },
+			},
 			export: { folder: 'Snowflake Projects/Snowflake Export', format: 'txt', layout: 'single', separator: 'blank', indent: true, paragraphSpacing: false },
 		});
 		expect(vaultState(golden.host)).toEqual(before);
@@ -60,6 +79,56 @@ describe('the author’s settings', () => {
 		expect(golden.host.told).toEqual(['settings']);
 	});
 
+	it('change how the manuscript’s page looks and behaves, as the bar over it does', async () => {
+		const golden = await createGolden();
+		golden.host.told.length = 0;
+		const changed = await ok(golden, 'updateSettings', {}, {
+			page: {
+				typewriter: false,
+				focus: 'deep',
+				appearance: {
+					fontFamily: ' "Source Serif 4",  serif; ',
+					fontSize: 18,
+					lineHeight: 1.8,
+					firstLineIndent: 2,
+					textAlign: 'start',
+					tintLight: '#E5D8BE',
+					guide: 'dashed',
+				},
+				marks: { mentions: 'unlinked', dialogue: 'highlight', customHighlights: false },
+			},
+		});
+		expect(changed['page']).toEqual({
+			typewriter: false,
+			focus: 'deep',
+			enterParagraph: true,
+			appearance: {
+				// Only what a font's name can carry is kept.
+				fontFamily: 'Source Serif 4, serif',
+				fontSize: 18,
+				lineHeight: 1.8,
+				contentWidth: 0,
+				paragraphSpacing: 1,
+				firstLineIndent: 2,
+				textAlign: 'start',
+				hyphenation: false,
+				tintLight: '#e5d8be',
+				tintDark: '',
+				guide: 'dashed',
+			},
+			marks: { mentions: 'unlinked', sensitiveWords: true, dialogue: 'highlight', customHighlights: false },
+		});
+		expect(golden.host.told).toEqual(['settings']);
+		// The rest of the settings stand.
+		expect([changed['sessionScope'], changed['sensitiveWords']]).toEqual(['project', []]);
+		// A size of 0, and an empty font or tint, give the theme's own back, each alone.
+		const back = await ok(golden, 'updateSettings', {}, { page: { appearance: { fontFamily: '', fontSize: 0, tintLight: '' } } });
+		expect(bodyOf(bodyOf(back['page'])['appearance'])).toMatchObject({ fontFamily: '', fontSize: 0, lineHeight: 1.8, tintLight: '', guide: 'dashed' });
+		// Read and sent back whole, they are left as they stand and nothing more is told.
+		await ok(golden, 'updateSettings', {}, back);
+		expect(golden.host.told).toEqual(['settings', 'settings']);
+	});
+
 	it('are held to what the plugin’s own settings page holds them to', async () => {
 		const golden = await createGolden();
 		const sent = (body: Body) => golden.call('updateSettings', {}, { body });
@@ -68,6 +137,15 @@ describe('the author’s settings', () => {
 		expect(refusal(await sent({ dailyGoals: { manuscript: 1_000_001 } }))).toEqual([400, 'invalid-request']);
 		expect(refusal(await sent({ sensitiveWords: ['one\ntwo'] }))).toEqual([400, 'invalid-request']);
 		expect(refusal(await sent({ sensitiveWords: ['x'.repeat(20_001)] }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ page: { appearance: { fontSize: 8 } } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ page: { appearance: { lineHeight: 1 } } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ page: { appearance: { contentWidth: 100 } } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ page: { appearance: { paragraphSpacing: 0 } } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ page: { appearance: { tintDark: 'navy' } } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ page: { focus: 'tunnel' } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ page: { marks: { mentions: 'some' } } }))).toEqual([400, 'invalid-request']);
+		// How far the dress reaches over the rest of Obsidian is the settings page's alone.
+		expect(refusal(await sent({ page: { appearance: { tintScope: 'obsidian' } } }))).toEqual([400, 'invalid-request']);
 		// What is the author's alone to set is not among what a caller may send.
 		expect(refusal(await sent({ access: 'delete' }))).toEqual([400, 'invalid-request']);
 		expect(refusal(await sent({ port: 8080 }))).toEqual([400, 'invalid-request']);

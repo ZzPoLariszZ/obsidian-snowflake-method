@@ -4897,8 +4897,9 @@ paths:
         is counted, the chapter numbering rule, the daily goals, the marks
         dialogue is read by and the words the author watches for. With them,
         what a session and an export fall back on where a call leaves something
-        out. Nothing of how the plugin looks is told, nothing of this device's
-        own, and nothing of the API's own access.
+        out, and how the manuscript's page looks and behaves, which is what the
+        bar over the manuscript sets. Nothing of this device's own is told, and
+        nothing of the API's own access.
       x-snowflake-access: read
       x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: extended
@@ -4917,11 +4918,14 @@ paths:
       tags: [Service]
       summary: Change the plugin's settings
       description: |
-        Changes a few of the settings `getSettings` tells: how writing is
+        Changes some of the settings `getSettings` tells: how writing is
         counted, the daily goals, which notes a session's words are counted in,
-        and the words the author watches for. They are the author's own, for
-        every project of the vault, so this is asked for with care. The rest are
-        the author's to set in the plugin's settings.
+        the words the author watches for, and how the manuscript's page looks
+        and behaves. That last is what the bar over the manuscript sets:
+        typewriter scrolling, focus mode, the page's dress and the marks it
+        wears. They are the author's own, for every project of the vault, so
+        this is asked for with care. A page that is open follows at once. The
+        rest are the author's to set in the plugin's settings.
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: advanced
@@ -11277,8 +11281,8 @@ components:
 
     Settings:
       type: object
-      description: The author's settings that change what the API answers.
-      required: [counting, chapterNumbering, dailyGoals, sessionScope, session, dialogueMarks, sensitiveWords, export]
+      description: The author's settings that change what the API answers, and how the manuscript's page looks.
+      required: [counting, chapterNumbering, dailyGoals, sessionScope, session, dialogueMarks, sensitiveWords, page, export]
       additionalProperties: false
       properties:
         counting:
@@ -11337,6 +11341,8 @@ components:
           description: The words and phrases the author watches for.
           items:
             type: string
+        page:
+          $ref: "#/components/schemas/PageSettings"
         export:
           type: object
           description: How the manuscript is exported where a call does not say.
@@ -11398,6 +11404,168 @@ components:
           maxItems: 2000
           items:
             type: string
+        page:
+          $ref: "#/components/schemas/PageSettingsPatch"
+
+    PageSettings:
+      type: object
+      description: |
+        How the manuscript's page looks and behaves. It is what the bar over
+        the manuscript sets, in the stream and over a note that wears the same
+        dress, and it holds for every project of the vault.
+      required: [typewriter, focus, enterParagraph, appearance, marks]
+      additionalProperties: false
+      properties:
+        typewriter:
+          type: boolean
+          description: Whether the line being written is kept at the middle of the page.
+        focus:
+          type: string
+          enum: ["off", "on", deep, solo]
+          description: How far the page is faded about the paragraph being written. Each level fades more than the one before.
+        enterParagraph:
+          type: boolean
+          description: Whether Enter begins a new paragraph, with a blank line between.
+        appearance:
+          type: object
+          description: The page's dress. A size of 0 is the theme's own, and so is an empty font or tint.
+          required: [fontFamily, fontSize, lineHeight, contentWidth, paragraphSpacing, firstLineIndent, textAlign, hyphenation, tintLight, tintDark, guide]
+          additionalProperties: false
+          properties:
+            fontFamily:
+              type: string
+              description: A font list as the author types it, such as `Georgia, serif`.
+            fontSize:
+              type: number
+              description: In pixels, from 12 to 72.
+            lineHeight:
+              type: number
+              description: As so many times the size of the type, from 1.4 to 3.
+            contentWidth:
+              type: number
+              description: How wide the column of text is, in pixels, from 320 to 2000.
+            paragraphSpacing:
+              type: number
+              description: The gap between two paragraphs, in lines, from 0.25 to 3.
+            firstLineIndent:
+              type: number
+              description: How far a paragraph's first line is set in, in em, from 0 to 6.
+            textAlign:
+              type: string
+              enum: [start, justify]
+            hyphenation:
+              type: boolean
+              description: Whether a long word is broken at the end of a line.
+            tintLight:
+              type: string
+              description: The page's colour in light mode, as `#rrggbb`.
+            tintDark:
+              type: string
+              description: The page's colour in dark mode, as `#rrggbb`.
+            guide:
+              type: string
+              enum: [none, solid, dashed]
+              description: The lines drawn under the text to write along.
+        marks:
+          type: object
+          description: Which marks the page wears.
+          required: [mentions, sensitiveWords, dialogue, customHighlights]
+          additionalProperties: false
+          properties:
+            mentions:
+              type: string
+              enum: ["off", first, unlinked, all]
+              description: "Which mentions of the project's notes are marked: none, the first of each in a note, the ones not written as links, or every one."
+            sensitiveWords:
+              type: boolean
+              description: Whether the words the author watches for are marked.
+            dialogue:
+              type: string
+              enum: ["off", highlight, focus]
+              description: "How dialogue is shown: not at all, tinted where it stands, or kept at full ink while the rest steps back."
+            customHighlights:
+              type: boolean
+              description: Whether the author's own highlight rules are drawn.
+
+    PageSettingsPatch:
+      type: object
+      description: What to change of the manuscript's page. What is left out stays.
+      additionalProperties: false
+      properties:
+        typewriter:
+          type: boolean
+        focus:
+          type: string
+          enum: ["off", "on", deep, solo]
+          description: Turning focus mode on or off also starts or ends a session, where the author has set it to.
+        enterParagraph:
+          type: boolean
+        appearance:
+          type: object
+          additionalProperties: false
+          properties:
+            fontFamily:
+              type: string
+              maxLength: 120
+              description: Only what a font's name can carry is kept. Empty gives the theme's own font back.
+            fontSize:
+              description: 0 gives the theme's own size back.
+              oneOf:
+                - const: 0
+                - type: number
+                  minimum: 12
+                  maximum: 72
+            lineHeight:
+              description: 0 gives the theme's own line height back.
+              oneOf:
+                - const: 0
+                - type: number
+                  minimum: 1.4
+                  maximum: 3
+            contentWidth:
+              description: 0 gives the width Obsidian gives a note back.
+              oneOf:
+                - const: 0
+                - type: number
+                  minimum: 320
+                  maximum: 2000
+            paragraphSpacing:
+              type: number
+              minimum: 0.25
+              maximum: 3
+            firstLineIndent:
+              type: number
+              minimum: 0
+              maximum: 6
+            textAlign:
+              type: string
+              enum: [start, justify]
+            hyphenation:
+              type: boolean
+            tintLight:
+              type: string
+              pattern: "^(#[0-9a-fA-F]{6})?$"
+              description: Empty gives the theme's own ground back.
+            tintDark:
+              type: string
+              pattern: "^(#[0-9a-fA-F]{6})?$"
+            guide:
+              type: string
+              enum: [none, solid, dashed]
+        marks:
+          type: object
+          additionalProperties: false
+          properties:
+            mentions:
+              type: string
+              enum: ["off", first, unlinked, all]
+            sensitiveWords:
+              type: boolean
+            dialogue:
+              type: string
+              enum: ["off", highlight, focus]
+            customHighlights:
+              type: boolean
 
     WritingSessionStart:
       type: object

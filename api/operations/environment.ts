@@ -3,6 +3,10 @@ import { normalizePath } from 'obsidian';
 import {
 	SESSION_LIMITS,
 	fingerprint,
+	type DialoguePresentation,
+	type ManuscriptGuide,
+	type ManuscriptTextAlign,
+	type MentionHighlightMode,
 	type MentionIgnore,
 	type WritingCountHeadings,
 	type WritingCountMode,
@@ -15,12 +19,12 @@ import { manuscriptNoteRefOf } from '../dto/manuscript';
 import type { MemberIndex } from '../dto/member';
 import { settingsOf } from '../dto/settings';
 import { ApiError } from '../errors';
-import type { AuthorSettingsChange } from '../host';
+import type { AuthorSettingsChange, PageFocus } from '../host';
 import type { JsonObject } from '../json';
 import { idOf, noSuch } from './board-rules';
 import { bodyOf, textParam, type ApiContext, type OperationGroup } from './context';
 import { noteAt } from './manuscript-writes';
-import { isSent, misfit, textOf } from './refusals';
+import { isSent, misfit, textOf, type Sent } from './refusals';
 import { tellSession } from './sessions';
 
 /** The most the words the author watches for may come to, all told: what the settings page itself keeps. */
@@ -58,11 +62,50 @@ async function tellIgnores(context: ApiContext, project: ProjectSnapshot): Promi
 	return { items: (await context.host.projects.mentionStore.readIgnores(project)).map((rule) => ignoreOf(index, project, rule)) };
 }
 
+/** The parts of a call's object that are of one kind, each under its own name. */
+function picked<Value>(sent: Sent, names: readonly string[], kind: 'boolean' | 'number' | 'string'): Record<string, Value> {
+	return Object.fromEntries(names.filter((name) => typeof sent[name] === kind).map((name) => [name, sent[name] as Value]));
+}
+
+/**
+ * What a call changes of the manuscript's page: the writing modes, the
+ * dress and the marks, each setting only where it was sent. The contract
+ * has held every one to its bounds already.
+ */
+function pageChangeOf(page: Sent): NonNullable<AuthorSettingsChange['page']> {
+	const look = isSent(page['appearance']) ? page['appearance'] : null;
+	const marks = isSent(page['marks']) ? page['marks'] : null;
+	return {
+		...picked<boolean>(page, ['typewriter', 'enterParagraph'], 'boolean'),
+		...(typeof page['focus'] === 'string' ? { focus: page['focus'] as PageFocus } : {}),
+		...(look === null
+			? {}
+			: {
+					appearance: {
+						...picked<string>(look, ['fontFamily', 'tintLight', 'tintDark'], 'string'),
+						...picked<number>(look, ['fontSize', 'lineHeight', 'contentWidth', 'paragraphSpacing', 'firstLineIndent'], 'number'),
+						...picked<boolean>(look, ['hyphenation'], 'boolean'),
+						...(typeof look['textAlign'] === 'string' ? { textAlign: look['textAlign'] as ManuscriptTextAlign } : {}),
+						...(typeof look['guide'] === 'string' ? { guide: look['guide'] as ManuscriptGuide } : {}),
+					},
+				}),
+		...(marks === null
+			? {}
+			: {
+					marks: {
+						...picked<boolean>(marks, ['sensitiveWords', 'customHighlights'], 'boolean'),
+						...(typeof marks['mentions'] === 'string' ? { mentions: marks['mentions'] as MentionHighlightMode } : {}),
+						...(typeof marks['dialogue'] === 'string' ? { dialogue: marks['dialogue'] as DialoguePresentation } : {}),
+					},
+				}),
+	};
+}
+
 /**
  * The author's settings, their timer and the mentions they set aside. These
- * are the author's own surroundings more than they are a project's, so
- * little of them can be changed from here, and that little is held to what
- * the plugin's own screens hold it to.
+ * are the author's own surroundings more than they are a project's. What
+ * can be changed of them from here is what the plugin's own bars and
+ * settings change, held to what those hold it to.
  */
 export const environmentOperations: OperationGroup = {
 	getSettings: (_call, context) => ({ status: 200, body: tellSettings(context) }),
@@ -95,6 +138,7 @@ export const environmentOperations: OperationGroup = {
 			}
 			change.sensitiveWords = words;
 		}
+		if (isSent(body['page'])) change.page = pageChangeOf(body['page']);
 		await context.host.changeSettings(change);
 		return { status: 200, body: tellSettings(context) };
 	},

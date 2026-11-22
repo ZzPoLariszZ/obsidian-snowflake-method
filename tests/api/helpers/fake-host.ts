@@ -1,10 +1,12 @@
-import type { ApiHost, AuthorSettings } from '../../../api/host';
+import type { ApiHost, AuthorSettings, PageSettings } from '../../../api/host';
 import type { Access } from '../../../api/spec/operations';
 import {
+	DEFAULT_MANUSCRIPT_PRESENTATION,
 	DEFAULT_STOPWORDS,
 	DIALOGUE_STYLE_TOKENS,
 	compileChapterNumbering,
 	parseQuotePair,
+	sanitizeFontFamily,
 	type ChapterNumberingSettings,
 	type DerivedTaskSources,
 	type DialogueStyle,
@@ -100,6 +102,8 @@ export interface FakeHost extends ApiHost {
 		dailyGoals: { project: number; manuscript: number };
 		/** The timer the author starts with. */
 		session: AuthorSettings['session'];
+		/** How the manuscript's page looks and behaves. */
+		page: PageSettings;
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -156,6 +160,14 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		exporting: { folder: 'Snowflake Projects/Snowflake Export', format: 'txt', indent: true, paragraphSpacing: false, layout: 'single', separator: 'blank' },
 		dailyGoals: { project: 6000, manuscript: 4000 },
 		session: { type: 'pomodoro', writingMode: 'draft', countdownMinutes: 45, pomodoroWorkMinutes: 25, pomodoroBreakMinutes: 5, pomodoroAutoRepeat: true },
+		// As a vault that has never opened the bar's panels has them.
+		page: {
+			typewriter: true,
+			focus: 'off',
+			enterParagraph: true,
+			appearance: { ...DEFAULT_MANUSCRIPT_PRESENTATION },
+			marks: { mentions: 'off', sensitiveWords: true, dialogue: 'off', customHighlights: true },
+		},
 		derived: {
 			sources: {
 				dailyGoal: 0,
@@ -329,10 +341,11 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 			session: state.session,
 			dialogueMarks: state.dialogue,
 			sensitiveWords: state.sensitiveWords,
+			page: state.page,
 		}),
 		changeSettings: (change) => {
 			// As the plugin keeps them: what is sent is set, and what moved is told once.
-			const before = JSON.stringify([state.counting, state.dailyGoals, state.goalScope, state.sessionScope, state.sensitiveWords]);
+			const before = JSON.stringify([state.counting, state.dailyGoals, state.goalScope, state.sessionScope, state.sensitiveWords, state.page]);
 			state.counting = { ...state.counting, ...change.counting };
 			state.dailyGoals = {
 				project: change.dailyGoals?.project ?? state.dailyGoals.project,
@@ -341,7 +354,22 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 			state.goalScope = change.dailyGoals?.scope ?? state.goalScope;
 			state.sessionScope = change.sessionScope ?? state.sessionScope;
 			state.sensitiveWords = change.sensitiveWords === undefined ? state.sensitiveWords : [...change.sensitiveWords];
-			if (JSON.stringify([state.counting, state.dailyGoals, state.goalScope, state.sessionScope, state.sensitiveWords]) !== before) told.push('settings');
+			const page = change.page ?? {};
+			const appearance = { ...state.page.appearance, ...page.appearance };
+			state.page = {
+				typewriter: page.typewriter ?? state.page.typewriter,
+				focus: page.focus ?? state.page.focus,
+				enterParagraph: page.enterParagraph ?? state.page.enterParagraph,
+				// Cleaned as the plugin's own settings clean them: a font's name keeps only what a name can carry, a tint is written small.
+				appearance: {
+					...appearance,
+					fontFamily: sanitizeFontFamily(appearance.fontFamily),
+					tintLight: appearance.tintLight.toLowerCase(),
+					tintDark: appearance.tintDark.toLowerCase(),
+				},
+				marks: { ...state.page.marks, ...page.marks },
+			};
+			if (JSON.stringify([state.counting, state.dailyGoals, state.goalScope, state.sessionScope, state.sensitiveWords, state.page]) !== before) told.push('settings');
 			return Promise.resolve();
 		},
 		startSession: (project, start) => {
