@@ -22,7 +22,11 @@ export { ACCESS_LEVELS, type Access } from './spec/operations';
 export interface LocalApiDeps {
 	/** The desktop's way to answer on a port, or null where there is none. */
 	listeners(): Promise<LoopbackListenerFactory | null>;
-	/** Settles after a wait, on the plugin's own clock. */
+	/**
+	 * Settles after a wait of about so long, or at once where the plugin's
+	 * clock cannot be trusted to keep it: a window out of sight is handed
+	 * its clock late, and nothing here may be held up by that.
+	 */
 	pause(ms: number): Promise<void>;
 	/** Told each time the listener starts, stops or fails. */
 	serverChanged(status: ServerStatus): void;

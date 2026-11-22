@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createMessageTurns, type MessageTurns } from '../../src/services';
+import { createMessageTurns, pauseWhileSeen, type MessageTurns } from '../../src/services';
 
 describe('turns taken by a message', () => {
 	let turns: MessageTurns | null = null;
@@ -43,5 +43,62 @@ describe('turns taken by a message', () => {
 		await taken(other);
 		other.close();
 		expect(ran).toEqual([]);
+	});
+});
+
+describe('a wait kept only while the window can be seen', () => {
+	const refuse = (what: string) => (): never => {
+		throw new Error(what);
+	};
+
+	it('is kept on the window’s clock in sight, for as long as was asked', async () => {
+		const asked: number[] = [];
+		const waits = pauseWhileSeen({
+			hidden: () => false,
+			set: (handler, ms) => {
+				asked.push(ms);
+				handler();
+			},
+			turn: refuse('No turn is taken in place of the clock while the window can be seen.'),
+		});
+		await waits(400);
+		expect(asked).toEqual([400]);
+	});
+
+	it('is given up out of sight, where the clock is handed out late', async () => {
+		let turns = 0;
+		const waits = pauseWhileSeen({
+			hidden: () => true,
+			set: refuse('The clock is not asked while the window is out of sight.'),
+			turn: (handler) => {
+				turns += 1;
+				handler();
+			},
+		});
+		await waits(400);
+		expect(turns).toBe(1);
+	});
+
+	it('looks at where the window stands at each wait, and settles on a real turn', async () => {
+		const turns = createMessageTurns();
+		let hidden = true;
+		const asked: number[] = [];
+		const waits = pauseWhileSeen({
+			hidden: () => hidden,
+			set: (handler, ms) => {
+				asked.push(ms);
+				handler();
+			},
+			turn: (handler) => {
+				turns.take(handler);
+			},
+		});
+		const started = Date.now();
+		await waits(60_000);
+		expect([asked, Date.now() - started < 500]).toEqual([[], true]);
+		hidden = false;
+		await waits(400);
+		expect(asked).toEqual([400]);
+		turns.close();
 	});
 });

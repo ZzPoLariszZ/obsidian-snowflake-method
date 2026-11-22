@@ -36,3 +36,34 @@ export function createMessageTurns(): MessageTurns {
 		},
 	};
 }
+
+/** What a wait is made of: the window's clock, and a turn that needs none. */
+export interface SeenPauseDeps {
+	/** Whether the window is out of sight at this moment. */
+	hidden: () => boolean;
+	/** The window's own clock. */
+	set: (handler: () => void, ms: number) => unknown;
+	/** A turn taken at once, whether or not the window can be seen. */
+	turn: (handler: () => void) => void;
+}
+
+/**
+ * A wait that is kept only while the window can be seen.
+ *
+ * The local API makes a caller that sent a wrong token wait a moment for
+ * its answer, so that guessing is slow. The wait is on the window's clock,
+ * and a window out of sight is handed its clock late: by a second at
+ * first, and by a minute once it has been hidden a while. A caller that
+ * only held an old token would wait that long to be told so, and one more
+ * than a handful of them would get no answer at all. So out of sight the
+ * wait is given up, and the answer goes on the next turn. Nothing is lost
+ * by it that matters: what keeps a guesser out is the length of the token,
+ * and no wait adds to that.
+ */
+export function pauseWhileSeen(deps: SeenPauseDeps): (ms: number) => Promise<void> {
+	return (ms) =>
+		new Promise((resolve) => {
+			if (deps.hidden()) deps.turn(resolve);
+			else deps.set(resolve, ms);
+		});
+}

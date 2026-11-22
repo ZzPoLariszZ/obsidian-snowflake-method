@@ -15,7 +15,7 @@ export interface HttpDoorDeps {
 	token(): string | null;
 	/** The port the listener answers on, which a call must name as its host. */
 	port(): number;
-	/** Settles after a wait, for a caller that got the token wrong. */
+	/** Settles after a wait, for a caller that got the token wrong. The plugin may cut the wait short where its clock runs late. */
 	pause(ms: number): Promise<void>;
 }
 

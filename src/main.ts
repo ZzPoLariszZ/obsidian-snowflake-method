@@ -213,6 +213,7 @@ import {
 import {
 	createMessageTurns,
 	createStableId,
+	pauseWhileSeen,
 	type CharacterPatch,
 	type EntityPatch,
 	type RankRevisionChange,
@@ -6147,10 +6148,17 @@ export default class SnowflakeMethodPlugin
 		this.projects.repository.asksBeforeLinkUpdates = () => this.obsidianAsksBeforeLinkUpdates();
 		return createLocalApi(host, {
 			listeners: () => desktopListenerFactory(),
-			pause: (ms) =>
-				new Promise((resolve) => {
-					this.app.workspace.containerEl.win.setTimeout(resolve, ms);
-				}),
+			// The wait before a wrong token is answered, kept only while the
+			// window can be seen: a hidden window's clock would hold the
+			// answer back by up to a minute.
+			pause: pauseWhileSeen({
+				hidden: () => this.app.workspace.containerEl.doc.hidden,
+				set: (handler, ms) => this.app.workspace.containerEl.win.setTimeout(handler, ms),
+				turn: (handler) => {
+					this.hiddenTurns ??= createMessageTurns();
+					this.hiddenTurns.take(handler);
+				},
+			}),
 			serverChanged: (status) => {
 				// Why it could not be started is said once, where the author
 				// will see it, and stands in the settings until it is put right.
