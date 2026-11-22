@@ -675,6 +675,17 @@ export interface MemberUsage {
 }
 
 /**
+ * The same three lists with each note by where it stands in the vault, for a
+ * reader that tells notes apart by more than their titles. Each note is
+ * there once, in the order the project lists it.
+ */
+export interface MemberUsagePaths {
+  listed: string[];
+  needsDecision: string[];
+  records: string[];
+}
+
+/**
  * Which notes use one definition node directly, split because removing the
  * node costs each something different: a category entry in a list can simply
  * go, while a record line is a sentence the author wrote under that label.

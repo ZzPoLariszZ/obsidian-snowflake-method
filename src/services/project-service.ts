@@ -232,6 +232,7 @@ import {
   type EntityPatch,
   type WorldbuildingRecord,
   type WriteOrigin,
+  type MemberUsagePaths,
 } from "./types";
 
 const STATIC_DOCUMENT_BY_STEP: Partial<Record<StepId, DocumentType>> = {
@@ -2893,10 +2894,25 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     memberPath: string,
   ): Promise<MemberUsage> {
+    return usageTitles(await this.scanMemberUsage(projectLocator, memberPath));
+  }
+
+  /** `memberUsage` with each note by its path where the other gives its title. */
+  async memberUsageByPath(
+    projectLocator: ProjectLocator,
+    memberPath: string,
+  ): Promise<MemberUsagePaths> {
+    return usagePaths(await this.scanMemberUsage(projectLocator, memberPath));
+  }
+
+  private async scanMemberUsage(
+    projectLocator: ProjectLocator,
+    memberPath: string,
+  ): Promise<UsageScan> {
     const project = await this.loadProject(projectLocator);
-    const listed = new Set<string>();
-    const single = new Set<string>();
-    const records = new Set<string>();
+    const listed = new Map<string, string>();
+    const single = new Map<string, string>();
+    const records = new Map<string, string>();
     // A bare wiki-word in a field only means this member where the field
     // holds its kind, matching what the removal sweep will actually edit. A
     // record line's clauses can point at anyone, so there the words keep
@@ -2926,13 +2942,13 @@ export class SnowflakeProjectService {
               names(storedReference(field, entry), kindMatches),
             )
           ) {
-            listed.add(title);
+            listed.set(record.path, title);
           }
           continue;
         }
         const value = storedReference(field, stored);
         if (value !== null && !isScenePovMode(value) && names(value, kindMatches)) {
-          single.add(title);
+          single.set(record.path, title);
         }
       }
       if (
@@ -2948,14 +2964,10 @@ export class SnowflakeProjectService {
             ),
         )
       ) {
-        records.add(title);
+        records.set(record.path, title);
       }
     }
-    return {
-      listed: [...listed],
-      needsDecision: [...single],
-      records: [...records],
-    };
+    return { listed, needsDecision: single, records };
   }
 
   /**
@@ -6199,6 +6211,23 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     kindId: WorldbuildingKindId,
   ): Promise<{ entityCount: number; usage: MemberUsage }> {
+    const scan = await this.scanKindUsage(projectLocator, kindId);
+    return { entityCount: scan.entityCount, usage: usageTitles(scan.usage) };
+  }
+
+  /** `worldbuildingKindUsage` with each note by its path where the other gives its title. */
+  async worldbuildingKindUsageByPath(
+    projectLocator: ProjectLocator,
+    kindId: WorldbuildingKindId,
+  ): Promise<{ entityCount: number; usage: MemberUsagePaths }> {
+    const scan = await this.scanKindUsage(projectLocator, kindId);
+    return { entityCount: scan.entityCount, usage: usagePaths(scan.usage) };
+  }
+
+  private async scanKindUsage(
+    projectLocator: ProjectLocator,
+    kindId: WorldbuildingKindId,
+  ): Promise<{ entityCount: number; usage: UsageScan }> {
     const project = await this.loadProject(projectLocator);
     const entities = entitiesOf(project, kindId);
     const entityPaths = new Set(
@@ -6211,9 +6240,9 @@ export class SnowflakeProjectService {
     const insideKind = (path: string): boolean =>
       entityPaths.has(normalizePath(path)) ||
       normalizePath(path).startsWith(`${folder}/`);
-    const listed = new Set<string>();
-    const needsDecision = new Set<string>();
-    const records = new Set<string>();
+    const listed = new Map<string, string>();
+    const needsDecision = new Map<string, string>();
+    const records = new Map<string, string>();
     // One pass over the members, each record's fields and lines read once,
     // against the whole set of notes the folder will take with it.
     for (const record of await this.memberRecords(project)) {
@@ -6239,7 +6268,7 @@ export class SnowflakeProjectService {
               namesAny(storedReference(field, entry), kindMatches),
             )
           ) {
-            listed.add(title);
+            listed.set(record.path, title);
           }
           continue;
         }
@@ -6249,7 +6278,7 @@ export class SnowflakeProjectService {
           !isScenePovMode(value) &&
           namesAny(value, kindMatches)
         ) {
-          needsDecision.add(title);
+          needsDecision.set(record.path, title);
         }
       }
       if (
@@ -6264,17 +6293,10 @@ export class SnowflakeProjectService {
             ),
         )
       ) {
-        records.add(title);
+        records.set(record.path, title);
       }
     }
-    return {
-      entityCount: entities.length,
-      usage: {
-        listed: [...listed],
-        needsDecision: [...needsDecision],
-        records: [...records],
-      },
-    };
+    return { entityCount: entities.length, usage: { listed, needsDecision, records } };
   }
 
   /**
@@ -10100,6 +10122,30 @@ function memberStoredTitle(record: ManagedFileRecord): string | null {
     asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]) ??
     asOptionalString(record.frontmatter[FRONTMATTER_KEYS.name])
   );
+}
+
+/**
+ * What a usage scan finds: the notes of each of the three kinds of use,
+ * each by where it stands, with the title it goes by.
+ */
+type UsageScan = Record<keyof MemberUsage, Map<string, string>>;
+
+/** A scan read out by title, each title once: two notes of one title are one line to a reader. */
+function usageTitles(scan: UsageScan): MemberUsage {
+  return {
+    listed: [...new Set(scan.listed.values())],
+    needsDecision: [...new Set(scan.needsDecision.values())],
+    records: [...new Set(scan.records.values())],
+  };
+}
+
+/** A scan read out by path. */
+function usagePaths(scan: UsageScan): MemberUsagePaths {
+  return {
+    listed: [...scan.listed.keys()],
+    needsDecision: [...scan.needsDecision.keys()],
+    records: [...scan.records.keys()],
+  };
 }
 
 /** The name a member note goes by, falling back to what it is filed as. */

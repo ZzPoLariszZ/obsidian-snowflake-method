@@ -4492,6 +4492,18 @@ describe("SnowflakeProjectService", () => {
     expect(usage.records).toEqual(["Ada"]);
   });
 
+  it("says the same by where each note stands, for a reader that names notes by more than their titles", async () => {
+    const { project, dawn, era, scene, ada } = await projectWithReferences();
+
+    const usage = await service.memberUsageByPath(project.projectFile, dawn.path);
+
+    expect(usage).toEqual({
+      listed: [scene.path],
+      needsDecision: [era.path],
+      records: [ada.path],
+    });
+  });
+
   it("drops a deleted entity from the lists that name it, and leaves the rest", async () => {
     const { project, dawn, era, scene, ada } = await projectWithReferences();
 
@@ -6584,6 +6596,12 @@ describe("SnowflakeProjectService", () => {
       );
       expect(cost.entityCount).toBe(1);
       expect(cost.usage.records).toEqual(["Ada"]);
+      // And the same by where the note stands.
+      const byPath = await service.worldbuildingKindUsageByPath(project.projectFile, "Faction");
+      expect(byPath.entityCount).toBe(1);
+      expect(byPath.usage.listed).toEqual([]);
+      expect(byPath.usage.records).toHaveLength(1);
+      expect(byPath.usage.records[0]).toMatch(/\/Ada\.md$/u);
       await service.deleteWorldbuildingKind(project.projectFile, "Faction");
       expect(metadataRegistry(project.projectFile)).toEqual([]);
       expect(
