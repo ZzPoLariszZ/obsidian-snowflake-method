@@ -25,6 +25,7 @@ import { freeformViewOf } from '../dto/boards';
 import type { MemberIndex } from '../dto/member';
 import { ApiError } from '../errors';
 import type { JsonObject } from '../json';
+import { allows } from '../spec/operations';
 import { idOf, landed, made, noSuch } from './board-rules';
 import { bodyOf, textParam, type ApiContext, type OperationCall, type OperationGroup } from './context';
 import { gone } from './records';
@@ -308,13 +309,26 @@ export const freeformWriteOperations: OperationGroup = {
 	},
 
 	applyFreeformSteps: async (call, context) => {
+		const sent = bodyOf(call)['steps'];
+		const list: readonly unknown[] = Array.isArray(sent) ? sent : [];
+		// The operation asks the write level, and one kind of step takes things off the view. That is a
+		// removal like a scene taken off any other board, and is held to the level those are held to.
+		// Asked before anything is looked up, as the level of every operation is.
+		const level = context.host.access();
+		const removal = list.findIndex((step) => isSent(step) && step['do'] === 'delete');
+		if (removal !== -1 && !allows(level, 'delete')) {
+			throw new ApiError('access-denied', `A step that takes things off a view needs the delete level, and the author has set ${level}.`, {
+				needs: 'delete',
+				level,
+				pointer: `/steps/${String(removal)}`,
+			});
+		}
 		const { project, held, index } = await standingOf(call, context);
 		const view = viewIn(held, call);
 		const service = context.host.projects.freeform;
-		const sent = bodyOf(call)['steps'];
 		const standing = new Set([...view.placements, ...view.frames, ...view.edges].map((entry) => entry.id));
 		const names = new Names((kind) => service.mint(kind), standing);
-		const steps = await stepsOf(Array.isArray(sent) ? sent : [], names, resourcesOf(context, project, index));
+		const steps = await stepsOf(list, names, resourcesOf(context, project, index));
 		// Taken one at a time over the view as it stands, so that a step the view will not take is told by its place in the call.
 		let tried = view;
 		steps.forEach((step, at) => {

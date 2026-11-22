@@ -4549,10 +4549,14 @@ paths:
         A step the view will not take is told by its place in the call, and
         nothing is written. A card of a note or a record names one the project
         has.
+
+        A `delete` step takes things off the view, and needs the delete level
+        as taking a scene off any other board does. Below that level the whole
+        call is refused with `access-denied`, which names the step.
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, view-full]
+      x-snowflake-errors: [access-denied, not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, view-full]
       requestBody:
         required: true
         content:
@@ -10476,7 +10480,10 @@ components:
                     type: string
                     enum: [solid, dashed, dotted, dash-dot]
         - type: object
-          description: Cards, frames and lines taken off the view. What a card showed stands.
+          description: |
+            Cards, frames and lines taken off the view. Needs the delete level.
+            A note or a record a card showed stands. The words of a text card
+            and the address of a link card go with the card.
           required: [do]
           additionalProperties: false
           properties:

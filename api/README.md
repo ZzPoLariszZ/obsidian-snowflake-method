@@ -89,7 +89,7 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Boards.** A timeline, a beat sheet and a freeform view name a note by its id, and a change is refused where an id names nothing the project has. A timeline, a view of the timelines, a beat sheet and a freeform view each go by a name no other of its kind has. What an operation makes is told by its id in the answer. Taking a scene off a board, or a time off a timeline, needs the delete level, though the note itself stands.
 
-**Freeform steps.** `applyFreeformSteps` takes a list of steps and makes all of them or none. A step may give a new card, frame or line a name in `id`, so that a later step of the same call can speak of it. The name holds for that call alone. The answer says which id each was kept under.
+**Freeform steps.** `applyFreeformSteps` takes a list of steps and makes all of them or none. A step may give a new card, frame or line a name in `id`, so that a later step of the same call can speak of it. The name holds for that call alone. The answer says which id each was kept under. A `delete` step needs the delete level, as taking a scene off any other board does.
 
 **Importing.** `inspectImport` says what another project of the vault has to bring, part by part, and `runImport` copies the parts named. Whatever a part cannot stand without comes with it. A link to a part that was not brought is dropped from the copy, and the answer says which. The other project is never changed.
 

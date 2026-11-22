@@ -521,6 +521,28 @@ describe('a freeform view, made and changed', () => {
 		expect(golden.host.told).toEqual([]);
 	});
 
+	it('takes a thing off a view only at the delete level', async () => {
+		const { golden, boards, P } = await ground({ access: 'write' });
+		const before = vaultState(golden.host);
+		const refused = await steps(golden, P, boards.canvas, [
+			{ do: 'text', id: 'card-text', text: 'Changed.' },
+			{ do: 'delete', nodes: ['card-text'] },
+		]);
+		expect([refusal(refused), faults(refused)]).toEqual([[403, 'access-denied'], []]);
+		expect(bodyOf(refused.body)).toMatchObject({ needs: 'delete', level: 'write', pointer: '/steps/1' });
+		// Asked before the view is looked for, as the level of an operation is.
+		expect(refusal(await steps(golden, P, 'freeform-view-gone', [{ do: 'delete', nodes: ['card-text'] }]))).toEqual([403, 'access-denied']);
+		expect(vaultState(golden.host)).toEqual(before);
+		expect(golden.host.told).toEqual([]);
+		// Every other step is a change, and the write level takes it.
+		const changed = await steps(golden, P, boards.canvas, [{ do: 'text', id: 'card-text', text: 'Changed.' }]);
+		expect([changed.status, faults(changed)]).toEqual([200, []]);
+		golden.host.state.access = 'delete';
+		const gone = await steps(golden, P, boards.canvas, [{ do: 'delete', nodes: ['card-text'] }]);
+		expect([gone.status, faults(gone)]).toEqual([200, []]);
+		expect(idsOf(bodyOf(bodyOf(gone.body)['view'])['placements'])).not.toContain('card-text');
+	});
+
 	it('writes the view a project starts with the first time something is put on it', async () => {
 		const golden = await createGolden();
 		const P = { projectId: golden.project.id };
