@@ -72,6 +72,33 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 		of: 'project',
 		send: (projectId, golden) => ({ params: { projectId, entityId: golden.members.winter.entityId }, body: { index: 0 } }),
 	},
+	createKind: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'Creature', description: 'What walks the ice.' } }) },
+	updateKind: { of: 'project', send: (projectId) => ({ params: { projectId, kindId: 'Faction' }, body: { description: 'Sworn groups.' } }) },
+	deleteKind: { of: 'project', send: (projectId) => ({ params: { projectId, kindId: 'Faction', force: true } }) },
+	createDefinitionNode: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, vocabulary: 'category', kindId: 'character' }, body: { path: 'Guild/Apprentices', description: 'Still learning.' } }),
+	},
+	updateDefinitionNode: {
+		of: 'project',
+		send: (projectId) => ({
+			params: { projectId, vocabulary: 'category', kindId: 'character', taxonomyPath: 'Guild/Clockmakers' },
+			body: { description: 'Keepers of every clock.' },
+		}),
+	},
+	deleteDefinitionNode: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, vocabulary: 'world-status', kindId: 'character', taxonomyPath: 'Missing', force: true } }),
+	},
+	createFieldTemplate: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId }, body: { kind: 'scene', name: 'Stakes', fields: [{ title: 'Stake', content: 'Everything.' }] } }),
+	},
+	updateFieldTemplate: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, kindId: 'scene', templateName: 'Beats' }, body: { fields: [{ title: 'Turn', content: 'Late.' }] } }),
+	},
+	deleteFieldTemplate: { of: 'project', send: (projectId) => ({ params: { projectId, kindId: 'character', templateName: 'Voice sheet' } }) },
 };
 
 const changing = operations.filter((operation) => operation.available && operation.access !== 'read');

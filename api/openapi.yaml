@@ -572,6 +572,37 @@ paths:
                 $ref: "#/components/schemas/KindList"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createKind
+      tags: [Kinds]
+      summary: Create a kind of worldbuilding note
+      description: |
+        Adds a kind of the author's own beside time, location and item, with
+        its folder and its three vocabularies. A kind's `id` is its name. A name
+        another kind goes by, a built-in one included, is refused, and so is a
+        name a folder cannot have. A project holds a limited number of kinds.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, kind-limit-reached]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KindCreate"
+      responses:
+        "201":
+          description: The kind that was made.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Kind"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/kinds/{kindId}:
     parameters:
@@ -595,6 +626,64 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Kind"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateKind
+      tags: [Kinds]
+      summary: Change a kind
+      description: |
+        Renames a kind the author made, changes its icon or what it is for,
+        or sets the field template new notes of a kind begin with. A new name
+        moves the kind's folder and changes its `id`, and every note of the kind
+        follows. The kinds every project has keep their names and wear no icon:
+        only their field template can be set.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, built-in-kind, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/KindPatch"
+      responses:
+        "200":
+          description: The kind as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Kind"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteKind
+      tags: [Kinds]
+      summary: Delete a kind and its notes
+      description: |
+        Sends the folder of a kind the author made to the trash, with every
+        note of the kind in it. Where the kind holds notes, or other notes name
+        one of them, the delete is refused with what it would cost, unless
+        `force` is true. The kinds every project has cannot be deleted.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, built-in-kind, in-use]
+      parameters:
+        - name: force
+          in: query
+          description: "Delete it even though notes use it."
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: What was deleted and what was left naming it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KindDeletion"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1202,6 +1291,64 @@ paths:
                 $ref: "#/components/schemas/DefinitionNode"
         default:
           $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateDefinitionNode
+      tags: [Vocabularies]
+      summary: Rename a word or say what it means
+      description: |
+        Renames a word where it stands in its tree, changes what the author
+        says it means, or both. A new name moves the words under it with it, and
+        every note that uses any of them follows. To move a word to another
+        place in the tree, add it there and delete it here.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-segment]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/DefinitionNodePatch"
+      responses:
+        "200":
+          description: The word as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefinitionNode"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteDefinitionNode
+      tags: [Vocabularies]
+      summary: Delete a word and the words under it
+      description: |
+        Sends a word's folder to the trash, with the words under it. Notes
+        sorted under any of them as a category lose the entry. A record line
+        under one of them is a sentence the author wrote and is left as it is.
+        Where notes use any of the words, the delete is refused with how many,
+        unless `force` is true.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, in-use]
+      parameters:
+        - name: force
+          in: query
+          description: "Delete it even though notes use it."
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: What was deleted and which notes it touched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefinitionNodeDeletion"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/field-templates:
     parameters:
@@ -1233,6 +1380,36 @@ paths:
                 $ref: "#/components/schemas/FieldTemplateList"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createFieldTemplate
+      tags: [Field templates]
+      summary: Create a field template
+      description: |
+        Saves a set of custom fields under a name, for one kind of note. Send
+        `default` as true to have new notes of the kind begin with it. A name
+        another template of the kind goes by is refused.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, duplicate-field-title]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FieldTemplateCreate"
+      responses:
+        "201":
+          description: The template that was made.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldTemplate"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/field-templates/{kindId}/{templateName}:
     parameters:
@@ -1257,6 +1434,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FieldTemplate"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateFieldTemplate
+      tags: [Field templates]
+      summary: Change a field template
+      description: |
+        Renames a template, changes what it says it is for, replaces its
+        fields, or sets whether new notes of the kind begin with it. Notes that
+        were made from it keep the fields they have.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, duplicate-field-title]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/FieldTemplatePatch"
+      responses:
+        "200":
+          description: The template as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldTemplate"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteFieldTemplate
+      tags: [Field templates]
+      summary: Delete a field template
+      description: |
+        Sends the template's note to the trash. A kind that began its new
+        notes with it begins them with none. Notes made from it keep the fields
+        they have.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The template is gone.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -2404,6 +2625,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MemberUsageReport"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/vocabularies/{vocabulary}/{kindId}/nodes:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/Vocabulary"
+      - $ref: "#/components/parameters/KindId"
+    post:
+      operationId: createDefinitionNode
+      tags: [Vocabularies]
+      summary: Add a word to a vocabulary
+      description: |
+        Adds a word to one kind's tree of one vocabulary, by its path. The
+        words above it are added too where the tree does not have them yet. A
+        word the tree already has is refused.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-segment, too-deep]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DefinitionNodeCreate"
+      responses:
+        "201":
+          description: The word that was added.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefinitionNode"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -6578,6 +6835,161 @@ components:
           items:
             type: string
 
+    KindCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+          description: What the kind is called. It becomes the kind's `id` and names its folder.
+        icon:
+          type: string
+          description: An icon from Obsidian's icon set, by its name.
+        description:
+          type: string
+          description: What the kind is for.
+
+    KindPatch:
+      type: object
+      description: What to change of a kind. A kind read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Kind"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        icon:
+          type: [string, "null"]
+          description: Null or empty takes the icon off.
+        description:
+          type: [string, "null"]
+        defaultFieldTemplate:
+          type: [string, "null"]
+          description: The name of one of the kind's field templates, or null for none.
+
+    KindDeletion:
+      type: object
+      required: [id, path, entities, detached, dangling]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+          description: Where the kind's folder stood.
+        entities:
+          type: integer
+          description: How many notes went with the folder.
+        detached:
+          type: array
+          description: The notes that listed one of them and no longer do.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        dangling:
+          type: array
+          description: The notes that still name one of them, and now point at nothing.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+
+    DefinitionNodeCreate:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          pattern: "\\S"
+          description: The word's path in the tree, such as `Race/Elf`. Its steps are parted by `/`.
+        description:
+          type: string
+          description: What the word means.
+
+    DefinitionNodePatch:
+      type: object
+      description: What to change of a word. A word read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/DefinitionNode"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          description: The word itself, which is the last step of its path.
+        description:
+          type: string
+
+    DefinitionNodeDeletion:
+      type: object
+      required: [vocabulary, kind, taxonomyPath, nodes, categorized, labelled]
+      additionalProperties: false
+      properties:
+        vocabulary:
+          $ref: "#/components/schemas/VocabularyId"
+        kind:
+          type: string
+        taxonomyPath:
+          type: string
+        nodes:
+          type: integer
+          description: How many words went, this one and those under it.
+        categorized:
+          type: array
+          description: The notes that were sorted under one of them and no longer are, by name.
+          items:
+            type: string
+        labelled:
+          type: array
+          description: The notes with a record line under one of them, which is left as written, by name.
+          items:
+            type: string
+
+    FieldTemplateCreate:
+      type: object
+      required: [kind, name]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          minLength: 1
+          description: The kind of note the template is for, by its `kindId`.
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        description:
+          type: string
+        fields:
+          type: array
+          description: The fields the template holds, in order. No two may share a title.
+          items:
+            $ref: "#/components/schemas/CustomField"
+        default:
+          type: boolean
+          default: false
+          description: Whether new notes of the kind begin with this template.
+
+    FieldTemplatePatch:
+      type: object
+      description: What to change of a template. A template read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/FieldTemplate"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        description:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomField"
+        default:
+          type: boolean
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -6636,6 +7048,12 @@ x-snowflake-problems:
   in-use:
     status: 409
     title: Other notes name it.
+  built-in-kind:
+    status: 409
+    title: That is one of the kinds every project has, and cannot be changed so.
+  kind-limit-reached:
+    status: 409
+    title: The project holds as many kinds as it can.
   concurrent-change:
     status: 412
     title: The note has changed since it was read.
@@ -6651,6 +7069,9 @@ x-snowflake-problems:
   invalid-step-status:
     status: 422
     title: That step cannot be given that status.
+  invalid-name:
+    status: 422
+    title: That is not a name a file or folder can have.
   invalid-segment:
     status: 422
     title: A part of the path is not a name a vocabulary word can have.
