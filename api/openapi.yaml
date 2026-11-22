@@ -3597,13 +3597,18 @@ paths:
       tags: [Projects]
       summary: Search a project for words
       description: |
-        Finds words in the notes of one project: its manuscript, its
-        characters, scenes and worldbuilding, and the notes of its steps. Each
-        place found is told with the note it stands in and the line around it.
-        Until this is answered, Obsidian's own search does the same over the
-        project's folder.
+        Finds words in the notes of one project: its manuscript, the notes of
+        its steps, its characters, its scenes and its worldbuilding. Each place
+        found is told with the note it stands in and the line around it.
+
+        In a manuscript note the words are looked for in the whole text, as it
+        is written. In any other note they are looked for in each thing the note
+        says of itself, and `field` names which. The words are taken as they are
+        typed and never as an expression. Whole words are told as the plugin's
+        own find bar tells them, so in Chinese, Japanese and Korean every match
+        counts as one.
       x-snowflake-access: read
-      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: core
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
       parameters:
@@ -3614,9 +3619,10 @@ paths:
           schema:
             type: string
             minLength: 1
+            maxLength: 1000
         - name: in
           in: query
-          description: "Which notes to look in."
+          description: "Which notes to look in: the manuscript, the other notes, or all of them."
           schema:
             type: string
             enum: [manuscript, notes, all]
@@ -3637,7 +3643,7 @@ paths:
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
-          description: The places found, in reading order.
+          description: The places found, the manuscript first in reading order and then the other notes.
           content:
             application/json:
               schema:
@@ -3655,12 +3661,21 @@ paths:
       description: |
         Puts other words in place of every match in the manuscript's notes,
         or in the ones named. Sent with `dryRun`, nothing is written and the
-        answer says what would be. Each note is changed as one note is: against
-        its latest text, with the author's editor on it closed.
+        answer says what would be.
+
+        Each note is changed as one note is: what the author typed and had not
+        saved is saved first, the words are found in that, and the author's
+        editor on the note is closed. A note the author typed into in that very
+        moment is left as it is and told under `skipped`, and the rest go on. So
+        is a note a newer version of the plugin wrote.
+
+        A revision or an appearance of a thread whose passage is changed loses
+        its place. `marksLost` says how many would, so a dry run shows it before
+        anything is written.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, concurrent-change]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       requestBody:
         required: true
         content:
@@ -3688,10 +3703,13 @@ paths:
       description: |
         Makes the change a revision proposes in its manuscript note, and
         takes the revision away. The passage is found again in the note as it
-        stands. A revision whose words the note no longer has is refused. The
-        words it puts in are not counted as the author's own typing.
+        stands, with what the author typed and had not saved in it. A revision
+        whose words the note no longer has is refused, and so is one whose note
+        has left the manuscript. `discardRevision` takes such a one away.
+
+        The words written are not counted as the author's own typing.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, passage-not-found, concurrent-change]
       responses:
@@ -3717,12 +3735,16 @@ paths:
       summary: Move a manuscript note
       description: |
         Puts a note at another place in the reading order: after a note
-        that is named, or at the start or the end. The numbered notes around it
-        are renamed to keep the count, unless the call says not to.
+        that is named, or at the start or the end.
+
+        Only the order changes. A note keeps the name it has, so a manuscript
+        whose notes are numbered may read out of count afterwards.
+        `renameManuscriptNote` gives a note another name. The order is a number
+        each note keeps in its properties, so the note's `etag` changes with it.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       requestBody:
         required: true
         content:
@@ -3731,7 +3753,7 @@ paths:
               $ref: "#/components/schemas/ManuscriptNoteMove"
       responses:
         "200":
-          description: The note where it now stands, and what was renamed.
+          description: The note where it now stands.
           headers:
             ETag:
               $ref: "#/components/headers/ETag"
@@ -3753,11 +3775,12 @@ paths:
       description: |
         Puts text after everything a note already says, with a blank line
         between. It needs no version: what the author typed and had not saved is
-        saved first, and the text goes after it.
+        saved first, and the text goes after it. The author's editor on the note
+        is then closed.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, concurrent-change]
       requestBody:
         required: true
         content:
@@ -3787,11 +3810,12 @@ paths:
       description: |
         Mends one issue of a project's health and nothing else, where
         `repairProject` mends everything it can. The issue is named as the
-        health check names it, by its code and the note it is about.
+        health check names it: by its `code`, its `path`, and its `field` where
+        it has one. Only an issue the health check calls `repairable` is taken.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask, path-conflict, not-repairable]
       requestBody:
         required: true
         content:
@@ -3818,9 +3842,10 @@ paths:
       description: |
         Rewrites the notes an older version of the plugin wrote into the
         shape this one writes. The health check says how many there are, in
-        `outdatedNotes`. Nothing the author wrote is changed.
+        `outdatedNotes`. Nothing the author wrote is changed. A note whose
+        section markers are damaged is passed over and counted in `skipped`.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -9698,7 +9723,7 @@ components:
     SearchPage:
       type: object
       description: "The places some words were found in a project."
-      required: [items, total, offset, limit, nextOffset]
+      required: [items, total, offset, limit, nextOffset, truncated]
       additionalProperties: false
       properties:
         items:
@@ -9713,31 +9738,49 @@ components:
           type: integer
         nextOffset:
           type: [integer, "null"]
+        truncated:
+          type: boolean
+          description: Whether there were more places than a search lists. Narrow the words to see the rest.
 
     SearchHit:
       type: object
       description: One place the words stand.
-      required: [path, relativePath, title, kind, range, line, text]
+      required: [kind, path, relativePath, title, id, step, field, range, line, text, at]
       additionalProperties: false
       properties:
+        kind:
+          type: string
+          description: "`manuscript`, `step`, `character`, `scene`, or the id of a worldbuilding kind."
         path:
           type: string
           description: The note, by its path in the vault.
         relativePath:
           type: string
+          description: The same note by where it stands inside its project.
         title:
           type: string
-        kind:
-          type: string
-          description: "`manuscript`, `character`, `scene`, the id of a worldbuilding kind, or `step` for a note of one of the steps."
+          description: What the note is called.
+        id:
+          type: [string, "null"]
+          description: The `id` of the character, the scene or the worldbuilding note. Null for a manuscript note and for a step's note.
+        step:
+          type: [integer, "null"]
+          description: The step whose note it is. Null for any other note.
+        field:
+          type: [string, "null"]
+          description: Which of the things the note says holds the words, as a JSON Pointer into the note's own reading, such as `/motivation` or `/sections/genre`. Null for a manuscript note, whose whole text is looked in.
         range:
           $ref: "#/components/schemas/TextRange"
+          description: Where the words stand in the manuscript note's `body`, or in the text of the field.
         line:
           type: integer
-          description: The line of the note's text the words stand in, counted from 1.
+          description: The line of that text the words begin in, counted from 1.
         text:
           type: string
-          description: That line, as the note has it.
+          description: That line as it is written, or the part of a long line around the words.
+        at:
+          $ref: "#/components/schemas/TextRange"
+          description: Where the words stand in `text`.
 
     ReplaceRequest:
       type: object
@@ -9747,8 +9790,11 @@ components:
         query:
           type: string
           minLength: 1
+          maxLength: 1000
+          description: The words to look for, as they are typed. Never an expression.
         replacement:
           type: string
+          description: The words to put in their place. Empty takes the words out.
         caseSensitive:
           type: boolean
           default: false
@@ -9767,7 +9813,7 @@ components:
 
     ReplaceResult:
       type: object
-      required: [dryRun, replaced, notes]
+      required: [dryRun, replaced, notes, skipped]
       additionalProperties: false
       properties:
         dryRun:
@@ -9777,21 +9823,49 @@ components:
           description: How many places were changed, or would be.
         notes:
           type: array
+          description: The notes changed, or that would be, in reading order.
           items:
             type: object
-            required: [relativePath, replaced, etag]
+            required: [relativePath, path, replaced, etag, marksLost]
             additionalProperties: false
             properties:
               relativePath:
+                type: string
+              path:
                 type: string
               replaced:
                 type: integer
               etag:
                 type: string
                 description: The note's version after the change, or as it stands for a dry run.
+              marksLost:
+                type: object
+                description: The marks kept beside the note whose passage the change takes out from under them.
+                required: [revisions, occurrences]
+                additionalProperties: false
+                properties:
+                  revisions:
+                    type: integer
+                  occurrences:
+                    type: integer
+        skipped:
+          type: array
+          description: Notes that hold the words and were left as they are.
+          items:
+            type: object
+            required: [relativePath, reason]
+            additionalProperties: false
+            properties:
+              relativePath:
+                type: string
+              reason:
+                type: string
+                enum: [read-only, changed]
+                description: "`read-only` for a note a newer version of the plugin wrote. `changed` for one the author typed into while the call ran."
 
     ManuscriptNoteMove:
       type: object
+      description: Where the note goes. One of `after` and `position`, and only one.
       additionalProperties: false
       properties:
         after:
@@ -9801,10 +9875,6 @@ components:
         position:
           type: string
           enum: [start, end]
-          description: Where it goes when `after` is not sent.
-        renumber:
-          type: boolean
-          default: true
 
     ManuscriptNoteAppend:
       type: object
@@ -9827,14 +9897,20 @@ components:
         path:
           type: string
           description: The issue's `path`, as `getProjectHealth` gives it.
+        field:
+          type: string
+          description: The issue's `field`, where `getProjectHealth` gives one.
 
     ProjectMigration:
       type: object
-      required: [migrated, health]
+      required: [migrated, skipped, health]
       additionalProperties: false
       properties:
         migrated:
           type: integer
+        skipped:
+          type: integer
+          description: Notes passed over because their section markers are damaged. `repairProject` mends those first.
         health:
           $ref: "#/components/schemas/ProjectHealth"
 
@@ -10792,6 +10868,9 @@ x-snowflake-problems:
   precondition-required:
     status: 428
     title: The change must say which version of the note it is made against.
+  not-repairable:
+    status: 409
+    title: This is not something the plugin can mend by itself.
   internal-error:
     status: 500
     title: The operation failed.

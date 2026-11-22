@@ -95,9 +95,9 @@ describe('a change that would rename something, while Obsidian asks before it up
 			}
 			return false;
 		};
-		// The project's repair may come to a note that has to be moved home, so it says so too.
+		// The project's repair may come to a note that has to be moved home, so it says so too, whole or one issue at a time.
 		const saying = operations.filter((operation) => operation.available && lists(operation.id)).map((operation) => operation.id);
-		expect(saying.sort()).toEqual([...Object.keys(RENAMES), 'repairProject'].sort());
+		expect(saying.sort()).toEqual([...Object.keys(RENAMES), 'repairProject', 'repairProjectIssue'].sort());
 	});
 });
 

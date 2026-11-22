@@ -2,6 +2,7 @@ import {
 	DEFAULT_STICKY_NOTE_COLOR,
 	DEFAULT_TASK_PRIORITY,
 	DEFAULT_TASK_STATUS,
+	anchorRevision,
 	captureOccurrence,
 	captureOccurrencePlacement,
 	captureRevision,
@@ -31,6 +32,7 @@ import { ApiError, changedSince } from '../errors';
 import type { JsonObject } from '../json';
 import { NOT_THE_AUTHOR, bodyOf, textParam, type ApiContext, type OperationCall, type OperationGroup } from './context';
 import { noteAt } from './manuscript-writes';
+import { tellManuscriptNote } from './manuscript';
 import { gone, readPassageNotes, tellForeshadowing, tellRevision, tellTask } from './records';
 
 type Sent = Readonly<Record<string, unknown>>;
@@ -520,6 +522,35 @@ export const recordWriteOperations: OperationGroup = {
 		settled(outcome, 'revision', 'listRevisions', 'revisions');
 		context.host.recordsChanged('margin');
 		return { status: 204 };
+	},
+
+	acceptRevision: async (call, context) => {
+		const project = await context.writableProject(textParam(call, 'projectId'));
+		const id = textParam(call, 'revisionId');
+		const revision = (await context.host.projects.revisions.list(project)).find((entry) => entry.id === id);
+		if (revision === undefined) throw gone('revision', 'listRevisions');
+		const manuscript = context.host.projects.manuscript;
+		const segments = await manuscript.listSegmentsFromFiles(project);
+		const segment = segments.find((entry) => entry.path === revision.path);
+		const lost = (detail: string): ApiError => new ApiError('passage-not-found', detail, { note: relativePathOf(project, revision.path) });
+		if (segment === undefined) throw lost('The note the revision was proposed in is no longer one of the manuscript\'s. discardRevision takes the revision away.');
+		if (segment.readOnly) {
+			throw new ApiError('read-only', 'A newer version of the plugin wrote this note, and this one may only read it.', { path: segment.path });
+		}
+		// The passage is found again in the note as it stands once the author's last words are in it.
+		await context.host.settleNotes([segment.path]);
+		const standing = await manuscript.readSegment(segment.path);
+		const anchor = anchorRevision(standing.body, revision);
+		if (anchor.state === 'conflict') {
+			throw lost('The note no longer says the words the revision was proposed over, or says them in more places than can be told apart. getRevision shows how it stands.');
+		}
+		// The author's editor on the note is closed only now that the change is sure to be made.
+		await context.host.releaseNotes([segment.path]);
+		const accepted = standing.body.slice(0, anchor.from) + revision.proposed + standing.body.slice(anchor.to);
+		await manuscript.writeSegment(segment.path, accepted, standing.revision, NOT_THE_AUTHOR);
+		settled(await context.host.projects.revisions.remove(project, id, 'accepted'), 'revision', 'listRevisions', 'revisions');
+		context.host.recordsChanged('margin');
+		return { status: 200, ...(await tellManuscriptNote(context, project, segment.path, segments)) };
 	},
 
 	createStickyNote: async (call, context) => {

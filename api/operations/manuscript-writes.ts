@@ -2,6 +2,7 @@ import { normalizePath } from 'obsidian';
 
 import {
 	followerRenames,
+	moveSegment,
 	proposeChapterPlacement,
 	proposeChapterRemovalAmong,
 	resolvePassage,
@@ -60,7 +61,7 @@ function writable(segment: ManuscriptSegmentRecord): ManuscriptSegmentRecord {
  * writes whatever was typed in the moment before, and a change made
  * against any later version would go over those last words.
  */
-async function ready(context: ApiContext, call: OperationCall, first: string, rest: readonly string[] = []): Promise<string> {
+export async function ready(context: ApiContext, call: OperationCall, first: string, rest: readonly string[] = []): Promise<string> {
 	const paths = [first, ...rest];
 	await context.host.settleNotes(paths);
 	const standing = await context.host.projects.manuscript.readSegment(first);
@@ -294,6 +295,57 @@ export const manuscriptWriteOperations: OperationGroup = {
 			body: { note: told.body, ...renumberedOf(merged.project, merged.renumbered), removed: relativePathOf(project, later.path) },
 			etag: told.etag,
 		};
+	},
+
+	appendManuscriptNoteBody: async (call, context) => {
+		const project = await context.writableProject(textParam(call, 'projectId'));
+		const { segment, segments } = await findManuscriptNote(context, project, call);
+		writable(segment);
+		// No version is asked for. Whatever the note says once the author's last words are in it, the text goes after.
+		const revision = await ready(context, call, segment.path);
+		const standing = (await textAt(context, segment.path, revision)).replace(/\n+$/u, '');
+		const text = String(bodyOf(call)['text']).replace(/^\n+/u, '');
+		const joined = standing.trim().length === 0 ? text : `${standing}\n\n${text}`;
+		await context.host.projects.manuscript.writeSegment(segment.path, joined.endsWith('\n') ? joined : `${joined}\n`, revision, NOT_THE_AUTHOR);
+		return { status: 200, ...(await tellManuscriptNote(context, project, segment.path, segments)) };
+	},
+
+	moveManuscriptNote: async (call, context) => {
+		const projectId = textParam(call, 'projectId');
+		const project = await context.writableProject(projectId);
+		const { segment, segments, index } = await findManuscriptNote(context, project, call);
+		writable(segment);
+		const body = bodyOf(call);
+		const place = (pointer: string, detail: string): ApiError =>
+			new ApiError('invalid-request', 'The call does not match what the operation takes.', { errors: [{ pointer, detail }] });
+		if ((typeof body['after'] === 'string') === (typeof body['position'] === 'string')) {
+			throw place('', 'Say one of after and position, and only one.');
+		}
+		let to = body['position'] === 'start' ? 0 : segments.length - 1;
+		if (typeof body['after'] === 'string') {
+			const anchor = noteAt(project, segments, body['after'], '/after');
+			if (anchor.path === segment.path) throw place('/after', 'A note does not come after itself.');
+			// Where the anchor stands once the note is taken out from among the others, and one place on.
+			const at = segments.indexOf(anchor);
+			to = at < index ? at + 1 : at;
+		}
+		// The order is a number each note keeps, and a move rewrites the number of the note moved. Where no
+		// number is left between its new neighbours, every note is given a new one. Each note about to be
+		// rewritten is made ready as a note about to be written is.
+		const moved = moveSegment(segments, segment.path, to);
+		const rewritten = moved
+			.filter((after) => {
+				const before = segments.find((entry) => entry.path === after.path);
+				return before !== undefined && !before.readOnly && !(before.hasStoredSequence && before.sequence === after.sequence);
+			})
+			.map((entry) => entry.path);
+		if (rewritten.length > 0) {
+			await ready(context, call, segment.path, rewritten.filter((path) => path !== segment.path));
+			await context.host.projects.manuscript.moveSegment(project, segment.path, to);
+			context.host.recordsChanged('manuscript');
+		}
+		const told = await tellManuscriptNote(context, project, segment.path);
+		return { status: 200, body: { note: told.body, renumbered: [], skipped: [] }, etag: told.etag };
 	},
 
 	deleteManuscriptNote: async (call, context) => {

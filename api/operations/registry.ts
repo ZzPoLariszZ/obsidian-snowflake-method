@@ -7,6 +7,7 @@ import { memberOperations } from './members';
 import { projectOperations } from './projects';
 import { recordWriteOperations } from './record-writes';
 import { recordOperations } from './records';
+import { searchOperations } from './search';
 import { sessionOperations } from './sessions';
 import { statisticsOperations } from './statistics';
 import { stepOperations } from './steps';
@@ -25,6 +26,7 @@ const GROUPS: readonly OperationGroup[] = [
 	manuscriptWriteOperations,
 	recordOperations,
 	recordWriteOperations,
+	searchOperations,
 	statisticsOperations,
 	sessionOperations,
 	boardOperations,

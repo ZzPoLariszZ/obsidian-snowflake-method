@@ -81,7 +81,11 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **After a rename.** Obsidian may shorten a link it rewrites. The health check then reports `incomplete-link` as repairable, and `repairProject` writes the link back in full.
 
-**Proposing, not changing.** `createRevision` proposes a change to a passage without making it. The author sees it as a card beside the text and decides. It is the gentle way to suggest prose.
+**Proposing, not changing.** `createRevision` proposes a change to a passage without making it. The author sees it as a card beside the text and decides. It is the gentle way to suggest prose. `acceptRevision` makes the change a revision proposes, as the card's own button does.
+
+**Finding and replacing.** `searchProject` looks for words as they are typed, never as an expression. In a manuscript note it looks in the whole text. In any other note it looks in each thing the note says, and names the field. `replaceInProject` changes the manuscript's notes only. Send `dryRun` first: the answer says how many places would change, and how many revisions and thread appearances would lose their passage.
+
+**Moving a note.** `moveManuscriptNote` changes the reading order and nothing else. A numbered note keeps its name, so `renameManuscriptNote` is what puts the count right afterwards.
 
 **Deleting.** A deleted note goes where the author's Obsidian sends deleted files. A deleted task, thread or revision cannot be brought back. A character, a scene or a worldbuilding note that other notes name is refused with what names it, unless the call says `force=true`. A project is never deleted here. `archiveProject` puts it away and `restoreProject` brings it back.
 
@@ -89,14 +93,14 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 ## Operations
 
-The first round is answered now: 107 operations, of which 56 read, 38 write and 13 delete. Later rounds are written into the contract and marked `planned`. A planned operation answers `501 planned-operation` and is left out of the document the API serves.
+114 operations are answered now: 57 read, 44 write and 13 delete. Later rounds are written into the contract and marked `planned`. A planned operation answers `501 planned-operation` and is left out of the document the API serves.
 
 A name marked ² needs the write level. A name marked ³ needs the delete level.
 
 | Group | Operations |
 | --- | --- |
 | Service | `getApiRoot`, `getReadiness`, `getOpenApiDocument` |
-| Projects | `listProjects`, `createProject` ², `getProject`, `updateProject` ², `getProjectHealth`, `archiveProject` ², `restoreProject` ², `repairProject` ² |
+| Projects | `listProjects`, `createProject` ², `getProject`, `updateProject` ², `getProjectHealth`, `archiveProject` ², `restoreProject` ², `repairProject` ², `repairProjectIssue` ², `migrateProjectNotes` ², `searchProject` |
 | Steps | `listSteps`, `getStep`, `setStepStatus` ², `getStepText`, `updateStepText` ² |
 | Kinds | `listKinds`, `createKind` ², `getKind`, `updateKind` ², `deleteKind` ³ |
 | Members | `listMembers`, `getMemberUsage` |
@@ -105,10 +109,10 @@ A name marked ² needs the write level. A name marked ³ needs the delete level.
 | Entities | `listEntities`, `createEntity` ², `getEntity`, `updateEntity` ², `deleteEntity` ³, `moveEntity` ² |
 | Vocabularies | `getVocabulary`, `getVocabularyTree`, `getDefinitionNode`, `createDefinitionNode` ², `updateDefinitionNode` ², `deleteDefinitionNode` ³ |
 | Field templates | `listFieldTemplates`, `createFieldTemplate` ², `getFieldTemplate`, `updateFieldTemplate` ², `deleteFieldTemplate` ³ |
-| Manuscript | `getManuscript`, `listManuscriptNotes`, `getManuscriptNote`, `planManuscriptNumbering`, `createManuscriptNote` ², `writeManuscriptNoteBody` ², `renameManuscriptNote` ², `splitManuscriptNote` ², `mergeManuscriptNoteWithNext` ², `deleteManuscriptNote` ³ |
+| Manuscript | `getManuscript`, `listManuscriptNotes`, `getManuscriptNote`, `planManuscriptNumbering`, `createManuscriptNote` ², `writeManuscriptNoteBody` ², `appendManuscriptNoteBody` ², `renameManuscriptNote` ², `moveManuscriptNote` ², `splitManuscriptNote` ², `mergeManuscriptNoteWithNext` ², `deleteManuscriptNote` ³, `replaceInProject` ² |
 | Tasks | `listTasks`, `getTask`, `listDerivedTasks`, `createTask` ², `updateTask` ², `moveTask` ², `deleteTask` ³, `purgeArchivedTasks` ³ |
 | Foreshadowing | `listForeshadowing`, `getForeshadowing`, `createForeshadowing` ², `updateForeshadowing` ², `addForeshadowingOccurrence` ², `updateForeshadowingOccurrence` ², `deleteForeshadowingOccurrence` ³, `deleteForeshadowing` ³ |
-| Revisions | `listRevisions`, `getRevision`, `createRevision` ², `updateRevision` ², `discardRevision` ³ |
+| Revisions | `listRevisions`, `getRevision`, `createRevision` ², `updateRevision` ², `acceptRevision` ², `discardRevision` ³ |
 | Sticky notes | `listStickyNotes`, `getStickyNote`, `createStickyNote` ², `updateStickyNote` ², `deleteStickyNote` ³ |
 | Statistics | `getWritingCounts`, `getProseStatistics`, `getWordFrequency`, `getSensitiveWords`, `getDialogue`, `listNoteDialogue` |
 | Mentions | `getMentions`, `listNoteMentions` |
@@ -123,12 +127,9 @@ A name marked ² needs the write level. A name marked ³ needs the delete level.
 
 | Round | What it adds | Operations |
 | --- | --- | --- |
-| 2 | Text | `searchProject`, `replaceInProject`, `acceptRevision`, `moveManuscriptNote`, `appendManuscriptNoteBody`, `repairProjectIssue`, `migrateProjectNotes` |
 | 3 | Boards | Changes to the timelines, the beat sheets and the freeform views: 33 operations, among them `createTimeline`, `addTimelineRow`, `placeTimelineScene`, `createBeatSheet`, `addBeat`, `placeBeatSheetScene` and `applyFreeformSteps` |
 | 4 | Transfer | `inspectImport`, `runImport`, `exportManuscript`, `exportCanvas`, `addGalleryPictures`, `removeGalleryPicture` |
 | 5 | Environment | `getSettings`, `updateSettings`, `startWritingSession`, `stopWritingSession`, `listMentionIgnores`, `addMentionIgnore`, `removeMentionIgnore` |
-
-Until `searchProject` is answered, Obsidian's own search over a project's folder does the same work. `getProject` gives the folders.
 
 Each operation also carries a tier in `x-snowflake-tier`: `core`, `extended` or `advanced`. A client that offers a short list of tools can start with the core ones.
 

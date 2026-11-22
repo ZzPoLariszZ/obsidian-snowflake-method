@@ -98,6 +98,8 @@ export interface FakeHost extends ApiHost {
 	becomeReady(): void;
 	/** How many pieces of work ran as the plugin's own. */
 	ranAsPlugin: number;
+	/** How many pieces of work ran with the plugin's own tidying held off. */
+	batches: number;
 	/**
 	 * What was asked of the author's editors, in the order it was asked,
 	 * with each body written set among it: `settle` and `release` with the
@@ -241,6 +243,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		state,
 		environment,
 		ranAsPlugin: 0,
+		batches: 0,
 		origins,
 		editors,
 		told,
@@ -288,6 +291,10 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		asPlugin: async (run) => {
 			host.ranAsPlugin += 1;
 			return history.asPlugin(() => projects.repository.unattended(run));
+		},
+		asBatch: (run) => {
+			host.batches += 1;
+			return run();
 		},
 		asksBeforeLinkUpdates: () => state.asksAboutLinks,
 		settleNotes: async (paths) => {

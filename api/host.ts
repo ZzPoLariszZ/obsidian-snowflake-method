@@ -15,11 +15,11 @@ import type { Access } from './spec/operations';
 export type MintedRecord = 'task' | 'foreshadowing' | 'occurrence' | 'revision';
 
 /**
- * The records a change is told to the screens about: the task board's, the
- * ones kept beside the manuscript's text (threads and revisions), and the
- * sticky notes.
+ * What a change is told to the screens about: the task board's records, the
+ * ones kept beside the manuscript's text (threads and revisions), the
+ * sticky notes, and the order the manuscript's notes are read in.
  */
-export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes';
+export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript';
 
 /**
  * What the plugin hands the local API. The API is given the services and a
@@ -103,6 +103,13 @@ export interface ApiHost {
 	 * answered and the call never end.
 	 */
 	asPlugin<T>(run: () => Promise<T>): Promise<T>;
+	/**
+	 * Runs work that rewrites many notes in one go, each left saying what
+	 * its properties say. The plugin's own pass that puts a note's overview
+	 * right after a change is held off while it runs: it would find nothing
+	 * to add, and would read the whole project again for every note written.
+	 */
+	asBatch<T>(run: () => Promise<T>): Promise<T>;
 	/**
 	 * Whether Obsidian is set to ask the author before it rewrites the links
 	 * to a note that moved. While it is, nothing is renamed through the API.

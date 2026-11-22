@@ -118,6 +118,21 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 	},
 	mergeManuscriptNoteWithNext: { of: 'project', send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 2.md' } }) },
 	deleteManuscriptNote: { of: 'project', send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 1.md' }, ifMatch: '*' }) },
+	appendManuscriptNoteBody: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 1.md' }, body: { text: 'The snow kept falling.' } }),
+	},
+	moveManuscriptNote: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 2.md' }, body: { position: 'start' } }),
+	},
+	replaceInProject: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { query: 'clock', replacement: 'bell' } }) },
+	repairProjectIssue: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId }, body: { code: 'missing-artifact', path: 'North Wind/10_Summary/Nowhere.md' } }),
+	},
+	migrateProjectNotes: { of: 'project', send: (projectId) => ({ params: { projectId } }) },
+	acceptRevision: { of: 'project', send: (projectId) => ({ params: { projectId, revisionId: 'revision-noon' } }) },
 	createTask: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { title: 'Count the bells' } }) },
 	updateTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-map' }, body: { priority: 'high' } }) },
 	deleteTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-letter' } }) },

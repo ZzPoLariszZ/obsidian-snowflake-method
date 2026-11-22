@@ -6104,6 +6104,7 @@ export default class SnowflakeMethodPlugin
 			isReady: () => this.projectScanIsReady,
 			leaving: () => this.unloading || this.pageLeaving,
 			asPlugin: (run) => this.history.asPlugin(() => this.projects.repository.unattended(run)),
+			asBatch: (run) => this.withoutFieldsReconcile(run),
 			asksBeforeLinkUpdates: () => this.obsidianAsksBeforeLinkUpdates(),
 			settleNotes: (paths) => this.settleNotesForWriter(paths),
 			releaseNotes: (paths) => this.releaseNotesForWriter(paths),
@@ -6198,6 +6199,9 @@ export default class SnowflakeMethodPlugin
 	 * a moment later and finds them level.
 	 */
 	private tellRecordsChanged(what: ChangedRecords): void {
+		const lost = (error: unknown): void => {
+			console.error('Snowflake: the screens could not follow a change made through the local API', error);
+		};
 		if (what === 'tasks') {
 			this.taskBell.ring();
 			return;
@@ -6206,9 +6210,11 @@ export default class SnowflakeMethodPlugin
 			this.stickyNoteHub.notify();
 			return;
 		}
-		void this.announceMarginRecordsChanged().catch((error: unknown) => {
-			console.error('Snowflake: the screens could not follow a change made through the local API', error);
-		});
+		if (what === 'manuscript') {
+			void this.refreshManuscriptStreams().catch(lost);
+			return;
+		}
+		void this.announceMarginRecordsChanged().catch(lost);
 	}
 
 	/**

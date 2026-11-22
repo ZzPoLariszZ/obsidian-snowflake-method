@@ -1,5 +1,7 @@
+import { normalizePath } from 'obsidian';
+
 import type { ProjectLanguage } from '../../src/domain';
-import type { ProjectRef, ProjectSeries } from '../../src/services';
+import { KindRegistrationRefusedError, type ProjectRef, type ProjectSeries, type ProjectSnapshot } from '../../src/services';
 import { healthOf, projectOf, projectSummary } from '../dto/project';
 import { ApiError } from '../errors';
 import { pageOf } from '../paging';
@@ -89,6 +91,44 @@ export const projectOperations: OperationGroup = {
 			body: {
 				project: projectOf(restored.project, { archived: false, currentPath: context.host.currentProjectPath() }),
 				renamedFrom: restored.renamedFrom,
+			},
+		};
+	},
+
+	repairProjectIssue: async (call, context) => {
+		const project = await context.writableProject(textParam(call, 'projectId'));
+		const body = bodyOf(call);
+		const path = normalizePath(String(body['path']));
+		const field = typeof body['field'] === 'string' ? body['field'] : undefined;
+		const issue = project.structureIssues.find((entry) => entry.code === body['code'] && entry.path === path && entry.field === field);
+		if (issue === undefined) {
+			throw new ApiError('not-found', 'The health check finds no such issue in the project as it stands. getProjectHealth gives the ones there are.');
+		}
+		const unmendable = (detail: string): ApiError => new ApiError('not-repairable', detail, { issue: issue.code, path: issue.path });
+		if (!issue.repairable) throw unmendable('This is nothing the plugin can mend by itself. The author has to see to it.');
+		let mended: ProjectSnapshot;
+		try {
+			mended = await context.host.projects.repairMissingStructureItem(project.projectFile, issue.path, issue.field);
+		} catch (error) {
+			// The service says in a plain error that it found nothing safe to do. Its words are the author's, so only that it said so is handed on.
+			const refused = error instanceof KindRegistrationRefusedError || (error instanceof Error && error.constructor === Error);
+			if (!refused) throw error;
+			throw unmendable('The plugin found no safe way to mend this as the project stands. getProjectHealth says how it stands now.');
+		}
+		return { status: 200, body: healthOf(mended, await context.host.projects.countOutdatedNotes(mended)) };
+	},
+
+	migrateProjectNotes: async (call, context) => {
+		const projectId = textParam(call, 'projectId');
+		const project = await context.writableProject(projectId);
+		const done = await context.host.asBatch(() => context.host.projects.migrateMemberNotes(project.projectFile));
+		const { project: after } = await context.loadProject(projectId);
+		return {
+			status: 200,
+			body: {
+				migrated: done.migrated,
+				skipped: done.skipped,
+				health: healthOf(after, await context.host.projects.countOutdatedNotes(after)),
 			},
 		};
 	},

@@ -86,8 +86,8 @@ describe('every operation of the contract', () => {
 			if (!isJsonObject(availability)) continue;
 			expect(['available', 'planned'], id).toContain(availability['status']);
 			expect(Number.isInteger(availability['round']) && Number(availability['round']) >= 1, id).toBe(true);
-			// What is answered now is the first round's, and nothing planned is.
-			expect(availability['status'] === 'available', id).toBe(availability['round'] === 1);
+			// The first round was answered from the start, so nothing of it is ever planned.
+			if (availability['status'] === 'planned') expect(Number(availability['round']), id).toBeGreaterThan(1);
 			expect(['core', 'extended', 'advanced'], id).toContain(operation['x-snowflake-tier']);
 		}
 	});
