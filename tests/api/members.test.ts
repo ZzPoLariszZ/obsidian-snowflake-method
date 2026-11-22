@@ -222,8 +222,11 @@ describe('the scenes', () => {
 	it('are narrowed to the scenes a character is in', async () => {
 		const withBen = await golden.call('listScenes', { projectId: pid(), character: golden.members.ben.characterId });
 		expect(items(withBen.body).map((scene) => scene['title'])).toEqual(['The clock stops']);
+		// A character with no scene is an empty list. An id no character has is a slip, and is said to be one.
 		const withNobody = await golden.call('listScenes', { projectId: pid(), character: 'character-nonsense' });
-		expect(items(withNobody.body)).toEqual([]);
+		expect([withNobody.status, bodyOf(withNobody.body)]).toMatchObject([400, { code: 'invalid-request', errors: [{ pointer: 'params/character' }] }]);
+		const aScene = await golden.call('listScenes', { projectId: pid(), character: golden.members.stops.sceneId });
+		expect(aScene.status).toBe(400);
 		const done = await golden.call('listScenes', { projectId: pid(), progressStatus: 'complete', q: 'clock' });
 		expect(items(done.body).map((scene) => scene['title'])).toEqual(['The clock stops']);
 	});

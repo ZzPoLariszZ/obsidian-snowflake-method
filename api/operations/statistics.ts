@@ -12,6 +12,7 @@ import { pageOf } from '../paging';
 import { flagParam, listParam, optionalTextParam, textParam, type OperationGroup } from './context';
 import { findManuscriptNote } from './manuscript';
 import { knownKind } from './members';
+import { misfit } from './refusals';
 
 /**
  * Counts, prose statistics and mentions, read. All of it is worked out by
@@ -99,9 +100,13 @@ export const statisticsOperations: OperationGroup = {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
 		const kind = knownKind(project, optionalTextParam(call, 'kind'));
 		const member = optionalTextParam(call, 'member');
+		const index = context.members(project);
+		// A slip in the id would otherwise read as a note nothing mentions.
+		if (member !== null && index.byId(member) === null) {
+			throw misfit('params/member', 'The project has no note with that id. listMembers gives the ids there are.');
+		}
 		const mentions = context.host.projects.mentions;
 		const aggregate = await mentions.aggregate(project, mentions.matcherFor(await context.host.mentionSources(project)));
-		const index = context.members(project);
 		const rows = aggregate.entities.filter((entity) => {
 			const entry = index.at(entity.memberPath);
 			return (kind === null || entry?.kind === kind) && (member === null || entry?.id === member);

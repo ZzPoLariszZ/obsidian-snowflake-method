@@ -236,7 +236,10 @@ describe('the mentions', () => {
 		expect(await names({ kind: 'Faction' })).toEqual(['The Guild']);
 		expect(await names({ kind: 'scene' })).toEqual([]);
 		expect(await names({ member: golden.members.ada.characterId })).toEqual(['Ada']);
-		expect(await names({ member: 'character-nobody' })).toEqual([]);
+		// A note nothing mentions is an empty list. An id no note has is a slip, and is said to be one.
+		expect(await names({ member: golden.members.stops.sceneId })).toEqual([]);
+		const nobody = await golden.call('getMentions', { projectId: pid(), member: 'character-nobody' });
+		expect([nobody.status, bodyOf(nobody.body)]).toMatchObject([400, { code: 'invalid-request', errors: [{ pointer: 'params/member' }] }]);
 		// What is left out of the list is still counted in what could mean more than one note.
 		expect((await call('getMentions', { kind: 'scene' }))['unresolved']).toBe(1);
 		const refused = await golden.call('getMentions', { projectId: pid(), kind: 'weather' });

@@ -4,6 +4,7 @@ import { ApiError } from '../errors';
 import type { JsonObject } from '../json';
 import { pageOf } from '../paging';
 import { optionalTextParam, textParam, type OperationCall, type OperationGroup } from './context';
+import { misfit } from './refusals';
 
 /** The most items a list gives to an answer when each is told in full. */
 const MOST_IN_FULL = 100;
@@ -71,9 +72,13 @@ export const memberOperations: OperationGroup = {
 		const characterId = optionalTextParam(call, 'character');
 		const progress = optionalTextParam(call, 'progressStatus');
 		const asked = optionalTextParam(call, 'q');
+		const cast = characterId === null ? null : project.characters.find((character) => character.characterId === characterId);
+		// A slip in the id would otherwise read as a character who is in no scene.
+		if (cast === undefined) {
+			throw misfit('params/character', 'The project has no character with that id. listCharacters gives the ids there are.');
+		}
 		// A scene keeps its cast by where each character's note stands.
-		const castPath =
-			characterId === null ? null : (project.characters.find((character) => character.characterId === characterId)?.path ?? '');
+		const castPath = cast === null ? null : cast.path;
 		const rows = project.scenes
 			.map((record, place) => ({ record, place }))
 			.filter(

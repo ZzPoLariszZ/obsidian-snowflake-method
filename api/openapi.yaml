@@ -926,7 +926,7 @@ paths:
       parameters:
         - name: character
           in: query
-          description: Give only scenes this character is in, by the character's `id`.
+          description: Give only scenes this character is in, by the character's `id`. An id no character of the project has is refused, so a slip does not read as a character who is in no scene.
           schema:
             type: string
             minLength: 1
@@ -2428,7 +2428,7 @@ paths:
             minLength: 1
         - name: member
           in: query
-          description: "Give only the note with this id."
+          description: "Give only the note with this id. An id no note of the project has is refused, so a slip does not read as a note nothing mentions."
           schema:
             type: string
             minLength: 1
