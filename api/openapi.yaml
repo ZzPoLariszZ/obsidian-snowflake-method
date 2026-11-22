@@ -30,7 +30,8 @@ info:
     itself. A project whose folder was moved has its link to the first note of
     its manuscript pointed at where that note stands now. A record file that
     can no longer be read is set aside whole under a new name, and read as
-    empty.
+    empty. Statistics and mentions are kept in a cache file of the plugin's
+    own for this device, and asking for them may write it.
 
     **Changing a note.** A note-backed thing carries an `etag`. Send it back in
     `If-Match` when you change or delete that thing. If the note has changed
@@ -132,6 +133,20 @@ tags:
     description: |
       Short notes the author keeps beside a project, each a small note of
       its own with a tint.
+  - name: Statistics
+    description: |
+      How much is written, and of what: the size of the project and of the
+      manuscript by the author's own convention, sentences and dialogue note
+      by note, the words used most, and the words the author watches for.
+      Each is worked out from the notes as they stand. The plugin keeps what
+      it worked out in a cache of its own for this device, so asking again
+      is quick.
+  - name: Mentions
+    description: |
+      Where the manuscript names a character, a scene or a worldbuilding
+      note, by its name or by an alias, as a link or in plain words. Words
+      more than one note could mean are told apart from the ones that are
+      certain.
 
 paths:
   /:
@@ -1130,6 +1145,262 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StickyNote"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/statistics/counts:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getWritingCounts
+      tags: [Statistics]
+      summary: Count the writing of a project
+      description: |
+        How much is written in the whole project and in its manuscript alone,
+        counted by the convention the author chose. The answer says which
+        convention that was.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingCounts"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/statistics/prose:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProseStatistics
+      tags: [Statistics]
+      summary: Get the prose statistics
+      description: |
+        The manuscript's notes in reading order, each with its length, its
+        words, its sentences and how much of it is dialogue, and the same for the
+        manuscript as a whole. Dialogue is what stands inside the quotation marks
+        the author's settings read.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The statistics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProseStatisticsPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/statistics/words:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getWordFrequency
+      tags: [Statistics]
+      summary: List the words used most
+      description: |
+        The words of the manuscript by how often each is used, the commonest
+        first. Common words such as "the", and the names of the project's own
+        notes, are left out unless asked for. `tokens` is every word counted
+        before anything was left out, so a word's share of the writing can be
+        worked out.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: includeStopwords
+          in: query
+          description: "Keep the common words that are left out by default."
+          schema:
+            type: boolean
+            default: false
+        - name: includeNames
+          in: query
+          description: "Keep the names and aliases of the project's characters, scenes and worldbuilding notes."
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The words.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WordFrequencyPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/statistics/sensitive-words:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getSensitiveWords
+      tags: [Statistics]
+      summary: Find the words the author watches for
+      description: |
+        The author keeps a list of words to watch for in the plugin's
+        settings. This gives each of them with how often the manuscript uses it.
+        Ask for `include=occurrences` to have every place as well.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: include
+          in: query
+          description: "What to add to each word. `occurrences` adds every place the manuscript uses it."
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [occurrences]
+      responses:
+        "200":
+          description: The words and how often each is used.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SensitiveWords"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/statistics/dialogue:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getDialogue
+      tags: [Statistics]
+      summary: List the notes that hold dialogue
+      description: |
+        The manuscript's notes that hold quoted speech, in reading order, each
+        with how many quoted stretches it holds. The answer says which quotation
+        marks were read, which is the author's setting.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The notes and how much dialogue each holds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DialoguePage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/dialogue:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    get:
+      operationId: listNoteDialogue
+      tags: [Statistics]
+      summary: List the dialogue of one manuscript note
+      description: |
+        Every quoted stretch of one manuscript note, in the order it is read
+        in, quotation marks included, with where it stands in the note's text.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The quoted stretches.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteDialoguePage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/mentions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getMentions
+      tags: [Mentions]
+      summary: List who and what the manuscript mentions
+      description: |
+        The characters, scenes and worldbuilding notes the manuscript names,
+        in the order each is first named, with how often, where first and last,
+        and how often in each note. Only mentions that are certain are counted
+        here. `unresolved` is how many more could mean more than one note.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: kind
+          in: query
+          description: "Give only notes of this kind, by its `kindId`."
+          schema:
+            type: string
+            minLength: 1
+        - name: member
+          in: query
+          description: "Give only the note with this id."
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The mentions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MentionPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/mentions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    get:
+      operationId: listNoteMentions
+      tags: [Mentions]
+      summary: List the mentions in one manuscript note
+      description: |
+        Every place one manuscript note names a character, a scene or a
+        worldbuilding note, in reading order, with where it stands in the note's
+        text and how sure the match is.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The mentions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteMentionPage"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -3075,6 +3346,376 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StickyNote"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    ScopeCount:
+      type: object
+      description: How much is written in one part of a project.
+      required: [notes, unreadable, count]
+      additionalProperties: false
+      properties:
+        notes:
+          type: integer
+          description: How many notes were counted.
+        unreadable:
+          type: integer
+          description: How many notes could not be read. What they say is missing from the count.
+        count:
+          $ref: "#/components/schemas/WritingCount"
+
+    WritingCounts:
+      type: object
+      required: [project, manuscript, counting]
+      additionalProperties: false
+      properties:
+        project:
+          $ref: "#/components/schemas/ScopeCount"
+          description: Every note of the project, the manuscript included.
+        manuscript:
+          $ref: "#/components/schemas/ScopeCount"
+          description: The manuscript's notes alone.
+        counting:
+          $ref: "#/components/schemas/Counting"
+
+    ProseNumbers:
+      type: object
+      description: What one stretch of prose comes to.
+      required: [total, words, cjkCharacters, sentences, dialogueTotal]
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+          description: Its length by the author's convention.
+        words:
+          type: integer
+        cjkCharacters:
+          type: integer
+          description: Chinese, Japanese and Korean characters, which are counted one at a time.
+        sentences:
+          type: integer
+        dialogueTotal:
+          type: integer
+          description: How much of `total` stands inside quotation marks.
+
+    NoteProse:
+      type: object
+      description: One manuscript note's numbers.
+      required: [note, total, words, cjkCharacters, sentences, dialogueTotal]
+      additionalProperties: false
+      properties:
+        note:
+          $ref: "#/components/schemas/ManuscriptNoteRef"
+        total:
+          type: integer
+          description: Its length by the author's convention.
+        words:
+          type: integer
+        cjkCharacters:
+          type: integer
+        sentences:
+          type: integer
+        dialogueTotal:
+          type: integer
+          description: How much of `total` stands inside quotation marks.
+
+    ProseStatisticsPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset, notes, manuscript, counting]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteProse"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+        notes:
+          type: integer
+          description: How many notes the numbers of `manuscript` were made from.
+        manuscript:
+          $ref: "#/components/schemas/ProseNumbers"
+          description: The manuscript as a whole.
+        counting:
+          $ref: "#/components/schemas/Counting"
+
+    WordCount:
+      type: object
+      required: [term, count]
+      additionalProperties: false
+      properties:
+        term:
+          type: string
+          description: The word, in lower case.
+        count:
+          type: integer
+
+    WordFrequencyPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset, tokens]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WordCount"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+        tokens:
+          type: integer
+          description: Every word of the manuscript, counted before anything was left out.
+
+    FoundPassage:
+      type: object
+      description: Some words found in a manuscript note.
+      required: [note, range, text]
+      additionalProperties: false
+      properties:
+        note:
+          $ref: "#/components/schemas/ManuscriptNoteRef"
+        range:
+          $ref: "#/components/schemas/TextRange"
+        text:
+          type: string
+          description: The words as the note has them.
+
+    SensitiveWord:
+      type: object
+      required: [term, total]
+      additionalProperties: false
+      properties:
+        term:
+          type: string
+          description: The word as the author listed it.
+        total:
+          type: integer
+          description: How often the manuscript uses it.
+        occurrences:
+          type: array
+          description: Every place it is used, in reading order. Given where it was asked for.
+          items:
+            $ref: "#/components/schemas/FoundPassage"
+
+    SensitiveWords:
+      type: object
+      required: [terms]
+      additionalProperties: false
+      properties:
+        terms:
+          type: array
+          description: The words the author watches for, in the order of the author's list.
+          items:
+            $ref: "#/components/schemas/SensitiveWord"
+
+    QuotationMarks:
+      type: object
+      description: One pair of quotation marks.
+      required: [open, close]
+      additionalProperties: false
+      properties:
+        open:
+          type: string
+        close:
+          type: string
+
+    NoteDialogueCount:
+      type: object
+      required: [note, count]
+      additionalProperties: false
+      properties:
+        note:
+          $ref: "#/components/schemas/ManuscriptNoteRef"
+        count:
+          type: integer
+          description: How many quoted stretches the note holds.
+
+    DialoguePage:
+      type: object
+      required: [items, total, offset, limit, nextOffset, marks]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteDialogueCount"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+        marks:
+          type: array
+          description: The quotation marks that were read, as the author's settings have them. None means dialogue is not read at all.
+          items:
+            $ref: "#/components/schemas/QuotationMarks"
+
+    QuotedStretch:
+      type: object
+      required: [range, text]
+      additionalProperties: false
+      properties:
+        range:
+          $ref: "#/components/schemas/TextRange"
+        text:
+          type: string
+          description: The quoted words, quotation marks included.
+
+    NoteDialoguePage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuotedStretch"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    MentionPlace:
+      type: object
+      description: One place a note is named.
+      required: [note, from]
+      additionalProperties: false
+      properties:
+        note:
+          $ref: "#/components/schemas/ManuscriptNoteRef"
+        from:
+          type: integer
+          minimum: 0
+          description: Where the name begins in the note's `body`, in UTF-16 code units.
+
+    NoteMentionCount:
+      type: object
+      required: [note, count]
+      additionalProperties: false
+      properties:
+        note:
+          $ref: "#/components/schemas/ManuscriptNoteRef"
+        count:
+          type: integer
+
+    MentionSummary:
+      type: object
+      description: How the manuscript mentions one character, scene or worldbuilding note.
+      required: [member, total, linked, unlinked, first, last, notes]
+      additionalProperties: false
+      properties:
+        member:
+          $ref: "#/components/schemas/MemberRef"
+        total:
+          type: integer
+          description: How often it is named for certain.
+        linked:
+          type: integer
+          description: How many of those are links.
+        unlinked:
+          type: integer
+          description: How many are plain words.
+        first:
+          oneOf:
+            - $ref: "#/components/schemas/MentionPlace"
+            - type: "null"
+        last:
+          oneOf:
+            - $ref: "#/components/schemas/MentionPlace"
+            - type: "null"
+        notes:
+          type: array
+          description: The manuscript notes that name it, in reading order, with how often each does.
+          items:
+            $ref: "#/components/schemas/NoteMentionCount"
+
+    MentionPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset, unresolved]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MentionSummary"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+        unresolved:
+          type: integer
+          description: How many mentions in the whole manuscript could mean more than one note, and so are counted for none.
+
+    MentionResolution:
+      type: string
+      enum: [unique, wikilink, ambiguous, foreign-link]
+      description: |
+        How sure a mention is. `unique` is plain words only one note goes by.
+        `wikilink` is the text of a link to that note. `ambiguous` is plain
+        words more than one note goes by. `foreign-link` is such words inside
+        a link that leads somewhere else, which the author has already said
+        means something else.
+
+    NoteMention:
+      type: object
+      required: [range, text, resolution, member, candidates]
+      additionalProperties: false
+      properties:
+        range:
+          $ref: "#/components/schemas/TextRange"
+        text:
+          type: string
+          description: The words as the note has them.
+        resolution:
+          $ref: "#/components/schemas/MentionResolution"
+        member:
+          description: The note that is meant, where that is certain.
+          oneOf:
+            - $ref: "#/components/schemas/MemberRef"
+            - type: "null"
+        candidates:
+          type: array
+          description: Every note the words could mean.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+
+    NoteMentionPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteMention"
         total:
           type: integer
         offset:

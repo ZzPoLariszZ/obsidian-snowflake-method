@@ -6017,6 +6017,12 @@ export default class SnowflakeMethodPlugin
 			currentProjectPath: () => this.settings.recentProjectPath,
 			countOptions: () => this.writingCountOptions(),
 			today: () => this.sessions.today(),
+			analysisConfig: (project) => this.analysisConfigFor(project),
+			mentionSources: (project) => this.listWikilinkTargets(project.projectFile),
+			frequencyFilters: async (project) => ({
+				stopwords: this.frequencyStopwords(project.locale),
+				names: await this.entityExclusionTerms(project),
+			}),
 			pluginVersion: () => this.manifest.version,
 			vaultName: () => this.app.vault.getName(),
 			projectsRoot: () => normalizeProjectRoot(this.settings.projectRoot),

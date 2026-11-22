@@ -1,4 +1,5 @@
-import type { NoteCountOptions, ProjectRef, SnowflakeProjectService } from '../src/services';
+import type { MentionSource } from '../src/domain';
+import type { AnalysisConfig, NoteCountOptions, ProjectRef, ProjectSnapshot, SnowflakeProjectService } from '../src/services';
 import type { Access } from './spec/operations';
 
 /**
@@ -21,6 +22,24 @@ export interface ApiHost {
 	countOptions(): NoteCountOptions;
 	/** The day it is on this computer's calendar, as `YYYY-MM-DD`: the day the author's own boards go by. */
 	today(): string;
+	/**
+	 * What the manuscript's analysis reads of the author's settings, for one
+	 * project: the words to watch for, the quotation marks that are read,
+	 * and the convention writing is counted by.
+	 */
+	analysisConfig(project: ProjectSnapshot): Promise<AnalysisConfig>;
+	/**
+	 * The names and aliases a project's notes are mentioned by: the very
+	 * ones the plugin offers when a link is typed, so what the API finds is
+	 * what the author's own screens mark.
+	 */
+	mentionSources(project: ProjectSnapshot): Promise<readonly MentionSource[]>;
+	/**
+	 * What a count of the words used most leaves out unless it is asked to
+	 * keep them: the common words of the project's language with the
+	 * author's own additions, and the names of the project's notes.
+	 */
+	frequencyFilters(project: ProjectSnapshot): Promise<{ stopwords: ReadonlySet<string>; names: ReadonlySet<string> }>;
 	/** The plugin's version, as its manifest states it. */
 	pluginVersion(): string;
 	/** The name of the vault this window has open. */

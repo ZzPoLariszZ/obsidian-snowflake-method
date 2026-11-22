@@ -93,6 +93,11 @@ export class MemberIndex {
 		}
 	}
 
+	/** The member whose note stands at a path, or null. */
+	at(path: string): MemberEntry | null {
+		return this.byPath.get(path) ?? null;
+	}
+
 	private refOf(member: MemberEntry): JsonObject {
 		return { kind: member.kind, id: member.id, name: member.name, path: member.path, resolved: true };
 	}

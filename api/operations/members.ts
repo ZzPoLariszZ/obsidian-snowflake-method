@@ -11,7 +11,7 @@ const isFull = (call: OperationCall): boolean => textParam(call, 'view') === 'fu
 const most = (call: OperationCall): number => (isFull(call) ? MOST_IN_FULL : Number.POSITIVE_INFINITY);
 
 /** Refuses a filter that names a kind the project does not have: a slip there would otherwise read as an empty list. */
-function knownKind(project: ProjectSnapshot, kind: string | null): string | null {
+export function knownKind(project: ProjectSnapshot, kind: string | null): string | null {
 	if (kind === null || kindIdsOf(project).includes(kind)) return kind;
 	throw new ApiError('invalid-request', 'The call does not match what the operation takes.', {
 		errors: [{ pointer: 'params/kind', detail: `The project has no kind ${kind}. listKinds gives the kinds there are.` }],
