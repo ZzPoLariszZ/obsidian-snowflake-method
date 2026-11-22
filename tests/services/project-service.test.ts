@@ -6920,6 +6920,19 @@ describe("SnowflakeProjectService", () => {
         { name: "Combatant", description: "For anyone who fights.", path },
       ]);
       expect(listing["scene"]).toEqual([]);
+      // The index runs a beat behind a write: it still says what the note
+      // said before. Asked for the files, the listing says what the note says.
+      fakeMetadataCache.behind.set(path, {
+        ...frontmatter,
+        "snowflake-description": "What the index last read.",
+      });
+      expect(
+        (await service.listCustomFieldTemplates(project.projectFile))["character"],
+      ).toEqual([{ name: "Combatant", description: "What the index last read.", path }]);
+      expect(
+        (await service.listCustomFieldTemplates(project.projectFile, { from: "files" }))["character"],
+      ).toEqual([{ name: "Combatant", description: "For anyone who fights.", path }]);
+      fakeMetadataCache.behind.delete(path);
       expect(
         await service.customFieldTemplateFields(
           project.projectFile,

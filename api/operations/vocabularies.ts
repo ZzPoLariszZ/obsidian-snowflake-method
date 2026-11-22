@@ -21,6 +21,13 @@ function kindParam(project: ProjectSnapshot, call: OperationCall): string {
 const vocabularyParam = (call: OperationCall): DefinitionFileId => textParam(call, 'vocabulary') as DefinitionFileId;
 
 /**
+ * Templates are read from their notes and not from Obsidian's index of
+ * them, which runs a beat behind a write: a caller that has just saved a
+ * template must find it in the very next list.
+ */
+const FROM_FILES = { from: 'files' } as const;
+
+/**
  * The name of the field template new notes of a kind begin with, or null.
  * The project keeps it as a link to the template's note.
  */
@@ -98,7 +105,7 @@ export const vocabularyOperations: OperationGroup = {
 				errors: [{ pointer: 'params/kind', detail: `The project has no kind ${only}. listKinds gives the kinds there are.` }],
 			});
 		}
-		const listing = await context.host.projects.listCustomFieldTemplates(project);
+		const listing = await context.host.projects.listCustomFieldTemplates(project, FROM_FILES);
 		const items: JsonObject[] = [];
 		for (const kind of kindIdsOf(project)) {
 			if (only !== null && kind !== only) continue;
@@ -112,7 +119,7 @@ export const vocabularyOperations: OperationGroup = {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
 		const kind = kindParam(project, call);
 		const name = textParam(call, 'templateName');
-		const template = ((await context.host.projects.listCustomFieldTemplates(project))[kind] ?? []).find(
+		const template = ((await context.host.projects.listCustomFieldTemplates(project, FROM_FILES))[kind] ?? []).find(
 			(entry) => entry.name === name,
 		);
 		if (template === undefined) {

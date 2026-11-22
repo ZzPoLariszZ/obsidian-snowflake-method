@@ -6484,9 +6484,14 @@ export class SnowflakeProjectService {
   /**
    * Every kind's custom-field templates, straight from the folder that holds
    * them: the note names the template, the frontmatter holds its sentence.
+   *
+   * `from` says what is read. The index is the quick answer and runs a beat
+   * behind a write. The files are the true one, for a reader that has just
+   * written a template and asks at once what there is.
    */
   async listCustomFieldTemplates(
     projectLocator: ProjectLocator,
+    options: { from?: "files" | "index" } = {},
   ): Promise<Record<EntityKindId, CustomFieldTemplateInfo[]>> {
     const project = await this.loadProject(projectLocator);
     const kinds = entityKindIds(project.worldbuildingKinds);
@@ -6494,8 +6499,9 @@ export class SnowflakeProjectService {
     // off the metadata index, and side by side rather than one behind the
     // next. The write paths below keep reading the files: a collision check
     // must not trust an index that runs a beat behind its own write.
+    const from = options.from ?? "index";
     const listings = await Promise.all(
-      kinds.map((kind) => this.customFieldTemplatesOf(project, kind, "index")),
+      kinds.map((kind) => this.customFieldTemplatesOf(project, kind, from)),
     );
     const listing: Record<EntityKindId, CustomFieldTemplateInfo[]> = {};
     kinds.forEach((kind, index) => {
