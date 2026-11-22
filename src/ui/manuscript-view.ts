@@ -6037,8 +6037,43 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	}
 
 	private async deactivateSegment(): Promise<void> {
+		const path = await this.letGoOfWriting();
+		if (path !== null) await this.putProseBack(path);
+	}
+
+	/**
+	 * Gives one note up to a writer outside the stream, where it is the note
+	 * being written in: a caller of the local API is about to change it, and
+	 * an editor left standing on it would write the author's text back over
+	 * that change the next time they typed.
+	 *
+	 * Answers once the note is free: what was typed is in the file, and the
+	 * editor is gone, so no key pressed after this can land on the writer's
+	 * text. The prose is drawn where the editor stood in its own time, and
+	 * is not waited for. Drawing waits on the screen, and a window out of
+	 * sight is given its turns late, which is exactly where such a caller
+	 * finds the app. False where the note was not being written in.
+	 */
+	async releaseSegment(path: string): Promise<boolean> {
+		if (this.editingPath !== path) return false;
+		const left = await this.letGoOfWriting();
+		if (left === null) return false;
+		// The editor is taken down before the redraw first waits on anything.
+		void this.putProseBack(left).catch((error: unknown) => {
+			this.showError(error);
+		});
+		return true;
+	}
+
+	/**
+	 * The first half of leaving a note, and the half another writer waits
+	 * for: what was typed goes to the file, and the view stops holding the
+	 * note as the one being written in. Answers the note left, or null where
+	 * none was.
+	 */
+	private async letGoOfWriting(): Promise<string | null> {
 		const path = this.editingPath;
-		if (path === null) return;
+		if (path === null) return null;
 		this.wikilinkTargets = null;
 		await this.flushPendingSave();
 		this.editingPath = null;
@@ -6054,6 +6089,11 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 		this.mounted.get(path)?.el.removeClass('is-writing');
 		// And back to the chapter the page is in once the writing stops.
 		this.syncContents();
+		return path;
+	}
+
+	/** The second half: the editor taken down and the prose drawn where it stood, the reader held in place. */
+	private async putProseBack(path: string): Promise<void> {
 		// The note going back to prose may be anywhere, including above the reader,
 		// so its place is held across the swap — and held from before the editor
 		// goes, not after. Taking an editor down empties the note to a header and
