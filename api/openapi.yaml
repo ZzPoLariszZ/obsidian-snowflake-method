@@ -303,6 +303,21 @@ x-snowflake-problems:
   method-not-allowed:
     status: 405
     title: The address does not take that method.
+  path-conflict:
+    status: 409
+    title: Something else already stands where this would go.
+  read-only:
+    status: 409
+    title: A newer version of the plugin wrote this, and this one may not change it.
+  invalid-managed-document:
+    status: 409
+    title: A note the operation needs is damaged.
+  unsafe-section:
+    status: 409
+    title: The note's section markers are damaged, so the section cannot be written safely.
+  concurrent-change:
+    status: 412
+    title: The note has changed since it was read.
   payload-too-large:
     status: 413
     title: The body is larger than the API accepts.
@@ -312,6 +327,9 @@ x-snowflake-problems:
   wrong-host:
     status: 421
     title: The call names a host this listener does not answer for.
+  precondition-required:
+    status: 428
+    title: The change must say which version of the note it is made against.
   internal-error:
     status: 500
     title: The operation failed.
