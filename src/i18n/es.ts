@@ -932,6 +932,12 @@ export const es = (): Readonly<Record<TranslationKey, string>> => ({
 		'OBS Studio mantuvo su propio tamaño de vídeo porque otra de sus salidas está en marcha.',
 	'recording.notice.return-pending':
 		'Algunos ajustes de OBS Studio aún no se han podido restaurar. Se restaurarán la próxima vez que el complemento conecte con OBS Studio.',
+	'localApi.cli.description': 'Llamar a una operación de la API local',
+	'localApi.cli.flag.op': 'Nombre de la operación',
+	'localApi.cli.flag.params': 'Parámetros de la operación, como objeto JSON',
+	'localApi.cli.flag.body': 'Cuerpo de la llamada, en JSON',
+	'localApi.cli.flag.ifMatch': 'Versión de la nota sobre la que se hace el cambio',
+	'localApi.cli.flag.pretty': 'Sangrar la respuesta',
 	'errors.unknown': 'Algo salió mal.',
 	'errors.dashboard': 'No se pudo cargar el panel Copo de nieve.',
 	'errors.readOnly': 'Este proyecto es de solo lectura.',

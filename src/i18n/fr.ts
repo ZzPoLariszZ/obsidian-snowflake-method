@@ -937,6 +937,12 @@ export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 		'OBS Studio a gardé sa propre taille de vidéo, car une autre de ses sorties est active.',
 	'recording.notice.return-pending':
 		'Certains réglages d\'OBS Studio n\'ont pas encore pu être rétablis. Ils le seront à la prochaine connexion du module à OBS Studio.',
+	'localApi.cli.description': 'Appeler une opération de l\'API locale',
+	'localApi.cli.flag.op': 'Nom de l\'opération',
+	'localApi.cli.flag.params': 'Paramètres de l\'opération, en objet JSON',
+	'localApi.cli.flag.body': 'Corps de l\'appel, en JSON',
+	'localApi.cli.flag.ifMatch': 'Version de la note que la modification vise',
+	'localApi.cli.flag.pretty': 'Indenter la réponse',
 	'errors.unknown': 'Une erreur s\'est produite.',
 	'errors.dashboard': 'Impossible de charger le tableau de bord Flocon de neige.',
 	'errors.readOnly': 'Ce projet est en lecture seule.',

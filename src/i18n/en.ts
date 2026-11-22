@@ -1029,6 +1029,12 @@ export const en = {
 		'OBS Studio kept its own video size because another output of OBS Studio is running.',
 	'recording.notice.return-pending':
 		'Some OBS Studio settings could not be put back yet. They will be the next time the plugin reaches OBS Studio.',
+	'localApi.cli.description': 'Call an operation of the local API',
+	'localApi.cli.flag.op': 'Operation name',
+	'localApi.cli.flag.params': 'Operation parameters as a JSON object',
+	'localApi.cli.flag.body': 'Call body as JSON',
+	'localApi.cli.flag.ifMatch': 'Version the change is made against',
+	'localApi.cli.flag.pretty': 'Indent the answer',
 	'errors.unknown': 'Something went wrong.',
 	'errors.dashboard': 'The Snowflake dashboard could not be loaded.',
 	'errors.readOnly': 'This project is read-only.',

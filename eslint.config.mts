@@ -86,7 +86,7 @@ export default defineConfig(
 						'Snowflake Recordings',
 						'Snowflake Method',
 					],
-					acronyms: ['AI', 'CJK', 'H1', 'ID', 'JSON', 'OBS', 'POV', '6Z'],
+					acronyms: ['AI', 'API', 'CJK', 'H1', 'ID', 'JSON', 'OBS', 'POV', '6Z'],
 					ignoreRegex: [
 						// The recording's choice quoted as it is written, its closing
 						// mark against the recorder's name.

@@ -19,8 +19,18 @@ import {
 	type MarkdownFileInfo,
 	type TAbstractFile,
 	type View,
+	type CliFlags,
 	type WorkspaceLeaf,
 } from 'obsidian';
+
+import {
+	CLI_COMMAND,
+	CLI_FLAG_VALUES,
+	createLocalApi,
+	mintToken,
+	type ApiHost,
+	type LocalApi,
+} from '../api/index';
 
 import {
 	DEFAULT_STICKY_NOTE_COLOR,
@@ -152,6 +162,8 @@ import {
 	type DesktopWindow,
 	type RecordingPreferences,
 	OBS_DOWNLOAD_PAGE,
+	sanitizeLocalApiPreferences,
+	type LocalApiPreferences,
 } from './domain';
 import { intlLocaleOf, resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import { numberFormat } from './i18n/numbers';
@@ -275,6 +287,7 @@ import {
 	projectRecordingRoot,
 	getProjectPathLayout,
 	ScreenRecordingService,
+	desktopListenerFactory,
 	desktopProcessRunner,
 	desktopShell,
 	windowSocket,
@@ -670,6 +683,10 @@ const SCREEN_RECORDING_RIBBON_KEY = 'snowflake-method-screen-recording-ribbon';
 const SCREEN_RECORDING_LEDGER_KEY = 'snowflake-method-screen-recording-obs';
 /** The Mac's own recorder that runs, kept on the device so one left going by a crash is found and ended. */
 const SCREEN_RECORDING_NATIVE_KEY = 'snowflake-method-screen-recording-native';
+/** The local API's choices: a port and a listener of this computer mean nothing on another. */
+const LOCAL_API_KEY = 'snowflake-method-local-api';
+/** The name the local API's access token is kept under in Obsidian's own store for secrets. */
+const LOCAL_API_SECRET = 'snowflake-method-local-api';
 
 /**
  * The pomodoro's tomato, drawn here because lucide has none: a round body,
@@ -887,6 +904,12 @@ export default class SnowflakeMethodPlugin
 	private recording: ScreenRecordingService | null = null;
 	/** The recording's choices as last read from the device. */
 	private recordingChoices: RecordingPreferences | null = null;
+	/** The local API, on the desktop alone: null on a phone or a tablet, where nothing listens and no command answers. */
+	private localApi: LocalApi | null = null;
+	/** The local API's choices as last read from the device. */
+	private localApiChoices: LocalApiPreferences | null = null;
+	/** The local API's access token as last read from Obsidian's store for secrets. Undefined until it is first asked for. */
+	private localApiTokenHeld: string | null | undefined = undefined;
 	/** What every sticky-note surface shares: claims, the device's memory of the panels, the bell. */
 	stickyNoteHub!: StickyNoteHub;
 	/** The floating sticky notes, one layer per window, made when a window first floats one. */
@@ -989,6 +1012,8 @@ export default class SnowflakeMethodPlugin
 		{ probe: HTMLElement; observer: ResizeObserver }
 	>();
 	private resolveProjectScanReady: () => void = () => undefined;
+	/** Whether projects can be listed yet, for whoever asks without meaning to wait. */
+	private projectScanIsReady = false;
 	/** Vault discovery must not contribute to the plugin onload critical path. */
 	private readonly projectScanReady = new Promise<void>((resolve) => {
 		this.resolveProjectScanReady = resolve;
@@ -1532,6 +1557,11 @@ export default class SnowflakeMethodPlugin
 		// made only where there is a desktop to record: a phone or a tablet has
 		// neither the Mac's recorder nor OBS, and never reaches for Node.
 		this.recording = desktopSystem() === null ? null : this.createScreenRecording();
+		// The local API likewise: it is made only where there is a desktop to
+		// answer on. Making it opens nothing. Its listener is started below,
+		// once the layout stands, and only where the device's choices say so.
+		this.localApi = desktopSystem() === null ? null : this.createLocalApiDoors();
+		if (this.localApi !== null) this.registerLocalApiCommand(this.localApi);
 		// And the history hears what the plugin itself made: a note created,
 		// and every task, foreshadowing and revision the services write.
 		this.projects.repository.onManagedFileCreated = (path, content, userInput) => {
@@ -1786,7 +1816,12 @@ export default class SnowflakeMethodPlugin
 			// tracking tab is its home now -- and a workspace still holding
 			// one of its leaves would show an empty placeholder forever.
 			this.app.workspace.detachLeavesOfType('snowflake-method-mentions');
+			this.projectScanIsReady = true;
 			this.resolveProjectScanReady();
+			// The local API's listener, where this device has it switched on.
+			void this.applyLocalApiChoices().catch((error: unknown) => {
+				this.showError(error);
+			});
 			this.registerVaultListeners();
 			this.registerSettling();
 			// Pending history events file, and File recovery's copies are
@@ -1883,6 +1918,9 @@ export default class SnowflakeMethodPlugin
 		// the Mac's recorder cannot be taken up again by the next load, and
 		// what OBS lent stays in the ledger for it.
 		this.recording?.dispose();
+		// The local API lets its port go, and every connection with it. A call
+		// that comes after this is told the plugin is going.
+		void this.localApi?.server.stop();
 		// Ask for final workspace drafts now, before the plugin's services go,
 		// and mark refusals as recovery text rather than dialogs after unload.
 		for (const leaf of this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)) {
@@ -5927,6 +5965,123 @@ export default class SnowflakeMethodPlugin
 		const kept = sanitizeRecordingPreferences(next, desktopSystem() ?? 'mac');
 		this.recordingChoices = kept;
 		this.app.saveLocalStorage(SCREEN_RECORDING_KEY, kept);
+	}
+
+	/**
+	 * The local API with what it is handed of the plugin: the answers only
+	 * the plugin can give, each asked for by name, and the device's way to
+	 * answer on a port. It is handed no view, no dialog and no notice.
+	 */
+	private createLocalApiDoors(): LocalApi {
+		const host: ApiHost = {
+			pluginVersion: () => this.manifest.version,
+			vaultName: () => this.app.vault.getName(),
+			projectsRoot: () => normalizeProjectRoot(this.settings.projectRoot),
+			port: () => this.localApiPreferences().port,
+			access: () => this.localApiPreferences().access,
+			token: () => this.localApiToken(),
+			cliEnabled: () => this.localApiPreferences().cli,
+			ready: () => this.projectScanReady,
+			isReady: () => this.projectScanIsReady,
+			leaving: () => this.unloading || this.pageLeaving,
+			asPlugin: (run) => run(),
+		};
+		return createLocalApi(host, {
+			listeners: () => desktopListenerFactory(),
+			pause: (ms) =>
+				new Promise((resolve) => {
+					this.app.workspace.containerEl.win.setTimeout(resolve, ms);
+				}),
+			serverChanged: () => undefined,
+		});
+	}
+
+	/**
+	 * Answers Obsidian's own command line under the plugin's name. The
+	 * command is always there on the desktop, so that somebody who runs it
+	 * with the bridge switched off is told which setting switches it on
+	 * rather than that there is no such command.
+	 */
+	private registerLocalApiCommand(api: LocalApi): void {
+		const flags: CliFlags = {
+			op: { value: CLI_FLAG_VALUES.op, description: this.globalT('localApi.cli.flag.op') },
+			params: { value: CLI_FLAG_VALUES.params, description: this.globalT('localApi.cli.flag.params') },
+			body: { value: CLI_FLAG_VALUES.body, description: this.globalT('localApi.cli.flag.body') },
+			ifMatch: { value: CLI_FLAG_VALUES.ifMatch, description: this.globalT('localApi.cli.flag.ifMatch') },
+			pretty: { description: this.globalT('localApi.cli.flag.pretty') },
+		};
+		try {
+			this.registerCliHandler(CLI_COMMAND, this.globalT('localApi.cli.description'), flags, (given) => api.cli(given));
+		} catch (error) {
+			// Obsidian refuses a command name that is taken. The listener is
+			// not held back by it.
+			console.error('Snowflake: the command line bridge could not be registered', error);
+		}
+	}
+
+	/** The local API's choices as the device keeps them, read once and kept until they change. */
+	private localApiPreferences(): LocalApiPreferences {
+		this.localApiChoices ??= sanitizeLocalApiPreferences(this.app.loadLocalStorage(LOCAL_API_KEY) as unknown);
+		return this.localApiChoices;
+	}
+
+	private saveLocalApiPreferences(next: LocalApiPreferences): void {
+		const kept = sanitizeLocalApiPreferences(next);
+		this.localApiChoices = kept;
+		this.app.saveLocalStorage(LOCAL_API_KEY, kept);
+	}
+
+	/**
+	 * The access token, or null where none has been made or Obsidian's store
+	 * for secrets cannot be read. It is asked of the store once and kept:
+	 * the store notes every reading of a secret, and a caller is checked
+	 * against the token on every call.
+	 */
+	private localApiToken(): string | null {
+		if (this.localApiTokenHeld === undefined) {
+			let found: string | null = null;
+			try {
+				found = this.app.secretStorage.getSecret(LOCAL_API_SECRET);
+			} catch {
+				found = null;
+			}
+			this.localApiTokenHeld = found === null || found === '' ? null : found;
+		}
+		return this.localApiTokenHeld;
+	}
+
+	/**
+	 * Makes a new access token and keeps it in Obsidian's store for secrets.
+	 * False where the store would not take it. The token before it is worth
+	 * nothing from this moment on.
+	 */
+	private renewLocalApiToken(): boolean {
+		const token = mintToken();
+		try {
+			this.app.secretStorage.setSecret(LOCAL_API_SECRET, token);
+		} catch {
+			return false;
+		}
+		this.localApiTokenHeld = token;
+		return true;
+	}
+
+	/**
+	 * Brings the listener in line with the device's choices: answering on
+	 * the chosen port where the author has switched it on, and silent where
+	 * not. A token is made the first time it is needed. Without one nothing
+	 * is opened, since nobody could then be told from anybody.
+	 */
+	private async applyLocalApiChoices(): Promise<void> {
+		const api = this.localApi;
+		if (api === null) return;
+		const choices = this.localApiPreferences();
+		if (!choices.http) {
+			await api.server.stop();
+			return;
+		}
+		if (this.localApiToken() === null) this.renewLocalApiToken();
+		await api.server.start(choices.port);
 	}
 
 	/** The vault as a folder on this computer's disk, or null where it is not one. */

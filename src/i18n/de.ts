@@ -933,6 +933,12 @@ export const de = (): Readonly<Record<TranslationKey, string>> => ({
 		'OBS Studio hat seine eigene Videogröße behalten, weil eine andere Ausgabe von OBS Studio läuft.',
 	'recording.notice.return-pending':
 		'Einige Einstellungen von OBS Studio konnten noch nicht zurückgesetzt werden. Das geschieht, sobald die Erweiterung OBS Studio wieder erreicht.',
+	'localApi.cli.description': 'Eine Operation der lokalen API aufrufen',
+	'localApi.cli.flag.op': 'Name der Operation',
+	'localApi.cli.flag.params': 'Parameter der Operation als JSON-Objekt',
+	'localApi.cli.flag.body': 'Inhalt des Aufrufs als JSON',
+	'localApi.cli.flag.ifMatch': 'Version der Notiz, auf die sich die Änderung bezieht',
+	'localApi.cli.flag.pretty': 'Antwort einrücken',
 	'errors.unknown': 'Etwas ist schiefgelaufen.',
 	'errors.dashboard': 'Das Schneeflocken-Dashboard konnte nicht geladen werden.',
 	'errors.readOnly': 'Dieses Projekt ist schreibgeschützt.',
