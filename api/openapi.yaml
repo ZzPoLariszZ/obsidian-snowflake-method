@@ -160,6 +160,30 @@ tags:
       foreshadowing and its revisions. The words come from the versions
       Obsidian's own file recovery keeps, where it kept any, and from the
       writing sessions otherwise.
+  - name: Timeline
+    description: |
+      Timelines lay a story's scenes out along its time. A timeline keeps,
+      under each time note it names, rows of the author's own words, and on
+      each row the scenes placed there. A view shows one or more timelines
+      side by side, in an order of times of its own. Nothing here copies a
+      note: a time and a scene are named by their ids.
+  - name: Beat sheets
+    description: |
+      A beat sheet lays a story's scenes out along its structure: acts, the
+      beats of each act, and under each beat rows of the author's own words
+      with the scenes placed on them. A sheet is started from a template,
+      one the plugin ships or one the author saved.
+  - name: Freeform
+    description: |
+      A freeform view is a canvas the author arranges by hand: cards for the
+      project's notes and records, files, links and plain text, frames
+      around groups of them, and lines between them.
+  - name: Relationship graph
+    description: |
+      The project's characters, scenes and worldbuilding notes as a graph,
+      with every relationship one note records as a line to the note it
+      points at. Nothing of it is stored. It is read from the notes each
+      time it is asked for.
 
 paths:
   /:
@@ -1552,6 +1576,210 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/derived-tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listDerivedTasks
+      tags: [Tasks]
+      summary: List the tasks the plugin derives
+      description: |
+        The cards the plugin puts on the task board by itself: where the
+        writing stands against the author's daily, weekly and monthly goal, and
+        what is waiting to be seen to elsewhere, such as mentions that could
+        mean more than one note or revisions not yet decided. They are worked out
+        afresh each time and cannot be changed.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The derived tasks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivedTasks"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getTimeline
+      tags: [Timeline]
+      summary: Get the timelines and their views
+      description: |
+        Every timeline of the project with the times it names, the rows
+        under each and the scenes on each row, and every view with the timelines
+        it shows and the order it shows the times in. A project that has made no
+        timeline yet has one empty view.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The timelines and the views.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineBoard"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listBeatSheets
+      tags: [Beat sheets]
+      summary: List the beat sheets
+      description: |
+        The project's beat sheets in the order they were made, each with how
+        many acts, beats and placed scenes it holds. Read one sheet for what is
+        on it.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The beat sheets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheetList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+    get:
+      operationId: getBeatSheet
+      tags: [Beat sheets]
+      summary: Get one beat sheet
+      description: |
+        One beat sheet with its acts in the story's order, the beats of each
+        act, the rows under each beat and the scenes placed on each row.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The beat sheet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheet-templates:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listBeatSheetTemplates
+      tags: [Beat sheets]
+      summary: List the beat sheet templates
+      description: |
+        The structures a new beat sheet can be started from: the ones the
+        plugin ships, worded in the project's language, then the ones the author
+        saved in this project.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheetTemplateList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/freeform-views:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listFreeformViews
+      tags: [Freeform]
+      summary: List the freeform views
+      description: |
+        The project's freeform views in the order they were made, each with
+        how many cards, frames and lines it holds. Read one view for what is on
+        it.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The freeform views.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeformViewList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/freeform-views/{freeformViewId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/FreeformViewId"
+    get:
+      operationId: getFreeformView
+      tags: [Freeform]
+      summary: Get one freeform view
+      description: |
+        One freeform view with every card on it and what the card shows,
+        every frame, every line, and where each stands on the canvas.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The freeform view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeformView"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/relationship-graph:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getRelationshipGraph
+      tags: [Relationship graph]
+      summary: Get the relationship graph
+      description: |
+        Every character, scene and worldbuilding note as a node, and every
+        relationship a note records as a line from it to the note it points at.
+        A relationship that points at a note that is gone has a node of its own,
+        so a broken link shows.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The graph.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelationshipGraph"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -1679,6 +1907,22 @@ components:
         type: string
         enum: [active, archived, all]
         default: active
+    BeatSheetId:
+      name: beatSheetId
+      in: path
+      required: true
+      description: A beat sheet's `id`, as `listBeatSheets` gives it.
+      schema:
+        type: string
+        minLength: 1
+    FreeformViewId:
+      name: freeformViewId
+      in: path
+      required: true
+      description: A freeform view's `id`, as `listFreeformViews` gives it.
+      schema:
+        type: string
+        minLength: 1
     NotePath:
       name: notePath
       in: path
@@ -4380,6 +4624,592 @@ components:
           description: Every day of the stretch, oldest first, the ones nothing happened on included.
           items:
             $ref: "#/components/schemas/HistoryDay"
+
+    DerivedTask:
+      type: object
+      description: A card the plugin puts on the task board by itself.
+      required: [key, status, count, progress]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          enum: [dailyGoal, weeklyGoal, monthlyGoal, unresolvedMentions, sensitiveWords, openForeshadowings, unresolvedForeshadowings, pendingRevisions, unresolvedRevisions, stickyNotes]
+          description: Which card it is.
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        count:
+          type: [integer, "null"]
+          description: How many things are waiting, on a card that counts them. Null on a goal's card.
+        progress:
+          description: Where the writing stands against the goal, on a goal's card. Null on the others.
+          oneOf:
+            - type: object
+              required: [net, goal]
+              additionalProperties: false
+              properties:
+                net:
+                  type: integer
+                  description: Words written towards the goal in its period.
+                goal:
+                  type: integer
+                  description: The words the period aims at.
+            - type: "null"
+
+    DerivedTasks:
+      type: object
+      required: [items, complete]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: The cards there are now, in the order a column shows them.
+          items:
+            $ref: "#/components/schemas/DerivedTask"
+        complete:
+          type: boolean
+          description: False where something the cards are worked out from could not be read, and its cards are left out.
+
+    ScenePresentation:
+      type: string
+      enum: [flat, stack]
+      description: Whether the scenes of a row are laid side by side or as a stack.
+
+    SceneRow:
+      type: object
+      description: A row of the author's own words, with the scenes placed on it.
+      required: [id, text, scenes]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+          description: What happens, changes or holds there. May be empty.
+        scenes:
+          type: array
+          description: The scenes placed on the row, in the row's own order.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+
+    TimelineTime:
+      type: object
+      description: One time note on one timeline, with the rows the timeline writes under it.
+      required: [time, rows]
+      additionalProperties: false
+      properties:
+        time:
+          $ref: "#/components/schemas/MemberRef"
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SceneRow"
+
+    Timeline:
+      type: object
+      required: [id, name, binding, times, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        binding:
+          description: The character or worldbuilding note the timeline follows. Null for one that follows none.
+          oneOf:
+            - $ref: "#/components/schemas/MemberRef"
+            - type: "null"
+        times:
+          type: array
+          description: The times the timeline names, in the order they were added. A view keeps the order they are shown in.
+          items:
+            $ref: "#/components/schemas/TimelineTime"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+
+    TimelineView:
+      type: object
+      required: [id, name, timelineIds, timeOrder, presentation, cardStyle, showSubDescriptions, timesReversed, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        timelineIds:
+          type: array
+          description: The timelines the view shows, in its own order, each by its `id`.
+          items:
+            type: string
+        timeOrder:
+          type: array
+          description: The order the view shows the times in, each by the time note's `id`. It may name times the view no longer shows.
+          items:
+            type: string
+        presentation:
+          description: How scenes are shown. Null leaves it to the layout.
+          oneOf:
+            - $ref: "#/components/schemas/ScenePresentation"
+            - type: "null"
+        cardStyle:
+          type: [string, "null"]
+          enum: [compact, standard, extended, null]
+        showSubDescriptions:
+          type: boolean
+          description: Whether the rows' words are shown, or the scenes alone.
+        timesReversed:
+          type: boolean
+          description: Whether the times run latest first.
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+
+    TimelineBoard:
+      type: object
+      required: [timelines, views, pinnedTimelineId, lastViewId]
+      additionalProperties: false
+      properties:
+        timelines:
+          type: array
+          items:
+            $ref: "#/components/schemas/Timeline"
+        views:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineView"
+        pinnedTimelineId:
+          type: [string, "null"]
+          description: The timeline shown first wherever it is. Null for none.
+        lastViewId:
+          type: [string, "null"]
+          description: The view the author opened last.
+
+    BeatSheetSummary:
+      type: object
+      required: [id, name, acts, beats, scenes, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        acts:
+          type: integer
+        beats:
+          type: integer
+        scenes:
+          type: integer
+          description: How many scenes are placed on the sheet.
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+
+    BeatSheetList:
+      type: object
+      required: [items, lastSheetId]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BeatSheetSummary"
+        lastSheetId:
+          type: [string, "null"]
+          description: The sheet the author opened last.
+
+    Beat:
+      type: object
+      required: [id, name, description, rows]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          description: What the beat is for. May be empty.
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SceneRow"
+
+    BeatSheetAct:
+      type: object
+      required: [id, number, label, beats]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+          description: The act's place in the story, from 1.
+        label:
+          type: string
+          description: What follows the act's number. Empty for an act that goes by its number alone.
+        beats:
+          type: array
+          items:
+            $ref: "#/components/schemas/Beat"
+
+    BeatSheet:
+      type: object
+      required: [id, name, presentation, showSubDescriptions, reversed, createdAt, updatedAt, acts]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        presentation:
+          description: How scenes are shown. Null leaves it to the layout.
+          oneOf:
+            - $ref: "#/components/schemas/ScenePresentation"
+            - type: "null"
+        showSubDescriptions:
+          type: boolean
+          description: Whether the rows' words are shown, or the scenes alone.
+        reversed:
+          type: boolean
+          description: Whether the sheet is shown from its end. The acts and beats here are in the story's own order either way.
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+        acts:
+          type: array
+          items:
+            $ref: "#/components/schemas/BeatSheetAct"
+
+    BeatSheetTemplate:
+      type: object
+      description: The acts and beats a new sheet can be started from.
+      required: [id, name, description, builtIn, acts]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        builtIn:
+          type: boolean
+          description: True for one the plugin ships, which cannot be changed.
+        acts:
+          type: array
+          items:
+            type: object
+            required: [label, beats]
+            additionalProperties: false
+            properties:
+              label:
+                type: string
+              beats:
+                type: array
+                items:
+                  type: object
+                  required: [name, description]
+                  additionalProperties: false
+                  properties:
+                    name:
+                      type: string
+                    description:
+                      type: string
+
+    BeatSheetTemplateList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BeatSheetTemplate"
+
+    FreeformViewSummary:
+      type: object
+      required: [id, name, placements, frames, edges, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        placements:
+          type: integer
+          description: How many cards stand on the view.
+        frames:
+          type: integer
+        edges:
+          type: integer
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+
+    FreeformViewList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeformViewSummary"
+
+    FreeformResource:
+      description: What a card shows. `type` says which of the five it is.
+      oneOf:
+        - type: object
+          description: A character, a scene or a worldbuilding note.
+          required: [type, member]
+          additionalProperties: false
+          properties:
+            type:
+              const: entity
+            member:
+              $ref: "#/components/schemas/MemberRef"
+        - type: object
+          description: A task, a foreshadowing thread, a revision or a sticky note, by its id.
+          required: [type, id, name]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [task, foreshadowing, revision, sticky-note]
+            id:
+              type: string
+            name:
+              type: string
+              description: What the record was called when the card was last drawn.
+        - type: object
+          description: A file of the project.
+          required: [type, path, relativePath]
+          additionalProperties: false
+          properties:
+            type:
+              const: file
+            path:
+              type: string
+              description: The file, as a path in the vault.
+            relativePath:
+              type: string
+              description: Where the file stands inside the project.
+        - type: object
+          description: A web address.
+          required: [type, url, label]
+          additionalProperties: false
+          properties:
+            type:
+              const: link
+            url:
+              type: string
+            label:
+              type: string
+        - type: object
+          description: Words of the card's own, as Markdown.
+          required: [type, text]
+          additionalProperties: false
+          properties:
+            type:
+              const: text
+            text:
+              type: string
+
+    FreeformPlacement:
+      type: object
+      description: One card on a view. The same note can stand on a view more than once.
+      required: [id, resource, x, y, width, height, displayMode, zIndex, frameId]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        resource:
+          $ref: "#/components/schemas/FreeformResource"
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        displayMode:
+          type: string
+          enum: [auto, compact, standard, gallery, extended]
+        zIndex:
+          type: number
+          description: Its place among the cards, low under high.
+        frameId:
+          type: [string, "null"]
+          description: The frame that holds it. Null for a card that stands free.
+
+    FreeformFrame:
+      type: object
+      description: A titled ground cards can stand on.
+      required: [id, title, color, x, y, width, height, zIndex]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        zIndex:
+          type: number
+
+    FreeformEdge:
+      type: object
+      description: A line drawn between two things on a view. It says nothing about them and changes nothing of them.
+      required: [id, source, target, sourceSide, targetSide, label, arrow, line]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+          description: A card or a frame of the same view, by its `id`.
+        target:
+          type: string
+        sourceSide:
+          type: [string, "null"]
+          enum: [top, right, bottom, left, null]
+        targetSide:
+          type: [string, "null"]
+          enum: [top, right, bottom, left, null]
+        label:
+          type: string
+        arrow:
+          type: string
+          enum: [none, start, end, both]
+        line:
+          type: string
+          enum: [solid, dashed, dotted, dash-dot]
+
+    FreeformView:
+      type: object
+      required: [id, name, viewport, placements, frames, edges, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        viewport:
+          type: object
+          description: Where the author last stood looking.
+          required: [x, y, zoom]
+          additionalProperties: false
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+            zoom:
+              type: number
+        placements:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeformPlacement"
+        frames:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeformFrame"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeformEdge"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+
+    GraphNode:
+      type: object
+      required: [id, group, kind, name, aliases, path, weight]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: The note's own id. A relationship that leads to no note has a node whose id begins `unresolved:`.
+        group:
+          type: string
+          enum: [character, scene, worldbuilding, unresolved]
+        kind:
+          type: string
+          description: The note's kind, by its `kindId`, or `unresolved`.
+        name:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        path:
+          type: [string, "null"]
+          description: The note, as a path in the vault. Null for a node that stands for a note that is gone.
+        weight:
+          type: integer
+          description: How many lines touch the node.
+
+    GraphEdge:
+      type: object
+      description: One relationship a note records, from that note to the one it points at.
+      required: [id, source, target, label, labelPath, text, record]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+          description: The node whose note records the relationship.
+        target:
+          type: string
+        label:
+          type: string
+          description: The relationship word.
+        labelPath:
+          type: string
+          description: Where the word stands in the relationship vocabulary, which tells two words of one spelling apart.
+        text:
+          type: string
+          description: The note's own words about it.
+        record:
+          type: integer
+          description: Which of the note's relationships it is, from 0.
+
+    RelationshipGraph:
+      type: object
+      required: [nodes, edges, labels]
+      additionalProperties: false
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+        labels:
+          type: array
+          description: Every relationship word in use, in the order each is first met.
+          items:
+            type: string
 
 x-snowflake-problems:
   invalid-request:

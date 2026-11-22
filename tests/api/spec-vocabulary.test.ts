@@ -7,7 +7,13 @@ import {
 	BAND_SPANS,
 	CHARACTER_TYPES,
 	DEFINITION_FILE_IDS,
+	DERIVED_TASK_KEYS,
 	FORESHADOWING_STATUSES,
+	FREEFORM_ARROWS,
+	FREEFORM_DISPLAY_MODES,
+	FREEFORM_LINES,
+	FREEFORM_RECORD_TYPES,
+	FREEFORM_SIDES,
 	HISTORY_EVENT_ORIGINS,
 	HISTORY_NOTE_KINDS,
 	HISTORY_SOURCES,
@@ -17,12 +23,14 @@ import {
 	PROGRESS_STATUSES,
 	PROJECT_LANGUAGES,
 	REVISION_KINDS,
+	SCENE_PRESENTATIONS,
 	STEP_IDS,
 	STEP_SECTION_IDS,
 	STEP_STATUSES,
 	STICKY_NOTE_COLORS,
 	TASK_PRIORITIES,
 	TASK_STATUSES,
+	TIMELINE_CARD_STYLES,
 	TIME_KINDS,
 	WRITING_COUNT_HEADINGS,
 	WRITING_COUNT_MODES,
@@ -129,6 +137,23 @@ describe('the contract’s listed values', () => {
 		expect(listed(property('HistoryNote', 'step')['enum'])).toEqual([...HISTORY_STEPS]);
 		expect(listed(property('HistoryNoteEntry', 'source')['enum'])).toEqual([...HISTORY_SOURCES]);
 		expect(listed(property('HistoryNoteEntry', 'origin')['enum'])).toEqual([...HISTORY_EVENT_ORIGINS]);
+	});
+
+	it('name every card the plugin derives, and every way a board shows its scenes and its cards', () => {
+		expect(listed(property('DerivedTask', 'key')['enum'])).toEqual([...DERIVED_TASK_KEYS]);
+		expect(listed(schema('ScenePresentation')['enum'])).toEqual([...SCENE_PRESENTATIONS]);
+		expect(listed(property('TimelineView', 'cardStyle')['enum'])).toEqual([...TIMELINE_CARD_STYLES, null]);
+		expect(listed(property('FreeformPlacement', 'displayMode')['enum'])).toEqual([...FREEFORM_DISPLAY_MODES]);
+		expect(listed(property('FreeformEdge', 'sourceSide')['enum'])).toEqual([...FREEFORM_SIDES, null]);
+		expect(listed(property('FreeformEdge', 'targetSide')['enum'])).toEqual([...FREEFORM_SIDES, null]);
+		expect(listed(property('FreeformEdge', 'arrow')['enum'])).toEqual([...FREEFORM_ARROWS]);
+		expect(listed(property('FreeformEdge', 'line')['enum'])).toEqual([...FREEFORM_LINES]);
+		const records = listed(schema('FreeformResource')['oneOf']).flatMap((form) => {
+			const properties = isJsonObject(form) ? form['properties'] : undefined;
+			const type = isJsonObject(properties) ? properties['type'] : undefined;
+			return isJsonObject(type) ? listed(type['enum']) : [];
+		});
+		expect(records).toEqual([...FREEFORM_RECORD_TYPES]);
 	});
 
 	it('promise the folders every project has and leave room for the ones a tool makes when it is first used', () => {

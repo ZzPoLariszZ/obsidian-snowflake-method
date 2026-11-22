@@ -1,4 +1,4 @@
-import type { MentionSource, WritingSessionScope } from '../src/domain';
+import type { DerivedTaskSources, MentionSource, WritingSessionScope } from '../src/domain';
 import type {
 	AnalysisConfig,
 	ModificationHistoryService,
@@ -30,6 +30,13 @@ export interface ApiHost {
 	roster(): Promise<{ active: ProjectRef[]; archived: ProjectRef[] }>;
 	/** The metadata note of the project the author last worked in, or null. */
 	currentProjectPath(): string | null;
+	/**
+	 * What the cards the plugin derives for the task board are worked out
+	 * from: the author's goal with how far the writing has come, and how
+	 * much is waiting in each place the board points at. `failed` says one
+	 * of them could not be read, and is told as nothing waiting there.
+	 */
+	derivedTaskSources(project: ProjectSnapshot): Promise<{ sources: DerivedTaskSources; failed: boolean }>;
 	/** The convention writing is counted by, as the author set it. */
 	countOptions(): NoteCountOptions;
 	/** The day it is on this computer's calendar, as `YYYY-MM-DD`: the day the author's own boards go by. */

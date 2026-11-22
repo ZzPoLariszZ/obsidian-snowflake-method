@@ -6020,6 +6020,7 @@ export default class SnowflakeMethodPlugin
 			countOptions: () => this.writingCountOptions(),
 			today: () => this.sessions.today(),
 			sessionScopes: () => ({ shown: this.settings.sessionScope, goal: this.settings.sessionDailyGoalScope }),
+			derivedTaskSources: (project) => this.deriveTaskSources(project),
 			analysisConfig: (project) => this.analysisConfigFor(project),
 			mentionSources: (project) => this.listWikilinkTargets(project.projectFile),
 			frequencyFilters: async (project) => ({

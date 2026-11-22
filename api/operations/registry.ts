@@ -1,3 +1,4 @@
+import { boardOperations } from './boards';
 import type { OperationGroup, OperationHandler } from './context';
 import { manuscriptOperations } from './manuscript';
 import { memberOperations } from './members';
@@ -20,6 +21,7 @@ const GROUPS: readonly OperationGroup[] = [
 	recordOperations,
 	statisticsOperations,
 	sessionOperations,
+	boardOperations,
 ];
 
 /**

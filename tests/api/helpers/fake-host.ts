@@ -4,6 +4,7 @@ import {
 	DEFAULT_STOPWORDS,
 	DIALOGUE_STYLE_TOKENS,
 	parseQuotePair,
+	type DerivedTaskSources,
 	type DialogueStyle,
 	type MentionSource,
 	type WritingSessionScope,
@@ -77,6 +78,12 @@ export interface FakeHost extends ApiHost {
 		/** The notes a session's words are shown in, and the ones the daily goal is set in. */
 		sessionScope: WritingSessionScope;
 		goalScope: WritingSessionScope;
+		/**
+		 * What the task board's derived cards are worked out from. The plugin
+		 * gathers this from its own screens' readings, which are not here to
+		 * be asked, so a test says what they would have found.
+		 */
+		derived: { sources: DerivedTaskSources; failed: boolean };
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -102,6 +109,21 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		stopwords: [],
 		sessionScope: 'project',
 		goalScope: 'manuscript',
+		derived: {
+			sources: {
+				dailyGoal: 0,
+				goalNet: { day: 0, week: 0, month: 0 },
+				daysInMonth: 31,
+				unresolvedMentions: 0,
+				sensitiveWords: 0,
+				openForeshadowings: 0,
+				unresolvedForeshadowings: 0,
+				pendingRevisions: 0,
+				unresolvedRevisions: 0,
+				stickyNotes: 0,
+			},
+			failed: false,
+		},
 		...start,
 	};
 	let release: (() => void) | null = null;
@@ -188,6 +210,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		countOptions: () => state.counting,
 		today: () => state.today,
 		sessionScopes: () => ({ shown: state.sessionScope, goal: state.goalScope }),
+		derivedTaskSources: () => Promise.resolve(state.derived),
 		analysisConfig: (project) =>
 			Promise.resolve({
 				sensitiveTerms: state.sensitiveWords,
