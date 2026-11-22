@@ -1,6 +1,8 @@
-import type { ChapterNumbering, DerivedTaskSources, MentionSource, ProjectLanguage, WritingSessionScope } from '../src/domain';
+import type { CanvasExportWords, ChapterNumbering, DerivedTaskSources, MentionSource, ProjectLanguage, WritingSessionScope } from '../src/domain';
 import type {
 	AnalysisConfig,
+	ImportReport,
+	ManuscriptExportOptions,
 	ModificationHistoryService,
 	NoteCountOptions,
 	ProjectRef,
@@ -111,6 +113,21 @@ export interface ApiHost {
 	 * to add, and would read the whole project again for every note written.
 	 */
 	asBatch<T>(run: () => Promise<T>): Promise<T>;
+	/**
+	 * One import from its first write to its last, as the plugin's own books
+	 * keep it: its tidying held off as for any batch, what it writes filed
+	 * in the history as the import's and named after where it came from,
+	 * and the screens told once it has landed.
+	 */
+	importing(run: () => Promise<ImportReport>): Promise<ImportReport>;
+	/**
+	 * How the author has the manuscript exported: the folder exports go
+	 * into, the kind of file, and how the text is laid out. A call that
+	 * leaves one of them out gets the author's own.
+	 */
+	exportDefaults(): ManuscriptExportOptions;
+	/** The words an exported canvas carries that no author wrote, in the project's language, as the boards themselves say them. */
+	canvasWords(project: ProjectSnapshot): CanvasExportWords;
 	/**
 	 * Whether Obsidian is set to ask the author before it rewrites the links
 	 * to a note that moved. While it is, nothing is renamed through the API.

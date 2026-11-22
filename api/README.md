@@ -91,29 +91,35 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Freeform steps.** `applyFreeformSteps` takes a list of steps and makes all of them or none. A step may give a new card, frame or line a name in `id`, so that a later step of the same call can speak of it. The name holds for that call alone. The answer says which id each was kept under.
 
+**Importing.** `inspectImport` says what another project of the vault has to bring, part by part, and `runImport` copies the parts named. Whatever a part cannot stand without comes with it. A link to a part that was not brought is dropped from the copy, and the answer says which. The other project is never changed.
+
+**Exporting.** `exportManuscript` writes plain text or Markdown into the folder the author keeps exports in, or a folder below it, and nowhere else. `exportCanvas` writes a canvas beside the board's own file. Neither writes over a file that already stands unless the call says `overwrite`.
+
+**Pictures.** `addGalleryPictures` takes pictures that already stand in the vault, each by its path, and copies them into the gallery folder of the note's kind. The API carries no picture's bytes. `removeGalleryPicture` sends a picture's file to the trash only where it stands in a gallery folder and no other note shows it.
+
 **Deleting.** A deleted note goes where the author's Obsidian sends deleted files. A deleted task, thread or revision cannot be brought back. A character, a scene or a worldbuilding note that other notes name is refused with what names it, unless the call says `force=true`. A project is never deleted here. `archiveProject` puts it away and `restoreProject` brings it back.
 
-**Reads that write.** A read changes nothing the author wrote. The plugin may still put three things right as it reads, as it does whenever it opens a project. A moved project has its link to the first manuscript note pointed at where that note stands. A record file that can no longer be read is set aside under a new name. Statistics and mentions are kept in a cache file of this device's own.
+**Reads that write.** A read changes nothing the author wrote. The plugin may still put three things right as it reads, as it does whenever it opens a project. A moved project has its link to the first manuscript note pointed at where that note stands. A record file that can no longer be read is set aside under a new name. Statistics and mentions are kept in a cache file of this device's own. `inspectImport` may put the plugin's record of earlier imports right where the two projects show it to be out of date.
 
 ## Operations
 
-147 operations are answered now: 57 read, 65 write and 25 delete. Later rounds are written into the contract and marked `planned`. A planned operation answers `501 planned-operation` and is left out of the document the API serves.
+153 operations are answered now: 58 read, 69 write and 26 delete. Later rounds are written into the contract and marked `planned`. A planned operation answers `501 planned-operation` and is left out of the document the API serves.
 
 A name marked ² needs the write level. A name marked ³ needs the delete level.
 
 | Group | Operations |
 | --- | --- |
 | Service | `getApiRoot`, `getReadiness`, `getOpenApiDocument` |
-| Projects | `listProjects`, `createProject` ², `getProject`, `updateProject` ², `getProjectHealth`, `archiveProject` ², `restoreProject` ², `repairProject` ², `repairProjectIssue` ², `migrateProjectNotes` ², `searchProject` |
+| Projects | `listProjects`, `createProject` ², `getProject`, `updateProject` ², `getProjectHealth`, `archiveProject` ², `restoreProject` ², `repairProject` ², `repairProjectIssue` ², `migrateProjectNotes` ², `searchProject`, `inspectImport`, `runImport` ² |
 | Steps | `listSteps`, `getStep`, `setStepStatus` ², `getStepText`, `updateStepText` ² |
 | Kinds | `listKinds`, `createKind` ², `getKind`, `updateKind` ², `deleteKind` ³ |
-| Members | `listMembers`, `getMemberUsage` |
+| Members | `listMembers`, `getMemberUsage`, `addGalleryPictures` ², `removeGalleryPicture` ³ |
 | Characters | `listCharacters`, `createCharacter` ², `getCharacter`, `updateCharacter` ², `deleteCharacter` ³, `moveCharacter` ² |
 | Scenes | `listScenes`, `createScene` ², `getScene`, `updateScene` ², `deleteScene` ³, `moveScene` ² |
 | Entities | `listEntities`, `createEntity` ², `getEntity`, `updateEntity` ², `deleteEntity` ³, `moveEntity` ² |
 | Vocabularies | `getVocabulary`, `getVocabularyTree`, `getDefinitionNode`, `createDefinitionNode` ², `updateDefinitionNode` ², `deleteDefinitionNode` ³ |
 | Field templates | `listFieldTemplates`, `createFieldTemplate` ², `getFieldTemplate`, `updateFieldTemplate` ², `deleteFieldTemplate` ³ |
-| Manuscript | `getManuscript`, `listManuscriptNotes`, `getManuscriptNote`, `planManuscriptNumbering`, `createManuscriptNote` ², `writeManuscriptNoteBody` ², `appendManuscriptNoteBody` ², `renameManuscriptNote` ², `moveManuscriptNote` ², `splitManuscriptNote` ², `mergeManuscriptNoteWithNext` ², `deleteManuscriptNote` ³, `replaceInProject` ² |
+| Manuscript | `getManuscript`, `listManuscriptNotes`, `getManuscriptNote`, `planManuscriptNumbering`, `createManuscriptNote` ², `writeManuscriptNoteBody` ², `appendManuscriptNoteBody` ², `renameManuscriptNote` ², `moveManuscriptNote` ², `splitManuscriptNote` ², `mergeManuscriptNoteWithNext` ², `deleteManuscriptNote` ³, `replaceInProject` ², `exportManuscript` ² |
 | Tasks | `listTasks`, `getTask`, `listDerivedTasks`, `createTask` ², `updateTask` ², `moveTask` ², `deleteTask` ³, `purgeArchivedTasks` ³ |
 | Foreshadowing | `listForeshadowing`, `getForeshadowing`, `createForeshadowing` ², `updateForeshadowing` ², `addForeshadowingOccurrence` ², `updateForeshadowingOccurrence` ², `deleteForeshadowingOccurrence` ³, `deleteForeshadowing` ³ |
 | Revisions | `listRevisions`, `getRevision`, `createRevision` ², `updateRevision` ², `acceptRevision` ², `discardRevision` ³ |
@@ -124,14 +130,13 @@ A name marked ² needs the write level. A name marked ³ needs the delete level.
 | History | `getHistory` |
 | Timeline | `getTimeline`, `createTimeline` ², `updateTimeline` ², `deleteTimeline` ³, `addTimelineTime` ², `removeTimelineTime` ³, `addTimelineRow` ², `updateTimelineRow` ², `deleteTimelineRow` ³, `placeTimelineScene` ², `removeTimelineScene` ³, `createTimelineView` ², `updateTimelineView` ², `deleteTimelineView` ³ |
 | Beat sheets | `listBeatSheets`, `getBeatSheet`, `createBeatSheet` ², `updateBeatSheet` ², `deleteBeatSheet` ³, `addBeatSheetAct` ², `updateBeatSheetAct` ², `deleteBeatSheetAct` ³, `addBeat` ², `updateBeat` ², `deleteBeat` ³, `addBeatRow` ², `updateBeatRow` ², `deleteBeatRow` ³, `placeBeatSheetScene` ², `removeBeatSheetScene` ³, `listBeatSheetTemplates`, `saveBeatSheetTemplate` ², `deleteBeatSheetTemplate` ³ |
-| Freeform | `listFreeformViews`, `getFreeformView`, `createFreeformView` ², `updateFreeformView` ², `deleteFreeformView` ³, `applyFreeformSteps` ² |
+| Freeform | `listFreeformViews`, `getFreeformView`, `createFreeformView` ², `updateFreeformView` ², `deleteFreeformView` ³, `applyFreeformSteps` ², `exportCanvas` ² |
 | Relationship graph | `getRelationshipGraph` |
 
 ### Planned
 
 | Round | What it adds | Operations |
 | --- | --- | --- |
-| 4 | Transfer | `inspectImport`, `runImport`, `exportManuscript`, `exportCanvas`, `addGalleryPictures`, `removeGalleryPicture` |
 | 5 | Environment | `getSettings`, `updateSettings`, `startWritingSession`, `stopWritingSession`, `listMentionIgnores`, `addMentionIgnore`, `removeMentionIgnore` |
 
 Each operation also carries a tier in `x-snowflake-tier`: `core`, `extended` or `advanced`. A client that offers a short list of tools can start with the core ones.

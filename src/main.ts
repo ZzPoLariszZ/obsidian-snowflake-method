@@ -6105,6 +6105,17 @@ export default class SnowflakeMethodPlugin
 			leaving: () => this.unloading || this.pageLeaving,
 			asPlugin: (run) => this.history.asPlugin(() => this.projects.repository.unattended(run)),
 			asBatch: (run) => this.withoutFieldsReconcile(run),
+			importing: async (run) => {
+				const report = await this.importAsOneRun(run);
+				this.invalidateProjectHealth(report.target.projectFile);
+				this.invalidateProjectDiscovery();
+				void this.refreshDashboards({ streams: true }).catch((error: unknown) => {
+					console.error('Snowflake: the screens could not follow an import made through the local API', error);
+				});
+				return report;
+			},
+			exportDefaults: () => this.exportOptions(),
+			canvasWords: (project) => this.canvasExportWords((key, vars) => this.translateForProject(project.locale, key, vars)),
 			asksBeforeLinkUpdates: () => this.obsidianAsksBeforeLinkUpdates(),
 			settleNotes: (paths) => this.settleNotesForWriter(paths),
 			releaseNotes: (paths) => this.releaseNotesForWriter(paths),

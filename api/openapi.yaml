@@ -4573,13 +4573,18 @@ paths:
       summary: See what another project could bring in
       description: |
         Looks at another project of the vault and says what of it could be
-        copied into this one: its characters, scenes, worldbuilding, vocabulary,
-        manuscript and boards, each with what stands in the way. Nothing is
-        written.
+        copied into this one: its steps, characters, scenes, worldbuilding,
+        vocabulary, field templates, pictures, manuscript, records and boards.
+        Each part is told with how it stands here already: new, a namesake, or a
+        copy brought before that is unchanged, updated there or changed here.
+
+        Nothing of either project's notes is written. The plugin may put its own
+        record of earlier imports right where the two projects show it to be out
+        of date.
       x-snowflake-access: read
-      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-availability: { status: available, round: 4 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, import-refused]
       requestBody:
         required: true
         content:
@@ -4604,13 +4609,17 @@ paths:
       tags: [Projects]
       summary: Copy things in from another project
       description: |
-        Copies what is chosen from another project of the vault into this
-        one. The other project is left as it was. The answer says what was
-        brought, what was left and why.
+        Copies the parts named from another project of the vault into this
+        one. The other project is left as it was. Whatever a part cannot stand
+        without comes with it. The answer says what was brought, what was left
+        and why, and which links a copy could not keep.
+
+        A part that fails is told under `failed`, and the rest go on. What lands
+        is filed in the history as imported from the other project.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-availability: { status: available, round: 4 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, import-refused]
       requestBody:
         required: true
         content:
@@ -4635,11 +4644,15 @@ paths:
       tags: [Manuscript]
       summary: Export the manuscript to a file
       description: |
-        Writes the manuscript, or some of its notes, into one Markdown file
-        or one per note, in a folder of the vault outside the manuscript. The
-        manuscript itself is not changed.
+        Writes the manuscript, or one of its notes, as plain text or
+        Markdown into the folder the author keeps exports in, or a folder below
+        it. What the call leaves out is taken from the author's own export
+        settings. The manuscript itself is not changed.
+
+        A file that already stands where one would be written is left alone and
+        the call refused, unless it says `overwrite`.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-availability: { status: available, round: 4 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
       requestBody:
@@ -4666,13 +4679,15 @@ paths:
       tags: [Freeform]
       summary: Export a board as an Obsidian canvas
       description: |
-        Writes a freeform view, a timeline view or a beat sheet as a
-        canvas file Obsidian opens by itself. A canvas already exported from the
-        same board is brought up to date.
+        Writes a freeform view, a view of the timelines or a beat sheet as
+        a canvas file Obsidian opens by itself, beside the board's own file
+        inside the project. A canvas that says the same already is left as it
+        is, however the author has laid it out since. One that says something
+        else is written over only where the call says `overwrite`.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-availability: { status: available, round: 4 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, path-conflict]
       requestBody:
         required: true
         content:
@@ -4700,12 +4715,14 @@ paths:
       description: |
         Puts pictures that already stand in the vault into the gallery of
         a character, a scene or a worldbuilding note. Each is named by its path
-        in the vault. Put a picture into the vault first, with Obsidian's own
-        command line or any other way.
+        in the vault and is copied into the gallery folder of the note's kind. A
+        picture that already stands in that folder is linked where it is. Put a
+        picture into the vault first, with Obsidian's own command line or any
+        other way.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-availability: { status: available, round: 4 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
         required: true
         content:
@@ -4714,7 +4731,7 @@ paths:
               $ref: "#/components/schemas/GalleryAdd"
       responses:
         "200":
-          description: The gallery as it now stands, each picture by its path.
+          description: The gallery as it now stands.
           content:
             application/json:
               schema:
@@ -4733,9 +4750,11 @@ paths:
       summary: Take a picture out of a note's gallery
       description: |
         Takes one picture out of a note's gallery, and sends its file to
-        the trash where no other note shows it.
+        the trash where it stands in a gallery folder and no other note shows
+        it. A picture that stands elsewhere in the vault is only taken off the
+        gallery.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-availability: { status: available, round: 4 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -10476,119 +10495,208 @@ components:
       properties:
         sourceProjectId:
           type: string
-          description: The `id` of the project to bring things in from.
+          minLength: 1
+          description: The `id` of the project to bring things in from. An archived project can be one.
 
     ImportInspection:
       type: object
       description: What another project holds that this one could take.
-      required: [source, groups]
+      required: [source, parts, gone]
       additionalProperties: false
       properties:
         source:
           $ref: "#/components/schemas/ProjectSummary"
-        groups:
+        parts:
           type: array
+          description: Everything the other project has to bring, in the order its own screens list it.
+          items:
+            $ref: "#/components/schemas/ImportPart"
+        gone:
+          type: array
+          description: Copies brought before whose part the other project no longer has.
           items:
             type: object
-            required: [group, items]
+            required: [kind, name, path]
             additionalProperties: false
             properties:
-              group:
+              kind:
                 type: string
-                description: "`characters`, `scenes`, a worldbuilding kind, `vocabulary`, `manuscript`, `timeline`, `beat-sheets`, `freeform`, `tasks`, `foreshadowing` or `sticky-notes`."
-              items:
-                type: array
-                items:
-                  type: object
-                  required: [id, name, state]
-                  additionalProperties: false
-                  properties:
-                    id:
-                      type: string
-                    name:
-                      type: string
-                    state:
-                      type: string
-                      enum: [new, same-name, already-imported]
-                      description: Whether this project has nothing like it, has one of the same name, or took this very one before.
+              name:
+                type: string
+              path:
+                type: [string, "null"]
 
     ImportRun:
       type: object
-      required: [sourceProjectId, items]
+      required: [sourceProjectId, parts]
       additionalProperties: false
       properties:
         sourceProjectId:
           type: string
-        items:
+          minLength: 1
+        parts:
           type: array
-          description: What to bring, each by the `id` the inspection gave.
+          description: What to bring, each by the `key` the inspection gave.
           minItems: 1
           items:
             type: string
-        onSameName:
+        onClash:
           type: string
-          enum: [skip, rename]
+          enum: [skip, replace]
           default: skip
-          description: What to do where this project already has one of the same name.
+          description: What to do where this project already has the part. `skip` leaves what stands. `replace` writes the other project's over a copy brought before.
 
     ImportReport:
       type: object
-      required: [imported, skipped, failed]
+      required: [source, created, replaced, skipped, failed, droppedLinks, pictures, kindsCreated]
       additionalProperties: false
       properties:
-        imported:
+        source:
+          type: object
+          required: [id, title]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+        created:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportReportItem"
+        replaced:
           type: array
           items:
             $ref: "#/components/schemas/ImportReportItem"
         skipped:
           type: array
           items:
-            $ref: "#/components/schemas/ImportReportItem"
+            type: object
+            required: [key, kind, name, targetName, path, reason]
+            additionalProperties: false
+            properties:
+              key:
+                type: string
+              kind:
+                type: string
+              name:
+                type: string
+                description: What it is called in the project it comes from.
+              targetName:
+                type: string
+                description: What its copy is called here.
+              path:
+                type: [string, "null"]
+                description: Where its copy stands in the vault, for what is kept as a note or a file.
+              reason:
+                type: string
+                enum: [name-taken, file-name-taken, unchanged, no-chapter]
+                description: "`no-chapter` for a mark whose manuscript note was not brought."
         failed:
           type: array
           items:
-            $ref: "#/components/schemas/ImportReportItem"
+            type: object
+            required: [key, kind, name, targetName, path, detail]
+            additionalProperties: false
+            properties:
+              key:
+                type: string
+              kind:
+                type: string
+              name:
+                type: string
+                description: What it is called in the project it comes from.
+              targetName:
+                type: string
+                description: What its copy is called here.
+              path:
+                type: [string, "null"]
+                description: Where its copy stands in the vault, for what is kept as a note or a file.
+              detail:
+                type: string
+                description: What went wrong, as the plugin's own report tells the author.
+        droppedLinks:
+          type: array
+          description: Links a copy could not keep, because what they point at was not brought.
+          items:
+            type: object
+            required: [owner, field, target]
+            additionalProperties: false
+            properties:
+              owner:
+                $ref: "#/components/schemas/ImportReportItem"
+              field:
+                type: string
+              target:
+                type: string
+                description: What the link named in the other project.
+        pictures:
+          type: object
+          required: [landed, reused]
+          additionalProperties: false
+          properties:
+            landed:
+              type: integer
+            reused:
+              type: integer
+        kindsCreated:
+          type: array
+          description: Kinds of worldbuilding this project was given so their notes could be brought.
+          items:
+            type: string
 
     ImportReportItem:
       type: object
-      required: [id, name, group]
+      required: [key, kind, name, targetName, path]
       additionalProperties: false
       properties:
-        id:
+        key:
+          type: string
+        kind:
           type: string
         name:
           type: string
-        group:
+          description: What it is called in the project it comes from.
+        targetName:
           type: string
-        reason:
-          type: string
-          description: Why it was left or could not be brought. Absent for what was brought.
+          description: What its copy is called here.
         path:
           type: [string, "null"]
-          description: Where it now stands in the vault, for what was brought as a note.
+          description: Where its copy stands in the vault, for what is kept as a note or a file.
 
     ManuscriptExport:
       type: object
-      required: [folder]
+      description: What to export and how. Everything left out is as the author has it in the plugin's settings.
       additionalProperties: false
       properties:
+        note:
+          type: string
+          description: One manuscript note to export, by its `relativePath`. Left out, the whole manuscript.
         folder:
           type: string
-          description: The folder to write into, as a path in the vault. It may not be the manuscript's own folder.
-        notes:
-          type: array
-          description: The notes to export, each by its `relativePath`. Left out, the whole manuscript.
-          items:
-            type: string
+          description: A folder below the author's export folder to write into, named from inside it. Left out, the export folder itself.
+        format:
+          type: string
+          enum: [md, txt]
+          description: The ending of the files' names. The text is the same in both.
         layout:
           type: string
-          enum: [one-file, one-per-note]
-          default: one-file
-        headings:
+          enum: [single, folder]
+          description: One file for the whole manuscript, or one file a note in a folder.
+        separator:
           type: string
-          enum: [keep, from-titles, none]
-          default: keep
-          description: Whether each note's own heading is kept, replaced by its title, or left out.
+          enum: [blank, rule, asterisks]
+          description: What stands between two notes in a single file.
+        indent:
+          type: boolean
+          description: Whether each paragraph begins with the indent of the project's language.
+        paragraphSpacing:
+          type: boolean
+          description: Whether the blank lines between paragraphs are kept.
+        overwrite:
+          type: boolean
+          default: false
+          description: Whether a file that already stands is written over.
 
     CanvasExport:
       type: object
@@ -10600,11 +10708,15 @@ components:
           enum: [freeform, timeline, beat-sheet]
         id:
           type: string
-          description: The `id` of the freeform view, the timeline view or the beat sheet.
+          description: The `id` of the freeform view, the view of the timelines or the beat sheet.
+        overwrite:
+          type: boolean
+          default: false
+          description: Whether a canvas that stands there and says something else is written over.
 
     ExportResult:
       type: object
-      required: [written]
+      required: [written, unchanged]
       additionalProperties: false
       properties:
         written:
@@ -10614,7 +10726,7 @@ components:
             type: string
         unchanged:
           type: array
-          description: Files that already said what would have been written.
+          description: Files that already said what would have been written, and were left as they are.
           items:
             type: string
 
@@ -10626,24 +10738,41 @@ components:
         paths:
           type: array
           minItems: 1
+          maxItems: 50
           description: Pictures already in the vault, each by its path there.
           items:
             type: string
-        move:
-          type: boolean
-          default: false
-          description: Whether each picture is moved into the gallery's folder. Left false, it is copied.
+        main:
+          type: string
+          description: The picture a card shows for the note, by its path. One of those sent, or one the gallery has.
 
     Gallery:
       type: object
-      required: [member, pictures]
+      required: [member, pictures, untrashed]
       additionalProperties: false
       properties:
         member:
           $ref: "#/components/schemas/MemberRef"
         pictures:
           type: array
-          description: The pictures of the gallery in the author's order, each by its path in the vault.
+          description: The pictures of the gallery, in the author's order.
+          items:
+            type: object
+            required: [link, path, main]
+            additionalProperties: false
+            properties:
+              link:
+                type: string
+                description: The link as the note keeps it.
+              path:
+                type: [string, "null"]
+                description: Where the picture stands in the vault now. Null where its file is gone.
+              main:
+                type: boolean
+                description: Whether this is the picture a card shows for the note.
+        untrashed:
+          type: array
+          description: Pictures taken off that could not be sent to the trash, each by its file's name. They stand where they were.
           items:
             type: string
 
@@ -10832,6 +10961,53 @@ components:
                 type: [string, "null"]
                 description: The name the call gave it, where it gave one.
 
+    ImportPart:
+      type: object
+      description: One thing a project has to bring.
+      required: [key, kind, name, group, selectedByDefault, requires, links, state, target]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          description: What `runImport` names the part by.
+        kind:
+          type: string
+          description: "`step`, `character`, `scene`, `worldbuilding`, `vocabulary`, `custom-field-template`, `picture`, `chapter`, `task`, `foreshadowing`, `revision`, `sticky-note`, `freeform-view`, `timeline`, `beat-sheet` or `beat-sheet-template`."
+        name:
+          type: string
+        group:
+          type: [string, "null"]
+          description: "`character`, `scene` or the worldbuilding kind the part belongs to. Null for the rest."
+        selectedByDefault:
+          type: boolean
+          description: Whether the plugin's own dialog has it ticked from the start. The manuscript and what is marked in it are not.
+        requires:
+          type: array
+          description: Parts brought along whenever this one is, each by its `key`.
+          items:
+            type: string
+        links:
+          type: array
+          description: Parts this one points at, each by its `key`. A link to a part that is not brought is dropped from the copy.
+          items:
+            type: string
+        state:
+          type: string
+          enum: [new, existing, unchanged, update, conflict]
+          description: "`new` where this project has nothing like it. `existing` for a namesake that was not brought from there. For a copy brought before: `unchanged`, `update` where the other project changed it since, `conflict` where this one did."
+        target:
+          description: What stands here already, for every state but `new`.
+          oneOf:
+            - type: object
+              required: [name, path]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                path:
+                  type: [string, "null"]
+            - type: "null"
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -10956,6 +11132,9 @@ x-snowflake-problems:
   view-full:
     status: 409
     title: The view has no room for that.
+  import-refused:
+    status: 409
+    title: Nothing can be brought in between these two projects.
   internal-error:
     status: 500
     title: The operation failed.

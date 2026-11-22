@@ -192,6 +192,20 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 		of: 'project',
 		send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, sceneId: golden.members.stops.sceneId } }),
 	},
+	runImport: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId }, body: { sourceProjectId: golden.chinese.id, parts: ['step:1'] } }),
+	},
+	exportManuscript: { of: 'project', send: (projectId) => ({ params: { projectId }, body: {} }) },
+	exportCanvas: { of: 'project', send: (projectId, golden) => ({ params: { projectId }, body: { board: 'freeform', id: boardsOf(golden).canvas } }) },
+	addGalleryPictures: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, memberId: golden.members.ada.characterId }, body: { paths: ['Pictures/ada.png'] } }),
+	},
+	removeGalleryPicture: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, memberId: golden.members.ada.characterId, picturePath: 'Pictures/ada.png' } }),
+	},
 	createFreeformView: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'Second board' } }) },
 	updateFreeformView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).canvas }, body: { name: 'Cast board' } }) },
 	deleteFreeformView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).spareCanvas } }) },

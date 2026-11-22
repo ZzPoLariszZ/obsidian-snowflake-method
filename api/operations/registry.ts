@@ -15,6 +15,7 @@ import { statisticsOperations } from './statistics';
 import { stepOperations } from './steps';
 import { systemOperations } from './system';
 import { timelineWriteOperations } from './timeline-writes';
+import { transferOperations } from './transfer';
 import { vocabularyOperations } from './vocabularies';
 
 /** Every group of handlers this build carries. */
@@ -36,6 +37,7 @@ const GROUPS: readonly OperationGroup[] = [
 	timelineWriteOperations,
 	beatSheetWriteOperations,
 	freeformWriteOperations,
+	transferOperations,
 ];
 
 /**

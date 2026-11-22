@@ -18,6 +18,7 @@ import {
 	entitiesOf,
 	isStickyNotePath,
 	toWikiLink,
+	type ManuscriptExportOptions,
 	type NoteCountOptions,
 	type ProjectSnapshot,
 } from '../../../src/services';
@@ -91,6 +92,8 @@ export interface FakeHost extends ApiHost {
 		numbering: ChapterNumberingSettings;
 		/** Whether Obsidian is set to ask before it updates the links to a note that moved. */
 		asksAboutLinks: boolean;
+		/** How the author has the manuscript exported. */
+		exporting: ManuscriptExportOptions;
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -143,6 +146,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		goalScope: 'manuscript',
 		numbering: { style: 'english', rules: [] },
 		asksAboutLinks: false,
+		exporting: { folder: 'Snowflake Projects/Snowflake Export', format: 'txt', indent: true, paragraphSpacing: false, layout: 'single', separator: 'blank' },
 		derived: {
 			sources: {
 				dailyGoal: 0,
@@ -296,6 +300,28 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 			host.batches += 1;
 			return run();
 		},
+		importing: async (run) => {
+			host.batches += 1;
+			history.beginImport();
+			let landed: Awaited<ReturnType<typeof run>> | null = null;
+			try {
+				landed = await run();
+				return landed;
+			} finally {
+				history.endImport(landed);
+			}
+		},
+		exportDefaults: () => state.exporting,
+		// The words as the English boards say them, near enough for a test to tell them from an author's.
+		canvasWords: () => ({
+			missing: (of, kind) => `Missing ${of === 'entity' ? kind : of}`,
+			lastSeen: (name) => `Last seen as ${name}`,
+			recordKind: (type) => type,
+			missingScene: 'Missing scene',
+			missingTime: 'Missing time',
+			untitledBeat: 'Untitled beat',
+			actTitle: (number, label) => (label.length === 0 ? `Act ${String(number)}` : `Act ${String(number)}: ${label}`),
+		}),
 		asksBeforeLinkUpdates: () => state.asksAboutLinks,
 		settleNotes: async (paths) => {
 			editors.push(`settle ${paths.join(', ')}`);
