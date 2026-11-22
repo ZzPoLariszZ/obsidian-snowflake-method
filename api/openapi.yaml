@@ -4660,6 +4660,10 @@ paths:
 
         A file that already stands where one would be written is left alone and
         the call refused, unless it says `overwrite`.
+
+        Nothing is written into the folder of a project, this one or another.
+        The files go under the project's own name, so a `folder` that holds
+        the projects themselves is refused where a file would land in one.
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 4 }
       x-snowflake-tier: advanced

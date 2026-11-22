@@ -93,7 +93,7 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Importing.** `inspectImport` says what another project of the vault has to bring, part by part, and `runImport` copies the parts named. Whatever a part cannot stand without comes with it. A link to a part that was not brought is dropped from the copy, and the answer says which. The other project is never changed.
 
-**Exporting.** `exportManuscript` writes plain text or Markdown into the folder the author keeps exports in, or a folder below it, and nowhere else. `exportCanvas` writes a canvas beside the board's own file. Neither writes over a file that already stands unless the call says `overwrite`.
+**Exporting.** `exportManuscript` writes plain text or Markdown into the folder the author keeps exports in, or a folder below it, and nowhere else. It writes nothing into the folder of a project, this one or another. `exportCanvas` writes a canvas beside the board's own file. Neither writes over a file that already stands unless the call says `overwrite`.
 
 **Pictures.** `addGalleryPictures` takes pictures that already stand in the vault, each by its path, and copies them into the gallery folder of the note's kind. The API carries no picture's bytes. `removeGalleryPicture` sends a picture's file to the trash only where it stands in a gallery folder and no other note shows it.
 

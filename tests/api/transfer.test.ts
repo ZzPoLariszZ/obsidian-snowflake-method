@@ -162,6 +162,48 @@ describe('the manuscript written out to a file', () => {
 	});
 });
 
+describe('an export kept out of the projects', () => {
+	const text = (golden: Golden, path: string): string => golden.host.environment.fakeVault.contents.get(path) ?? '';
+
+	it('writes nothing into the folder of a project, this one or another, however the folder is named', async () => {
+		const golden = await createGolden();
+		const P = { projectId: golden.project.id };
+		await sequel(golden);
+		// The author keeps exports at the top of the vault, which holds the projects' own folder too.
+		golden.host.state.exporting = { ...golden.host.state.exporting, folder: '/' };
+		const before = vaultState(golden.host);
+		const project = golden.project.rootPath;
+		expect(project).toBe('Snowflake Projects/North Wind');
+		// Under the projects' folder a note's file would land in this project's own folder, which bears its name.
+		for (const body of [
+			{ folder: 'Snowflake Projects', note: FIRST, format: 'md', overwrite: true },
+			{ folder: 'Snowflake Projects', layout: 'folder', overwrite: true },
+			{ folder: 'snowflake projects', layout: 'folder' },
+			// And under another project's folder it would stand among that project's notes.
+			{ folder: 'Snowflake Projects/East Wind', overwrite: true },
+			{ folder: 'Snowflake Projects/East Wind/50_Manuscript', note: FIRST },
+		]) {
+			const refused = await golden.call('exportManuscript', P, { body });
+			expect([refusal(refused), faults(refused)], JSON.stringify(body)).toEqual([[400, 'invalid-request'], []]);
+			expect(JSON.stringify(refused.body), JSON.stringify(body)).toContain('/folder');
+		}
+		expect(vaultState(golden.host)).toEqual(before);
+		// Beside the projects, and in a folder that holds none, it is written as ever.
+		expect(await ok(golden, 'exportManuscript', P, { folder: 'Snowflake Projects' })).toEqual({ written: ['Snowflake Projects/North Wind.txt'], unchanged: [] });
+		expect(await ok(golden, 'exportManuscript', P, { folder: 'Out', note: FIRST })).toEqual({ written: ['Out/North Wind/Chapter 1.txt'], unchanged: [] });
+		expect(text(golden, 'Out/North Wind/Chapter 1.txt')).toContain('The clock stopped at midnight.');
+	});
+
+	it('holds the author’s own export folder to the same, where it is the projects’ folder', async () => {
+		const golden = await createGolden();
+		const P = { projectId: golden.project.id };
+		golden.host.state.exporting = { ...golden.host.state.exporting, folder: 'Snowflake Projects', layout: 'folder' };
+		const before = vaultState(golden.host);
+		expect(refusal(await golden.call('exportManuscript', P, { body: {} }))).toEqual([400, 'invalid-request']);
+		expect(vaultState(golden.host)).toEqual(before);
+	});
+});
+
 describe('a board written out as a canvas', () => {
 	it('is written beside the board’s own file, left alone where it says the same, and written over only when asked', async () => {
 		const golden = await createGolden();

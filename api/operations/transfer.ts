@@ -120,6 +120,12 @@ function folderOf(folder: string): string {
 	return trimmed.length === 0 || /^\/+$/u.test(trimmed) ? '' : normalizePath(trimmed);
 }
 
+/** Whether a path stands in a folder or below it, whatever the case of either: a disk may tell `Novels` and `novels` apart or not. */
+const within = (path: string, folder: string): boolean => {
+	const [at, root] = [path.toLowerCase(), folder.toLowerCase()];
+	return at === root || at.startsWith(`${root}/`);
+};
+
 const standsThere = (paths: readonly string[]): ApiError =>
 	new ApiError('path-conflict', 'A file already stands where this would be written. Send overwrite to write over it.', {
 		path: paths[0] ?? '',
@@ -254,6 +260,19 @@ export const transferOperations: OperationGroup = {
 			}
 			if (error instanceof ExportOverSourceError) throw misfit('/note', 'The export of that note would be written over the note itself.');
 			throw error;
+		}
+		// The author may keep exports beside the projects or above them, and a folder below theirs can then
+		// be one a project stands in. The folder alone does not say where the files go: they are written
+		// under the project's own name, which is the name of its folder. So each file is held to where it
+		// would land, and none lands in a project's folder, this project's or another's. A project that
+		// stands at the top of the vault has no folder of its own to be kept out of.
+		const roster = await context.host.roster();
+		const roots = [...roster.active, ...roster.archived].map((ref) => ref.rootPath).filter((folder) => folder.length > 0);
+		if (plan.targets.some((target) => roots.some((folder) => within(target.path, folder)))) {
+			throw misfit(
+				'/folder',
+				'The files would be written into the folder of a project, this one or another, where they would stand among its notes or over them. Name a folder no project stands in.',
+			);
 		}
 		const standing = plan.targets.filter((target) => target.exists).map((target) => target.path);
 		if (standing.length > 0 && body['overwrite'] !== true) throw standsThere(standing);
