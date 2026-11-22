@@ -2717,9 +2717,11 @@ paths:
       summary: Create a beat sheet
       description: |
         Starts a beat sheet from one of the templates, the plugin's own or
-        the author's, with its acts and beats laid out and no scene placed.
+        the author's, with its acts and beats laid out and no scene placed. The
+        plugin's own templates are worded in the project's language. The author
+        is left looking at the sheet they were looking at.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
       requestBody:
@@ -2773,7 +2775,7 @@ paths:
         Changes a beat sheet's name and how it is drawn. Its acts, beats
         and rows are changed by operations of their own.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
       requestBody:
@@ -2799,7 +2801,7 @@ paths:
         Takes a beat sheet away with its acts, beats and rows. The scenes
         it placed are notes of their own, and stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -2841,7 +2843,7 @@ paths:
         author's own, to start other sheets from. A template of that name is
         replaced.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       requestBody:
@@ -2892,7 +2894,7 @@ paths:
         Makes a view with nothing on it yet, under a name no other view of
         the project has.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
       requestBody:
@@ -2946,7 +2948,7 @@ paths:
         Gives a view another name. What stands on it is changed with
         `applyFreeformSteps`.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
       requestBody:
@@ -2972,7 +2974,7 @@ paths:
         Sends a view to the trash with everything on it. What its cards
         show are things of their own, and stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -3866,12 +3868,16 @@ paths:
       tags: [Timeline]
       summary: Create a timeline
       description: |
-        Starts a timeline with no times on it yet. It may be bound to one
-        character or one place, whose story it then tells.
+        Starts a timeline with no times on it yet, under a name no other
+        timeline of the project has. It may be bound to one character, one place
+        or another note of the world, whose story it then tells.
+
+        A timeline is seen through a view. Unless the call says which, the new
+        one joins the view the author last looked at, or the board's first.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, duplicate-name]
       requestBody:
         required: true
         content:
@@ -3898,11 +3904,12 @@ paths:
       summary: Change a timeline
       description: |
         Changes a timeline's name, what it is bound to, and whether it is
-        the one pinned to the top of the board.
+        the one pinned to the top of the board. Only one timeline is pinned, so
+        pinning this one takes the pin off another.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, duplicate-name]
       requestBody:
         required: true
         content:
@@ -3926,7 +3933,7 @@ paths:
         Takes a timeline off the board with its rows. The times and the
         scenes it placed are notes of their own, and stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -3948,7 +3955,7 @@ paths:
         Gives a timeline a place for one of the project's time notes, so
         that rows can be written under it. A time already there is left as it is.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       responses:
@@ -3968,7 +3975,7 @@ paths:
         Takes a time off a timeline with the rows written under it. The
         time note itself stands.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -3990,10 +3997,12 @@ paths:
       tags: [Timeline]
       summary: Add a row to a timeline
       description: |
-        Writes a row under one of a timeline's times: a line of the
-        author's own, with the scenes that happen then.
+        Writes a row under one of the project's time notes: a line of the
+        author's own, with the scenes that happen then. A time the timeline does
+        not have yet joins it. A scene stands in one row of a timeline at most,
+        so one already placed is moved.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4004,11 +4013,11 @@ paths:
               $ref: "#/components/schemas/TimelineRowCreate"
       responses:
         "201":
-          description: The timeline as it now stands.
+          description: The row that was made, by its id, and the timeline as it now stands.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Timeline"
+                $ref: "#/components/schemas/TimelineRowCreated"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -4022,10 +4031,11 @@ paths:
       tags: [Timeline]
       summary: Change a row of a timeline
       description: |
-        Changes what a row says, or moves it: under another time, or
-        before another row of its time.
+        Changes what a row says, or moves it with its scenes: under another
+        time, or before another row of its time. Sent with `before` as null, it
+        goes to the end.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4051,7 +4061,7 @@ paths:
         Takes a row off a timeline. The scenes it placed are notes of
         their own, and stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4077,7 +4087,7 @@ paths:
         Puts a scene in a row of a timeline. A scene stands in one row of
         a timeline at most, so one already placed is moved.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4103,7 +4113,7 @@ paths:
         Takes a scene out of the row it stands in. The scene note itself
         stands.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4124,12 +4134,14 @@ paths:
       tags: [Timeline]
       summary: Create a view of the timelines
       description: |
-        Makes a view: some of the timelines side by side, in an order, with
-        the look the author reads them in.
+        Makes a view under a name no other view has: some of the timelines
+        side by side, in an order. How its scenes are drawn is changed with
+        `updateTimelineView`. The author is left looking at the view they were
+        looking at.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, duplicate-name]
       requestBody:
         required: true
         content:
@@ -4138,11 +4150,11 @@ paths:
               $ref: "#/components/schemas/TimelineViewCreate"
       responses:
         "201":
-          description: The board with the view on it.
+          description: The view that was made, by its id, and the board with it on.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TimelineBoard"
+                $ref: "#/components/schemas/TimelineViewCreated"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -4158,9 +4170,9 @@ paths:
         Changes a view's name, the timelines it shows and their order,
         the order of its times, and how its scenes are drawn.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, duplicate-name]
       requestBody:
         required: true
         content:
@@ -4184,7 +4196,7 @@ paths:
         Takes a view away. The timelines it showed are no part of it, and
         stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4205,7 +4217,7 @@ paths:
         Adds an act with no beats yet, before another act or at the end.
         The acts are numbered by where they stand.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4216,11 +4228,11 @@ paths:
               $ref: "#/components/schemas/ActCreate"
       responses:
         "201":
-          description: The beat sheet as it now stands.
+          description: The act that was made, by its id, and the beat sheet as it now stands.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BeatSheet"
+                $ref: "#/components/schemas/BeatSheetPartCreated"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -4237,7 +4249,7 @@ paths:
         Changes an act's label, or moves it before another act.
         Its beats go with it.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4263,7 +4275,7 @@ paths:
         Takes an act away with its beats and their rows. The scenes they
         placed stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4288,7 +4300,7 @@ paths:
         Adds a beat to an act, with a name and what it is for, before
         another beat of the act or at its end.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4299,11 +4311,11 @@ paths:
               $ref: "#/components/schemas/BeatCreate"
       responses:
         "201":
-          description: The beat sheet as it now stands.
+          description: The beat that was made, by its id, and the beat sheet as it now stands.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BeatSheet"
+                $ref: "#/components/schemas/BeatSheetPartCreated"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -4320,7 +4332,7 @@ paths:
         Changes a beat's name and what it is for, or moves it: into
         another act, or before another beat.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4346,7 +4358,7 @@ paths:
         Takes a beat away with its rows. The scenes they placed stand.
         The act it stood in stands too.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4371,7 +4383,7 @@ paths:
         Writes a row under a beat: a line of the author's own, with the
         scenes that carry the beat.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4382,11 +4394,11 @@ paths:
               $ref: "#/components/schemas/BeatRowCreate"
       responses:
         "201":
-          description: The beat sheet as it now stands.
+          description: The row that was made, by its id, and the beat sheet as it now stands.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BeatSheet"
+                $ref: "#/components/schemas/BeatSheetPartCreated"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -4403,7 +4415,7 @@ paths:
         Changes what a row says, or moves it: under another beat, or
         before another row of its beat.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4429,7 +4441,7 @@ paths:
         Takes a row off a beat. The scenes it placed are notes of their
         own, and stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4455,7 +4467,7 @@ paths:
         Puts a scene in a row of a beat sheet. A scene stands in one row
         of a sheet at most, so one already placed is moved.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4481,7 +4493,7 @@ paths:
         Takes a scene out of the row it stands in. The scene note itself
         stands.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4504,9 +4516,10 @@ paths:
       summary: Delete a beat sheet template
       description: |
         Takes one of the author's own templates away. The plugin's own
-        templates are kept, and the sheets made from it stand.
+        templates are not the project's to delete, and the sheets made from a
+        template stand.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4527,10 +4540,14 @@ paths:
         Takes a list of steps and makes them all, or none: cards added and
         moved, frames drawn round them, lines drawn between them, things taken
         off. One call is one change, as one gesture is on the author's screen.
+
+        A step the view will not take is told by its place in the call, and
+        nothing is written. A card of a note or a record names one the project
+        has.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, view-full]
       requestBody:
         required: true
         content:
@@ -4539,11 +4556,11 @@ paths:
               $ref: "#/components/schemas/FreeformSteps"
       responses:
         "200":
-          description: The view as it now stands.
+          description: The view as it now stands, and the id each new thing was given.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FreeformView"
+                $ref: "#/components/schemas/FreeformStepsResult"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -9924,10 +9941,13 @@ components:
           pattern: "\\S"
           maxLength: 200
         binding:
-          description: The character or the place whose story the timeline tells, by its id. Null for none.
+          description: The character, the place or the other note of the world whose story the timeline tells, by its id. Null for none. Never a scene or a time.
           oneOf:
             - $ref: "#/components/schemas/MemberRefInput"
             - type: "null"
+        view:
+          type: [string, "null"]
+          description: The view to show it in, by its `id`. Left out, the view the author last looked at, or the board's first. Null shows it in none.
 
     TimelinePatch:
       type: object
@@ -9949,17 +9969,18 @@ components:
 
     TimelineRowCreate:
       type: object
-      required: [time, text]
+      required: [time]
       additionalProperties: false
       properties:
         time:
           $ref: "#/components/schemas/MemberRefInput"
-          description: The time the row is written under, by its id. It must be one the timeline has.
+          description: The time note the row is written under, by its id.
         text:
           type: string
+          description: What the row says. It may be left out for a row that carries scenes.
         before:
           type: [string, "null"]
-          description: The `id` of the one it should stand before. Null or left out, the end.
+          description: The `id` of the row of that time it should stand before. Null or left out, the end.
         scenes:
           type: array
           description: The scenes of the row, each by its id.
@@ -10130,7 +10151,7 @@ components:
 
     BeatRowCreate:
       type: object
-      required: [beat, text]
+      required: [beat]
       additionalProperties: false
       properties:
         beat:
@@ -10138,9 +10159,10 @@ components:
           description: The `id` of the beat it is written under.
         text:
           type: string
+          description: What the row says. It may be left out for a row that carries scenes.
         before:
           type: [string, "null"]
-          description: The `id` of the one it should stand before. Null or left out, the end.
+          description: The `id` of the row of that beat it should stand before. Null or left out, the end.
         scenes:
           type: array
           description: The scenes of the row, each by its id.
@@ -10245,9 +10267,11 @@ components:
 
     FreeformStep:
       description: |
-        One thing done to a view. `do` says which. A new card, frame or line
-        may be given an `id` of the caller's own making, so that a later step
-        of the same call can name it. Left out, one is made for it.
+        One thing done to a view. `do` says which. Every new card, frame and
+        line is kept under an id the plugin makes for it. A step may give one
+        a name of the caller's own in `id`, so that a later step of the same
+        call can speak of it. The name holds for that call alone, and the
+        answer says which id each was given.
       oneOf:
         - type: object
           description: Cards put on the view.
@@ -10750,6 +10774,64 @@ components:
           type: string
           description: The manuscript note the rule holds in, by its `relativePath`. Left out, the whole project.
 
+    TimelineRowCreated:
+      type: object
+      required: [id, timeline]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: The `id` the new row was given.
+        timeline:
+          $ref: "#/components/schemas/Timeline"
+
+    TimelineViewCreated:
+      type: object
+      required: [id, board]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: The `id` the new view was given.
+        board:
+          $ref: "#/components/schemas/TimelineBoard"
+
+    BeatSheetPartCreated:
+      type: object
+      required: [id, beatSheet]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: The `id` the new act, beat or row was given.
+        beatSheet:
+          $ref: "#/components/schemas/BeatSheet"
+
+    FreeformStepsResult:
+      type: object
+      required: [view, created]
+      additionalProperties: false
+      properties:
+        view:
+          $ref: "#/components/schemas/FreeformView"
+        created:
+          type: array
+          description: What the steps put on the view, in the order they put it.
+          items:
+            type: object
+            required: [kind, id, as]
+            additionalProperties: false
+            properties:
+              kind:
+                type: string
+                enum: [placement, frame, edge]
+              id:
+                type: string
+                description: The `id` it is kept under.
+              as:
+                type: [string, "null"]
+                description: The name the call gave it, where it gave one.
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -10871,6 +10953,9 @@ x-snowflake-problems:
   not-repairable:
     status: 409
     title: This is not something the plugin can mend by itself.
+  view-full:
+    status: 409
+    title: The view has no room for that.
   internal-error:
     status: 500
     title: The operation failed.

@@ -3,14 +3,12 @@ import { graphMembersOf } from '../../src/services';
 import {
 	beatSheetOf,
 	beatSheetSummaryOf,
-	builtInTemplateOf,
+	beatSheetTemplatesOf,
 	derivedTaskOf,
 	freeformViewOf,
 	freeformViewSummaryOf,
 	relationshipGraphOf,
-	savedTemplateOf,
-	timelineOf,
-	timelineViewOf,
+	timelineBoardOf,
 } from '../dto/boards';
 import { ApiError } from '../errors';
 import { textParam, type OperationGroup } from './context';
@@ -34,16 +32,7 @@ export const boardOperations: OperationGroup = {
 	getTimeline: async (call, context) => {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
 		const held = await context.host.projects.timeline.read(project);
-		const index = context.members(project);
-		return {
-			status: 200,
-			body: {
-				timelines: held.timelines.map((timeline) => timelineOf(index, timeline)),
-				views: held.views.map(timelineViewOf),
-				pinnedTimelineId: held.pinnedTimelineId,
-				lastViewId: held.lastViewId,
-			},
-		};
+		return { status: 200, body: timelineBoardOf(context.members(project), held) };
 	},
 
 	listBeatSheets: async (call, context) => {
@@ -62,10 +51,7 @@ export const boardOperations: OperationGroup = {
 	listBeatSheetTemplates: async (call, context) => {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
 		const held = await context.host.projects.beatSheet.read(project);
-		return {
-			status: 200,
-			body: { items: [...builtInBeatSheetTemplates(project.locale).map(builtInTemplateOf), ...held.templates.map(savedTemplateOf)] },
-		};
+		return { status: 200, body: beatSheetTemplatesOf(builtInBeatSheetTemplates(project.locale), held.templates) };
 	},
 
 	listFreeformViews: async (call, context) => {

@@ -13,6 +13,7 @@ import type {
 	FreeformView,
 	SceneRow,
 	Timeline,
+	TimelineDocument,
 	TimelineView,
 } from '../../src/domain';
 import type { ProjectRef } from '../../src/services';
@@ -73,6 +74,21 @@ export function timelineViewOf(view: TimelineView): JsonObject {
 		createdAt: instantOf(view.createdAt),
 		updatedAt: instantOf(view.updatedAt),
 	};
+}
+
+/** The timelines and the views of them, as the board keeps them. */
+export function timelineBoardOf(index: MemberIndex, held: TimelineDocument): JsonObject {
+	return {
+		timelines: held.timelines.map((timeline) => timelineOf(index, timeline)),
+		views: held.views.map(timelineViewOf),
+		pinnedTimelineId: held.pinnedTimelineId,
+		lastViewId: held.lastViewId,
+	};
+}
+
+/** Every template a beat sheet can be laid out from: the plugin's own in the project's language, then the author's. */
+export function beatSheetTemplatesOf(builtIn: readonly BuiltInBeatSheetTemplate[], saved: readonly BeatSheetTemplate[]): JsonObject {
+	return { items: [...builtIn.map(builtInTemplateOf), ...saved.map(savedTemplateOf)] };
 }
 
 export function beatSheetSummaryOf(sheet: BeatSheet): JsonObject {

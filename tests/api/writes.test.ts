@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { createGolden, faults, vaultState, type Golden } from './helpers/golden-project';
+import { boardsOf, seedBoards } from './helpers/golden-boards';
+import { createGolden as createBare, faults, vaultState, type Golden } from './helpers/golden-project';
 import { operations } from './helpers/spec';
 
 type Body = Record<string, unknown>;
 const bodyOf = (value: unknown): Body => value as Body;
+
+/** A vault with boards laid out in its first project, for the changes that are made to a board. */
+async function createGolden(start: Parameters<typeof createBare>[0] = {}): Promise<Golden> {
+	const golden = await createBare(start);
+	await seedBoards(golden);
+	return golden;
+}
 
 /** One call as a test sends it. */
 interface Sent {
@@ -134,6 +142,63 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 	migrateProjectNotes: { of: 'project', send: (projectId) => ({ params: { projectId } }) },
 	acceptRevision: { of: 'project', send: (projectId) => ({ params: { projectId, revisionId: 'revision-noon' } }) },
 	createTask: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { title: 'Count the bells' } }) },
+	createTimeline: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'Ben’s week' } }) },
+	updateTimeline: { of: 'project', send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline }, body: { name: 'Ada alone' } }) },
+	deleteTimeline: { of: 'project', send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).spareTimeline } }) },
+	addTimelineTime: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline, timeId: golden.members.winter.entityId } }),
+	},
+	removeTimelineTime: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline, timeId: golden.members.winter.entityId } }),
+	},
+	addTimelineRow: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline }, body: { time: { id: golden.members.midnight.entityId }, text: 'The bell rings.' } }),
+	},
+	updateTimelineRow: { of: 'project', send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline, rowId: 'row-quiet' }, body: { text: 'Quiet.' } }) },
+	deleteTimelineRow: { of: 'project', send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline, rowId: 'row-quiet' } }) },
+	placeTimelineScene: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline, sceneId: golden.members.morning.sceneId }, body: { row: 'row-stop' } }),
+	},
+	removeTimelineScene: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, timelineId: boardsOf(golden).timeline, sceneId: golden.members.stops.sceneId } }),
+	},
+	createTimelineView: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'All of them' } }) },
+	updateTimelineView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, timelineViewId: boardsOf(golden).view }, body: { timesReversed: true } }) },
+	deleteTimelineView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, timelineViewId: boardsOf(golden).spareView } }) },
+	createBeatSheet: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'Spring', templateId: 'three-act' } }) },
+	updateBeatSheet: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet }, body: { reversed: true } }) },
+	deleteBeatSheet: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).spareSheet } }) },
+	saveBeatSheetTemplate: { of: 'project', send: (projectId, golden) => ({ params: { projectId }, body: { beatSheet: boardsOf(golden).sheet, name: 'Mine' } }) },
+	deleteBeatSheetTemplate: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetTemplateId: boardsOf(golden).template } }) },
+	addBeatSheetAct: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet }, body: { label: 'Coda' } }) },
+	updateBeatSheetAct: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, actId: 'act-setup' }, body: { label: 'Opening' } }) },
+	deleteBeatSheetAct: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, actId: 'act-turn' } }) },
+	addBeat: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet }, body: { act: 'act-setup', name: 'Debate' } }) },
+	updateBeat: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, beatId: 'beat-incident' }, body: { description: 'Late.' } }) },
+	deleteBeat: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, beatId: 'beat-incident' } }) },
+	addBeatRow: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet }, body: { beat: 'beat-hook', text: 'Dawn.' } }) },
+	updateBeatRow: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, rowId: 'row-hook' }, body: { text: 'Twelve.' } }) },
+	deleteBeatRow: { of: 'project', send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, rowId: 'row-spare' } }) },
+	placeBeatSheetScene: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, sceneId: golden.members.morning.sceneId }, body: { row: 'row-hook' } }),
+	},
+	removeBeatSheetScene: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, beatSheetId: boardsOf(golden).sheet, sceneId: golden.members.stops.sceneId } }),
+	},
+	createFreeformView: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'Second board' } }) },
+	updateFreeformView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).canvas }, body: { name: 'Cast board' } }) },
+	deleteFreeformView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).spareCanvas } }) },
+	applyFreeformSteps: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).canvas }, body: { steps: [{ do: 'text', id: 'card-text', text: 'Changed.' }] } }),
+	},
 	updateTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-map' }, body: { priority: 'high' } }) },
 	deleteTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-letter' } }) },
 	moveTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-bell' }, body: { status: 'in-progress' } }) },

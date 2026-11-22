@@ -87,13 +87,17 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Moving a note.** `moveManuscriptNote` changes the reading order and nothing else. A numbered note keeps its name, so `renameManuscriptNote` is what puts the count right afterwards.
 
+**Boards.** A timeline, a beat sheet and a freeform view name a note by its id, and a change is refused where an id names nothing the project has. A timeline, a view of the timelines, a beat sheet and a freeform view each go by a name no other of its kind has. What an operation makes is told by its id in the answer. Taking a scene off a board, or a time off a timeline, needs the delete level, though the note itself stands.
+
+**Freeform steps.** `applyFreeformSteps` takes a list of steps and makes all of them or none. A step may give a new card, frame or line a name in `id`, so that a later step of the same call can speak of it. The name holds for that call alone. The answer says which id each was kept under.
+
 **Deleting.** A deleted note goes where the author's Obsidian sends deleted files. A deleted task, thread or revision cannot be brought back. A character, a scene or a worldbuilding note that other notes name is refused with what names it, unless the call says `force=true`. A project is never deleted here. `archiveProject` puts it away and `restoreProject` brings it back.
 
 **Reads that write.** A read changes nothing the author wrote. The plugin may still put three things right as it reads, as it does whenever it opens a project. A moved project has its link to the first manuscript note pointed at where that note stands. A record file that can no longer be read is set aside under a new name. Statistics and mentions are kept in a cache file of this device's own.
 
 ## Operations
 
-114 operations are answered now: 57 read, 44 write and 13 delete. Later rounds are written into the contract and marked `planned`. A planned operation answers `501 planned-operation` and is left out of the document the API serves.
+147 operations are answered now: 57 read, 65 write and 25 delete. Later rounds are written into the contract and marked `planned`. A planned operation answers `501 planned-operation` and is left out of the document the API serves.
 
 A name marked ² needs the write level. A name marked ³ needs the delete level.
 
@@ -118,16 +122,15 @@ A name marked ² needs the write level. A name marked ³ needs the delete level.
 | Mentions | `getMentions`, `listNoteMentions` |
 | Writing sessions | `listWritingDays`, `getWritingSpread`, `getWritingSession` |
 | History | `getHistory` |
-| Timeline | `getTimeline` |
-| Beat sheets | `listBeatSheets`, `getBeatSheet`, `listBeatSheetTemplates` |
-| Freeform | `listFreeformViews`, `getFreeformView` |
+| Timeline | `getTimeline`, `createTimeline` ², `updateTimeline` ², `deleteTimeline` ³, `addTimelineTime` ², `removeTimelineTime` ³, `addTimelineRow` ², `updateTimelineRow` ², `deleteTimelineRow` ³, `placeTimelineScene` ², `removeTimelineScene` ³, `createTimelineView` ², `updateTimelineView` ², `deleteTimelineView` ³ |
+| Beat sheets | `listBeatSheets`, `getBeatSheet`, `createBeatSheet` ², `updateBeatSheet` ², `deleteBeatSheet` ³, `addBeatSheetAct` ², `updateBeatSheetAct` ², `deleteBeatSheetAct` ³, `addBeat` ², `updateBeat` ², `deleteBeat` ³, `addBeatRow` ², `updateBeatRow` ², `deleteBeatRow` ³, `placeBeatSheetScene` ², `removeBeatSheetScene` ³, `listBeatSheetTemplates`, `saveBeatSheetTemplate` ², `deleteBeatSheetTemplate` ³ |
+| Freeform | `listFreeformViews`, `getFreeformView`, `createFreeformView` ², `updateFreeformView` ², `deleteFreeformView` ³, `applyFreeformSteps` ² |
 | Relationship graph | `getRelationshipGraph` |
 
 ### Planned
 
 | Round | What it adds | Operations |
 | --- | --- | --- |
-| 3 | Boards | Changes to the timelines, the beat sheets and the freeform views: 33 operations, among them `createTimeline`, `addTimelineRow`, `placeTimelineScene`, `createBeatSheet`, `addBeat`, `placeBeatSheetScene` and `applyFreeformSteps` |
 | 4 | Transfer | `inspectImport`, `runImport`, `exportManuscript`, `exportCanvas`, `addGalleryPictures`, `removeGalleryPicture` |
 | 5 | Environment | `getSettings`, `updateSettings`, `startWritingSession`, `stopWritingSession`, `listMentionIgnores`, `addMentionIgnore`, `removeMentionIgnore` |
 

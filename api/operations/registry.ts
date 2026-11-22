@@ -1,5 +1,7 @@
+import { beatSheetWriteOperations } from './beat-sheet-writes';
 import { boardOperations } from './boards';
 import type { OperationGroup, OperationHandler } from './context';
+import { freeformWriteOperations } from './freeform-writes';
 import { manuscriptOperations } from './manuscript';
 import { manuscriptWriteOperations } from './manuscript-writes';
 import { memberWriteOperations } from './member-writes';
@@ -12,6 +14,7 @@ import { sessionOperations } from './sessions';
 import { statisticsOperations } from './statistics';
 import { stepOperations } from './steps';
 import { systemOperations } from './system';
+import { timelineWriteOperations } from './timeline-writes';
 import { vocabularyOperations } from './vocabularies';
 
 /** Every group of handlers this build carries. */
@@ -30,6 +33,9 @@ const GROUPS: readonly OperationGroup[] = [
 	statisticsOperations,
 	sessionOperations,
 	boardOperations,
+	timelineWriteOperations,
+	beatSheetWriteOperations,
+	freeformWriteOperations,
 ];
 
 /**

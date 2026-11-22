@@ -17,9 +17,10 @@ export type MintedRecord = 'task' | 'foreshadowing' | 'occurrence' | 'revision';
 /**
  * What a change is told to the screens about: the task board's records, the
  * ones kept beside the manuscript's text (threads and revisions), the
- * sticky notes, and the order the manuscript's notes are read in.
+ * sticky notes, the order the manuscript's notes are read in, and each of
+ * the boards a project is laid out on.
  */
-export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript';
+export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript' | 'timeline' | 'beatSheets' | 'freeform';
 
 /**
  * What the plugin hands the local API. The API is given the services and a

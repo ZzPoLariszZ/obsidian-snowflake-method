@@ -6214,6 +6214,18 @@ export default class SnowflakeMethodPlugin
 			void this.refreshManuscriptStreams().catch(lost);
 			return;
 		}
+		if (what === 'timeline') {
+			this.timelineBell.ring();
+			return;
+		}
+		if (what === 'beatSheets') {
+			this.beatSheetBell.ring();
+			return;
+		}
+		if (what === 'freeform') {
+			this.freeformBell.ring();
+			return;
+		}
 		void this.announceMarginRecordsChanged().catch(lost);
 	}
 
