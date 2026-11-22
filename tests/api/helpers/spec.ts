@@ -57,3 +57,59 @@ export function problemRegistry(): Record<string, { status: number; title: strin
 	}
 	return found;
 }
+
+/** One schema as the contract writes it, with the JSON Pointer it stands at. */
+export interface WrittenSchema {
+	pointer: string;
+	schema: JsonObject;
+}
+
+const FORMS = ['oneOf', 'anyOf', 'allOf'] as const;
+
+/**
+ * Every schema the contract writes, wherever it stands: the named ones, the
+ * ones under a parameter, a body or an answer, and every schema inside those.
+ */
+export function writtenSchemas(): WrittenSchema[] {
+	const found: WrittenSchema[] = [];
+	const visit = (schema: JsonValue | undefined, pointer: string): void => {
+		if (!isJsonObject(schema)) return;
+		found.push({ pointer, schema });
+		const properties = schema['properties'];
+		if (isJsonObject(properties)) {
+			for (const [name, inner] of Object.entries(properties)) visit(inner, `${pointer}/properties/${name}`);
+		}
+		visit(schema['items'], `${pointer}/items`);
+		visit(schema['additionalProperties'], `${pointer}/additionalProperties`);
+		for (const word of FORMS) {
+			const forms = schema[word];
+			if (!Array.isArray(forms)) continue;
+			forms.forEach((form, index) => {
+				visit(form, `${pointer}/${word}/${String(index)}`);
+			});
+		}
+	};
+	const seek = (value: JsonValue, pointer: string): void => {
+		if (Array.isArray(value)) {
+			value.forEach((item, index) => {
+				seek(item, `${pointer}/${String(index)}`);
+			});
+			return;
+		}
+		if (!isJsonObject(value)) return;
+		for (const [key, item] of Object.entries(value)) {
+			const at = `${pointer}/${key}`;
+			// The named schemas are taken whole below, each as a root of its own.
+			if (at === '/components/schemas') continue;
+			if (key === 'schema') visit(item, at);
+			else seek(item, at);
+		}
+	};
+	seek(document.root, '');
+	const components = document.root['components'];
+	const named = isJsonObject(components) ? components['schemas'] : undefined;
+	if (isJsonObject(named)) {
+		for (const [name, schema] of Object.entries(named)) visit(schema, `/components/schemas/${name}`);
+	}
+	return found;
+}

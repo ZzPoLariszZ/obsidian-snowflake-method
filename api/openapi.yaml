@@ -158,6 +158,7 @@ components:
         An error, in the shape of RFC 9457. Some codes add members of their
         own, such as `currentEtag` on a `concurrent-change`.
       required: [type, title, status, code]
+      additionalProperties: true
       properties:
         type:
           type: string
