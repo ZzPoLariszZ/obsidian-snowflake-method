@@ -41,7 +41,9 @@ export default defineConfig(
 	},
 	...obsidianmd.configs.recommended,
 	{
-		files: ['src/**/*.{ts,tsx}'],
+		// The local API stands in a folder of its own beside the plugin's
+		// sources and is bundled with them, so it is held to the same rules.
+		files: ['src/**/*.{ts,tsx}', 'api/**/*.ts'],
 		rules: {
 			'obsidianmd/prefer-active-doc': 'error',
 			'obsidianmd/prefer-instanceof': 'error',

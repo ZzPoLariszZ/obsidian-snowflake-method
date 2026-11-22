@@ -17,5 +17,5 @@
 		"lib": ["ES2021", "DOM"],
 		"types": []
 	},
-	"include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
+	"include": ["src/**/*.ts", "src/**/*.tsx", "api/**/*.ts", "tests/**/*.ts", "tests/**/*.tsx"]
 }
