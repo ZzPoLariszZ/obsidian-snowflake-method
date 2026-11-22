@@ -105,6 +105,11 @@ import {
 	PROJECT_LANGUAGES,
 	type ProjectLanguage,
 	RECORDING_LOCATIONS,
+	LOCAL_API_ACCESS_LEVELS,
+	LOCAL_API_PORT_MAX,
+	LOCAL_API_PORT_MIN,
+	DEFAULT_LOCAL_API_PREFERENCES,
+	isLocalApiPort,
 	RECORDING_QUALITIES,
 	defaultRecordingPreferences,
 	recordingScopes,
@@ -128,6 +133,7 @@ import {
 } from './project-root';
 import { isExplorerScope, type ExplorerScope } from './services';
 import { isMobileDevice } from './ui/device';
+import { LOCAL_API_NOTES, renderLocalApiNotes, renderLocalApiStatus, renderLocalApiToken } from './ui/local-api-settings';
 import type { RecordingSettingsBridge } from './ui/recording-bridge';
 import {
 	describeRecordingVaultFolder,
@@ -1193,6 +1199,12 @@ const PRESENTATION_SYNC_MS = 150;
  * keys: the page reads and writes them through the plugin.
  */
 const RECORDING_CONTROL = 'recording.';
+
+/**
+ * What the local API's rows are declared under. Its choices are the
+ * device's too, and reach the page the same way.
+ */
+const LOCAL_API_CONTROL = 'localApi.';
 
 const isOneOf = <T extends string>(allowed: readonly T[], value: unknown): value is T =>
 	typeof value === 'string' && (allowed as readonly string[]).includes(value);
@@ -2580,7 +2592,119 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				],
 			},
 			...this.recordingSection(),
+			...this.localApiSection(),
 		];
+	}
+
+	/**
+	 * The local API, where there is a desktop to answer on: nothing on a
+	 * phone or a tablet. It is no project's, so its choices stand here, and
+	 * they are the device's, kept beside the vault's settings and never in
+	 * them. What an author is told of it comes first, then where the
+	 * listener stands and how far a caller may go, so what is open is read
+	 * before anything is changed. The switches, which start off, and what a
+	 * caller needs to be let in come after.
+	 */
+	private localApiSection(): SettingDefinitionItem[] {
+		const bridge = this.owner.localApiSettings();
+		if (bridge === null) return [];
+		const t = (key: string, vars?: Record<string, string | number>): string => this.t(key, vars);
+		const defaults = DEFAULT_LOCAL_API_PREFERENCES;
+		const refresh = (): void => {
+			this.update();
+		};
+		return [
+			{
+				type: 'group',
+				heading: this.t('settings.section.localApi'),
+				items: [
+					this.sectionDress('localApi'),
+					{
+						name: this.t('localApi.notes.title'),
+						desc: LOCAL_API_NOTES.map((note) => this.t(note.key)).join(' '),
+						render: (setting) => {
+							renderLocalApiNotes(setting, t);
+						},
+					},
+					{
+						name: this.t('localApi.status.name'),
+						render: (setting) => {
+							renderLocalApiStatus(setting, bridge, t, refresh);
+						},
+					},
+					{
+						// The name says all of it: the switch of the thing the section is named for.
+						name: this.t('localApi.http.name'),
+						control: { type: 'toggle', key: `${LOCAL_API_CONTROL}http`, defaultValue: defaults.http },
+					},
+					{
+						name: this.t('localApi.port.name'),
+						desc: this.lines('localApi.port.desc'),
+						control: {
+							type: 'number',
+							key: `${LOCAL_API_CONTROL}port`,
+							defaultValue: defaults.port,
+							min: LOCAL_API_PORT_MIN,
+							max: LOCAL_API_PORT_MAX,
+							step: 1,
+							validate: (value) => (isLocalApiPort(value) ? undefined : this.t('localApi.port.invalid')),
+						},
+					},
+					{
+						name: this.t('localApi.access.name'),
+						desc: this.lines('localApi.access.desc'),
+						control: {
+							type: 'dropdown',
+							key: `${LOCAL_API_CONTROL}access`,
+							defaultValue: defaults.access,
+							options: Object.fromEntries(
+								LOCAL_API_ACCESS_LEVELS.map((level) => [level, this.t(`localApi.access.${level}`)]),
+							),
+						},
+					},
+					{
+						name: this.t('localApi.token.name'),
+						desc: this.lines('localApi.token.desc'),
+						render: (setting) => {
+							renderLocalApiToken(setting, bridge, t, refresh);
+						},
+					},
+					{
+						name: this.t('localApi.bridge.name'),
+						desc: this.lines('localApi.bridge.desc'),
+						control: { type: 'toggle', key: `${LOCAL_API_CONTROL}cli`, defaultValue: defaults.cli },
+					},
+				],
+			},
+		];
+	}
+
+	/** One of the local API's choices, by the name its row declares it under. */
+	private localApiControlValue(name: string): unknown {
+		const bridge = this.owner.localApiSettings();
+		if (bridge === null) return undefined;
+		const choices = bridge.preferences();
+		if (name === 'http') return choices.http;
+		if (name === 'port') return choices.port;
+		if (name === 'access') return choices.access;
+		return name === 'cli' ? choices.cli : undefined;
+	}
+
+	/**
+	 * Keeps one of the local API's choices. The listener is brought in line
+	 * with it by the plugin, and the page is drawn again once it stands, so
+	 * the status row says what came of the change and not what stood before.
+	 */
+	private setLocalApiControlValue(name: string, value: unknown): void {
+		const bridge = this.owner.localApiSettings();
+		if (bridge === null) return;
+		const redraw = (): void => {
+			this.update();
+		};
+		if (name === 'http' && typeof value === 'boolean') void bridge.update({ http: value }).then(redraw);
+		else if (name === 'port' && isLocalApiPort(value)) void bridge.update({ port: value }).then(redraw);
+		else if (name === 'access' && isOneOf(LOCAL_API_ACCESS_LEVELS, value)) void bridge.update({ access: value }).then(redraw);
+		else if (name === 'cli' && typeof value === 'boolean') void bridge.update({ cli: value }).then(redraw);
 	}
 
 	/**
@@ -3679,6 +3803,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		if (key.startsWith(RECORDING_CONTROL)) {
 			return this.recordingControlValue(key.slice(RECORDING_CONTROL.length));
 		}
+		if (key.startsWith(LOCAL_API_CONTROL)) {
+			return this.localApiControlValue(key.slice(LOCAL_API_CONTROL.length));
+		}
 		if (!SETTINGS_KEYS.has(key as keyof SnowflakeSettings)) {
 			return undefined;
 		}
@@ -3691,6 +3818,10 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		if (key.startsWith(RECORDING_CONTROL)) {
 			this.setRecordingControlValue(key.slice(RECORDING_CONTROL.length), value);
+			return;
+		}
+		if (key.startsWith(LOCAL_API_CONTROL)) {
+			this.setLocalApiControlValue(key.slice(LOCAL_API_CONTROL.length), value);
 			return;
 		}
 		if (!SETTINGS_KEYS.has(key as keyof SnowflakeSettings)) {

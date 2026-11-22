@@ -5715,6 +5715,29 @@ export function confirmBoundaryProtectionOff(app: App, t: Translate): Promise<bo
 }
 
 /**
+ * Asked before the local API's access token is made anew: every program
+ * that was given the old one is turned away from that moment, and only the
+ * author can give them the new one.
+ */
+class ConfirmLocalApiTokenModal extends ConfirmModal {
+	constructor(app: App, t: Translate, onResolve: (confirmed: boolean) => void) {
+		super(app, t, { label: t('modal.localApiToken.confirm'), style: 'mod-warning' }, onResolve);
+		this.setTitle(t('modal.localApiToken.title'));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t('modal.localApiToken.description') });
+	}
+}
+
+export function confirmLocalApiToken(app: App, t: Translate): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmLocalApiTokenModal(app, t, resolve).open();
+	});
+}
+
+/**
  * Asked before a step's unsaved words on the dashboard are let go: a box
  * there can hold a page or more, and the button that drops them stands
  * between the two that keep them.

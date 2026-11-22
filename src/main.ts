@@ -474,6 +474,7 @@ import {
 	ManagedBoundaryUnlockModal,
 	RepairReportModal,
 	confirmBoundaryProtectionOff,
+	confirmLocalApiToken,
 	promptForSegmentTitle,
 	promptForSegmentRename,
 	confirmSegmentMerge,
@@ -551,6 +552,7 @@ import {
 	watchDeviceClass,
 } from './ui/device';
 import { TOOLBAR_FACES_CLASS, WritingFaces } from './ui/writing-faces';
+import type { LocalApiSettingsBridge } from './ui/local-api-bridge';
 import type { RecordingSettingsBridge } from './ui/recording-bridge';
 import { countRecordingIn } from './ui/recording-countdown';
 import { confirmRecordingStart } from './ui/recording-dialogs';
@@ -583,6 +585,13 @@ const REFRESH_DELAY_MS = 250;
  * hand; the file is written once the hand stops.
  */
 const SETTINGS_SAVE_DELAY_MS = 400;
+/**
+ * How long a port being typed must rest before the local API's listener is
+ * moved to it. A port is typed figure by figure, and each figure on the way
+ * is a port too: without the rest the listener would stand on 2712 for the
+ * moment it takes to type the 5.
+ */
+const LOCAL_API_PORT_REST_MS = 700;
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const HIDE_SCROLLBARS_CLASS = 'snowflake-method-hide-scrollbars';
@@ -910,6 +919,9 @@ export default class SnowflakeMethodPlugin
 	private localApiChoices: LocalApiPreferences | null = null;
 	/** The local API's access token as last read from Obsidian's store for secrets. Undefined until it is first asked for. */
 	private localApiTokenHeld: string | null | undefined = undefined;
+	/** The rest a typed port is given, and whoever waits for the listener to be moved once it is over. */
+	private localApiPortTimer: number | null = null;
+	private readonly localApiPortWaiters: (() => void)[] = [];
 	/** What every sticky-note surface shares: claims, the device's memory of the panels, the bell. */
 	stickyNoteHub!: StickyNoteHub;
 	/** The floating sticky notes, one layer per window, made when a window first floats one. */
@@ -1920,6 +1932,10 @@ export default class SnowflakeMethodPlugin
 		this.recording?.dispose();
 		// The local API lets its port go, and every connection with it. A call
 		// that comes after this is told the plugin is going.
+		if (this.localApiPortTimer !== null) {
+			this.app.workspace.containerEl.win.clearTimeout(this.localApiPortTimer);
+			this.localApiPortTimer = null;
+		}
 		void this.localApi?.server.stop();
 		// Ask for final workspace drafts now, before the plugin's services go,
 		// and mark refusals as recovery text rather than dialogs after unload.
@@ -5992,7 +6008,71 @@ export default class SnowflakeMethodPlugin
 				new Promise((resolve) => {
 					this.app.workspace.containerEl.win.setTimeout(resolve, ms);
 				}),
-			serverChanged: () => undefined,
+			serverChanged: (status) => {
+				// Why it could not be started is said once, where the author
+				// will see it, and stands in the settings until it is put right.
+				if (status.state === 'failed') {
+					new Notice(this.globalT(`localApi.status.${status.reason}`, { port: status.port }));
+				}
+				this.settingTab?.refreshRows();
+			},
+		});
+	}
+
+	/**
+	 * The bridge the settings page reads the local API through, or null
+	 * where there is none: a phone, a tablet. Its choices are the device's,
+	 * so they stand in the plugin's settings and in no project's panes.
+	 */
+	localApiSettings(): LocalApiSettingsBridge | null {
+		const api = this.localApi;
+		if (api === null) return null;
+		return {
+			preferences: () => this.localApiPreferences(),
+			update: (patch) => {
+				this.saveLocalApiPreferences({ ...this.localApiPreferences(), ...patch });
+				// How far a caller may go and whether the command line is
+				// answered are read at each call. Only the listener is told.
+				if ('http' in patch) return this.applyLocalApiChoices();
+				if ('port' in patch && this.localApiPreferences().http) return this.applyLocalApiPortSoon();
+				return Promise.resolve();
+			},
+			status: () => api.server.status(),
+			token: () => this.localApiToken(),
+			renewToken: async () => {
+				if (!(await confirmLocalApiToken(this.app, this.globalT))) return 'declined';
+				// Checked against at each call, so the new one holds at once
+				// and the listener need not be started again.
+				return this.renewLocalApiToken() ? 'renewed' : 'failed';
+			},
+			retry: () => this.applyLocalApiChoices(),
+		};
+	}
+
+	/** The plugin's settings opened on the local API's section. */
+	openLocalApiSettings(): void {
+		this.settingTab?.revealSection('localApi');
+		openSettingsTab(this.app, this.manifest.id);
+	}
+
+	/**
+	 * Moves the listener to the port now chosen once the typing of it has
+	 * rested. Settles when the listener stands there, for everyone who asked
+	 * while it was being typed, and never rejects.
+	 */
+	private applyLocalApiPortSoon(): Promise<void> {
+		const win = this.app.workspace.containerEl.win;
+		if (this.localApiPortTimer !== null) win.clearTimeout(this.localApiPortTimer);
+		return new Promise((resolve) => {
+			this.localApiPortWaiters.push(resolve);
+			this.localApiPortTimer = win.setTimeout(() => {
+				this.localApiPortTimer = null;
+				const waiters = this.localApiPortWaiters.splice(0);
+				const done = (): void => {
+					for (const waiter of waiters) waiter();
+				};
+				void this.applyLocalApiChoices().then(done, done);
+			}, LOCAL_API_PORT_REST_MS);
 		});
 	}
 
@@ -11455,6 +11535,15 @@ export default class SnowflakeMethodPlugin
 			checkCallback: (checking) => {
 				if (this.recording === null || isMobileDevice()) return false;
 				if (!checking) this.openScreenRecordingSettings();
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'open-local-api-settings',
+			name: this.globalT('commands.openLocalApi'),
+			checkCallback: (checking) => {
+				if (this.localApi === null || isMobileDevice()) return false;
+				if (!checking) this.openLocalApiSettings();
 				return true;
 			},
 		});

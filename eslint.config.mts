@@ -143,6 +143,10 @@ export default defineConfig(
 						'^(WebSocket Server Settings|Enable WebSocket server|Show Connect Info|Server Password|Server Port)$',
 						// A picture's height as it is always written.
 						'^(1080|720)p$',
+						// The local API's listener, by the protocol it speaks. The
+						// protocol is not listed as an acronym: another line names
+						// it in lowercase, as it is typed at the head of an address.
+						'^HTTP listener$',
 					],
 				},
 			],

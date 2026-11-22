@@ -13989,6 +13989,17 @@ col.snowflake-method-history-column-actions {
 	color: var(--text-warning);
 }
 
+/* Where the local API's listener stands, in the colour of its standing:
+   the theme's own success while it answers, its error where it could not
+   be started. Off, the line keeps the quiet of any description. */
+.snowflake-method-settings-local-api-listening {
+	color: var(--text-success);
+}
+
+.snowflake-method-settings-local-api-failed {
+	color: var(--text-error);
+}
+
 /* Of Obsidian's field for a secret the row shows its button alone: the
    button reads as the way to choose a secret, then as the way to change
    it, and the masked chip beside it told the author nothing more. */

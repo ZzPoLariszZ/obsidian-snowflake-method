@@ -109,8 +109,11 @@ export function renderRecordingScope(
 	});
 }
 
-/** Takes a row down to its bare ground, for one that is not a name beside a control. */
-function bare(setting: Setting, cls: string): HTMLElement {
+/**
+ * Takes a row down to its bare ground, for one that is not a name beside a
+ * control. The local API's notes stand on the same ground.
+ */
+export function bare(setting: Setting, cls: string): HTMLElement {
 	const row = setting.settingEl;
 	row.empty();
 	row.addClass('snowflake-method-settings-recording-bare', cls);

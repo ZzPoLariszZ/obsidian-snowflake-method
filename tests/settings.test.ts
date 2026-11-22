@@ -23,14 +23,17 @@ import {
 } from '../src/settings';
 import type SnowflakeMethodPlugin from '../src/main';
 import {
+	DEFAULT_LOCAL_API_PREFERENCES,
 	IDLE_RECORDING_STATE,
 	defaultRecordingPreferences,
 	sanitizeRecordingPreferences,
+	type LocalApiPreferences,
 	type RecordingPreferences,
 	type RecordingState,
 	type RecordingSystem,
 } from '../src/domain';
 import type { ObsProbe } from '../src/services';
+import type { LocalApiSettingsBridge } from '../src/ui/local-api-bridge';
 import type { RecordingSettingsBridge } from '../src/ui/recording-bridge';
 import type { RecordingSettingsMemory } from '../src/ui/recording-settings';
 
@@ -41,6 +44,7 @@ function settingTabFor(
 		settings: { ...DEFAULT_SETTINGS, uiLocale },
 		// Nothing records where these pages are drawn: the section stands only where something does.
 		recordingSettings: () => null,
+		localApiSettings: () => null,
 	} as unknown as SnowflakeMethodPlugin;
 	return new SnowflakeSettingTab({} as never, plugin);
 }
@@ -100,6 +104,7 @@ function writableSettingTab(): {
 		handleSettingsChanged: async () => undefined,
 		confirmBoundaryProtectionOff: async () => true,
 		recordingSettings: () => null,
+		localApiSettings: () => null,
 	} as unknown as SnowflakeMethodPlugin;
 	return { tab: new SnowflakeSettingTab({} as never, plugin), settings };
 }
@@ -907,6 +912,7 @@ describe('highlight rule rows', () => {
 				] satisfies CustomHighlightRule[],
 			},
 			recordingSettings: () => null,
+			localApiSettings: () => null,
 		} as unknown as SnowflakeMethodPlugin;
 		return new SnowflakeSettingTab({} as never, plugin);
 	};
@@ -1166,6 +1172,7 @@ describe('the screen recording’s section of the settings', () => {
 		const plugin = {
 			settings: { ...DEFAULT_SETTINGS, uiLocale: 'en' },
 			recordingSettings: () => bridge,
+			localApiSettings: () => null,
 		} as unknown as SnowflakeMethodPlugin;
 		const tab = new SnowflakeSettingTab({} as never, plugin);
 		let updates = 0;
@@ -1454,5 +1461,170 @@ describe('the screen recording’s section of the settings', () => {
 		expect(typeof notes.render).toBe('function');
 		expect(String(notes.desc)).toContain('claims AI wrote your novel');
 		expect(String(notes.desc)).toContain('Watch it yourself before you share it.');
+	});
+});
+
+describe('the local API’s section of the settings', () => {
+	type Row = {
+		name: string;
+		desc?: unknown;
+		render?: unknown;
+		control?: {
+			type: string;
+			key: string;
+			defaultValue?: unknown;
+			options?: Record<string, string>;
+			min?: number;
+			max?: number;
+			validate?: (value: number) => unknown;
+		};
+	};
+
+	function localApiTab(start: Partial<LocalApiPreferences> = {}, standing: Promise<void> = Promise.resolve()) {
+		const held: { preferences: LocalApiPreferences; patches: Partial<LocalApiPreferences>[] } = {
+			preferences: { ...DEFAULT_LOCAL_API_PREFERENCES, ...start },
+			patches: [],
+		};
+		const bridge: LocalApiSettingsBridge = {
+			preferences: () => held.preferences,
+			update: (patch) => {
+				held.patches.push(patch);
+				held.preferences = { ...held.preferences, ...patch };
+				// Settles when the listener stands as chosen, which takes a moment.
+				return standing;
+			},
+			status: () => ({ state: 'off' }),
+			token: () => null,
+			renewToken: () => Promise.resolve('declined'),
+			retry: () => Promise.resolve(),
+		};
+		const plugin = {
+			settings: { ...DEFAULT_SETTINGS, uiLocale: 'en' },
+			recordingSettings: () => null,
+			localApiSettings: () => bridge,
+		} as unknown as SnowflakeMethodPlugin;
+		const tab = new SnowflakeSettingTab({} as never, plugin);
+		let updates = 0;
+		(tab as unknown as { update: () => void }).update = () => {
+			updates += 1;
+		};
+		const rows = (): Row[] => {
+			const groups = tab.getSettingDefinitions() as { heading?: string; items?: Row[] }[];
+			return groups[groups.length - 1]?.items ?? [];
+		};
+		const row = (name: string): Row => {
+			const found = rows().find((entry) => entry.name === name);
+			if (found === undefined) throw new Error(`No row is named ${name}.`);
+			return found;
+		};
+		return { tab, held, rows, row, updates: () => updates };
+	}
+
+	it('stands last on the page, and not at all where nothing can listen', () => {
+		const headings = (tab: SnowflakeSettingTab): (string | undefined)[] =>
+			tab.getSettingDefinitions().map((group) => (group as { heading?: string }).heading);
+		expect(headings(localApiTab().tab).slice(-2)).toEqual(['Export', 'Local API']);
+		// A phone or a tablet has no bridge to read through.
+		expect(headings(settingTabFor('en'))).not.toContain('Local API');
+	});
+
+	it('says what it is first, then where it stands, its switch and its port, how far a caller may go, the token and the command line', () => {
+		expect(
+			localApiTab()
+				.rows()
+				.map((row) => row.name)
+				.filter((name) => name.length > 0),
+		).toEqual(['About', 'Status', 'Enable local API', 'Port', 'Access', 'Access token', 'Command line bridge']);
+	});
+
+	it('says each choice in one line', () => {
+		const { rows } = localApiTab();
+		for (const name of ['Port', 'Access', 'Access token', 'Command line bridge']) {
+			const row = rows().find((entry) => entry.name === name) as unknown as { desc?: unknown };
+			expect(typeof row.desc, name).toBe('string');
+			expect(row.desc, name).not.toContain('\n');
+		}
+	});
+
+	it('says nothing under the switch, whose name is the whole of it', () => {
+		const row = localApiTab().row('Enable local API') as unknown as { desc?: unknown };
+		expect(row.desc).toBeUndefined();
+	});
+
+	it('promises nothing of where a caller sends what it reads, and names no kind of caller', () => {
+		const about = localApiTab()
+			.rows()
+			.find((entry) => entry.name === 'About') as unknown as { desc?: string };
+		expect(about.desc).toBe(
+			'Lets other programs on this computer read and write your Snowflake projects. ' +
+				'Give the access token only to programs you trust.',
+		);
+		expect(about.desc).not.toMatch(/AI|agent|internet/iu);
+	});
+
+	it('starts with everything closed: no listener, no command line, and reading only', () => {
+		const { tab, row } = localApiTab();
+		expect(tab.getControlValue('localApi.http')).toBe(false);
+		expect(tab.getControlValue('localApi.cli')).toBe(false);
+		expect(tab.getControlValue('localApi.access')).toBe('read');
+		expect(tab.getControlValue('localApi.port')).toBe(27125);
+		expect(row('Enable local API').control?.defaultValue).toBe(false);
+		expect(row('Command line bridge').control?.defaultValue).toBe(false);
+		expect(row('Access').control?.defaultValue).toBe('read');
+		expect(tab.getControlValue('localApi.nonsense')).toBeUndefined();
+	});
+
+	it('offers the three levels, least first', () => {
+		expect(localApiTab().row('Access').control?.options).toEqual({
+			read: 'Read only',
+			write: 'Read and write',
+			delete: 'Read, write and delete',
+		});
+		expect(Object.keys(localApiTab().row('Access').control?.options ?? {})).toEqual(['read', 'write', 'delete']);
+	});
+
+	it('reads and keeps each choice through the plugin, never in the vault’s own settings', async () => {
+		const { tab, held } = localApiTab();
+		await tab.setControlValue('localApi.http', true);
+		await tab.setControlValue('localApi.port', 31999);
+		await tab.setControlValue('localApi.access', 'write');
+		await tab.setControlValue('localApi.cli', true);
+		expect(held.patches).toEqual([{ http: true }, { port: 31999 }, { access: 'write' }, { cli: true }]);
+		expect(held.preferences).toEqual({ http: true, port: 31999, access: 'write', cli: true });
+		expect(Object.keys(DEFAULT_SETTINGS).filter((key) => /api/iu.test(key))).toEqual([]);
+	});
+
+	it('keeps nothing that is not a choice', async () => {
+		const { tab, held } = localApiTab();
+		await tab.setControlValue('localApi.http', 'yes');
+		await tab.setControlValue('localApi.port', 80);
+		await tab.setControlValue('localApi.port', 27125.5);
+		await tab.setControlValue('localApi.access', 'admin');
+		await tab.setControlValue('localApi.cli', 1);
+		await tab.setControlValue('localApi.nonsense', true);
+		expect(held.patches).toEqual([]);
+	});
+
+	it('draws the page again once the listener stands as chosen, so the status says what came of it', async () => {
+		let stand: () => void = () => {};
+		const standing = new Promise<void>((resolve) => {
+			stand = resolve;
+		});
+		const { tab, updates } = localApiTab({}, standing);
+		await tab.setControlValue('localApi.http', true);
+		await Promise.resolve();
+		expect(updates()).toBe(0);
+		stand();
+		await standing;
+		await Promise.resolve();
+		expect(updates()).toBe(1);
+	});
+
+	it('names a port out of range in the row itself', () => {
+		const port = localApiTab().row('Port').control;
+		expect([port?.min, port?.max]).toEqual([1024, 65535]);
+		expect(port?.validate?.(27125)).toBeUndefined();
+		expect(port?.validate?.(80)).toBe('Enter a port between 1024 and 65535.');
+		expect(port?.validate?.(70000)).toBe('Enter a port between 1024 and 65535.');
 	});
 });
