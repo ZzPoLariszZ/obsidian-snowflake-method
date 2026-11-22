@@ -96,10 +96,18 @@ export interface ApiHost {
 	leaving(): boolean;
 	/**
 	 * Runs work whose writes are the plugin's own and not the author's
-	 * typing. Whatever the history would put down to the author while it
-	 * runs is put down to the plugin instead.
+	 * typing, with nobody there to answer a dialog. Whatever the history
+	 * would put down to the author while it runs is put down to the plugin
+	 * instead. A rename asked for while it runs is refused where Obsidian
+	 * would stop to ask about links, since its dialog would never be
+	 * answered and the call never end.
 	 */
 	asPlugin<T>(run: () => Promise<T>): Promise<T>;
+	/**
+	 * Whether Obsidian is set to ask the author before it rewrites the links
+	 * to a note that moved. While it is, nothing is renamed through the API.
+	 */
+	asksBeforeLinkUpdates(): boolean;
 	/**
 	 * What the author has typed into these notes and not yet saved is
 	 * written to their files, the editors left as they stand. Asked before a

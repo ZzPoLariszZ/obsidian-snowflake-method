@@ -9,7 +9,7 @@ import {
 } from '../../src/domain';
 import type { ManuscriptSegmentRecord, ProjectSnapshot, SegmentRenameOutcome } from '../../src/services';
 import { relativePathOf } from '../dto/manuscript';
-import { ApiError, changedSince } from '../errors';
+import { ApiError, changedSince, linkUpdatesAsk } from '../errors';
 import type { JsonObject } from '../json';
 import {
 	NOT_THE_AUTHOR,
@@ -129,6 +129,17 @@ function cutOf(text: string, sent: unknown): number {
 const renumbers = (body: Sent): boolean => body['renumber'] !== false;
 
 /**
+ * Refuses a change that would rename a note while Obsidian is set to ask
+ * about links. The services refuse it too, before they write anything. It
+ * is said here first because a note made ready for a change has its editor
+ * closed, and a call that is going to be refused leaves the author writing
+ * where they were.
+ */
+function renamable(context: ApiContext, first: string | undefined): void {
+	if (first !== undefined && context.host.asksBeforeLinkUpdates()) throw linkUpdatesAsk(first);
+}
+
+/**
  * The manuscript, changed. Each change goes through the plugin's own
  * manuscript service, with the renumbering the plugin's own dialogs offer.
  * A note's text is never written over what the author is in the middle of
@@ -177,6 +188,7 @@ export const manuscriptWriteOperations: OperationGroup = {
 		const plan = placing(context, segments, placement);
 		const title = titleOf(body, plan.head);
 		const renames = renumbers(body) ? plan.renames : [];
+		renamable(context, renames[0]?.path);
 		// A renamed note's heading is rewritten with its name, so each is made ready as a note about to be written.
 		if (renames.length > 0) await ready(context, call, renames[0]?.path ?? '', renames.slice(1).map((rename) => rename.path));
 		const made = await manuscript.createSegmentAt(project, placement, title, renames, {
@@ -210,6 +222,7 @@ export const manuscriptWriteOperations: OperationGroup = {
 		writable(segment);
 		const body = bodyOf(call);
 		const service = context.host.projects;
+		renamable(context, segment.path);
 		await ready(context, call, segment.path);
 		const heading = typeof body['heading'] === 'boolean' ? body['heading'] : (await service.manuscript.segmentNaming(segment.path)).matches;
 		const moved = await service.renameManuscriptSegment(project, segment.path, String(body['title']), { heading, ...NOT_THE_AUTHOR });
@@ -232,6 +245,7 @@ export const manuscriptWriteOperations: OperationGroup = {
 		const plan = placing(context, segments, { after: segment.path });
 		const title = titleOf(body, plan.head);
 		const renames = renumbers(body) ? plan.renames : [];
+		renamable(context, renames[0]?.path);
 		const revision = await ready(
 			context,
 			call,
@@ -268,6 +282,7 @@ export const manuscriptWriteOperations: OperationGroup = {
 		writable(segment);
 		writable(later);
 		const renames = call.body === undefined || renumbers(bodyOf(call)) ? removing(context, segments, index + 1) : [];
+		renamable(context, renames[0]?.path);
 		await ready(context, call, segment.path, [later.path, ...renames.map((rename) => rename.path)]);
 		// A merge writes no word of its own. It moves the author's words from one note into another, and is told
 		// to the plugin as the author's own merging is: the note that takes them gains what the note that goes
@@ -287,6 +302,7 @@ export const manuscriptWriteOperations: OperationGroup = {
 		const { segment, segments, index } = await findManuscriptNote(context, project, call);
 		writable(segment);
 		const renames = flagParam(call, 'renumber') ? removing(context, segments, index) : [];
+		renamable(context, renames[0]?.path);
 		const revision = await ready(
 			context,
 			call,

@@ -54,6 +54,22 @@ export class ConcurrentChangeError extends RepositoryError {
   }
 }
 
+/**
+ * A rename Obsidian would not finish by itself. Where the author has the
+ * app ask before it rewrites links, Obsidian renames at once, opens its
+ * "Update links" dialog, and answers the caller only when the dialog is
+ * answered. Raised in place of a rename that nobody is there to answer for.
+ */
+export class LinkUpdatePromptError extends RepositoryError {
+  constructor(readonly path: string) {
+    super(
+      `Obsidian is set to ask before it updates links, and nobody is there to answer: "${path}" was not renamed.`,
+      "link-update-prompt",
+    );
+    this.name = "LinkUpdatePromptError";
+  }
+}
+
 export class UnsafeSectionError extends RepositoryError {
   constructor(readonly path: string, readonly sectionId: string, reason: string) {
     super(`Cannot safely update section "${sectionId}" in "${path}": ${reason}`, "unsafe-section");

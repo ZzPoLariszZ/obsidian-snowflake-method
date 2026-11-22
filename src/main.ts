@@ -18,6 +18,7 @@ import {
 	type EditorPosition,
 	type MarkdownFileInfo,
 	type TAbstractFile,
+	type Vault,
 	type View,
 	type CliFlags,
 	type WorkspaceLeaf,
@@ -6085,7 +6086,8 @@ export default class SnowflakeMethodPlugin
 			ready: () => this.projectScanReady,
 			isReady: () => this.projectScanIsReady,
 			leaving: () => this.unloading || this.pageLeaving,
-			asPlugin: (run) => this.history.asPlugin(run),
+			asPlugin: (run) => this.history.asPlugin(() => this.projects.repository.unattended(run)),
+			asksBeforeLinkUpdates: () => this.obsidianAsksBeforeLinkUpdates(),
 			settleNotes: (paths) => this.settleNotesForWriter(paths),
 			releaseNotes: (paths) => this.releaseNotesForWriter(paths),
 			chapterNumbering: () => this.chapterNumbering(),
@@ -6105,6 +6107,7 @@ export default class SnowflakeMethodPlugin
 			archiveProject: (project) => this.performProjectArchive({ path: project.projectFile, rootPath: project.rootPath }),
 			restoreProject: (project) => this.performProjectRestore({ path: project.projectFile, rootPath: project.rootPath }),
 		};
+		this.projects.repository.asksBeforeLinkUpdates = () => this.obsidianAsksBeforeLinkUpdates();
 		return createLocalApi(host, {
 			listeners: () => desktopListenerFactory(),
 			pause: (ms) =>
@@ -6120,6 +6123,19 @@ export default class SnowflakeMethodPlugin
 				this.settingTab?.refreshRows();
 			},
 		});
+	}
+
+	/**
+	 * Whether Obsidian will stop to ask the author before it rewrites the
+	 * links to a note that moved: "Automatically update internal links"
+	 * under Files and links, read where the app keeps it, which is not in
+	 * its published API. An app that no longer says is taken to ask. A
+	 * rename refused can be asked for again, and one left waiting on a
+	 * dialog nobody sees cannot.
+	 */
+	private obsidianAsksBeforeLinkUpdates(): boolean {
+		const vault = this.app.vault as Vault & { getConfig?: (key: string) => unknown };
+		return vault.getConfig?.('alwaysUpdateLinks') !== true;
 	}
 
 	/**

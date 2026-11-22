@@ -38,6 +38,18 @@ info:
     since you read it, the answer is `412` with the current `etag`, and nothing
     is written. Read it again and decide again.
 
+    **Renaming.** Giving a project, a note or a folder another name goes
+    through Obsidian, which rewrites the links that lead to it. Where the
+    author has Obsidian ask before it does that, it opens a dialog and waits,
+    and a caller here cannot answer a dialog. So while "Automatically update
+    internal links" is off under Files and links in Obsidian's settings, every
+    change that would rename something is refused with `link-updates-ask`,
+    before anything is written. This covers a new name for a project, a
+    character, a scene, a worldbuilding note, a kind, a vocabulary's word or
+    a field template, a project archived or restored, and a manuscript note
+    renamed or renumbered. The answer of `getApiRoot` says which way it is
+    set, in `canRename`. Everything that renames nothing goes on working.
+
     **Partial changes.** A `PATCH` body follows RFC 7396. A property left out
     is left as it is, `null` clears it, and a list replaces the old list whole.
 
@@ -373,7 +385,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, path-conflict, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -652,7 +664,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, built-in-kind, invalid-reference]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, built-in-kind, invalid-reference, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -842,7 +854,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -1007,7 +1019,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -1170,7 +1182,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, invalid-time-span]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, invalid-time-span, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -1314,7 +1326,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-segment]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-segment, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -1458,7 +1470,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, duplicate-field-title]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, duplicate-field-title, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -1567,7 +1579,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -1629,7 +1641,7 @@ paths:
       x-snowflake-access: delete
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
         - name: renumber
@@ -2815,7 +2827,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict, archive-folder-is-project]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict, archive-folder-is-project, link-updates-ask]
       responses:
         "200":
           description: The project where it stands now.
@@ -2840,7 +2852,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, not-archived, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, not-archived, path-conflict, link-updates-ask]
       responses:
         "200":
           description: The project as it now stands.
@@ -2866,7 +2878,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask]
       responses:
         "200":
           description: What was done, and the health of the project after it.
@@ -3147,7 +3159,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -3184,7 +3196,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict, passage-not-found, ambiguous-passage]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict, passage-not-found, ambiguous-passage, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -3224,7 +3236,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, nothing-to-merge, path-conflict]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, nothing-to-merge, path-conflict, link-updates-ask]
       requestBody:
         required: false
         content:
@@ -3710,6 +3722,12 @@ components:
               description: The name of the vault this Obsidian window has open.
         access:
           $ref: "#/components/schemas/AccessLevel"
+        canRename:
+          type: boolean
+          description: |
+            Whether something can be given another name through the API. False
+            while Obsidian is set to ask before it updates links, when every
+            such change is refused with `link-updates-ask`.
         projectsRoot:
           type: string
           description: |
@@ -8218,6 +8236,9 @@ x-snowflake-problems:
   overlapping-revision:
     status: 409
     title: Another revision already stands over part of that passage.
+  link-updates-ask:
+    status: 409
+    title: Obsidian is set to ask before it updates links, so nothing is renamed here.
   concurrent-change:
     status: 412
     title: The note has changed since it was read.

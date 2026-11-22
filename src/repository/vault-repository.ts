@@ -26,6 +26,7 @@ import {
 import {
   ConcurrentChangeError,
   InvalidManagedDocumentError,
+  LinkUpdatePromptError,
   ManagedFileNotFoundError,
   PathConflictError,
   UnsafeSectionError,
@@ -312,6 +313,7 @@ export class VaultRepository {
     if (!file) throw new ManagedFileNotFoundError(sourcePath);
     if (sourcePath === destinationPath) return sourcePath;
     if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
+    this.assertRenameCanFinish(sourcePath);
     await this.ensureFolder(parentOf(destinationPath));
     try {
       await this.tracked(() => this.fileManager.renameFile(file, destinationPath));
@@ -343,6 +345,7 @@ export class VaultRepository {
     if (!folder) throw new ManagedFileNotFoundError(sourcePath);
     if (sourcePath === destinationPath) return sourcePath;
     if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
+    this.assertRenameCanFinish(sourcePath);
     await this.ensureFolder(parentOf(destinationPath));
     try {
       await this.tracked(() => this.fileManager.renameFile(folder, destinationPath));
@@ -358,6 +361,51 @@ export class VaultRepository {
     const folder = this.getFolder(normalized);
     if (!folder) throw new ManagedFileNotFoundError(normalized);
     await this.tracked(() => this.fileManager.trashFile(folder));
+  }
+
+  /**
+   * Whether Obsidian is set to stop and ask the author before it rewrites
+   * the links to a note that moved. The plugin says, being the one that can
+   * read the app's own settings. Left unset, Obsidian is taken not to ask.
+   */
+  asksBeforeLinkUpdates: (() => boolean) | null = null;
+
+  private unattendedDepth = 0;
+
+  /**
+   * Runs work that nobody is there to answer a dialog for. Obsidian renames
+   * a note at once, and where the author has it ask about links it then
+   * holds its answer until its dialog is answered: in a window nobody is
+   * looking at, for good. A rename asked for from inside this work is
+   * refused before it is begun, with `LinkUpdatePromptError`.
+   *
+   * The count is the repository's and not the caller's: while such work
+   * runs, a rename the author asks for by hand is refused as well. The
+   * work is short, and a refusal can be asked for again.
+   */
+  async unattended<T>(run: () => Promise<T>): Promise<T> {
+    this.unattendedDepth += 1;
+    try {
+      return await run();
+    } finally {
+      this.unattendedDepth -= 1;
+    }
+  }
+
+  /**
+   * Refuses a rename that would be left waiting on Obsidian's dialog. The
+   * two renames in this class ask it themselves. A caller that goes to the
+   * file manager for a rename of its own asks it first.
+   *
+   * Obsidian asks only where links lead to what moved, and which those are
+   * is its own reckoning. So every note and every folder is refused while
+   * it would ask. A data file of the plugin's own is linked from nowhere,
+   * and is let through.
+   */
+  assertRenameCanFinish(path: string): void {
+    if (this.unattendedDepth === 0 || this.asksBeforeLinkUpdates?.() !== true) return;
+    if (path.toLowerCase().endsWith(".json")) return;
+    throw new LinkUpdatePromptError(this.normalize(path));
   }
 
   /**

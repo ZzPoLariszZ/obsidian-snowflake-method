@@ -1,6 +1,7 @@
 import {
 	ConcurrentChangeError,
 	InvalidManagedDocumentError,
+	LinkUpdatePromptError,
 	ManagedFileNotFoundError,
 	PathConflictError,
 	UnsafeSectionError,
@@ -38,6 +39,18 @@ export const refuse = (code: string, detail: string, extra: JsonObject = {}): ne
  */
 export const changedSince = (currentEtag: string): ApiError =>
 	new ApiError('concurrent-change', 'The note has changed since it was read. Read it again and decide again.', { currentEtag });
+
+/**
+ * The refusal of a change that would rename something while Obsidian is set
+ * to ask before it updates links. Its dialog would stand open with nobody to
+ * answer it, and the call would never end.
+ */
+export const linkUpdatesAsk = (path: string): ApiError =>
+	new ApiError(
+		'link-updates-ask',
+		'Obsidian is set to ask before it updates links, and a rename made here has nobody to answer its dialog. Switch on "Automatically update internal links" under Files and links in Obsidian\'s settings, then ask again.',
+		{ path },
+	);
 
 export interface ProblemEntry {
 	readonly status: number;
@@ -99,6 +112,7 @@ export function mapError(error: unknown): ApiError {
 	if (error instanceof ApiError) return error;
 	if (error instanceof ConcurrentChangeError) return changedSince(error.actualRevision);
 	if (error instanceof ManagedFileNotFoundError) return new ApiError('not-found', 'It is not there, or no longer there.');
+	if (error instanceof LinkUpdatePromptError) return linkUpdatesAsk(error.path);
 	if (error instanceof PathConflictError) {
 		return new ApiError('path-conflict', 'A file or folder already stands where this would go.', { path: error.path });
 	}

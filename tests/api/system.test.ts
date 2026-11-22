@@ -44,6 +44,7 @@ describe('what the API says of itself', () => {
 			plugin: { id: 'snowflake-method', version: '9.9.9' },
 			vault: { name: 'Test Vault' },
 			access: 'write',
+			canRename: true,
 			projectsRoot: 'Snowflake Projects',
 			limits: { bodyBytes: 2097152, bridgeBytes: 131072, pageSize: 100, maxPageSize: 500 },
 		});

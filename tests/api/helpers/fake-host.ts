@@ -89,6 +89,8 @@ export interface FakeHost extends ApiHost {
 		derived: { sources: DerivedTaskSources; failed: boolean };
 		/** The author's chapter numbering rule. */
 		numbering: ChapterNumberingSettings;
+		/** Whether Obsidian is set to ask before it updates the links to a note that moved. */
+		asksAboutLinks: boolean;
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -138,6 +140,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		sessionScope: 'project',
 		goalScope: 'manuscript',
 		numbering: { style: 'english', rules: [] },
+		asksAboutLinks: false,
 		derived: {
 			sources: {
 				dailyGoal: 0,
@@ -185,6 +188,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 	projects.repository.onManagedFileCreated = (_path, _content, userInput) => {
 		origins.push(userInput);
 	};
+	projects.repository.asksBeforeLinkUpdates = () => state.asksAboutLinks;
 	const sessions = new WritingSessionService({
 		repository: projects.repository,
 		writingCount: projects.writingCount,
@@ -283,8 +287,9 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		leaving: () => state.leaving,
 		asPlugin: async (run) => {
 			host.ranAsPlugin += 1;
-			return history.asPlugin(run);
+			return history.asPlugin(() => projects.repository.unattended(run));
 		},
+		asksBeforeLinkUpdates: () => state.asksAboutLinks,
 		settleNotes: async (paths) => {
 			editors.push(`settle ${paths.join(', ')}`);
 			// A stream writes every note it holds typing for, whichever was asked after, and so does a sticky note's editor.

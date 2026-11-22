@@ -26,6 +26,7 @@ export const systemOperations: OperationGroup = {
 				plugin: { id: SERVICE, version: host.pluginVersion() },
 				vault: { name: host.vaultName() },
 				access: host.access(),
+				canRename: !host.asksBeforeLinkUpdates(),
 				projectsRoot: host.projectsRoot(),
 				limits: {
 					bodyBytes: BODY_BYTES,

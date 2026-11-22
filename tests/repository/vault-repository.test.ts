@@ -4,6 +4,7 @@ import { SCHEMA_VERSION, fingerprint } from "../../src/domain";
 import {
   ConcurrentChangeError,
   InvalidManagedDocumentError,
+  LinkUpdatePromptError,
   ManagedFileNotFoundError,
   PathConflictError,
   UnsupportedSchemaError,
@@ -35,6 +36,53 @@ describe("VaultRepository", () => {
       environment.fileManager,
       environment.metadataCache,
     );
+  });
+
+  describe("a rename nobody is there to answer a dialog for", () => {
+    const NOTE = "Projects/Novel/20_Character/Ada.md";
+    const MOVED = "Projects/Novel/20_Character/Ada Vale.md";
+    const state = (): string[] => [...fakeVault.contents.keys()].sort();
+
+    beforeEach(async () => {
+      await fakeVault.seedFile(NOTE, "---\n{}\n---\nAda");
+      await fakeVault.seedFile("Projects/Novel/70_Tool/tasks.json", "{}");
+    });
+
+    it("is refused before anything moves where Obsidian would stop to ask about links", async () => {
+      repository.asksBeforeLinkUpdates = () => true;
+      const before = state();
+      const refused = repository.unattended(() => repository.renameFile(NOTE, MOVED));
+      await expect(refused).rejects.toBeInstanceOf(LinkUpdatePromptError);
+      await expect(refused).rejects.toMatchObject({ path: NOTE, code: "link-update-prompt" });
+      await expect(repository.unattended(() => repository.renameFolder("Projects/Novel", "Projects/Novella"))).rejects.toBeInstanceOf(LinkUpdatePromptError);
+      expect(state()).toEqual(before);
+      expect(fakeFileManager.renameCalls).toEqual([]);
+    });
+
+    it("goes ahead for a data file of the plugin's own, which nothing links to", async () => {
+      repository.asksBeforeLinkUpdates = () => true;
+      const aside = "Projects/Novel/70_Tool/tasks.corrupted-1.json";
+      await expect(repository.unattended(() => repository.renameFile("Projects/Novel/70_Tool/tasks.json", aside))).resolves.toBe(aside);
+    });
+
+    it("goes ahead where Obsidian updates links without asking, and where nothing says how it is set", async () => {
+      await expect(repository.unattended(() => repository.renameFile(NOTE, MOVED))).resolves.toBe(MOVED);
+      repository.asksBeforeLinkUpdates = () => false;
+      await expect(repository.unattended(() => repository.renameFile(MOVED, NOTE))).resolves.toBe(NOTE);
+    });
+
+    it("is the author's to answer for outside such work, and again once such work has ended, however it ended", async () => {
+      repository.asksBeforeLinkUpdates = () => true;
+      await expect(repository.renameFile(NOTE, MOVED)).resolves.toBe(MOVED);
+      await expect(repository.unattended(() => Promise.reject(new Error("the work failed")))).rejects.toThrow("the work failed");
+      await expect(repository.renameFile(MOVED, NOTE)).resolves.toBe(NOTE);
+      // Work inside work is still unattended once the inner part is done.
+      await repository.unattended(async () => {
+        await repository.unattended(() => Promise.resolve());
+        await expect(repository.renameFile(NOTE, MOVED)).rejects.toBeInstanceOf(LinkUpdatePromptError);
+      });
+      expect(() => repository.assertRenameCanFinish(NOTE)).not.toThrow();
+    });
   });
 
   it("creates folders and managed files through Vault and processFrontMatter", async () => {

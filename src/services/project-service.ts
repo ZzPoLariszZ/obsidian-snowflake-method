@@ -95,6 +95,7 @@ import { GalleryService } from "./gallery-service";
 import {
   ConcurrentChangeError,
   InvalidManagedDocumentError,
+  LinkUpdatePromptError,
   ManagedFileNotFoundError,
   PathConflictError,
   UnsafeSectionError,
@@ -1071,6 +1072,7 @@ export class SnowflakeProjectService {
     if (destinationRoot !== project.rootPath) {
       const folder = this.repository.getFolder(project.rootPath);
       if (!folder) throw new ManagedFileNotFoundError(project.rootPath);
+      this.repository.assertRenameCanFinish(project.rootPath);
       await this.repository.counted(() =>
         this.repository.fileManager.renameFile(folder, destinationRoot),
       );
@@ -2072,6 +2074,7 @@ export class SnowflakeProjectService {
       );
       if (destination === normalized) return this.loadProject(project.projectFile);
       if (this.repository.get(destination)) throw new PathConflictError(destination);
+      this.repository.assertRenameCanFinish(normalized);
       await this.repository.counted(() =>
         this.repository.fileManager.renameFile(folder, destination),
       );
@@ -2600,6 +2603,11 @@ export class SnowflakeProjectService {
           .map((candidate) => candidate.name),
         nextName,
       );
+    }
+    // The note takes the new name as this change's last step. Where that
+    // step would be left waiting on a dialog, nothing before it is written.
+    if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
+      this.repository.assertRenameCanFinish(character.path);
     }
     await this.ensureReferencedDefinitions(
       project,
@@ -3632,6 +3640,11 @@ export class SnowflakeProjectService {
         : patch.aliases.map((alias) => alias.trim()).filter((alias) => alias.length > 0);
     if (patch.aliases !== undefined) {
       frontmatterPatch[ALIASES_KEY] = nextAliases.length > 0 ? nextAliases : undefined;
+    }
+    // The note takes the new name as this change's last step. Where that
+    // step would be left waiting on a dialog, nothing before it is written.
+    if (nextTitle !== undefined && nextTitle.length > 0 && nextTitle !== scene.title) {
+      this.repository.assertRenameCanFinish(scene.path);
     }
     await this.ensureReferencedDefinitions(
       project,
@@ -5059,7 +5072,11 @@ export class SnowflakeProjectService {
       if (earlier !== null && earlier !== path) {
         try {
           await this.repository.renameFile(earlier, path);
-        } catch {
+        } catch (error) {
+          // Refused for want of anyone to answer Obsidian's dialog is no
+          // race lost: a fresh note made beside the old one would fork the
+          // description, so the refusal is the caller's to hear.
+          if (error instanceof LinkUpdatePromptError) throw error;
           // The watcher may have renamed or created it between the look and
           // the move; whoever lost carries on with what stands now.
         }
@@ -5829,6 +5846,11 @@ export class SnowflakeProjectService {
         nextName,
       );
     }
+    // The note takes the new name as this change's last step. Where that
+    // step would be left waiting on a dialog, nothing before it is written.
+    if (nextName !== undefined && nextName.length > 0 && nextName !== entity.name) {
+      this.repository.assertRenameCanFinish(entity.path);
+    }
     await this.ensureReferencedDefinitions(
       project,
       kind,
@@ -6098,6 +6120,13 @@ export class SnowflakeProjectService {
       path.startsWith(`${oldFolder}/`)
         ? normalizePath(`${newFolder}/${path.slice(oldFolder.length + 1)}`)
         : null;
+
+    // The folder moves after the project's note has been told the new
+    // name. Where the move would be left waiting on a dialog, the note is
+    // not told either.
+    if (this.repository.getFolder(oldFolder) !== null) {
+      this.repository.assertRenameCanFinish(oldFolder);
+    }
 
     await this.repository.updateFrontmatterAtomic(
       project.projectFile,

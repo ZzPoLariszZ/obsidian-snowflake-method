@@ -574,6 +574,7 @@ export class ManuscriptService {
     }
 
     const plan = await this.planRenames(project, renames, [later.path]);
+    this.assertRenamesCanFinish(plan);
     const head = await this.readSegment(earlier.path);
     const tail = await this.readSegment(later.path);
     const joined = `${head.body.replace(/\n+$/u, "")}\n\n${tail.body.replace(
@@ -732,6 +733,7 @@ export class ManuscriptService {
       throw new UnsupportedSchemaError(target, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     }
     const plan = await this.planRenames(project, renames, [target]);
+    this.assertRenamesCanFinish(plan);
     await this.repository.trashFile(target);
     const { outcome: renumbered } = await this.runRenames(plan, origin);
     const beside = ordered[index - 1] ?? ordered[index + 1];
@@ -810,6 +812,17 @@ export class ManuscriptService {
       freed.add(step.from);
     }
     return { steps, skipped };
+  }
+
+  /**
+   * Refuses a batch that would be left waiting on a dialog, for the changes
+   * that rename only after they have written something else. The batch
+   * would be refused at its first rename all the same, with that something
+   * else already done.
+   */
+  private assertRenamesCanFinish(plan: RenamePlan): void {
+    const first = plan.steps[0];
+    if (first !== undefined) this.repository.assertRenameCanFinish(first.from);
   }
 
   private async runRenames(
