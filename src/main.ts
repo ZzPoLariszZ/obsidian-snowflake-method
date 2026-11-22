@@ -65,6 +65,7 @@ import {
 	countsCharacters,
 	entityKindIds,
 	fileStem,
+	followerRenames,
 	formatClock,
 	getFirstIncompleteStep,
 	hasWordSegmenter,
@@ -81,8 +82,8 @@ import {
 	parseSensitiveWords,
 	parseStopwords,
 	primaryManagedSectionForStep,
-	proposeChapterNumber,
-	proposeChapterRemoval,
+	proposeChapterPlacement,
+	proposeChapterRemovalAmong,
 	rememberFontFamily,
 	sanitizeChapterNumberRules,
 	sanitizeContentWidth,
@@ -145,13 +146,14 @@ import {
 	type OccurrencePlacement,
 	type OccurrenceRole,
 	type StickyNoteColor,
-	type ChapterFollower,
 	type ChapterNumbering,
 	foldName,
 	galleryKeyOf,
 	type ChapterNumberRule,
 	type ChapterNumberProposal,
+	type ChapterPlacement,
 	type ChapterRemovalProposal,
+	type PlacedProposal,
 	type CanvasExportWords,
 	type NoteStanding,
 	type GraphMemberGroup,
@@ -9023,7 +9025,7 @@ export default class SnowflakeMethodPlugin
 		if (choice === null) return false;
 		await onAgreed?.();
 		const renames =
-			choice.renumber && proposal !== null ? this.followerRenames(proposal) : [];
+			choice.renumber && proposal !== null ? followerRenames(proposal) : [];
 		let merged: { renumbered: SegmentRenameOutcome };
 		try {
 			merged = await this.projects.mergeManuscriptSegments(
@@ -9112,7 +9114,7 @@ export default class SnowflakeMethodPlugin
 		});
 		if (choice === null) return null;
 		const renames =
-			choice.renumber && proposal !== null ? this.followerRenames(proposal) : [];
+			choice.renumber && proposal !== null ? followerRenames(proposal) : [];
 		await onAgreed?.(renames.map((rename) => rename.path));
 		let deleted: { neighbour: string | null; renumbered: SegmentRenameOutcome };
 		try {
@@ -11108,27 +11110,16 @@ export default class SnowflakeMethodPlugin
 	 */
 	private async chapterNumberProposal(
 		project: ProjectSnapshot,
-		placement: { after: string } | { atStart: true } | { atEnd: true },
-	): Promise<(ChapterNumberProposal & { paths: string[] }) | null> {
+		placement: ChapterPlacement,
+	): Promise<PlacedProposal<ChapterNumberProposal> | null> {
 		const numbering = this.chapterNumbering();
 		if (numbering === null) return null;
 		const segments = await this.projects.manuscript.listSegmentsFromFiles(project);
-		let insertAt = segments.length;
-		if ('after' in placement) {
-			const target = normalizePath(placement.after);
-			const index = segments.findIndex((segment) => segment.path === target);
-			insertAt = index === -1 ? segments.length : index + 1;
-		} else if ('atStart' in placement) {
-			insertAt = 0;
-		}
-		return {
-			...proposeChapterNumber(
-				segments.map((segment) => segment.title),
-				insertAt,
-				numbering,
-			),
-			paths: segments.map((segment) => segment.path),
-		};
+		return proposeChapterPlacement(
+			segments,
+			'after' in placement ? { after: normalizePath(placement.after) } : placement,
+			numbering,
+		);
 	}
 
 	/**
@@ -11139,17 +11130,9 @@ export default class SnowflakeMethodPlugin
 	private chapterRemovalProposal(
 		segments: readonly { path: string; title: string }[],
 		removeAt: number,
-	): (ChapterRemovalProposal & { paths: string[] }) | null {
+	): PlacedProposal<ChapterRemovalProposal> | null {
 		const numbering = this.chapterNumbering();
-		if (numbering === null) return null;
-		return {
-			...proposeChapterRemoval(
-				segments.map((segment) => segment.title),
-				removeAt,
-				numbering,
-			),
-			paths: segments.map((segment) => segment.path),
-		};
+		return numbering === null ? null : proposeChapterRemovalAmong(segments, removeAt, numbering);
 	}
 
 	private segmentTitlePrompt(
@@ -11188,21 +11171,10 @@ export default class SnowflakeMethodPlugin
 
 	/** The renames the author agreed to: the followers' when the toggle was on. */
 	private renamesFor(
-		proposal: (ChapterNumberProposal & { paths: string[] }) | null,
+		proposal: PlacedProposal<ChapterNumberProposal> | null,
 		renumber: boolean,
 	): { path: string; title: string }[] {
-		return renumber && proposal !== null ? this.followerRenames(proposal) : [];
-	}
-
-	/** The renames a proposal's followers ask for, each note by its path. */
-	private followerRenames(proposal: {
-		followers: readonly ChapterFollower[];
-		paths: readonly string[];
-	}): { path: string; title: string }[] {
-		return proposal.followers.flatMap((follower) => {
-			const path = proposal.paths[follower.index];
-			return path === undefined ? [] : [{ path, title: follower.next }];
-		});
+		return renumber && proposal !== null ? followerRenames(proposal) : [];
 	}
 
 	/** A refused name said in the author's words; anything else as it came. */

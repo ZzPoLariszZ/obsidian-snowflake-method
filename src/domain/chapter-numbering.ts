@@ -585,3 +585,74 @@ export function proposeChapterRemoval(
 	});
 	return { followers };
 }
+
+// --- the notes a proposal is about -------------------------------------------
+
+/** A manuscript note as a renumbering knows it: where it stands, and what it is called. */
+export interface NumberedNote {
+	path: string;
+	title: string;
+}
+
+/** Where a new note goes among the notes there are: after one of them, at the start, or at the end. */
+export type ChapterPlacement = { after: string } | { atStart: true } | { atEnd: true };
+
+/** A proposal with the notes it was made over, each by its path, so a follower's index names a note. */
+export type PlacedProposal<T> = T & { paths: string[] };
+
+/**
+ * The index a note placed so takes among `notes`, which are in reading
+ * order. A note asked to go after one that is not among them goes last, as
+ * a note at the end does.
+ */
+export function chapterInsertIndex(notes: readonly NumberedNote[], placement: ChapterPlacement): number {
+	if ('atStart' in placement) return 0;
+	if ('after' in placement) {
+		const index = notes.findIndex((note) => note.path === placement.after);
+		return index === -1 ? notes.length : index + 1;
+	}
+	return notes.length;
+}
+
+/** `proposeChapterNumber` for a note placed among notes named by their paths. */
+export function proposeChapterPlacement(
+	notes: readonly NumberedNote[],
+	placement: ChapterPlacement,
+	numbering: ChapterNumbering,
+): PlacedProposal<ChapterNumberProposal> {
+	return {
+		...proposeChapterNumber(
+			notes.map((note) => note.title),
+			chapterInsertIndex(notes, placement),
+			numbering,
+		),
+		paths: notes.map((note) => note.path),
+	};
+}
+
+/** `proposeChapterRemoval` for the note at `removeAt` among notes named by their paths. */
+export function proposeChapterRemovalAmong(
+	notes: readonly NumberedNote[],
+	removeAt: number,
+	numbering: ChapterNumbering,
+): PlacedProposal<ChapterRemovalProposal> {
+	return {
+		...proposeChapterRemoval(
+			notes.map((note) => note.title),
+			removeAt,
+			numbering,
+		),
+		paths: notes.map((note) => note.path),
+	};
+}
+
+/** The renames a proposal's followers ask for, each note by its path. */
+export function followerRenames(proposal: {
+	followers: readonly ChapterFollower[];
+	paths: readonly string[];
+}): { path: string; title: string }[] {
+	return proposal.followers.flatMap((follower) => {
+		const path = proposal.paths[follower.index];
+		return path === undefined ? [] : [{ path, title: follower.next }];
+	});
+}

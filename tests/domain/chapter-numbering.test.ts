@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	chapterInsertIndex,
 	chapterRuleProblem,
 	compileChapterNumbering,
 	compileChapterRule,
+	followerRenames,
 	formatChapterNumber,
 	isChapterNumberingStyle,
 	parseChineseNumeral,
 	proposeChapterNumber,
+	proposeChapterPlacement,
 	proposeChapterRemoval,
+	proposeChapterRemovalAmong,
 	runningChapterRule,
 	sanitizeChapterNumberRules,
 	toChineseNumeral,
@@ -466,5 +470,49 @@ describe('proposing the numbers after a removal', () => {
 		);
 		restored.splice(2, 1);
 		expect(restored).toEqual(titles);
+	});
+});
+
+describe('a proposal over notes named by their paths', () => {
+	const numbering = compileChapterNumbering({ style: 'english', rules: [] });
+	if (numbering === null) throw new Error('The English preset is a rule.');
+	const notes = [
+		{ path: 'Book/Chapter 1.md', title: 'Chapter 1' },
+		{ path: 'Book/Interlude.md', title: 'Interlude' },
+		{ path: 'Book/Chapter 2.md', title: 'Chapter 2' },
+		{ path: 'Book/Chapter 3.md', title: 'Chapter 3' },
+	];
+
+	it('finds where a note placed after another, at the start or at the end would stand', () => {
+		expect(chapterInsertIndex(notes, { atStart: true })).toBe(0);
+		expect(chapterInsertIndex(notes, { atEnd: true })).toBe(4);
+		expect(chapterInsertIndex(notes, { after: 'Book/Interlude.md' })).toBe(2);
+		// A note that is not among them has no place after it, and the new note goes last.
+		expect(chapterInsertIndex(notes, { after: 'Book/Gone.md' })).toBe(4);
+		expect(chapterInsertIndex([], { after: 'Book/Gone.md' })).toBe(0);
+	});
+
+	it('offers a note placed after a numbered one the next number, and names the notes that move up by their paths', () => {
+		const proposal = proposeChapterPlacement(notes, { after: 'Book/Chapter 1.md' }, numbering);
+		expect(proposal.head).toBe(proposeChapterNumber(['Chapter 1', 'Interlude', 'Chapter 2', 'Chapter 3'], 1, numbering).head);
+		expect(proposal.paths).toEqual(notes.map((note) => note.path));
+		expect(followerRenames(proposal)).toEqual([
+			{ path: 'Book/Chapter 2.md', title: 'Chapter 3' },
+			{ path: 'Book/Chapter 3.md', title: 'Chapter 4' },
+		]);
+	});
+
+	it('asks the numbered notes after one that goes to move down, each by its path', () => {
+		const proposal = proposeChapterRemovalAmong(notes, 0, numbering);
+		expect(followerRenames(proposal)).toEqual([
+			{ path: 'Book/Chapter 2.md', title: 'Chapter 1' },
+			{ path: 'Book/Chapter 3.md', title: 'Chapter 2' },
+		]);
+		// A note without a number leaves the count as it was.
+		expect(followerRenames(proposeChapterRemovalAmong(notes, 1, numbering))).toEqual([]);
+	});
+
+	it('names no note for a follower whose place holds none', () => {
+		expect(followerRenames({ followers: [{ index: 7, title: 'Chapter 8', next: 'Chapter 9' }], paths: ['Book/Chapter 1.md'] })).toEqual([]);
 	});
 });
