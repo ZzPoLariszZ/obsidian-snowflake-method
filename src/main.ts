@@ -5990,6 +5990,12 @@ export default class SnowflakeMethodPlugin
 	 */
 	private createLocalApiDoors(): LocalApi {
 		const host: ApiHost = {
+			projects: this.projects,
+			roster: async () => ({
+				active: await this.discoverProjects(),
+				archived: await this.projects.listArchivedProjects(this.settings.projectRoot),
+			}),
+			currentProjectPath: () => this.settings.recentProjectPath,
 			pluginVersion: () => this.manifest.version,
 			vaultName: () => this.app.vault.getName(),
 			projectsRoot: () => normalizeProjectRoot(this.settings.projectRoot),

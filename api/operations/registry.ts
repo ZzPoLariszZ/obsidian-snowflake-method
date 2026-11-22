@@ -1,8 +1,10 @@
 import type { OperationGroup, OperationHandler } from './context';
+import { projectOperations } from './projects';
+import { stepOperations } from './steps';
 import { systemOperations } from './system';
 
 /** Every group of handlers this build carries. */
-const GROUPS: readonly OperationGroup[] = [systemOperations];
+const GROUPS: readonly OperationGroup[] = [systemOperations, projectOperations, stepOperations];
 
 /**
  * Every handler under the name of its operation. An operation is answered

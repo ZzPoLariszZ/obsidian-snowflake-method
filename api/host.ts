@@ -1,3 +1,4 @@
+import type { ProjectRef, SnowflakeProjectService } from '../src/services';
 import type { Access } from './spec/operations';
 
 /**
@@ -7,6 +8,15 @@ import type { Access } from './spec/operations';
  * what the API can reach is read off this one list.
  */
 export interface ApiHost {
+	/** The plugin's own service for projects, with every other service it owns. */
+	readonly projects: SnowflakeProjectService;
+	/**
+	 * Every project under the folder the author keeps projects in, and every
+	 * one in the archive beside them, each by its title.
+	 */
+	roster(): Promise<{ active: ProjectRef[]; archived: ProjectRef[] }>;
+	/** The metadata note of the project the author last worked in, or null. */
+	currentProjectPath(): string | null;
 	/** The plugin's version, as its manifest states it. */
 	pluginVersion(): string;
 	/** The name of the vault this window has open. */

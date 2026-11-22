@@ -57,6 +57,17 @@ security:
 tags:
   - name: Service
     description: What this API is, whether it is ready, and its own description.
+  - name: Projects
+    description: |
+      A project is one novel in the making. It is a folder in the vault with
+      the notes of its ten steps, its characters, scenes and worldbuilding,
+      and its manuscript.
+  - name: Steps
+    description: |
+      The ten steps of the Snowflake Method, each with a status the author
+      sets. Steps 1, 2, 4 and 6 are written in a note of their own, which is
+      read and written here. Steps 3, 5 and 7 are written in the character
+      notes, 8 and 9 in the scene notes, and 10 is the manuscript.
 
 paths:
   /:
@@ -132,6 +143,173 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [Projects]
+      summary: List the projects
+      description: |
+        Every project under the folder the author keeps projects in, by
+        title. Archived projects stand in a folder of their own and are left
+        out unless `state` asks for them. Start here to find a project's `id`,
+        which every other operation takes.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      parameters:
+        - name: state
+          in: query
+          description: Which projects to list.
+          schema:
+            type: string
+            enum: [active, archived, all]
+            default: active
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The projects.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProject
+      tags: [Projects]
+      summary: Get a project
+      description: |
+        One project with its ten steps, how far it has come, how many
+        characters, scenes and worldbuilding notes it holds, and where each of
+        its folders stands in the vault. This reads every note of the project
+        once and keeps the reading until a note changes, so it is quick to
+        ask again.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/health:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProjectHealth
+      tags: [Projects]
+      summary: Check a project's health
+      description: |
+        What is wrong with the project's structure, if anything: a folder or a
+        note that is missing, a link that leads nowhere, a name that has
+        drifted from its file. Each issue says whether it blocks work and
+        whether the plugin can repair it by itself. Ask this when another
+        operation answers `invalid-managed-document` or `unsafe-section`.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The project's health.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectHealth"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/steps:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listSteps
+      tags: [Steps]
+      summary: List a project's ten steps
+      description: |
+        The ten steps in order, each with its status and whether its work
+        should be looked at again because a step before it has changed.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The ten steps.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StepList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/steps/{step}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/StepNumber"
+    get:
+      operationId: getStep
+      tags: [Steps]
+      summary: Get one step
+      description: |
+        One step with its status, the steps it depends on, and the statuses
+        it may be given.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The step.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Step"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/steps/{step}/text:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/StepNumber"
+    get:
+      operationId: getStepText
+      tags: [Steps]
+      summary: Read what a step says
+      description: |
+        The text of a step that is written in a note of its own: the summary
+        of step 1 or 2, the synopsis of step 4 or 6. Each part of the note is
+        a section with an id, given here under that id. The other steps have
+        no note of their own and answer `not-found`: read characters for
+        steps 3, 5 and 7, scenes for 8 and 9, and the manuscript for 10.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The step's text.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StepText"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -140,6 +318,50 @@ components:
       description: |
         The access token from the plugin's settings, under Local API. It is
         made on this computer and never leaves it.
+
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: A project's `id`, as `listProjects` gives it.
+      schema:
+        type: string
+        minLength: 1
+    StepNumber:
+      name: step
+      in: path
+      required: true
+      description: A step's number, 1 to 10.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10
+    Offset:
+      name: offset
+      in: query
+      description: How many items to pass over before the first one given.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Limit:
+      name: limit
+      in: query
+      description: The most items to give in one answer.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+
+  headers:
+    ETag:
+      description: |
+        The version of the note the answer describes, in quotes. The same
+        value stands in the body as `etag`, without them.
+      schema:
+        type: string
 
   responses:
     Problem:
@@ -278,6 +500,399 @@ components:
           type: boolean
           const: true
 
+    Language:
+      type: string
+      enum: [en, zh-CN, zh-TW, ja, ko, fr, de, es]
+      description: |
+        The language a project is written in. It names the project's folders
+        and files and heads its notes, and cannot be changed once the project
+        is made.
+
+    Series:
+      type: object
+      description: The series a project is a book of.
+      required: [name, book]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: The name the books of the series share.
+        book:
+          type: [integer, "null"]
+          minimum: 1
+          description: The book's number in the series, where the author gave one.
+
+    ProjectSummary:
+      type: object
+      required: [id, title, language, path, metadataPath, series, readOnly, archived, current]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: The project's stable id. It does not change when the project is renamed or moved.
+        title:
+          type: string
+          description: The project's name, which is also the name of its folder.
+        language:
+          $ref: "#/components/schemas/Language"
+        path:
+          type: string
+          description: The project's folder, as a path in the vault. It changes when the project is renamed or archived.
+        metadataPath:
+          type: string
+          description: The note that holds the project's own properties, as a path in the vault.
+        series:
+          oneOf:
+            - $ref: "#/components/schemas/Series"
+            - type: "null"
+        readOnly:
+          type: boolean
+          description: |
+            True where a newer version of the plugin wrote the project. This
+            one can read it and may not change it.
+        archived:
+          type: boolean
+          description: True where the project stands in the archive folder. It can be read, and restored, and nothing else.
+        current:
+          type: boolean
+          description: True for the project the author last worked in, in Obsidian.
+
+    ProjectPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectSummary"
+        total:
+          type: integer
+          description: How many items there are in all.
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+          description: The `offset` that gives the next items, or null where these are the last.
+
+    Project:
+      type: object
+      required:
+        - id
+        - title
+        - language
+        - path
+        - metadataPath
+        - series
+        - readOnly
+        - archived
+        - current
+        - schemaVersion
+        - steps
+        - progress
+        - counts
+        - manuscript
+        - health
+        - folders
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: The project's stable id. It does not change when the project is renamed or moved.
+        title:
+          type: string
+          description: The project's name, which is also the name of its folder.
+        language:
+          $ref: "#/components/schemas/Language"
+        path:
+          type: string
+          description: The project's folder, as a path in the vault. It changes when the project is renamed or archived.
+        metadataPath:
+          type: string
+          description: The note that holds the project's own properties, as a path in the vault.
+        series:
+          oneOf:
+            - $ref: "#/components/schemas/Series"
+            - type: "null"
+        readOnly:
+          type: boolean
+          description: |
+            True where a newer version of the plugin wrote the project or one
+            of its notes. This one can read it and may not change it.
+        archived:
+          type: boolean
+          description: True where the project stands in the archive folder. It can be read, and restored, and nothing else.
+        current:
+          type: boolean
+          description: True for the project the author last worked in, in Obsidian.
+        schemaVersion:
+          type: [integer, "null"]
+          description: The version of the plugin's own format the project is written in.
+        steps:
+          type: array
+          description: The ten steps, in order.
+          minItems: 10
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/Step"
+        progress:
+          $ref: "#/components/schemas/Progress"
+        counts:
+          type: object
+          required: [characters, scenes, entities]
+          additionalProperties: false
+          properties:
+            characters:
+              type: integer
+            scenes:
+              type: integer
+            entities:
+              type: integer
+              description: Worldbuilding notes of every kind together.
+        manuscript:
+          type: object
+          required: [firstNotePath]
+          additionalProperties: false
+          properties:
+            firstNotePath:
+              type: [string, "null"]
+              description: The note the manuscript begins with, as a path in the vault. Null where there is none yet.
+        health:
+          type: object
+          description: How many issues `getProjectHealth` would list.
+          required: [status, blocking, advisory]
+          additionalProperties: false
+          properties:
+            status:
+              $ref: "#/components/schemas/HealthStatus"
+            blocking:
+              type: integer
+            advisory:
+              type: integer
+        folders:
+          type: object
+          description: |
+            Where each of the project's folders stands, as paths in the vault,
+            under names that are the same in every language. Hand one to
+            Obsidian's own command line to search or list it. A folder for a
+            tool the author has not used yet may not exist.
+          required:
+            - system
+            - summaries
+            - characters
+            - synopses
+            - scenes
+            - draft
+            - worldbuilding
+            - materials
+            - archive
+          additionalProperties:
+            type: string
+          properties:
+            system:
+              type: string
+            summaries:
+              type: string
+              description: Steps 1 and 2.
+            characters:
+              type: string
+            synopses:
+              type: string
+              description: Steps 4 and 6.
+            scenes:
+              type: string
+            draft:
+              type: string
+              description: The manuscript.
+            worldbuilding:
+              type: string
+            materials:
+              type: string
+            archive:
+              type: string
+
+    Progress:
+      type: object
+      description: How many of the ten steps are done. Step 9 counts as done when it is skipped.
+      required: [completed, total, percent]
+      additionalProperties: false
+      properties:
+        completed:
+          type: integer
+        total:
+          type: integer
+        percent:
+          type: integer
+
+    StepStatus:
+      type: string
+      enum: [not-started, in-progress, in-revision, complete, skipped]
+      description: |
+        Where a step stands. `in-revision` is a finished step taken up again.
+        Only step 9, which is optional, can be `skipped`.
+
+    Step:
+      type: object
+      required: [id, name, status, optional, dependencies, needsReview, textEditable, path, allowedStatuses]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          minimum: 1
+          maximum: 10
+        name:
+          type: string
+          enum:
+            - one-sentence-summary
+            - one-paragraph-summary
+            - character-sheets
+            - plot-synopsis
+            - character-synopses
+            - long-synopsis
+            - character-profiles
+            - scene-list
+            - scene-planning
+            - manuscript
+          description: What the step produces, in words that are the same in every language.
+        status:
+          $ref: "#/components/schemas/StepStatus"
+        optional:
+          type: boolean
+          description: True for step 9 only.
+        dependencies:
+          type: array
+          description: The steps that must be done before this one can be.
+          items:
+            type: integer
+        needsReview:
+          type: boolean
+          description: |
+            True where a step this one builds on has changed since the author
+            last looked. Nothing is wrong. The step may want another look.
+        textEditable:
+          type: boolean
+          description: True for steps 1, 2, 4 and 6, whose text `getStepText` reads.
+        path:
+          type: [string, "null"]
+          description: |
+            The step's own note, as a path in the vault, for steps 1, 2, 4 and
+            6. For step 10, the note the manuscript begins with. Null for the
+            steps written in character and scene notes.
+        allowedStatuses:
+          type: array
+          description: The statuses this step may be given.
+          items:
+            $ref: "#/components/schemas/StepStatus"
+
+    StepList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/Step"
+
+    StepText:
+      type: object
+      required: [step, path, etag, readOnly, damaged, sections]
+      additionalProperties: false
+      properties:
+        step:
+          type: integer
+          enum: [1, 2, 4, 6]
+        path:
+          type: string
+          description: The step's note, as a path in the vault.
+        etag:
+          type: string
+          description: The version of the note. Send it in `If-Match` to change the text.
+        readOnly:
+          type: boolean
+        damaged:
+          type: boolean
+          description: |
+            True where a section's markers in the note are missing or broken.
+            Such a section reads as empty and cannot be written until the
+            project is repaired.
+        sections:
+          type: object
+          description: |
+            The text of each section, under the section's id. Step 1 has
+            `genre`, `audience-reason-1`, `one-sentence-summary` and
+            `candidate-title-1` to `candidate-title-6`. Step 2 has
+            `one-paragraph-summary` and `description`. Step 4 has
+            `plot-synopsis`. Step 6 has `long-synopsis`.
+          additionalProperties:
+            type: string
+
+    HealthStatus:
+      type: string
+      enum: [ok, advisory, blocking]
+      description: |
+        `ok` where nothing is wrong. `advisory` where there is only tidying
+        the plugin offers to do. `blocking` where something is damaged.
+
+    ProjectHealth:
+      type: object
+      required: [status, readOnly, outdatedNotes, issues]
+      additionalProperties: false
+      properties:
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        readOnly:
+          type: boolean
+        outdatedNotes:
+          type: integer
+          description: How many notes were written by an older version of the plugin and not brought up to date since.
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectIssue"
+
+    ProjectIssue:
+      type: object
+      required: [code, path, steps, blocking, repairable]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: |
+            What is wrong, as a stable name: `missing-directory`,
+            `missing-artifact`, `dangling-record-link`,
+            `duplicate-manuscript-sequence` and the like.
+        path:
+          type: string
+          description: The note or folder the issue is about, as a path in the vault.
+        steps:
+          type: array
+          description: The steps whose work the issue touches.
+          items:
+            type: integer
+        field:
+          type: string
+          description: The property the issue is about, where it is about one.
+        expected:
+          type: string
+          description: The one value the issue expected to find, where there is one.
+        names:
+          type: array
+          description: What the issue found, one entry each.
+          items:
+            type: string
+        blocking:
+          type: boolean
+          description: True for damage. False for tidying the plugin only offers.
+        repairable:
+          type: boolean
+          description: True where the plugin can put it right without losing anything the author wrote.
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -303,6 +918,9 @@ x-snowflake-problems:
   method-not-allowed:
     status: 405
     title: The address does not take that method.
+  ambiguous-project:
+    status: 409
+    title: Two projects carry that id.
   path-conflict:
     status: 409
     title: Something else already stands where this would go.

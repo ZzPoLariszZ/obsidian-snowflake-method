@@ -1,3 +1,4 @@
+import type { ProjectRef, ProjectSnapshot } from '../../src/services';
 import { ApiError } from '../errors';
 import type { ApiHost } from '../host';
 import type { JsonObject, JsonValue } from '../json';
@@ -36,6 +37,19 @@ export type OperationHandler = (call: OperationCall, context: ApiContext) => Ope
 /** The handlers of one group, each under the name the contract gives its operation. */
 export type OperationGroup = Readonly<Record<string, OperationHandler>>;
 
+/** A project found by its id, with where it stands. */
+export interface FoundProject {
+	readonly ref: ProjectRef;
+	/** It stands in the archive folder: it can be read, and restored, and nothing else. */
+	readonly archived: boolean;
+}
+
+/** A project read whole. */
+export interface LoadedProject {
+	readonly project: ProjectSnapshot;
+	readonly archived: boolean;
+}
+
 /** What every handler works with: the plugin, and the contract it answers to. */
 export class ApiContext {
 	constructor(
@@ -47,6 +61,42 @@ export class ApiContext {
 	/** The contract as a caller is shown it, with the port the author chose. */
 	published(): JsonObject {
 		return publishedDocument(this.document, this.operations, this.host.port());
+	}
+
+	/**
+	 * The project of that id. The services know a project by where it
+	 * stands, which a rename changes, so the id a caller holds is looked up
+	 * among the projects there are each time it is used.
+	 *
+	 * An id is meant to be one project's alone, and nothing in a vault makes
+	 * it so: a project folder copied by hand carries the id of the one it was
+	 * copied from. Which of the two a caller means cannot be guessed, so
+	 * neither is answered for until the author has seen to it.
+	 */
+	async findProject(projectId: string): Promise<FoundProject> {
+		const roster = await this.host.roster();
+		const found: FoundProject[] = [
+			...roster.active.filter((ref) => ref.id === projectId).map((ref) => ({ ref, archived: false })),
+			...roster.archived.filter((ref) => ref.id === projectId).map((ref) => ({ ref, archived: true })),
+		];
+		const first = found[0];
+		if (first === undefined) {
+			throw new ApiError('not-found', 'There is no project with that id. listProjects gives the ids there are.');
+		}
+		if (found.length > 1) {
+			throw new ApiError(
+				'ambiguous-project',
+				'More than one project folder carries that id, most likely a copy made by hand. Which is meant cannot be told.',
+				{ paths: found.map((entry) => entry.ref.rootPath) },
+			);
+		}
+		return first;
+	}
+
+	/** The project of that id, read whole. The reading is kept by the plugin until a note of the project changes. */
+	async loadProject(projectId: string): Promise<LoadedProject> {
+		const found = await this.findProject(projectId);
+		return { project: await this.host.projects.loadProject(found.ref), archived: found.archived };
 	}
 }
 
