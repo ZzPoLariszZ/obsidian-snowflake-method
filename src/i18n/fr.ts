@@ -980,6 +980,8 @@ export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 	'errors.unknown': 'Une erreur s\'est produite.',
 	'errors.dashboard': 'Impossible de charger le tableau de bord Flocon de neige.',
 	'errors.readOnly': 'Ce projet est en lecture seule.',
+	'errors.busyWithLocalApi':
+		'Un programme modifie un projet par l\'API locale en ce moment, cette modification n\'a donc pas été faite. Réessayez dans un instant.',
 	'errors.importSameProject': 'Un projet ne peut pas importer depuis lui-même.',
 	'errors.importReadOnlySource': 'Ce projet a été écrit par une version plus récente du module et ne peut pas être lu en entier.',
 	'errors.importNested': 'L\'un des deux projets se trouve à l\'intérieur de l\'autre.',

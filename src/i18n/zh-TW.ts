@@ -961,6 +961,8 @@ export const zhTW = (): Readonly<Record<TranslationKey, string>> => ({
 	'errors.unknown': '發生了未知錯誤。',
 	'errors.dashboard': '無法載入雪花寫作工作台。',
 	'errors.readOnly': '此專案為唯讀狀態。',
+	'errors.busyWithLocalApi':
+		'有程式正在透過本機 API 修改專案，所以這次修改沒有進行。請稍後重試。',
 	'errors.importSameProject': '專案不能從自身匯入。',
 	'errors.importReadOnlySource': '該專案由較新的版本寫入，無法完整讀取。',
 	'errors.importNested': '兩個專案之一位於另一個之內。',

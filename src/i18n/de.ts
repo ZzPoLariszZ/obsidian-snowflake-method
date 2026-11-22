@@ -976,6 +976,8 @@ export const de = (): Readonly<Record<TranslationKey, string>> => ({
 	'errors.unknown': 'Etwas ist schiefgelaufen.',
 	'errors.dashboard': 'Das Schneeflocken-Dashboard konnte nicht geladen werden.',
 	'errors.readOnly': 'Dieses Projekt ist schreibgeschützt.',
+	'errors.busyWithLocalApi':
+		'Ein Programm ändert gerade über die lokale API ein Projekt, daher wurde diese Änderung nicht vorgenommen. Versuche es gleich noch einmal.',
 	'errors.importSameProject': 'Ein Projekt kann nicht aus sich selbst importieren.',
 	'errors.importReadOnlySource': 'Dieses Projekt wurde mit einer neueren Version geschrieben und kann nicht vollständig gelesen werden.',
 	'errors.importNested': 'Eines der beiden Projekte liegt im anderen.',

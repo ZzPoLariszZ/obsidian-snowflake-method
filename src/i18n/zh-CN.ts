@@ -987,6 +987,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'errors.unknown': '发生了未知错误。',
 	'errors.dashboard': '无法载入雪花写作工作台。',
 	'errors.readOnly': '此项目为只读状态。',
+	'errors.busyWithLocalApi':
+		'有程序正在通过本地接口修改项目，所以这次修改没有进行。请稍后重试。',
 	'errors.importSameProject': '项目不能从自身导入。',
 	'errors.importReadOnlySource': '该项目由更新的版本写入，无法完整读取。',
 	'errors.importNested': '两个项目之一位于另一个之内。',

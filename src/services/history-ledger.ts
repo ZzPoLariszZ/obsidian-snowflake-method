@@ -287,6 +287,16 @@ export class HistoryLedger {
 	 * caller of the local API changing a project. What would be put down to
 	 * the author while it runs is put down to the plugin. Work within work
 	 * is all of it the plugin's, until the outermost has ended.
+	 *
+	 * The count is the ledger's and not the caller's, as the repository's
+	 * `unattended` count is. So a note the author deletes or moves by hand
+	 * in the same moment, or a task they change, is put down to the plugin
+	 * too. Nothing that reaches the ledger says who asked: a note gone is
+	 * told by the vault, a task changed by its service, the same for both.
+	 * Saying it would mean handing who asked through every service a caller
+	 * can reach, and one place missed there would leave a caller's rename
+	 * waiting on a dialog for good. The work is short, and the mislabelled
+	 * line is the price.
 	 */
 	async asPlugin<T>(run: () => Promise<T>): Promise<T> {
 		this.pluginDepth += 1;

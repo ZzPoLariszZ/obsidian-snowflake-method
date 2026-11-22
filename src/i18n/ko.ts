@@ -962,6 +962,8 @@ export const ko = (): Readonly<Record<TranslationKey, string>> => ({
 	'errors.unknown': '문제가 발생했습니다.',
 	'errors.dashboard': '스노우플레이크 대시보드를 불러올 수 없습니다.',
 	'errors.readOnly': '이 프로젝트는 읽기 전용입니다.',
+	'errors.busyWithLocalApi':
+		'프로그램이 로컬 API로 프로젝트를 변경하는 중이라 이 변경은 적용되지 않았습니다. 잠시 후 다시 시도하세요.',
 	'errors.importSameProject': '프로젝트는 자기 자신에게서 가져올 수 없습니다.',
 	'errors.importReadOnlySource': '그 프로젝트는 더 새로운 버전에서 작성되어 전체를 읽을 수 없습니다.',
 	'errors.importNested': '두 프로젝트 중 하나가 다른 프로젝트 안에 있습니다.',

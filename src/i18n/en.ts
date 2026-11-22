@@ -1072,6 +1072,8 @@ export const en = {
 	'errors.unknown': 'Something went wrong.',
 	'errors.dashboard': 'The Snowflake dashboard could not be loaded.',
 	'errors.readOnly': 'This project is read-only.',
+	'errors.busyWithLocalApi':
+		'A program is changing a project through the local API right now, so this change was not made. Try again in a moment.',
 	'errors.importSameProject': 'A project can’t import from itself.',
 	'errors.importReadOnlySource':
 		'That project was written by a newer release and can’t be read in full.',

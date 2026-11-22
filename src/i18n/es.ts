@@ -975,6 +975,8 @@ export const es = (): Readonly<Record<TranslationKey, string>> => ({
 	'errors.unknown': 'Algo salió mal.',
 	'errors.dashboard': 'No se pudo cargar el panel Copo de nieve.',
 	'errors.readOnly': 'Este proyecto es de solo lectura.',
+	'errors.busyWithLocalApi':
+		'Un programa está cambiando un proyecto a través de la API local en este momento, así que este cambio no se ha hecho. Inténtalo de nuevo en un momento.',
 	'errors.importSameProject': 'Un proyecto no puede importar desde sí mismo.',
 	'errors.importReadOnlySource': 'Ese proyecto se escribió con una versión más reciente y no se puede leer por completo.',
 	'errors.importNested': 'Uno de los dos proyectos está dentro del otro.',

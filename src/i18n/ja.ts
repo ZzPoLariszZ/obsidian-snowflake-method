@@ -963,6 +963,8 @@ export const ja = (): Readonly<Record<TranslationKey, string>> => ({
 	'errors.unknown': '問題が発生しました。',
 	'errors.dashboard': 'スノーフレークのダッシュボードを読み込めませんでした。',
 	'errors.readOnly': 'このプロジェクトは読み取り専用です。',
+	'errors.busyWithLocalApi':
+		'プログラムがローカルAPIでプロジェクトを変更しているため、この変更は行われませんでした。少し待ってから、もう一度お試しください。',
 	'errors.importSameProject': 'プロジェクトは自分自身からインポートできません。',
 	'errors.importReadOnlySource': 'そのプロジェクトは新しいバージョンで書き込まれているため、すべてを読み込むことはできません。',
 	'errors.importNested': '2つのプロジェクトの一方が、もう一方の中にあります。',

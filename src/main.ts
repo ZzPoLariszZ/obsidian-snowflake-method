@@ -201,6 +201,7 @@ import {
 } from './editor';
 import {
 	ConcurrentChangeError,
+	LinkUpdatePromptError,
 	ManagedFileNotFoundError,
 	PathConflictError,
 	UnsafeSectionError,
@@ -11467,6 +11468,7 @@ export default class SnowflakeMethodPlugin
 		error: unknown,
 		t: (key: string, vars?: Record<string, string | number>) => string,
 	): unknown {
+		if (error instanceof LinkUpdatePromptError) return new Error(t('errors.busyWithLocalApi'));
 		return error instanceof PathConflictError
 			? new Error(t('errors.renumberConflict', { path: error.path }))
 			: error;
@@ -14861,6 +14863,9 @@ export default class SnowflakeMethodPlugin
 								: 'errors.importKindRefused';
 			throw new Error(this.t(key, { name: error.detail ?? '' }));
 		}
+		if (error instanceof LinkUpdatePromptError) {
+			throw new Error(this.t('errors.busyWithLocalApi'));
+		}
 		throw error;
 	}
 
@@ -15126,6 +15131,15 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private showError(error: unknown): void {
+		// A change of the author's that would rename something is refused
+		// while a caller of the local API is at work and Obsidian is set to
+		// ask about links: the repository cannot tell whose rename it is,
+		// see its `unattended`. The refusal's own words are the caller's.
+		// The author is told what happened to them, and that it will pass.
+		if (error instanceof LinkUpdatePromptError) {
+			new Notice(this.t('errors.busyWithLocalApi'));
+			return;
+		}
 		new Notice(error instanceof Error ? error.message : this.t('errors.unknown'));
 	}
 
