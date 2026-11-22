@@ -1,0 +1,328 @@
+openapi: 3.1.0
+
+info:
+  title: Snowflake Method local API
+  version: 1.0.0
+  summary: Read and write a writer's Snowflake projects from the same computer.
+  description: |
+    The Snowflake Method plugin for Obsidian answers this API on the computer it
+    runs on, and nowhere else. It is off until the author switches it on in the
+    plugin's settings.
+
+    **What it covers.** The plugin's own things: projects, steps, characters,
+    scenes, worldbuilding, the manuscript, tasks, foreshadowing, revisions and
+    sticky notes. Every note it returns carries its `path` in the vault. For
+    plain vault work on that path (reading any file, searching, properties,
+    tags) use Obsidian's own command line.
+
+    **Access.** The author chooses one of three levels: read only, read and
+    write, or read, write and delete. Each operation says which it needs in
+    `x-snowflake-access`.
+
+    **Identity.** Projects, characters, scenes, worldbuilding notes, tasks,
+    foreshadowing and revisions have stable ids. A manuscript note has none, so
+    it is addressed by its path inside the project, percent-encoded into one
+    path segment. Renaming such a note changes its address, and the answer
+    says where it went.
+
+    **Changing a note.** A note-backed thing carries an `etag`. Send it back in
+    `If-Match` when you change or delete that thing. If the note has changed
+    since you read it, the answer is `412` with the current `etag`, and nothing
+    is written. Read it again and decide again.
+
+    **Partial changes.** A `PATCH` body follows RFC 7396. A property left out
+    is left as it is, `null` clears it, and a list replaces the old list whole.
+
+    **Errors.** Every error is a problem document with a stable `code`. Branch
+    on the code, never on the words. `x-snowflake-problems` lists every code.
+
+    **Language.** A project is written in one of eight languages, which names
+    its folders and files. Property names and listed values here are the same
+    in every language. Titles, names and paths are the author's own text.
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: http://127.0.0.1:{port}/v1
+    description: The plugin's own listener, on this computer only.
+    variables:
+      port:
+        default: "27125"
+        description: The port chosen in the plugin's settings.
+
+security:
+  - bearer: []
+
+tags:
+  - name: Service
+    description: What this API is, whether it is ready, and its own description.
+
+paths:
+  /:
+    get:
+      operationId: getApiRoot
+      tags: [Service]
+      summary: Describe this API
+      description: |
+        Says what answers here and how far the caller may go. Without a token
+        it gives the service's name and the contract's version and nothing
+        else. With one it adds the plugin's version, the vault's name, the
+        access level and the limits in force.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-direct: true
+      security: []
+      responses:
+        "200":
+          description: What answers here.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiRoot"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /ready:
+    get:
+      operationId: getReadiness
+      tags: [Service]
+      summary: Check whether the API is ready
+      description: |
+        Obsidian reads a vault for a moment after it opens, and the plugin
+        cannot list projects until that is done. This answers at once either
+        way, so a client can wait here instead of on its first real call.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-direct: true
+      x-snowflake-errors: [not-ready]
+      security: []
+      responses:
+        "200":
+          description: The API is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Readiness"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /openapi.json:
+    get:
+      operationId: getOpenApiDocument
+      tags: [Service]
+      summary: Get this API's description
+      description: |
+        The OpenAPI document of the operations this build answers. Operations
+        planned for a later version are left out, and the server address
+        carries the port in use.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-direct: true
+      responses:
+        "200":
+          description: The OpenAPI document.
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Problem"
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        The access token from the plugin's settings, under Local API. It is
+        made on this computer and never leaves it.
+
+  responses:
+    Problem:
+      description: |
+        The call was refused or failed. The `code` says why, and
+        `x-snowflake-problems` lists every code with its status.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    Problem:
+      type: object
+      description: |
+        An error, in the shape of RFC 9457. Some codes add members of their
+        own, such as `currentEtag` on a `concurrent-change`.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          description: |
+            The kind of problem, `/problems/` followed by the code. It is a
+            name, not an address to open.
+        title:
+          type: string
+          description: The problem in a few words. It may be reworded between versions.
+        status:
+          type: integer
+          description: The HTTP status, repeated for callers that have no status line.
+        code:
+          type: string
+          description: The stable name of the problem. Branch on this.
+        detail:
+          type: string
+          description: What went wrong in this call. It may be reworded between versions.
+        errors:
+          type: array
+          description: Each part of the call that did not match the contract.
+          items:
+            $ref: "#/components/schemas/ProblemIssue"
+        currentEtag:
+          type: string
+          description: The note's `etag` as it stands now, on a `concurrent-change`.
+
+    ProblemIssue:
+      type: object
+      required: [pointer, detail]
+      additionalProperties: false
+      properties:
+        pointer:
+          type: string
+          description: |
+            Where the fault is. A JSON Pointer into the body, or `params/`
+            followed by a parameter's name.
+        detail:
+          type: string
+          description: What is wrong there.
+
+    ApiRoot:
+      type: object
+      required: [service, contract, authenticated]
+      additionalProperties: false
+      properties:
+        service:
+          type: string
+          const: snowflake-method
+          description: The plugin that answers here.
+        contract:
+          type: string
+          description: The version of this contract, as in the document's own `info.version`.
+        authenticated:
+          type: boolean
+          description: Whether the call carried a valid token. Everything below is given only then.
+        plugin:
+          type: object
+          required: [id, version]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            version:
+              type: string
+        vault:
+          type: object
+          required: [name]
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              description: The name of the vault this Obsidian window has open.
+        access:
+          $ref: "#/components/schemas/AccessLevel"
+        projectsRoot:
+          type: string
+          description: |
+            The folder the author keeps projects in, as a path in the vault.
+            Empty when that is the vault's own top folder.
+        limits:
+          $ref: "#/components/schemas/Limits"
+
+    AccessLevel:
+      type: string
+      enum: [read, write, delete]
+      description: |
+        How far the author lets callers go. `read` only reads. `write` also
+        creates and changes. `delete` also deletes.
+
+    Limits:
+      type: object
+      required: [bodyBytes, bridgeBytes, pageSize, maxPageSize]
+      additionalProperties: false
+      properties:
+        bodyBytes:
+          type: integer
+          description: The largest body a call may carry over HTTP, in bytes.
+        bridgeBytes:
+          type: integer
+          description: |
+            The largest `params` and `body` together that a call may carry
+            through Obsidian's command line, in bytes. Send longer text over HTTP.
+        pageSize:
+          type: integer
+          description: How many items a list gives when the call names no `limit`.
+        maxPageSize:
+          type: integer
+          description: The most items a list gives in one answer.
+
+    Readiness:
+      type: object
+      required: [ready]
+      additionalProperties: false
+      properties:
+        ready:
+          type: boolean
+          const: true
+
+x-snowflake-problems:
+  invalid-request:
+    status: 400
+    title: The call does not match the contract.
+  unauthorized:
+    status: 401
+    title: The call carries no valid access token.
+  access-denied:
+    status: 403
+    title: The author's access level does not allow this operation.
+  forbidden-origin:
+    status: 403
+    title: Calls from a web page are refused.
+  cli-bridge-off:
+    status: 403
+    title: The command line bridge is switched off in the plugin's settings.
+  not-found:
+    status: 404
+    title: Nothing stands at that address.
+  unknown-operation:
+    status: 404
+    title: The API has no such operation.
+  method-not-allowed:
+    status: 405
+    title: The address does not take that method.
+  payload-too-large:
+    status: 413
+    title: The body is larger than the API accepts.
+  unsupported-media-type:
+    status: 415
+    title: The body must be JSON.
+  wrong-host:
+    status: 421
+    title: The call names a host this listener does not answer for.
+  internal-error:
+    status: 500
+    title: The operation failed.
+  planned-operation:
+    status: 501
+    title: The operation is planned and not answered by this build.
+  not-ready:
+    status: 503
+    title: Obsidian is still reading the vault.
+  busy:
+    status: 503
+    title: Too many calls are waiting.
+  leaving:
+    status: 503
+    title: Obsidian is closing or the plugin is being switched off.
