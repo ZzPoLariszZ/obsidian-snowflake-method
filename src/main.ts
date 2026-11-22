@@ -257,6 +257,7 @@ import {
 	type SceneRecord,
 	type TaskWrite,
 	type WorldbuildingRecord,
+	type WriteOrigin,
 	type WritingCountScope,
 	isBeatSheetFilePath,
 	isFreeformFilePath,
@@ -2130,12 +2131,10 @@ export default class SnowflakeMethodPlugin
 		series: ProjectSeries | null,
 	): Promise<ManageProjectLists> {
 		try {
-			await this.projects.setSeries(option.path, series);
+			await this.performProjectSeries(option.path, series);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
-		this.invalidateProjectDiscovery();
-		await this.refreshDashboards({ streams: false });
 		new Notice(
 			series === null
 				? this.t('messages.seriesCleared', { name: option.title })
@@ -2777,17 +2776,51 @@ export default class SnowflakeMethodPlugin
 		option: ManageProjectOption,
 		title: string,
 	): Promise<ManageProjectOption[]> {
-		const oldPath = option.path;
 		let project: ProjectSnapshot;
 		try {
-			// Noted as one write on its way: the folder moves first, with every
-			// link into it rewritten, and the name and the heading are written
-			// only after. A quit in between left a folder with the new name
-			// around a project still called by the old one.
-			project = await writeUnderWay(this.projects.renameProject(oldPath, title));
+			project = await this.performProjectRename(option, title);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
+		new Notice(this.t('messages.projectRenamed', { name: project.title }));
+		return this.listProjectsWithHealth();
+	}
+
+	/**
+	 * The work of the project manager, without its words. Each of these does
+	 * what a button there does and keeps the plugin's own picture of the
+	 * projects in step, and leaves the telling to whoever asked: the manager
+	 * says it in a notice and draws its lists again, and a caller of the local
+	 * API is answered with the project. A failure comes out as it was thrown.
+	 */
+
+	/** A project made. It is not made the one being worked in, which is the author's to choose. */
+	private async performProjectCreate(
+		request: { title: string; locale: ProjectLanguage; series?: ProjectSeries | null },
+		origin: WriteOrigin = {},
+	): Promise<ProjectSnapshot> {
+		const project = await this.projects.createProject({
+			title: request.title,
+			rootPath: this.settings.projectRoot,
+			locale: request.locale,
+			series: request.series,
+			...origin,
+		});
+		this.projectLocalesById.set(project.id, project.locale);
+		return project;
+	}
+
+	private async performProjectRename(
+		option: Pick<ManageProjectOption, 'path' | 'rootPath'>,
+		title: string,
+		origin: WriteOrigin = {},
+	): Promise<ProjectSnapshot> {
+		const oldPath = option.path;
+		// Noted as one write on its way: the folder moves first, with every
+		// link into it rewritten, and the name and the heading are written
+		// only after. A quit in between left a folder with the new name
+		// around a project still called by the old one.
+		const project = await writeUnderWay(this.projects.renameProject(oldPath, title, origin));
 		const renamed: CreatedProject = {
 			path: project.projectFile,
 			projectId: project.id,
@@ -2805,8 +2838,49 @@ export default class SnowflakeMethodPlugin
 		}
 
 		await this.renameProjectViews(option.rootPath, project.rootPath, renamed);
-		new Notice(this.t('messages.projectRenamed', { name: project.title }));
-		return this.listProjectsWithHealth();
+		return project;
+	}
+
+	/** A project's series written, and every switcher told: they group by it, and the list of projects carries it. */
+	private async performProjectSeries(path: string, series: ProjectSeries | null): Promise<void> {
+		await this.projects.setSeries(path, series);
+		this.invalidateProjectDiscovery();
+		await this.refreshDashboards({ streams: false });
+	}
+
+	private async performProjectArchive(option: Pick<ManageProjectOption, 'path' | 'rootPath'>): Promise<ProjectRef> {
+		// Asked before the move rather than after: the folder rename reaches
+		// handleVaultRename first, which forgets a recent project that has left
+		// the root, so by the time this returns there is nothing left to compare.
+		const wasRecent =
+			this.settings.recentProjectPath !== null &&
+			isPathAtOrBelow(this.settings.recentProjectPath, option.rootPath);
+		const project = await this.projects.archiveProject(option.path);
+		this.projectLocalesById.delete(project.id);
+		this.invalidateProjectHealth(option.rootPath);
+		this.invalidateProjectDiscovery();
+		// A rename does not detach views the way a delete does, and a dashboard
+		// left open on the old path would sit on a project it can no longer find.
+		this.detachProjectViews(option.rootPath);
+		if (wasRecent) {
+			this.settings.recentProjectPath = null;
+			this.settings.recentStep = 1;
+			this.currentProjectLocale = null;
+			await this.saveSettings();
+		}
+		this.scheduleRefresh(true);
+		return project;
+	}
+
+	private async performProjectRestore(
+		option: Pick<ManageProjectOption, 'path' | 'rootPath'>,
+	): Promise<{ project: ProjectSnapshot; renamedFrom: string | null }> {
+		const restored = await this.projects.restoreProject(option.path, this.settings.projectRoot);
+		this.invalidateProjectHealth(option.rootPath);
+		this.invalidateProjectHealth(restored.project.rootPath);
+		this.invalidateProjectDiscovery();
+		this.scheduleRefresh(true);
+		return restored;
 	}
 
 	/**
@@ -2887,31 +2961,12 @@ export default class SnowflakeMethodPlugin
 	private async archiveManagedProject(
 		option: ManageProjectOption,
 	): Promise<ManageProjectLists> {
-		// Asked before the move rather than after: the folder rename reaches
-		// handleVaultRename first, which forgets a recent project that has left
-		// the root, so by the time this returns there is nothing left to compare.
-		const wasRecent =
-			this.settings.recentProjectPath !== null &&
-			isPathAtOrBelow(this.settings.recentProjectPath, option.rootPath);
 		let project: ProjectRef;
 		try {
-			project = await this.projects.archiveProject(option.path);
+			project = await this.performProjectArchive(option);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
-		this.projectLocalesById.delete(project.id);
-		this.invalidateProjectHealth(option.rootPath);
-		this.invalidateProjectDiscovery();
-		// A rename does not detach views the way a delete does, and a dashboard
-		// left open on the old path would sit on a project it can no longer find.
-		this.detachProjectViews(option.rootPath);
-		if (wasRecent) {
-			this.settings.recentProjectPath = null;
-			this.settings.recentStep = 1;
-			this.currentProjectLocale = null;
-			await this.saveSettings();
-		}
-		this.scheduleRefresh(true);
 		new Notice(this.t('messages.projectArchived', { name: project.title }));
 		return this.manageProjectLists();
 	}
@@ -2921,17 +2976,10 @@ export default class SnowflakeMethodPlugin
 	): Promise<ManageProjectLists> {
 		let restored: { project: ProjectSnapshot; renamedFrom: string | null };
 		try {
-			restored = await this.projects.restoreProject(
-				option.path,
-				this.settings.projectRoot,
-			);
+			restored = await this.performProjectRestore(option);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
-		this.invalidateProjectHealth(option.rootPath);
-		this.invalidateProjectHealth(restored.project.rootPath);
-		this.invalidateProjectDiscovery();
-		this.scheduleRefresh(true);
 		new Notice(
 			restored.renamedFrom === null
 				? this.t('messages.projectRestored', {
@@ -3258,12 +3306,7 @@ export default class SnowflakeMethodPlugin
 	async createProject(request: CreateProjectRequest): Promise<CreatedProject> {
 		let project: ProjectSnapshot;
 		try {
-			project = await this.projects.createProject({
-				title: request.title,
-				rootPath: this.settings.projectRoot,
-				locale: request.locale,
-				series: request.series,
-			});
+			project = await this.performProjectCreate(request);
 		} catch (error) {
 			if (error instanceof ProjectCreationInterruptedError) {
 				this.currentProjectLocale = request.locale;
@@ -3274,8 +3317,8 @@ export default class SnowflakeMethodPlugin
 			}
 			this.rethrowLocalizedMutationError(error);
 		}
+		// The manager makes the project it was asked for the one being worked in.
 		this.currentProjectLocale = project.locale;
-		this.projectLocalesById.set(project.id, project.locale);
 		this.settings.recentProjectPath = project.projectFile;
 		this.settings.recentStep = 1;
 		await this.saveSettings();
