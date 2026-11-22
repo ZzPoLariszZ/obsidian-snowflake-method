@@ -12,16 +12,23 @@ See the source repository for the original TypeScript.
 
 /**
  * The local API's contract is written as YAML, for the people who read it,
- * and carried in the bundle as the object it describes. It is read here, at
- * build time, so nothing in Obsidian has to parse it and no parser's reading
- * of it can differ from the one the tests were run against.
+ * and carried in the bundle as JSON text, behind a function that hands the
+ * text over when it is asked for. The YAML is read here, at build time, so
+ * none is parsed in Obsidian and no parser's reading of it can differ from
+ * the one the tests were run against.
+ *
+ * It is text and not the object it describes. An object written out in the
+ * bundle is built on every device each time the plugin loads, wanted or
+ * not, and the API never runs on a phone or a tablet. Text behind a
+ * function costs a device nothing until the function is called, and is
+ * quicker to read into an object than the object written out is.
  */
-const yamlAsJson = {
-	name: 'yaml-as-json',
+const yamlAsJsonText = {
+	name: 'yaml-as-json-text',
 	setup(build) {
 		build.onLoad({ filter: /\.yaml$/ }, async (args) => ({
-			contents: JSON.stringify(parse(await readFile(args.path, 'utf8'))),
-			loader: 'json',
+			contents: `export default () => ${JSON.stringify(JSON.stringify(parse(await readFile(args.path, 'utf8'))))};`,
+			loader: 'js',
 		}));
 	},
 };
@@ -33,7 +40,7 @@ const context = await esbuild.context({
 	},
 	entryPoints: ['src/main.ts'],
 	bundle: true,
-	plugins: [yamlAsJson],
+	plugins: [yamlAsJsonText],
 	external: [
 		'obsidian',
 		'electron',

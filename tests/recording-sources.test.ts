@@ -107,6 +107,12 @@ describe('the screen recording’s reach', () => {
 		expect(buildConfig).toContain("supported: { 'dynamic-import': false }");
 	});
 
+	it('carries the local API’s contract as text behind a function, never as an object built at every load', () => {
+		expect(buildConfig).toMatch(/export default \(\) => \$\{JSON\.stringify\(JSON\.stringify\(parse\(/u);
+		expect(buildConfig).toContain("loader: 'js'");
+		expect(buildConfig).not.toContain("loader: 'json'");
+	});
+
 	it('speaks to OBS on this computer and nowhere else', () => {
 		const sockets = holding(/new WebSocket\(/u);
 		expect(sockets).toEqual(['../src/services/obs-socket.ts']);

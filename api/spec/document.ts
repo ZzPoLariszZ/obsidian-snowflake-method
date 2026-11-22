@@ -1,4 +1,4 @@
-import raw from '../openapi.yaml';
+import contractText from '../openapi.yaml';
 import { isJsonObject, isRecord, type JsonObject, type JsonValue } from '../json';
 
 /**
@@ -59,9 +59,13 @@ export function readDocument(value: unknown): ApiDocument {
 
 let held: ApiDocument | null = null;
 
-/** The contract this build was made with. */
+/**
+ * The contract this build was made with. It is carried as text and read
+ * into the document the first time it is asked for, then kept. Where the
+ * API never runs, on a phone or a tablet, nothing asks and nothing is read.
+ */
 export function contract(): ApiDocument {
-	held ??= readDocument(raw);
+	held ??= readDocument(JSON.parse(contractText()) as unknown);
 	return held;
 }
 

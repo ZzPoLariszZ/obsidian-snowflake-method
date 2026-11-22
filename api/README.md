@@ -147,7 +147,7 @@ Each operation also carries a tier in `x-snowflake-tier`: `core`, `extended` or 
 
 | Part | What it holds |
 | --- | --- |
-| `openapi.yaml` | The contract. The build turns it into an object, so no YAML is parsed in Obsidian. |
+| `openapi.yaml` | The contract. The build turns it into JSON text, so no YAML is parsed in Obsidian. The text is read the first time the contract is wanted, which on a phone or a tablet is never. |
 | `spec/` | Reading the contract: its operations, and the document the API serves. |
 | `schema/` | Checking a call against the contract's shapes. |
 | `dispatch.ts`, `queue.ts` | The path every call takes: found, allowed, checked, queued, answered. |

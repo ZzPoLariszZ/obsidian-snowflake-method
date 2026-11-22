@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { isJsonObject } from '../../api/json';
+import contractText from '../../api/openapi.yaml';
 import { resolveRef } from '../../api/spec/document';
 import { document, operations, problemRegistry, refsUnder, specText, textOf, writtenOperations } from './helpers/spec';
 
@@ -168,5 +169,14 @@ describe('the contract as a file', () => {
 	it('is written in plain short sentences', () => {
 		expect(specText).not.toContain(String.fromCodePoint(0x2014));
 		expect(specText).not.toContain(';');
+	});
+
+	it('reaches the code as text behind a function, read into the document only when it is asked for', () => {
+		// An object written out in the bundle would be built on every device at every load, a phone's among
+		// them, where the API never runs. Text behind a function costs nothing until the function is called.
+		expect(typeof contractText).toBe('function');
+		const text = contractText();
+		expect(typeof text).toBe('string');
+		expect(JSON.parse(text)).toEqual(document.root);
 	});
 });

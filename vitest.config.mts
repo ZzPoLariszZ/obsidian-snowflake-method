@@ -7,14 +7,15 @@ export default defineConfig({
 	plugins: [
 		{
 			// The local API's contract, read the way the build reads it: the
-			// YAML becomes the object it describes before any test sees it, so
-			// the tests and the bundle hold the same document. An import that
-			// asks for `?raw` is not touched and still gets the text.
-			name: 'yaml-as-json',
+			// YAML becomes JSON text behind a function before any test sees
+			// it, so the tests and the bundle hold the same document. An
+			// import that asks for `?raw` is not touched and still gets the
+			// YAML as it is written.
+			name: 'yaml-as-json-text',
 			enforce: 'pre',
 			transform(code: string, id: string) {
 				if (!id.endsWith('.yaml')) return null;
-				return { code: `export default ${JSON.stringify(parse(code))};`, map: null };
+				return { code: `export default () => ${JSON.stringify(JSON.stringify(parse(code)))};`, map: null };
 			},
 		},
 	],
