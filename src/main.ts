@@ -2350,6 +2350,26 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * One import from its first write to its last, as the plugin's books keep
+	 * it. The reconcile pass is held off, and what the run writes is the
+	 * import's doing in the history, named after its source once the report
+	 * is in. A run that threw is closed in the history all the same, with
+	 * nothing to name it after.
+	 */
+	private async importAsOneRun(run: () => Promise<ImportReport>): Promise<ImportReport> {
+		return this.withoutFieldsReconcile(async () => {
+			this.history.beginImport();
+			let landed: ImportReport | null = null;
+			try {
+				landed = await run();
+				return landed;
+			} finally {
+				this.history.endImport(landed);
+			}
+		});
+	}
+
+	/**
 	 * Runs an import the dialog settled, one notice counting it in. The
 	 * reconcile pass is paused as it is for a migration: every note lands
 	 * saying what its properties say, and the burst of creates would else
@@ -2366,18 +2386,10 @@ export default class SnowflakeMethodPlugin
 		const updating = choice.mode === 'update';
 		const progressKey = updating ? 'modal.import.updating' : 'modal.import.progress';
 		const notice = new Notice(t(progressKey, { done: 0, total: 0 }), 0);
-		this.fieldsReconcilePaused = true;
-		// What the run writes is the import's doing in the history, named
-		// after its source once the report is in.
-		this.history.beginImport();
 		let report: ImportReport;
-		let landed: ImportReport | null = null;
 		try {
-			report = await this.projects.importer.runImport(
-				choice.sourcePath,
-				targetPath,
-				choice.selection,
-				{
+			report = await this.importAsOneRun(() =>
+				this.projects.importer.runImport(choice.sourcePath, targetPath, choice.selection, {
 					onProgress: (progress) => {
 						notice.setMessage(
 							t(progressKey, {
@@ -2386,15 +2398,11 @@ export default class SnowflakeMethodPlugin
 							}),
 						);
 					},
-				},
+				}),
 			);
-			landed = report;
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		} finally {
-			this.history.endImport(landed);
-			this.fieldsReconcilePaused = false;
-			this.pendingFieldsReconciles.clear();
 			notice.hide();
 		}
 		this.invalidateProjectHealth(report.target.projectFile);
@@ -4385,11 +4393,20 @@ export default class SnowflakeMethodPlugin
 	async migrateMemberNotes(): Promise<{ migrated: number; skipped: number }> {
 		const project = await this.requireCurrentProject();
 		// The migration leaves every block saying what the properties say, so
-		// the reconcile pass has nothing to add. Pausing it keeps the write
-		// storm from queueing a project load for every note it touched.
+		// the reconcile pass has nothing to add.
+		return this.withoutFieldsReconcile(() => this.projects.migrateMemberNotes(project.projectFile));
+	}
+
+	/**
+	 * Runs work that writes many notes in one go, each left saying what its
+	 * properties say, with the reconcile pass held off: it would have nothing
+	 * to add, and the burst of writes would else queue a project load for
+	 * every note touched.
+	 */
+	private async withoutFieldsReconcile<T>(run: () => Promise<T>): Promise<T> {
 		this.fieldsReconcilePaused = true;
 		try {
-			return await this.projects.migrateMemberNotes(project.projectFile);
+			return await run();
 		} finally {
 			this.fieldsReconcilePaused = false;
 			this.pendingFieldsReconciles.clear();
