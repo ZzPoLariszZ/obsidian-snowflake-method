@@ -1,4 +1,5 @@
 import type { ProjectRef, ProjectSnapshot } from '../../src/services';
+import { MemberIndex } from '../dto/member';
 import { ApiError } from '../errors';
 import type { ApiHost } from '../host';
 import type { JsonObject, JsonValue } from '../json';
@@ -97,6 +98,22 @@ export class ApiContext {
 	async loadProject(projectId: string): Promise<LoadedProject> {
 		const found = await this.findProject(projectId);
 		return { project: await this.host.projects.loadProject(found.ref), archived: found.archived };
+	}
+
+	/**
+	 * Every member of a project, to be found by where its note stands. A
+	 * link is looked for inside the project first: Obsidian shortens a link
+	 * to a bare name where that was enough when it wrote it, and a second
+	 * project with a note of the same name would otherwise be answered for.
+	 */
+	members(project: ProjectSnapshot): MemberIndex {
+		const repository = this.host.projects.repository;
+		return new MemberIndex(
+			project,
+			(link, sourcePath) =>
+				(repository.resolveLinkWithin(link, sourcePath, project.rootPath) ?? repository.resolveLink(link, sourcePath))?.path ??
+				null,
+		);
 	}
 }
 

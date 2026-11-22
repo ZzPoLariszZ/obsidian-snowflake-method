@@ -68,6 +68,36 @@ tags:
       sets. Steps 1, 2, 4 and 6 are written in a note of their own, which is
       read and written here. Steps 3, 5 and 7 are written in the character
       notes, 8 and 9 in the scene notes, and 10 is the manuscript.
+  - name: Kinds
+    description: |
+      The kinds of note a project keeps beside its manuscript: characters,
+      scenes, and the kinds of worldbuilding. Time, location and item are
+      built in, and an author may add kinds of their own, such as factions.
+  - name: Members
+    description: |
+      Every character, scene and worldbuilding note of a project in one
+      list, for finding a note's `id` by its name.
+  - name: Characters
+    description: |
+      A character is a note that grows over three steps: a sheet in step 3, a
+      synopsis in step 5 and a full profile in step 7.
+  - name: Scenes
+    description: |
+      A scene is a note in the scene list of step 8, with who is in it, where
+      and when it happens, and what happens. Step 9 plans it further.
+  - name: Entities
+    description: |
+      A worldbuilding note: a time, a place, an item, or a note of a kind
+      the author made.
+  - name: Vocabularies
+    description: |
+      The words a project has agreed on, each a small tree per kind.
+      `category` sorts notes. `world-status` and `relationship` name the
+      lines a note keeps about how it stands in the world and with others.
+  - name: Field templates
+    description: |
+      A field template is a set of extra fields with starting text. A kind
+      can have one as its default, and new notes of that kind begin with it.
 
 paths:
   /:
@@ -310,6 +340,423 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/kinds:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listKinds
+      tags: [Kinds]
+      summary: List the kinds of note a project keeps
+      description: |
+        Characters, scenes and every kind of worldbuilding note the project
+        has, in the order the author keeps them, each with how many notes it
+        holds and where its folder stands.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The kinds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KindList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/kinds/{kindId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/KindId"
+    get:
+      operationId: getKind
+      tags: [Kinds]
+      summary: Get one kind
+      description: |
+        One kind with how many notes it holds, where its folder stands and
+        which field template its new notes begin with.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The kind.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Kind"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/members:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listMembers
+      tags: [Members]
+      summary: List every character, scene and worldbuilding note
+      description: |
+        Every note of the project that has an `id`, of every kind, each with
+        its name and the other names it goes by. Use it to find the `id` of
+        something the author names, before reading it in full.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: kind
+          in: query
+          description: "Give only notes of this kind: `character`, `scene`, or a worldbuilding kind."
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/NameQuery"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The notes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/characters:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listCharacters
+      tags: [Characters]
+      summary: List the characters
+      description: |
+        The characters in the author's own order. A list gives each one in
+        short: its name, its role and its one-sentence storyline. Ask for
+        `view=full` to have everything, or read one character by its `id`.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: role
+          in: query
+          description: Give only characters of this role.
+          schema:
+            $ref: "#/components/schemas/CharacterRole"
+        - $ref: "#/components/parameters/ProgressFilter"
+        - $ref: "#/components/parameters/NameQuery"
+        - $ref: "#/components/parameters/View"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The characters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CharacterPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/characters/{characterId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/CharacterId"
+    get:
+      operationId: getCharacter
+      tags: [Characters]
+      summary: Get one character
+      description: |
+        One character in full: the sheet of step 3, the synopsis of step 5,
+        the profile of step 7, how it stands in the world and with others, and
+        any fields the author added.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The character.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Character"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/scenes:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listScenes
+      tags: [Scenes]
+      summary: List the scenes
+      description: |
+        The scenes in the order of the scene list. A list gives each one in
+        short: its title, whose eyes it is seen through and its conflict. Ask
+        for `view=full` to have everything, or read one scene by its `id`.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: character
+          in: query
+          description: Give only scenes this character is in, by the character's `id`.
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/ProgressFilter"
+        - $ref: "#/components/parameters/NameQuery"
+        - $ref: "#/components/parameters/View"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The scenes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScenePage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/scenes/{sceneId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/SceneId"
+    get:
+      operationId: getScene
+      tags: [Scenes]
+      summary: Get one scene
+      description: |
+        One scene in full: who is in it, when and where it happens, what
+        happens in it (step 8), how it is planned (step 9), and the manuscript
+        notes it is written in.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The scene.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scene"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/entities:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listEntities
+      tags: [Entities]
+      summary: List the worldbuilding notes
+      description: |
+        The worldbuilding notes, kind by kind in the author's order. A list
+        gives each one in short. Ask for `view=full` to have everything, or
+        read one by its `id`. `kind` narrows the list to one kind.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: kind
+          in: query
+          description: Give only notes of this kind, by the kind's `id`.
+          schema:
+            type: string
+            minLength: 1
+        - $ref: "#/components/parameters/ProgressFilter"
+        - $ref: "#/components/parameters/NameQuery"
+        - $ref: "#/components/parameters/View"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The worldbuilding notes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/entities/{entityId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/EntityId"
+    get:
+      operationId: getEntity
+      tags: [Entities]
+      summary: Get one worldbuilding note
+      description: |
+        One worldbuilding note in full: its description, its own notes, how
+        it stands in the world and with others, and for a time, when it is.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The worldbuilding note.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/vocabularies/{vocabulary}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/Vocabulary"
+    get:
+      operationId: getVocabulary
+      tags: [Vocabularies]
+      summary: Get one vocabulary across every kind
+      description: |
+        One vocabulary as every kind of the project keeps it: a tree of
+        words for each kind. Read this before giving a note a category, a world
+        status or a relationship, to use the words the author already has.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The vocabulary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vocabulary"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/vocabularies/{vocabulary}/{kindId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/Vocabulary"
+      - $ref: "#/components/parameters/KindId"
+    get:
+      operationId: getVocabularyTree
+      tags: [Vocabularies]
+      summary: Get one kind's tree of a vocabulary
+      description: |
+        The words one kind keeps in one vocabulary, as a list in reading
+        order, each with how deep it stands and how many notes use it.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The tree.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefinitionTree"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/vocabularies/{vocabulary}/{kindId}/nodes/{taxonomyPath}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/Vocabulary"
+      - $ref: "#/components/parameters/KindId"
+      - $ref: "#/components/parameters/TaxonomyPath"
+    get:
+      operationId: getDefinitionNode
+      tags: [Vocabularies]
+      summary: Get one word of a vocabulary
+      description: |
+        One word of a vocabulary by its path in the tree, with what the
+        author wrote that it means.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The word.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefinitionNode"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/field-templates:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listFieldTemplates
+      tags: [Field templates]
+      summary: List the field templates
+      description: |
+        Every field template of the project, kind by kind, each with
+        whether it is the one new notes of its kind begin with.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: kind
+          in: query
+          description: Give only templates of this kind.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: The field templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldTemplateList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/field-templates/{kindId}/{templateName}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/KindId"
+      - $ref: "#/components/parameters/TemplateName"
+    get:
+      operationId: getFieldTemplate
+      tags: [Field templates]
+      summary: Get one field template
+      description: |
+        One field template with the fields it holds and the text each one
+        starts with.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The field template.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldTemplate"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -337,6 +784,90 @@ components:
         type: integer
         minimum: 1
         maximum: 10
+    KindId:
+      name: kindId
+      in: path
+      required: true
+      description: |
+        A kind's `id`: `character`, `scene`, one of the built-in worldbuilding
+        kinds `time`, `location` and `item`, or the name of a kind the author
+        made. `listKinds` gives the ids there are.
+      schema:
+        type: string
+        minLength: 1
+    CharacterId:
+      name: characterId
+      in: path
+      required: true
+      description: A character's `id`, as `listCharacters` or `listMembers` gives it.
+      schema:
+        type: string
+        minLength: 1
+    SceneId:
+      name: sceneId
+      in: path
+      required: true
+      description: A scene's `id`, as `listScenes` or `listMembers` gives it.
+      schema:
+        type: string
+        minLength: 1
+    EntityId:
+      name: entityId
+      in: path
+      required: true
+      description: A worldbuilding note's `id`, as `listEntities` or `listMembers` gives it.
+      schema:
+        type: string
+        minLength: 1
+    Vocabulary:
+      name: vocabulary
+      in: path
+      required: true
+      description: Which vocabulary.
+      schema:
+        $ref: "#/components/schemas/VocabularyId"
+    TaxonomyPath:
+      name: taxonomyPath
+      in: path
+      required: true
+      description: |
+        A word's path in its tree, such as `Race/Elf`, percent-encoded into
+        one step of the address.
+      schema:
+        type: string
+        minLength: 1
+    TemplateName:
+      name: templateName
+      in: path
+      required: true
+      description: A field template's name, as `listFieldTemplates` gives it.
+      schema:
+        type: string
+        minLength: 1
+    View:
+      name: view
+      in: query
+      description: |
+        How much of each item to give. `summary` leaves out the long text,
+        the record lines and the added fields. `full` gives everything, at
+        most 100 items to an answer.
+      schema:
+        type: string
+        enum: [summary, full]
+        default: summary
+    NameQuery:
+      name: q
+      in: query
+      description: Give only items whose name, title or other names contain these words, whatever their case.
+      schema:
+        type: string
+        minLength: 1
+    ProgressFilter:
+      name: progressStatus
+      in: query
+      description: Give only items the author has marked with this progress.
+      schema:
+        $ref: "#/components/schemas/ProgressStatus"
     Offset:
       name: offset
       in: query
@@ -892,6 +1423,782 @@ components:
         repairable:
           type: boolean
           description: True where the plugin can put it right without losing anything the author wrote.
+
+    ProgressStatus:
+      type: string
+      enum: [not-started, in-progress, in-revision, complete]
+      description: How far along the author marks one note.
+
+    CharacterRole:
+      type: string
+      enum: [major, supporting, minor]
+      description: How large a part a character plays.
+
+    Color:
+      type: string
+      enum: [macaron-1, macaron-2, macaron-3, macaron-4, macaron-5, macaron-6, macaron-7, macaron-8]
+      description: One of the eight tints a note's card can wear.
+
+    VocabularyId:
+      type: string
+      enum: [category, world-status, relationship]
+
+    MemberRef:
+      type: object
+      description: |
+        Another note of the project that this one points at. While the note
+        is there, `resolved` is true and `kind` and `id` say which it is.
+        Once it is gone they are null, and `name` is what is left of it.
+      required: [kind, id, name, path, resolved]
+      additionalProperties: false
+      properties:
+        kind:
+          type: [string, "null"]
+          description: "`character`, `scene`, or the `id` of a worldbuilding kind."
+        id:
+          type: [string, "null"]
+        name:
+          type: string
+        path:
+          type: [string, "null"]
+          description: The note, as a path in the vault.
+        resolved:
+          type: boolean
+
+    Term:
+      description: What a field or a clause names. Either a note of the project, or plain words.
+      oneOf:
+        - $ref: "#/components/schemas/MemberRef"
+        - type: object
+          required: [text]
+          additionalProperties: false
+          properties:
+            text:
+              type: string
+
+    RecordClause:
+      description: |
+        One thing a record line says beside its text. `target` is who a
+        relationship is with. `at` is a place, `when` a time, `with` anyone
+        else. `span` is an older way to say a period and is only ever read.
+      oneOf:
+        - type: object
+          required: [kind, term]
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              enum: [target, at, when, with]
+            term:
+              $ref: "#/components/schemas/Term"
+        - type: object
+          required: [kind, start, end]
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              const: span
+            start:
+              $ref: "#/components/schemas/Term"
+            end:
+              $ref: "#/components/schemas/Term"
+
+    RecordLine:
+      type: object
+      description: |
+        One line a note keeps about how it stands in the world, or with
+        another note. The `label` is a word of the note's own kind's
+        vocabulary (`world-status` or `relationship`), and the `text` is what
+        the author wrote under it.
+      required: [label, labelPath, text, clauses]
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+          description: The word's path in its vocabulary tree, such as `Mood/Calm`.
+        labelPath:
+          type: [string, "null"]
+          description: The note of that word, as a path in the vault.
+        text:
+          type: string
+        clauses:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordClause"
+
+    CustomField:
+      type: object
+      description: A field the author added to a note, with a title of their own.
+      required: [title, content]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+
+    Member:
+      type: object
+      required: [kind, id, name, path, aliases]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          description: "`character`, `scene`, or the `id` of a worldbuilding kind."
+        id:
+          type: string
+        name:
+          type: string
+          description: The note's name. For a scene, its title.
+        path:
+          type: string
+          description: The note, as a path in the vault.
+        aliases:
+          type: array
+          description: Other names the note goes by.
+          items:
+            type: string
+
+    MemberPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    Character:
+      type: object
+      description: |
+        A character. The properties up to `oneSentenceStoryline` are always
+        given. The rest are given when one character is read, and in a list
+        only with `view=full`.
+      required:
+        - kind
+        - id
+        - name
+        - path
+        - etag
+        - index
+        - readOnly
+        - damaged
+        - needsMigration
+        - role
+        - progressStatus
+        - aliases
+        - categories
+        - color
+        - oneSentenceStoryline
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          const: character
+        id:
+          type: string
+          description: The character's stable id. It does not change when the character is renamed.
+        name:
+          type: string
+        path:
+          type: string
+          description: The character's note, as a path in the vault. It changes when the character is renamed.
+        etag:
+          type: string
+          description: The version of the note. Send it in `If-Match` to change or delete the character.
+        index:
+          type: integer
+          description: The character's place in the author's order, from 0.
+        readOnly:
+          type: boolean
+          description: True where a newer version of the plugin wrote the note.
+        damaged:
+          type: boolean
+          description: |
+            True where a section's markers in the note are missing or broken.
+            The note cannot be written until the project is repaired.
+        needsMigration:
+          type: boolean
+          description: True where an older version of the plugin wrote the note and it was not brought up to date since.
+        role:
+          oneOf:
+            - $ref: "#/components/schemas/CharacterRole"
+            - type: "null"
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        aliases:
+          type: array
+          description: Other names the character goes by, which the manuscript may use.
+          items:
+            type: string
+        categories:
+          type: array
+          description: The words of the `category` vocabulary the character is sorted under, each by its path in the tree.
+          items:
+            type: string
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        oneSentenceStoryline:
+          type: string
+          description: Step 3. The character's storyline in one sentence.
+        motivation:
+          type: string
+          description: Step 3. What the character wants in the abstract.
+        goal:
+          type: string
+          description: Step 3. What the character wants in the concrete.
+        conflict:
+          type: string
+          description: Step 3. What stands in the way.
+        growth:
+          type: string
+          description: Step 3. How the character changes.
+        oneParagraphStoryline:
+          type: string
+          description: Step 3. The character's storyline in one paragraph.
+        characterSynopsis:
+          type: string
+          description: Step 5. The story as this character lives it.
+        characterProfile:
+          type: string
+          description: Step 7. Everything there is to know about the character.
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLine"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLine"
+        unrecognizedWorldStatus:
+          type: array
+          description: Lines of the note's world status that are not record lines, kept as written.
+          items:
+            type: string
+        unrecognizedRelationships:
+          type: array
+          description: Lines of the note's relationships that are not record lines, kept as written.
+          items:
+            type: string
+        customFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomField"
+        gallery:
+          type: array
+          description: The note's pictures, each as the link the note stores.
+          items:
+            type: string
+        galleryMain:
+          type: [string, "null"]
+          description: The picture shown first, one of `gallery`.
+
+    CharacterPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Character"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    PointOfView:
+      description: |
+        Whose eyes a scene is seen through. Null where the author has not
+        said. Otherwise all-knowing, several characters in turn, or one
+        character.
+      oneOf:
+        - type: "null"
+        - type: object
+          required: [mode]
+          additionalProperties: false
+          properties:
+            mode:
+              type: string
+              enum: [omniscient, multiple]
+        - type: object
+          required: [mode, character]
+          additionalProperties: false
+          properties:
+            mode:
+              type: string
+              const: character
+            character:
+              $ref: "#/components/schemas/MemberRef"
+
+    ManuscriptLink:
+      type: object
+      required: [link, path]
+      additionalProperties: false
+      properties:
+        link:
+          type: string
+          description: The link as the scene's note stores it, with any heading it points at.
+        path:
+          type: [string, "null"]
+          description: The manuscript note the link leads to, as a path in the vault. Null where it leads nowhere.
+
+    Scene:
+      type: object
+      description: |
+        A scene. The properties up to `conflict` are always given. The rest
+        are given when one scene is read, and in a list only with `view=full`.
+      required:
+        - kind
+        - id
+        - title
+        - path
+        - etag
+        - index
+        - readOnly
+        - damaged
+        - needsMigration
+        - progressStatus
+        - aliases
+        - categories
+        - color
+        - pov
+        - conflict
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          const: scene
+        id:
+          type: string
+          description: The scene's stable id. It does not change when the scene is renamed.
+        title:
+          type: string
+        path:
+          type: string
+          description: The scene's note, as a path in the vault. It changes when the scene is renamed.
+        etag:
+          type: string
+          description: The version of the note. Send it in `If-Match` to change or delete the scene.
+        index:
+          type: integer
+          description: The scene's place in the scene list, from 0.
+        readOnly:
+          type: boolean
+        damaged:
+          type: boolean
+        needsMigration:
+          type: boolean
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        aliases:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        pov:
+          $ref: "#/components/schemas/PointOfView"
+        conflict:
+          type: string
+          description: Step 8. What is at odds in the scene.
+        characters:
+          type: array
+          description: Who is in the scene, in the order of the character list.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        times:
+          type: array
+          description: When the scene happens.
+          items:
+            $ref: "#/components/schemas/Term"
+        locations:
+          type: array
+          description: Where the scene happens.
+          items:
+            $ref: "#/components/schemas/Term"
+        events:
+          type: string
+          description: Step 8. What happens in the scene.
+        planning:
+          type: string
+          description: Step 9. The scene planned out before it is written.
+        linkedManuscript:
+          type: array
+          description: The manuscript notes the scene is written in.
+          items:
+            $ref: "#/components/schemas/ManuscriptLink"
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLine"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLine"
+        unrecognizedWorldStatus:
+          type: array
+          items:
+            type: string
+        unrecognizedRelationships:
+          type: array
+          items:
+            type: string
+        customFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomField"
+        gallery:
+          type: array
+          items:
+            type: string
+        galleryMain:
+          type: [string, "null"]
+
+    ScenePage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scene"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    EntityTime:
+      description: |
+        When a time is: one moment, or a period between two others. Null for
+        a note of any kind but `time`.
+      oneOf:
+        - type: "null"
+        - type: object
+          required: [kind, start, end]
+          additionalProperties: false
+          properties:
+            kind:
+              type: [string, "null"]
+              enum: [point, period, null]
+            start:
+              oneOf:
+                - $ref: "#/components/schemas/Term"
+                - type: "null"
+            end:
+              oneOf:
+                - $ref: "#/components/schemas/Term"
+                - type: "null"
+
+    Entity:
+      type: object
+      description: |
+        A worldbuilding note. The properties up to `time` are always given.
+        The rest are given when one note is read, and in a list only with
+        `view=full`.
+      required:
+        - kind
+        - id
+        - name
+        - path
+        - etag
+        - index
+        - readOnly
+        - damaged
+        - needsMigration
+        - progressStatus
+        - aliases
+        - categories
+        - color
+        - description
+        - time
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          description: The `id` of the note's kind. A note cannot change kind.
+        id:
+          type: string
+          description: The note's stable id. It does not change when the note is renamed.
+        name:
+          type: string
+        path:
+          type: string
+          description: The note, as a path in the vault. It changes when the note or its kind is renamed.
+        etag:
+          type: string
+          description: The version of the note. Send it in `If-Match` to change or delete it.
+        index:
+          type: integer
+          description: The note's place among the notes of its kind, from 0.
+        readOnly:
+          type: boolean
+        damaged:
+          type: boolean
+        needsMigration:
+          type: boolean
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        aliases:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        description:
+          type: string
+          description: What it is, in a sentence or two.
+        time:
+          $ref: "#/components/schemas/EntityTime"
+        notes:
+          type: string
+          description: Everything else the author keeps about it.
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLine"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLine"
+        unrecognizedWorldStatus:
+          type: array
+          items:
+            type: string
+        unrecognizedRelationships:
+          type: array
+          items:
+            type: string
+        customFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomField"
+        gallery:
+          type: array
+          items:
+            type: string
+        galleryMain:
+          type: [string, "null"]
+
+    EntityPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entity"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    Kind:
+      type: object
+      required: [id, group, builtIn, name, path, icon, description, hasTimeFields, defaultFieldTemplate, count]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: |
+            `character`, `scene`, `time`, `location`, `item`, or the name of a
+            kind the author made. An authored kind's `id` is its name and
+            changes when the kind is renamed.
+        group:
+          type: string
+          enum: [character, scene, worldbuilding]
+        builtIn:
+          type: boolean
+          description: True for the kinds every project has. They cannot be renamed or deleted.
+        name:
+          type: string
+          description: The kind's name in the project's language.
+        path:
+          type: string
+          description: The folder the kind's notes stand in, as a path in the vault.
+        icon:
+          type: [string, "null"]
+          description: The icon an authored kind wears, by its name in Obsidian's icon set.
+        description:
+          type: [string, "null"]
+          description: What an authored kind is for, in the author's words.
+        hasTimeFields:
+          type: boolean
+          description: True for `time`, whose notes say when they are.
+        defaultFieldTemplate:
+          type: [string, "null"]
+          description: The name of the field template new notes of the kind begin with.
+        count:
+          type: integer
+          description: How many notes of the kind the project has.
+
+    KindList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Kind"
+
+    DefinitionNode:
+      type: object
+      description: One word of a vocabulary.
+      required: [taxonomyPath, name, depth, parent, description, path, folderPath, state, usage]
+      additionalProperties: false
+      properties:
+        taxonomyPath:
+          type: string
+          description: The word's path in its tree, such as `Race/Elf`.
+        name:
+          type: string
+          description: The word itself, which is the last step of its path.
+        depth:
+          type: integer
+          description: How deep the word stands. 1 for a word at the top of its tree.
+        parent:
+          type: [string, "null"]
+          description: The path of the word above it, or null at the top of the tree.
+        description:
+          type: string
+          description: What the author wrote that the word means.
+        path:
+          type: string
+          description: The word's own note, as a path in the vault.
+        folderPath:
+          type: string
+          description: The word's folder, as a path in the vault. The words under it stand in it.
+        state:
+          type: string
+          enum: [ok, missing-note, missing-folder]
+          description: |
+            `ok` for a word as it should be. `missing-note` where its folder
+            is there and its note is not. `missing-folder` where notes use the
+            word and nothing in the vault spells it.
+        usage:
+          type: object
+          description: How many notes use this very word, not the words under it.
+          required: [categorized, labelled]
+          additionalProperties: false
+          properties:
+            categorized:
+              type: integer
+              description: Notes sorted under it as a category.
+            labelled:
+              type: integer
+              description: Notes with a record line under it.
+
+    DefinitionTree:
+      type: object
+      required: [vocabulary, kind, path, nodes]
+      additionalProperties: false
+      properties:
+        vocabulary:
+          $ref: "#/components/schemas/VocabularyId"
+        kind:
+          type: string
+          description: The `id` of the kind whose words these are.
+        path:
+          type: string
+          description: The folder the tree stands in, as a path in the vault. It may not exist while the tree is empty.
+        nodes:
+          type: array
+          description: Every word, in reading order. A word comes before the words under it.
+          items:
+            $ref: "#/components/schemas/DefinitionNode"
+
+    Vocabulary:
+      type: object
+      required: [vocabulary, trees]
+      additionalProperties: false
+      properties:
+        vocabulary:
+          $ref: "#/components/schemas/VocabularyId"
+        trees:
+          type: array
+          description: One tree for each kind of the project, in the order of the kinds.
+          items:
+            $ref: "#/components/schemas/DefinitionTree"
+
+    FieldTemplate:
+      type: object
+      required: [kind, name, description, path, default]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          description: The `id` of the kind the template belongs to.
+        name:
+          type: string
+          description: The template's name, which is the name of its note.
+        description:
+          type: string
+        path:
+          type: string
+          description: The template's note, as a path in the vault.
+        default:
+          type: boolean
+          description: True where new notes of the kind begin with this template.
+        fields:
+          type: array
+          description: The fields the template holds. Given when one template is read.
+          items:
+            $ref: "#/components/schemas/CustomField"
+
+    FieldTemplateList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldTemplate"
 
 x-snowflake-problems:
   invalid-request:

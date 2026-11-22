@@ -86,7 +86,7 @@ describe('one project, read', () => {
 			current: true,
 			schemaVersion: 3,
 			progress: { completed: 1, total: 10, percent: 10 },
-			counts: { characters: 0, scenes: 0, entities: 0 },
+			counts: { characters: 2, scenes: 2, entities: 4 },
 			health: { status: 'ok', blocking: 0, advisory: 0 },
 		});
 		expect((project['steps'] as Body[]).map((step) => step['status'])).toEqual([

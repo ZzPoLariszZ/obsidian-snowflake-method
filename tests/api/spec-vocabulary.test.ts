@@ -3,7 +3,17 @@ import { describe, expect, it } from 'vitest';
 import { STEP_NAMES } from '../../api/dto/project';
 import { isJsonObject, type JsonValue } from '../../api/json';
 import { resolveRef } from '../../api/spec/document';
-import { PROJECT_LANGUAGES, STEP_IDS, STEP_SECTION_IDS, STEP_STATUSES } from '../../src/domain';
+import {
+	CHARACTER_TYPES,
+	DEFINITION_FILE_IDS,
+	MACARON_COLORS,
+	PROGRESS_STATUSES,
+	PROJECT_LANGUAGES,
+	STEP_IDS,
+	STEP_SECTION_IDS,
+	STEP_STATUSES,
+	TIME_KINDS,
+} from '../../src/domain';
 import { ON_DEMAND_DIRECTORY_KEYS, PROJECT_DIRECTORY_KEYS } from '../../src/services';
 import { document, textOf } from './helpers/spec';
 
@@ -45,6 +55,29 @@ describe('the contract’s listed values', () => {
 				expect(told, id).toContain(`\`${id}\``);
 			}
 		}
+	});
+
+	it('name every progress, role, tint and vocabulary a note can have', () => {
+		expect(listed(schema('ProgressStatus')['enum'])).toEqual([...PROGRESS_STATUSES]);
+		expect(listed(schema('CharacterRole')['enum'])).toEqual([...CHARACTER_TYPES]);
+		expect(listed(schema('Color')['enum'])).toEqual([...MACARON_COLORS]);
+		expect(listed(schema('VocabularyId')['enum'])).toEqual([...DEFINITION_FILE_IDS]);
+	});
+
+	it('name every way a record line can point at a note, and the two ways a time can be', () => {
+		const forms = listed(schema('RecordClause')['oneOf']);
+		const kinds = forms.flatMap((form) => {
+			const properties = isJsonObject(form) ? form['properties'] : undefined;
+			const kind = isJsonObject(properties) ? properties['kind'] : undefined;
+			if (!isJsonObject(kind)) return [];
+			return kind['const'] === undefined ? listed(kind['enum']) : [kind['const']];
+		});
+		// The four the plugin writes, and the older span it still reads.
+		expect(kinds).toEqual(['target', 'at', 'when', 'with', 'span']);
+		const time = listed(schema('EntityTime')['oneOf']).find((form) => isJsonObject(form) && form['type'] === 'object');
+		const properties = isJsonObject(time) ? time['properties'] : undefined;
+		const kind = isJsonObject(properties) ? properties['kind'] : undefined;
+		expect(listed(isJsonObject(kind) ? kind['enum'] : undefined)).toEqual([...TIME_KINDS, null]);
 	});
 
 	it('promise the folders every project has and leave room for the ones a tool makes when it is first used', () => {

@@ -9662,7 +9662,8 @@ function storedKindFolderNames(frontmatter: ManagedFrontmatter): string[] {
     : [];
 }
 
-function definitionRootPath(
+/** The vault path of the folder one kind keeps one of its vocabularies in. */
+export function definitionRootPath(
   project: KindScope,
   kind: EntityKindId,
   id: DefinitionFileId,

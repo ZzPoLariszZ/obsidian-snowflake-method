@@ -1,5 +1,5 @@
+import type { ProjectRef } from '../../src/services';
 import { healthOf, projectOf, projectSummary } from '../dto/project';
-import type { JsonObject } from '../json';
 import { pageOf } from '../paging';
 import { textParam, type OperationGroup } from './context';
 
@@ -13,14 +13,13 @@ export const projectOperations: OperationGroup = {
 		const state = textParam(call, 'state');
 		const roster = await context.host.roster();
 		const currentPath = context.host.currentProjectPath();
-		const rows: JsonObject[] = [];
-		if (state !== 'archived') {
-			for (const ref of roster.active) rows.push(projectSummary(ref, { archived: false, currentPath }));
-		}
-		if (state !== 'active') {
-			for (const ref of roster.archived) rows.push(projectSummary(ref, { archived: true, currentPath }));
-		}
-		return { status: 200, body: pageOf(rows, call) };
+		const rows: { ref: ProjectRef; archived: boolean }[] = [];
+		if (state !== 'archived') for (const ref of roster.active) rows.push({ ref, archived: false });
+		if (state !== 'active') for (const ref of roster.archived) rows.push({ ref, archived: true });
+		return {
+			status: 200,
+			body: pageOf(rows, call, (row) => projectSummary(row.ref, { archived: row.archived, currentPath })),
+		};
 	},
 
 	getProject: async (call, context) => {
