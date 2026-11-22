@@ -344,6 +344,12 @@ export const freeformWriteOperations: OperationGroup = {
 		const others = held.views.filter((entry) => entry.id !== view.id).map((entry) => entry.name);
 		if (!free(others, name, view.name)) throw taken('freeform view', name);
 		landed(await context.host.projects.freeform.renameView(project, view.id, name), noView(), FILE);
+		if (isSent(body['viewport'])) {
+			const sent = body['viewport'];
+			const viewport = { x: Number(sent['x']), y: Number(sent['y']), zoom: Number(sent['zoom']) };
+			// Where the view is to open is meant as a change here, so the view a project starts with is written for it.
+			landed(await context.host.projects.freeform.leaveView(project, view.id, { viewport }, true), noView(), FILE);
+		}
 		context.host.recordsChanged('freeform');
 		return { status: 200, body: await tellView(context, project, view.id) };
 	},

@@ -484,6 +484,11 @@ describe('a freeform view, made and changed', () => {
 		const before = vaultState(golden.host);
 		await ok(golden, 'updateFreeformView', at, await ok(golden, 'getFreeformView', at));
 		expect(vaultState(golden.host)).toEqual(before);
+		// Where it opens is set alone, and the name stands.
+		const placed = await ok(golden, 'updateFreeformView', at, { viewport: { x: -120, y: 40, zoom: 0.5 } });
+		expect([placed['name'], placed['viewport']]).toEqual(['Cast board', { x: -120, y: 40, zoom: 0.5 }]);
+		expect(refusal(await golden.call('updateFreeformView', at, { body: { viewport: { x: 0, y: 0, zoom: 9 } } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await golden.call('updateFreeformView', at, { body: { viewport: { x: 0, y: 0 } } }))).toEqual([400, 'invalid-request']);
 
 		expect((await golden.call('deleteFreeformView', { ...P, freeformViewId: boards.spareCanvas })).status).toBe(204);
 		expect(idsOf((await ok(golden, 'listFreeformViews', P))['items'])).toEqual([boards.canvas, made['id']]);
@@ -717,5 +722,15 @@ describe('a freeform view, made and changed', () => {
 		expect([reply.status, faults(reply)]).toEqual([200, []]);
 		expect(Object.keys(vaultState(golden.host)).length).toBe(before + 1);
 		expect(((await ok(golden, 'getFreeformView', { ...P, freeformViewId: 'freeform-view-main' }))['placements'] as Body[]).length).toBe(1);
+	});
+
+	it('writes the view a project starts with when a caller sets where it opens', async () => {
+		const golden = await createGolden();
+		const at = { projectId: golden.project.id, freeformViewId: 'freeform-view-main' };
+		const before = Object.keys(vaultState(golden.host)).length;
+		const placed = await ok(golden, 'updateFreeformView', at, { viewport: { x: 30, y: 60, zoom: 2 } });
+		expect(placed['viewport']).toEqual({ x: 30, y: 60, zoom: 2 });
+		expect(Object.keys(vaultState(golden.host)).length).toBe(before + 1);
+		expect((await ok(golden, 'getFreeformView', at))['viewport']).toEqual({ x: 30, y: 60, zoom: 2 });
 	});
 });

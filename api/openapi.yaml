@@ -8483,7 +8483,7 @@ components:
           type: string
         viewport:
           type: object
-          description: Where the author last stood looking.
+          description: Where the author last stood looking, or where a caller set the view to open.
           required: [x, y, zoom]
           additionalProperties: false
           properties:
@@ -10610,7 +10610,7 @@ components:
 
     FreeformViewPatch:
       type: object
-      description: What to change of a view. One read and sent back whole is taken, and only its name is looked at.
+      description: What to change of a view. One read and sent back whole is taken, and only its name and its viewport are looked at.
       additionalProperties: false
       x-snowflake-echo: "#/components/schemas/FreeformView"
       properties:
@@ -10618,6 +10618,24 @@ components:
           type: string
           pattern: "\\S"
           maxLength: 200
+        viewport:
+          type: object
+          description: |
+            Where the view opens for a tab that has not been looking at it. A
+            point of the plane stands on the screen at its place times `zoom`,
+            plus `x` and `y`. A tab that has the view open keeps its own place,
+            and writes that back as it leaves.
+          required: [x, y, zoom]
+          additionalProperties: false
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+            zoom:
+              type: number
+              minimum: 0.1
+              maximum: 4
 
     FreeformResourceInput:
       description: What a card shows. A note of the project or one of its records by its id, a file by where it stands inside the project, a web address, or words of the card's own.
