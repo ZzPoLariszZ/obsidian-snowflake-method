@@ -2,13 +2,15 @@ import { Platform } from 'obsidian';
 
 /**
  * Starting a program of the system's, on the desktop alone. This is the
- * only place the plugin reaches into Node, and it reaches for one thing:
- * the screen recorder's programs are started by their whole path with their
- * words as a list. No shell is ever asked to read a line, and nothing an
- * author typed is ever run.
+ * only place the plugin reaches into Node, and it reaches for two things.
+ * The screen recorder's programs are started by their whole path with their
+ * words as a list: no shell is ever asked to read a line, and nothing an
+ * author typed is ever run. And the local API, where the author has
+ * switched it on, is given Node's listener: see `desktopListenerModule`
+ * at the foot of this file.
  *
- * On a phone or a tablet there is no Node to reach: the import is never
- * made there, and whoever asks is told there is no runner.
+ * On a phone or a tablet there is no Node to reach: neither import is ever
+ * made there, and whoever asks is told there is nothing to hand over.
  */
 
 /** A program that was started, as far as its starter follows it. */
@@ -174,4 +176,20 @@ export async function desktopProcessRunner(): Promise<ProcessRunner | null> {
 			}
 		},
 	};
+}
+
+/**
+ * Node's own module for answering on a port, for the local API, or null
+ * where there is none: on a phone or a tablet, and on a desktop whose Node
+ * could not be reached. It is handed over as it came, looked at by nobody
+ * here: `desktop-listener.ts` is where it is read, and where the one
+ * address it is ever asked to answer on, this computer's own, is written.
+ */
+export async function desktopListenerModule(): Promise<unknown> {
+	if (!Platform.isDesktop) return null;
+	try {
+		return await import('http');
+	} catch {
+		return null;
+	}
 }

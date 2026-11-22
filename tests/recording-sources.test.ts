@@ -8,6 +8,11 @@ import buildConfig from '../esbuild.config.mjs?raw';
  * handful of the system's own programs and OBS and nothing else, speaks to
  * OBS on this computer alone, and reads no file outside the vault: each of
  * those is a line here.
+ *
+ * The local API shares the one bridge to Node with the recording, so what
+ * it may reach through that bridge is held here too: Node's listener, on
+ * this computer's own address. What the API's own folder may do is held in
+ * `tests/api/sources.test.ts`.
  */
 describe('the screen recording’s reach', () => {
 	const sources = import.meta.glob<string>('../src/**/*.{ts,tsx}', {
@@ -22,16 +27,33 @@ describe('the screen recording’s reach', () => {
 		expect(paths.length).toBeGreaterThan(100);
 	});
 
-	it('reaches Node in one file, for one module, behind the desktop’s guard', () => {
+	it('reaches Node in one file, for two modules, each behind the desktop’s guard', () => {
 		expect(holding(/import\(\s*['"](?:node:)?[a-z_]+['"]\s*\)/u)).toEqual(['../src/services/desktop-process.ts']);
 		const bridge = sources['../src/services/desktop-process.ts'] ?? '';
-		expect(bridge.match(/import\(\s*['"][^'"]+['"]\s*\)/gu)).toEqual(["import('child_process')"]);
-		// The guard stands first in the function, where the review's rule looks for it.
+		expect(bridge.match(/import\(\s*['"][^'"]+['"]\s*\)/gu)).toEqual(["import('child_process')", "import('http')"]);
+		// The guard stands first in each function, where the review's rule looks for it.
 		expect(bridge).toMatch(
 			/export async function desktopProcessRunner\(\): Promise<ProcessRunner \| null> \{\n\tif \(!Platform\.isDesktop\) return null;/u,
 		);
+		expect(bridge).toMatch(
+			/export async function desktopListenerModule\(\): Promise<unknown> \{\n\tif \(!Platform\.isDesktop\) return null;/u,
+		);
 		expect(holding(/\brequire\(/u)).toEqual([]);
 		expect(holding(/from ['"](?:node:)?(?:fs|path|os|child_process|net|http|https)['"]/u)).toEqual([]);
+	});
+
+	it('answers calls on this computer’s own address and on no other', () => {
+		// Node's listener is read in one file, and the one address it is ever
+		// given is written there. It is no setting and no argument.
+		expect(holding(/\bdesktopListenerModule\(/u)).toEqual([
+			'../src/services/desktop-listener.ts',
+			'../src/services/desktop-process.ts',
+		]);
+		expect(holding(/\bcreateServer\b/u)).toEqual(['../src/services/desktop-listener.ts']);
+		const listener = sources['../src/services/desktop-listener.ts'] ?? '';
+		expect(listener).toContain("export const LOOPBACK_ADDRESS = '127.0.0.1';");
+		expect(listener.match(/\.listen\([^)]*\)/gu)).toEqual(['.listen(port, LOOPBACK_ADDRESS, ()']);
+		expect(listener).not.toMatch(/0\.0\.0\.0|::/u);
 	});
 
 	it('never asks a shell to read a line', () => {

@@ -27,6 +27,7 @@ export * from "./mention-store";
 export * from "./mirror-sync";
 export * from "./project-import-service";
 export * from "./project-service";
+export * from "./desktop-listener";
 export * from "./desktop-process";
 export * from "./desktop-shell";
 export * from "./obs-socket";
