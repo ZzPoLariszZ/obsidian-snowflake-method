@@ -4840,6 +4840,7 @@ export class SnowflakeProjectService {
     id: DefinitionFileId,
     path: string,
     description = "",
+    origin: WriteOrigin = {},
   ): Promise<AppendPathResult> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
@@ -4852,6 +4853,7 @@ export class SnowflakeProjectService {
       id,
       check.segments,
       description,
+      origin.userInput ?? true,
     );
     return { ok: true, createdPaths };
   }
@@ -5383,6 +5385,7 @@ export class SnowflakeProjectService {
     id: DefinitionFileId,
     taxonomyPath: string,
     description: string,
+    origin: WriteOrigin = {},
   ): Promise<void> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
@@ -5391,7 +5394,7 @@ export class SnowflakeProjectService {
     if (this.repository.getFolder(folderPath) === null) {
       throw new ManagedFileNotFoundError(folderPath);
     }
-    await this.writeDefinitionDescription(project, id, rootPath, folderPath, description, true);
+    await this.writeDefinitionDescription(project, id, rootPath, folderPath, description, origin.userInput ?? true);
   }
 
   /**

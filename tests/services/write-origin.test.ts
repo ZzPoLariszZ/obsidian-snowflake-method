@@ -102,6 +102,21 @@ describe('the origin of a write', () => {
 		expect(told).toEqual([false, true]);
 	});
 
+	it('is a tool’s for a word added to a vocabulary and for what a word is said to mean', async () => {
+		told = [];
+		const added = await service.addDefinitionPath(project, 'character', 'category', 'Guild/Clockmakers', 'Keepers of the clock.', tool);
+		expect(added.ok).toBe(true);
+		// The two notes the path needed, the parent and the word itself.
+		expect(told.length).toBeGreaterThanOrEqual(2);
+		expect(told.every((userInput) => !userInput)).toBe(true);
+		told = [];
+		await service.updateDefinitionDescription(project, 'character', 'category', 'Guild/Clockmakers', 'Keepers of the town clock.', tool);
+		expect(told).toEqual([false]);
+		told = [];
+		await service.updateDefinitionDescription(project, 'character', 'category', 'Guild/Clockmakers', 'The author says otherwise.');
+		expect(told).toEqual([true]);
+	});
+
 	it('is a tool’s for a step’s text, a project made and a project renamed', async () => {
 		const stepOne = project.artifacts[1];
 		if (stepOne === undefined) throw new Error('A new project has the note of step 1.');
