@@ -543,6 +543,95 @@ describe('a freeform view, made and changed', () => {
 		expect(idsOf(bodyOf(bodyOf(gone.body)['view'])['placements'])).not.toContain('card-text');
 	});
 
+	it('shows a card another way, restacks, changes a link card and gives a line other ends, at the write level', async () => {
+		const { golden, boards, P } = await ground({ access: 'write' });
+		const reply = await steps(golden, P, boards.canvas, [
+			{
+				do: 'add',
+				placements: [
+					{ id: 'link', resource: { type: 'link', url: 'https://example.com/clocks', label: 'Clocks' }, x: 900, y: 900, displayMode: 'compact' },
+					// Laid across the card of Ada, so there is something for it to pass.
+					{ id: 'over', resource: { type: 'text', text: 'Over Ada.' }, x: 40, y: 80 },
+				],
+			},
+			{ do: 'connect', edges: [{ id: 'sided', source: 'card-text', target: 'link', sourceSide: 'right', targetSide: 'left' }] },
+			{ do: 'display', modes: [{ id: 'card-ada', mode: 'gallery' }, { id: 'over', mode: 'extended' }] },
+			{ do: 'restack', ids: ['card-ada'], to: 'front' },
+			{ do: 'link', id: 'link', url: 'https://example.com/bells', label: 'Bells' },
+			// The line turned about, with a side of its own at one end.
+			{ do: 'reconnect', id: 'line-asks', source: 'card-text', target: 'card-ada', sourceSide: 'top' },
+		]);
+		expect([reply.status, faults(reply)]).toEqual([200, []]);
+		const told = bodyOf(reply.body);
+		const idOf = (as: string): unknown => (told['created'] as Body[]).find((entry) => entry['as'] === as)?.['id'];
+		const stacked = (view: Body): unknown[] => idsOf([...(view['placements'] as Body[])].sort((a, b) => Number(a['zIndex']) - Number(b['zIndex'])));
+		const view = bodyOf(told['view']);
+		const card = (id: unknown): Body => (view['placements'] as Body[]).find((placement) => placement['id'] === id) ?? {};
+		expect(card('card-ada')).toMatchObject({ displayMode: 'gallery', frameId: 'frame-cast' });
+		expect(card(idOf('over'))).toMatchObject({ displayMode: 'extended' });
+		expect(card(idOf('link'))).toMatchObject({ displayMode: 'compact', resource: { type: 'link', url: 'https://example.com/bells', label: 'Bells' } });
+		expect(stacked(view)).toEqual(['card-text', idOf('link'), idOf('over'), 'card-ada']);
+		expect(view['edges']).toEqual([
+			{ id: 'line-asks', source: 'card-text', target: 'card-ada', sourceSide: 'top', targetSide: null, label: 'asks', arrow: 'end', line: 'solid' },
+			{ id: idOf('sided'), source: 'card-text', target: idOf('link'), sourceSide: 'right', targetSide: 'left', label: '', arrow: 'end', line: 'solid' },
+		]);
+		expect(golden.host.told).toEqual(['freeform']);
+
+		// One step back takes it under the nearest card it lies across, and no further.
+		const lowered = await steps(golden, P, boards.canvas, [{ do: 'restack', ids: ['card-ada'], to: 'backward' }]);
+		expect([lowered.status, faults(lowered)]).toEqual([200, []]);
+		expect(stacked(bodyOf(bodyOf(lowered.body)['view']))).toEqual(['card-text', idOf('link'), 'card-ada', idOf('over')]);
+		// What is left out of a change stays, and a side sent as null is the plugin's to choose again.
+		const kept = await steps(golden, P, boards.canvas, [
+			{ do: 'link', id: idOf('link'), label: 'Every bell' },
+			{ do: 'reconnect', id: 'line-asks', sourceSide: null, targetSide: 'bottom' },
+		]);
+		const after = bodyOf(bodyOf(kept.body)['view']);
+		expect((after['placements'] as Body[]).find((placement) => placement['id'] === idOf('link'))?.['resource']).toEqual({
+			type: 'link',
+			url: 'https://example.com/bells',
+			label: 'Every bell',
+		});
+		expect((after['edges'] as Body[])[0]).toMatchObject({ source: 'card-text', target: 'card-ada', sourceSide: null, targetSide: 'bottom' });
+		// A view already as asked is no failure, and is not written again.
+		const before = vaultState(golden.host);
+		const same = await steps(golden, P, boards.canvas, [
+			{ do: 'display', modes: [{ id: 'card-ada', mode: 'gallery' }] },
+			{ do: 'restack', ids: [idOf('over')], to: 'front' },
+		]);
+		expect([same.status, faults(same)]).toEqual([200, []]);
+		expect(vaultState(golden.host)).toEqual(before);
+	});
+
+	it('refuses a step of those kinds that names the wrong thing, and writes nothing', async () => {
+		const { golden, boards, P } = await ground();
+		const before = vaultState(golden.host);
+		const one = (step: Body) => steps(golden, P, boards.canvas, [step]);
+		// A card of another kind than the step changes, a frame where a card is meant, and a thing that is not there.
+		const wrongKind = await one({ do: 'link', id: 'card-text', label: 'No link' });
+		expect([refusal(wrongKind), pointerOf(wrongKind), faults(wrongKind)]).toEqual([[422, 'invalid-reference'], '/steps/0', []]);
+		expect(refusal(await one({ do: 'display', modes: [{ id: 'frame-cast', mode: 'compact' }] }))).toEqual([422, 'invalid-reference']);
+		expect(refusal(await one({ do: 'restack', ids: ['card-gone'], to: 'front' }))).toEqual([422, 'invalid-reference']);
+		expect(refusal(await one({ do: 'reconnect', id: 'line-gone', target: 'card-ada' }))).toEqual([422, 'invalid-reference']);
+		expect(refusal(await one({ do: 'reconnect', id: 'line-asks', target: 'card-gone' }))).toEqual([422, 'invalid-reference']);
+		// A line from a thing to itself, and an address that is no web address.
+		expect(refusal(await one({ do: 'reconnect', id: 'line-asks', target: 'card-ada' }))).toEqual([400, 'invalid-request']);
+		const second = await steps(golden, P, boards.canvas, [
+			{ do: 'add', placements: [{ id: 'link', resource: { type: 'link', url: 'https://example.com/a' }, x: 0, y: 0 }] },
+			{ do: 'link', id: 'link', url: 'ftp://example.com/a' },
+		]);
+		expect([refusal(second), JSON.stringify(second.body).includes('/steps/1/url')]).toEqual([[400, 'invalid-request'], true]);
+		// What the contract does not name is refused before the view is looked at.
+		expect(refusal(await one({ do: 'display', modes: [{ id: 'card-ada', mode: 'huge' }] }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await one({ do: 'restack', ids: ['card-ada'], to: 'top' }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await one({ do: 'restack', ids: [], to: 'front' }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await one({ do: 'reconnect', id: 'line-asks', sourceSide: 'middle' }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await one({ do: 'connect', edges: [{ source: 'card-text', target: 'card-ada', targetSide: 'middle' }] }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await one({ do: 'add', placements: [{ resource: { type: 'text', text: 'x' }, x: 0, y: 0, displayMode: 'huge' }] }))).toEqual([400, 'invalid-request']);
+		expect(vaultState(golden.host)).toEqual(before);
+		expect(golden.host.told).toEqual([]);
+	});
+
 	it('writes the view a project starts with the first time something is put on it', async () => {
 		const golden = await createGolden();
 		const P = { projectId: golden.project.id };

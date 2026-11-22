@@ -8,6 +8,7 @@ import {
 	isFreeformResourcePath,
 	plainFirstLine,
 	type FreeformArrow,
+	type FreeformDisplayMode,
 	type FreeformDocument,
 	type FreeformEdgeDraft,
 	type FreeformFrameDraft,
@@ -16,6 +17,8 @@ import {
 	type FreeformPlacementDraft,
 	type FreeformRecordType,
 	type FreeformResource,
+	type FreeformRestack,
+	type FreeformSide,
 	type FreeformStep,
 	type FreeformView,
 	type MacaronColor,
@@ -108,7 +111,13 @@ const drawn = (draft: Sent): { label?: string; arrow?: FreeformArrow; line?: Fre
 	...(typeof draft['arrow'] === 'string' ? { arrow: draft['arrow'] as FreeformArrow } : {}),
 	...(typeof draft['line'] === 'string' ? { line: draft['line'] as FreeformLine } : {}),
 });
+/** The sides a line leaves and arrives by. One sent as null is given back to the plugin to choose. */
+const sided = (draft: Sent): { sourceSide?: FreeformSide | null; targetSide?: FreeformSide | null } => ({
+	...('sourceSide' in draft ? { sourceSide: draft['sourceSide'] as FreeformSide | null } : {}),
+	...('targetSide' in draft ? { targetSide: draft['targetSide'] as FreeformSide | null } : {}),
+});
 const tint = (value: unknown): MacaronColor | null => (typeof value === 'string' ? (value as MacaronColor) : null);
+const ADDRESS = 'A link card keeps a web address that begins with http or https.';
 
 /**
  * What a card is to show, as a view keeps it. A note or a record is named
@@ -157,7 +166,7 @@ function resourcesOf(context: ApiContext, project: ProjectSnapshot, index: Membe
 			}
 			case 'link': {
 				const url = textOf(resource['url']);
-				if (!isFreeformAddress(url)) throw misfit(`${pointer}/url`, 'A link card keeps a web address that begins with http or https.');
+				if (!isFreeformAddress(url)) throw misfit(`${pointer}/url`, ADDRESS);
 				return { type: 'link', url, label: textOf(resource['label']) };
 			}
 			case 'text':
@@ -194,6 +203,7 @@ async function stepsOf(
 						x: Number(draft['x']),
 						y: Number(draft['y']),
 						...sized(draft),
+						...(typeof draft['displayMode'] === 'string' ? { displayMode: draft['displayMode'] as FreeformDisplayMode } : {}),
 						...('frameId' in draft ? { frameId: draft['frameId'] === null ? null : names.of(draft['frameId']) } : {}),
 					});
 				}
@@ -223,6 +233,7 @@ async function stepsOf(
 							id: names.fresh('edge', draft['id'], `${here}/edges/${String(edge)}/id`),
 							source: names.of(draft['source']),
 							target: names.of(draft['target']),
+							...sided(draft),
 							...drawn(draft),
 						}),
 					),
@@ -242,15 +253,48 @@ async function stepsOf(
 					),
 				});
 				break;
+			case 'display':
+				steps.push({
+					do: 'display',
+					modes: listOf(step['modes']).map((draft) => ({ id: names.of(draft['id']), mode: draft['mode'] as FreeformDisplayMode })),
+				});
+				break;
+			case 'restack':
+				steps.push({
+					do: 'restack',
+					ids: (Array.isArray(step['ids']) ? step['ids'] : []).map((id: unknown) => names.of(id)),
+					to: step['to'] as FreeformRestack,
+				});
+				break;
 			case 'text':
 				steps.push({ do: 'text', id: names.of(step['id']), text: textOf(step['text']) });
 				break;
+			case 'link': {
+				const url = typeof step['url'] === 'string' ? step['url'] : null;
+				if (url !== null && !isFreeformAddress(url)) throw misfit(`${here}/url`, ADDRESS);
+				steps.push({
+					do: 'link',
+					id: names.of(step['id']),
+					...(url === null ? {} : { url }),
+					...(typeof step['label'] === 'string' ? { label: step['label'] } : {}),
+				});
+				break;
+			}
 			case 'edit-frame':
 				steps.push({
 					do: 'edit-frame',
 					id: names.of(step['id']),
 					...(typeof step['title'] === 'string' ? { title: step['title'] } : {}),
 					...('color' in step ? { color: tint(step['color']) } : {}),
+				});
+				break;
+			case 'reconnect':
+				steps.push({
+					do: 'reconnect',
+					id: names.of(step['id']),
+					...(typeof step['source'] === 'string' ? { source: names.of(step['source']) } : {}),
+					...(typeof step['target'] === 'string' ? { target: names.of(step['target']) } : {}),
+					...sided(step),
 				});
 				break;
 			case 'edit-edges':
@@ -272,7 +316,10 @@ async function stepsOf(
  * own screen does it. What stands on a view is changed by a list of steps
  * taken together or not at all, which is how the plugin's own view takes
  * every gesture: a drag of forty cards, a paste, a frame drawn round a
- * selection.
+ * selection. Every kind of step the view's own gestures make is taken
+ * here but four. A frame drawn round cards is a frame added and the cards
+ * placed in it, and a card given to a frame is a card placed with the
+ * frame named. The other two are how the view takes its own changes back.
  */
 export const freeformWriteOperations: OperationGroup = {
 	createFreeformView: async (call, context) => {
@@ -336,10 +383,10 @@ export const freeformWriteOperations: OperationGroup = {
 			const pointer = `/steps/${String(at)}`;
 			if (outcome.came === 'full') throw full();
 			if (outcome.came === 'absent') {
-				throw noSuch(pointer, 'The step names something the view does not have, or has no longer. getFreeformView gives what stands on it.');
+				throw noSuch(pointer, 'The step names something the view does not have, or a card of another kind than the step changes. getFreeformView gives what stands on it.');
 			}
 			if (outcome.came === 'refused') {
-				throw misfit(pointer, 'The view cannot take that step: a line from a thing to itself, a place that is no number, or words longer than a card holds.');
+				throw misfit(pointer, 'The view cannot take that step: a line from a thing to itself, a place that is no number, or words longer than a card or a label holds.');
 			}
 			tried = outcome.view;
 		});

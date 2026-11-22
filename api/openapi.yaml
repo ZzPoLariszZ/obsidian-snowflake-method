@@ -4546,6 +4546,15 @@ paths:
         moved, frames drawn round them, lines drawn between them, things taken
         off. One call is one change, as one gesture is on the author's screen.
 
+        A step can also show a card another way, raise or lower what lies
+        over other things, change a link card's address, and give a line
+        another end or another side to leave by. Those are what the view's own
+        right-click menus do.
+
+        A frame drawn round cards is two steps of one call. An `add-frames`
+        step draws the frame and names it in `id`. A `place` step then gives
+        each card that name as its `frameId`.
+
         A step the view will not take is told by its place in the call, and
         nothing is written. A card of a note or a record names one the project
         has.
@@ -10343,6 +10352,10 @@ components:
                     type: number
                   height:
                     type: number
+                  displayMode:
+                    type: string
+                    enum: [auto, compact, standard, gallery, extended]
+                    description: How the card is shown. Left out, `auto`, which lets the zoom choose.
                   frameId:
                     type: [string, "null"]
         - type: object
@@ -10397,6 +10410,14 @@ components:
                     type: string
                   target:
                     type: string
+                  sourceSide:
+                    type: [string, "null"]
+                    enum: [top, right, bottom, left, null]
+                    description: The side of `source` the line leaves by. Left out or null, the plugin chooses as it draws.
+                  targetSide:
+                    type: [string, "null"]
+                    enum: [top, right, bottom, left, null]
+                    description: The side of `target` the line arrives by. Left out or null, the plugin chooses as it draws.
                   label:
                     type: string
                   arrow:
@@ -10433,6 +10454,52 @@ components:
                   frameId:
                     type: [string, "null"]
         - type: object
+          description: |
+            Cards shown another way. `auto` lets the zoom choose. A card of a
+            scene, a character or a worldbuilding note has all four faces. A
+            task, a thread, a revision and a sticky note have `compact` and
+            `standard`. A file, a link and a text card have one. A card asked
+            for a face its kind lacks shows the fullest it has.
+          required: [do, modes]
+          additionalProperties: false
+          properties:
+            do:
+              const: display
+            modes:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [id, mode]
+                additionalProperties: false
+                properties:
+                  id:
+                    type: string
+                  mode:
+                    type: string
+                    enum: [auto, compact, standard, gallery, extended]
+        - type: object
+          description: |
+            Cards or frames raised or lowered where they lie over one another.
+            Cards move among cards and frames among frames, and every frame
+            stands under every card. `front` and `back` go all the way.
+            `forward` and `backward` go past the nearest thing each lies
+            across, and leave one that lies across nothing where it is.
+          required: [do, ids, to]
+          additionalProperties: false
+          properties:
+            do:
+              const: restack
+            ids:
+              type: array
+              minItems: 1
+              description: Cards and frames, each by its `id`.
+              items:
+                type: string
+            to:
+              type: string
+              enum: [front, forward, backward, back]
+        - type: object
           description: The words of a text card changed.
           required: [do, id, text]
           additionalProperties: false
@@ -10442,6 +10509,20 @@ components:
             id:
               type: string
             text:
+              type: string
+        - type: object
+          description: A link card given another address or another label. What is left out stays.
+          required: [do, id]
+          additionalProperties: false
+          properties:
+            do:
+              const: link
+            id:
+              type: string
+            url:
+              type: string
+              description: A web address that begins with http or https.
+            label:
               type: string
         - type: object
           description: A frame given another title or tint.
@@ -10458,6 +10539,30 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/Color"
                 - type: "null"
+        - type: object
+          description: |
+            A line given another end, or another side to leave or arrive by.
+            What is left out stays. A side sent as null is given back to the
+            plugin to choose. Sending `source` and `target` the other way
+            round turns the line about.
+          required: [do, id]
+          additionalProperties: false
+          properties:
+            do:
+              const: reconnect
+            id:
+              type: string
+            source:
+              type: string
+              description: A card or a frame of the view, by its `id`.
+            target:
+              type: string
+            sourceSide:
+              type: [string, "null"]
+              enum: [top, right, bottom, left, null]
+            targetSide:
+              type: [string, "null"]
+              enum: [top, right, bottom, left, null]
         - type: object
           description: Lines given another label, arrow or stroke.
           required: [do, edits]
