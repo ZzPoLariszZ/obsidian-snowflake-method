@@ -5996,6 +5996,7 @@ export default class SnowflakeMethodPlugin
 				archived: await this.projects.listArchivedProjects(this.settings.projectRoot),
 			}),
 			currentProjectPath: () => this.settings.recentProjectPath,
+			countOptions: () => this.writingCountOptions(),
 			pluginVersion: () => this.manifest.version,
 			vaultName: () => this.app.vault.getName(),
 			projectsRoot: () => normalizeProjectRoot(this.settings.projectRoot),

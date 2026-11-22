@@ -98,6 +98,13 @@ tags:
     description: |
       A field template is a set of extra fields with starting text. A kind
       can have one as its default, and new notes of that kind begin with it.
+  - name: Manuscript
+    description: |
+      The manuscript is step 10: the novel itself, as notes in the project's
+      draft folder, in the order the author reads them in. A note is a
+      chapter, a scene, or whatever unit the author writes in. It has no id.
+      It is addressed by where it stands inside the project, and renaming it
+      changes that address.
 
 paths:
   /:
@@ -757,6 +764,98 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/manuscript:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getManuscript
+      tags: [Manuscript]
+      summary: Get the manuscript's size and where it stands
+      description: |
+        How many notes the manuscript has, how much is written in them, and
+        the folder they stand in. The count follows the convention the author
+        chose in the plugin's settings, which the answer names.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The manuscript.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Manuscript"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listManuscriptNotes
+      tags: [Manuscript]
+      summary: List the manuscript's notes
+      description: |
+        The notes of the manuscript in reading order, each by its title and
+        where it stands. A list gives no text. Read one note for its text. A
+        manuscript can run to thousands of notes, so the list comes a page at
+        a time. Ask for `include=counts` to have each note's size as well.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: include
+          in: query
+          description: What to add to each note. `counts` adds how much is written in it.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [counts]
+        - $ref: "#/components/parameters/NameQuery"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The notes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNotePage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    get:
+      operationId: getManuscriptNote
+      tags: [Manuscript]
+      summary: Read one manuscript note
+      description: |
+        One note of the manuscript with its whole text, how much is written
+        in it, and the notes before and after it. The text is everything
+        under the note's properties, as Markdown.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The note.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNote"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -841,6 +940,18 @@ components:
       in: path
       required: true
       description: A field template's name, as `listFieldTemplates` gives it.
+      schema:
+        type: string
+        minLength: 1
+    NotePath:
+      name: notePath
+      in: path
+      required: true
+      description: |
+        A manuscript note's `relativePath`, as `listManuscriptNotes` gives it:
+        where the note stands inside the project, folder and ending included,
+        percent-encoded into one step of the address
+        (`50_Manuscript%2FChapter%201.md`).
       schema:
         type: string
         minLength: 1
@@ -2199,6 +2310,151 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FieldTemplate"
+
+    WritingCount:
+      type: object
+      description: How much is written, counted every way at once. `total` is the number the author's convention comes to.
+      required: [total, words, cjkCharacters, punctuationMarks, charactersWithSpaces, charactersNoSpaces]
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+        words:
+          type: integer
+        cjkCharacters:
+          type: integer
+          description: Characters counted one at a time, as Chinese, Japanese and Korean writing is.
+        punctuationMarks:
+          type: integer
+        charactersWithSpaces:
+          type: integer
+        charactersNoSpaces:
+          type: integer
+
+    Counting:
+      type: object
+      description: The convention a count follows, as the author set it in the plugin's settings.
+      required: [mode, headings]
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          enum: [jinjiang, chenggua, qidian, ms-word]
+          description: |
+            `jinjiang` counts every character that is not a space. `ms-word`
+            counts as a word processor does. `qidian` and `chenggua` count
+            Latin script in words and other scripts a character at a time.
+        headings:
+          type: string
+          enum: [count, skip-first-h1, skip-h1, skip-all]
+          description: Whether heading lines are counted as writing.
+
+    Manuscript:
+      type: object
+      required: [path, notes, unreadable, firstNotePath, count, counting]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: The folder the manuscript stands in, as a path in the vault.
+        notes:
+          type: integer
+          description: How many notes the manuscript has.
+        unreadable:
+          type: integer
+          description: How many of them could not be read, and are missing from the count.
+        firstNotePath:
+          type: [string, "null"]
+          description: The note the manuscript begins with, as a path in the vault.
+        count:
+          $ref: "#/components/schemas/WritingCount"
+        counting:
+          $ref: "#/components/schemas/Counting"
+
+    ManuscriptNoteSummary:
+      type: object
+      required: [relativePath, path, title, index, readOnly]
+      additionalProperties: false
+      properties:
+        relativePath:
+          type: string
+          description: Where the note stands inside the project. This is the note's address. It changes when the note is renamed or moved.
+        path:
+          type: string
+          description: The note, as a path in the vault.
+        title:
+          type: string
+          description: The note's name, which is the name of its file.
+        index:
+          type: integer
+          description: The note's place in reading order, from 0.
+        readOnly:
+          type: boolean
+        total:
+          type: integer
+          description: How much is written in the note, by the author's convention. Given with `include=counts`.
+
+    ManuscriptNotePage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManuscriptNoteSummary"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    ManuscriptNote:
+      type: object
+      required: [relativePath, path, title, index, readOnly, etag, body, heading, headingMatchesTitle, count, counting, previous, next]
+      additionalProperties: false
+      properties:
+        relativePath:
+          type: string
+          description: Where the note stands inside the project. This is the note's address. It changes when the note is renamed or moved.
+        path:
+          type: string
+          description: The note, as a path in the vault.
+        title:
+          type: string
+          description: The note's name, which is the name of its file.
+        index:
+          type: integer
+          description: The note's place in reading order, from 0.
+        readOnly:
+          type: boolean
+        etag:
+          type: string
+          description: The version of the note. Send it in `If-Match` to change the note.
+        body:
+          type: string
+          description: The note's whole text under its properties, as Markdown.
+        heading:
+          type: [string, "null"]
+          description: The note's first heading, where it has one.
+        headingMatchesTitle:
+          type: boolean
+          description: True where that heading says the note's title.
+        count:
+          oneOf:
+            - $ref: "#/components/schemas/WritingCount"
+            - type: "null"
+        counting:
+          $ref: "#/components/schemas/Counting"
+        previous:
+          type: [string, "null"]
+          description: The `relativePath` of the note before this one, or null for the first.
+        next:
+          type: [string, "null"]
+          description: The `relativePath` of the note after this one, or null for the last.
 
 x-snowflake-problems:
   invalid-request:

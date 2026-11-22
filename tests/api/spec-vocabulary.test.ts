@@ -13,6 +13,8 @@ import {
 	STEP_SECTION_IDS,
 	STEP_STATUSES,
 	TIME_KINDS,
+	WRITING_COUNT_HEADINGS,
+	WRITING_COUNT_MODES,
 } from '../../src/domain';
 import { ON_DEMAND_DIRECTORY_KEYS, PROJECT_DIRECTORY_KEYS } from '../../src/services';
 import { document, textOf } from './helpers/spec';
@@ -78,6 +80,11 @@ describe('the contract’s listed values', () => {
 		const properties = isJsonObject(time) ? time['properties'] : undefined;
 		const kind = isJsonObject(properties) ? properties['kind'] : undefined;
 		expect(listed(isJsonObject(kind) ? kind['enum'] : undefined)).toEqual([...TIME_KINDS, null]);
+	});
+
+	it('name every convention writing can be counted by', () => {
+		expect(listed(property('Counting', 'mode')['enum'])).toEqual([...WRITING_COUNT_MODES]);
+		expect(listed(property('Counting', 'headings')['enum'])).toEqual([...WRITING_COUNT_HEADINGS]);
 	});
 
 	it('promise the folders every project has and leave room for the ones a tool makes when it is first used', () => {

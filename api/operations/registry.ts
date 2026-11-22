@@ -1,4 +1,5 @@
 import type { OperationGroup, OperationHandler } from './context';
+import { manuscriptOperations } from './manuscript';
 import { memberOperations } from './members';
 import { projectOperations } from './projects';
 import { stepOperations } from './steps';
@@ -12,6 +13,7 @@ const GROUPS: readonly OperationGroup[] = [
 	stepOperations,
 	vocabularyOperations,
 	memberOperations,
+	manuscriptOperations,
 ];
 
 /**

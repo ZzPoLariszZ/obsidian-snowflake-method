@@ -1,4 +1,4 @@
-import type { ProjectRef, SnowflakeProjectService } from '../src/services';
+import type { NoteCountOptions, ProjectRef, SnowflakeProjectService } from '../src/services';
 import type { Access } from './spec/operations';
 
 /**
@@ -17,6 +17,8 @@ export interface ApiHost {
 	roster(): Promise<{ active: ProjectRef[]; archived: ProjectRef[] }>;
 	/** The metadata note of the project the author last worked in, or null. */
 	currentProjectPath(): string | null;
+	/** The convention writing is counted by, as the author set it. */
+	countOptions(): NoteCountOptions;
 	/** The plugin's version, as its manifest states it. */
 	pluginVersion(): string;
 	/** The name of the vault this window has open. */

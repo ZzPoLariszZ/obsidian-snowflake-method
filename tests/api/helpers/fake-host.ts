@@ -1,6 +1,6 @@
 import type { ApiHost } from '../../../api/host';
 import type { Access } from '../../../api/spec/operations';
-import { SnowflakeProjectService } from '../../../src/services';
+import { SnowflakeProjectService, type NoteCountOptions } from '../../../src/services';
 import { createFakeEnvironment } from '../../helpers/fake-vault';
 
 /**
@@ -18,6 +18,8 @@ export interface FakeHost extends ApiHost {
 		cli: boolean;
 		/** The metadata note of the project the author last worked in. */
 		current: string | null;
+		/** The convention writing is counted by. */
+		counting: NoteCountOptions;
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -36,6 +38,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		token: 'snowflake_test',
 		cli: true,
 		current: null,
+		counting: { mode: 'ms-word', headings: 'count' },
 		...start,
 	};
 	let release: (() => void) | null = null;
@@ -58,6 +61,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 			archived: await projects.listArchivedProjects(),
 		}),
 		currentProjectPath: () => state.current,
+		countOptions: () => state.counting,
 		pluginVersion: () => '9.9.9',
 		vaultName: () => 'Test Vault',
 		projectsRoot: () => 'Snowflake Projects',

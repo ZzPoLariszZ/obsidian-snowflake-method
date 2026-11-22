@@ -48,6 +48,8 @@ export interface Golden {
 		/** A note of a kind the author made. */
 		guild: WorldbuildingRecord;
 	};
+	/** The manuscript's notes in reading order: the one a project is made with, then two chapters. */
+	manuscript: { draft: string; first: string; second: string };
 	/** One call through the dispatcher, as a caller with the token. */
 	call(
 		operationId: string,
@@ -168,6 +170,18 @@ export async function createGolden(start: Partial<FakeHost['state']> = {}): Prom
 	await service.setKindTemplate(created, 'character', template.path);
 	await service.saveCustomFieldTemplate(created, 'scene', { name: 'Beats', description: '', fields: [{ title: 'Turn', content: '' }] });
 
+	const draft = created.links.draft;
+	if (draft === null) throw new Error('A new project has a manuscript note.');
+	const [first, second] = await service.manuscript.appendSegments(
+		created,
+		[
+			{ title: 'Chapter 1', body: '# Chapter 1\n\nThe clock stopped at midnight.\n' },
+			{ title: 'Chapter 2', body: 'Ben did not come home.\n\nNobody asked why.\n' },
+		],
+		{ userInput: true },
+	);
+	if (first === undefined || second === undefined) throw new Error('The manuscript took both chapters.');
+
 	const chinese = await service.createProject({ title: '北境之雪', locale: 'zh-CN' });
 	const old = await service.createProject({ title: 'Old Draft', locale: 'en' });
 	const archived = await service.archiveProject(old);
@@ -208,6 +222,7 @@ export async function createGolden(start: Partial<FakeHost['state']> = {}): Prom
 			tower: entity(tower.entityId),
 			guild: entity(guild.entityId),
 		},
+		manuscript: { draft, first, second },
 		call: (operationId, params = {}, extra = {}) =>
 			api.dispatcher.dispatch({
 				operationId,
