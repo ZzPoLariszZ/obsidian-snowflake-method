@@ -73,6 +73,8 @@ export interface FakeHost extends ApiHost {
 		counting: NoteCountOptions;
 		/** The day it is. */
 		today: string;
+		/** How far past noon of that day it is, in milliseconds, for a test that lets a clock run. */
+		sinceNoon: number;
 		/** The words the author watches for. */
 		sensitiveWords: string[];
 		/** The quotation marks dialogue is read by. */
@@ -143,6 +145,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		current: null,
 		counting: { mode: 'ms-word', headings: 'count' },
 		today: '2026-03-10',
+		sinceNoon: 0,
 		sensitiveWords: [],
 		dialogue: [DIALOGUE_STYLE_TOKENS.curly, DIALOGUE_STYLE_TOKENS.straight].flatMap((token) => parseQuotePair(token) ?? []),
 		stopwords: [],
@@ -176,7 +179,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 	});
 	const environment = createFakeEnvironment();
 	// Noon of the day it is, in the zone every test reads days in.
-	const now = (): number => Date.parse(`${state.today}T12:00:00.000Z`);
+	const now = (): number => Date.parse(`${state.today}T12:00:00.000Z`) + state.sinceNoon;
 	// The records the services stamp are stamped by the same clock, so a test can say when a thing was changed.
 	const projects = new SnowflakeProjectService(environment.vault, environment.fileManager, environment.metadataCache, undefined, { now });
 	// A clock that runs nothing by itself: a breath is taken at once, and whatever waits on a real delay waits for the test to ask.

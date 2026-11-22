@@ -208,6 +208,7 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 	},
 	updateSettings: { of: 'none', send: () => ({ body: { dailyGoals: { project: 500 } } }) },
 	startWritingSession: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { type: 'stopwatch' } }) },
+	updateWritingSession: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { paused: true } }) },
 	stopWritingSession: { of: 'project', send: (projectId) => ({ params: { projectId } }) },
 	addMentionIgnore: {
 		of: 'project',

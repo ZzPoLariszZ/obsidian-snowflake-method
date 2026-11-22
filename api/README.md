@@ -101,7 +101,7 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Settings.** `getSettings` tells the author's settings that change what the API answers, and what a session and an export fall back on. `updateSettings` changes four of them: how writing is counted, the daily goals, which notes a session counts, and the words the author watches for. They hold for every project of the vault. The rest are the author's to set, the API's own switches among them.
 
-**The timer.** `startWritingSession` starts the author's timer on a project and is refused while a session runs anywhere, since the author's own Start button would end it. `stopWritingSession` ends the session of the project it is asked of, and no other. A session counts what the author types, never what a caller writes.
+**The timer.** `startWritingSession` starts the author's timer on a project and is refused while a session runs anywhere, since the author's own Start button would end it. `updateWritingSession` pauses the session, lets it run again, or changes its mode, as the timer's own menu does. A pomodoro's break ends on its own clock, so asking to resume during one answers `409 session-on-break`. `stopWritingSession` ends the session of the project it is asked of, and no other. A session counts what the author types, never what a caller writes.
 
 **Mentions set aside.** A rule the author made about a mention has no id of its own, so `listMentionIgnores` tells each by an id worked out from what it says. `addMentionIgnore` takes the words letter for letter as `listNoteMentions` tells them.
 
@@ -111,7 +111,7 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 ## Operations
 
-All 160 operations of the contract are answered: 60 read, 73 write and 27 delete.
+All 161 operations of the contract are answered: 60 read, 74 write and 27 delete.
 
 A name marked ² needs the write level. A name marked ³ needs the delete level.
 
@@ -134,7 +134,7 @@ A name marked ² needs the write level. A name marked ³ needs the delete level.
 | Sticky notes | `listStickyNotes`, `getStickyNote`, `createStickyNote` ², `updateStickyNote` ², `deleteStickyNote` ³ |
 | Statistics | `getWritingCounts`, `getProseStatistics`, `getWordFrequency`, `getSensitiveWords`, `getDialogue`, `listNoteDialogue` |
 | Mentions | `getMentions`, `listNoteMentions`, `listMentionIgnores`, `addMentionIgnore` ², `removeMentionIgnore` ³ |
-| Writing sessions | `listWritingDays`, `getWritingSpread`, `getWritingSession`, `startWritingSession` ², `stopWritingSession` ² |
+| Writing sessions | `listWritingDays`, `getWritingSpread`, `getWritingSession`, `startWritingSession` ², `updateWritingSession` ², `stopWritingSession` ² |
 | History | `getHistory` |
 | Timeline | `getTimeline`, `createTimeline` ², `updateTimeline` ², `deleteTimeline` ³, `addTimelineTime` ², `removeTimelineTime` ³, `addTimelineRow` ², `updateTimelineRow` ², `deleteTimelineRow` ³, `placeTimelineScene` ², `removeTimelineScene` ³, `createTimelineView` ², `updateTimelineView` ², `deleteTimelineView` ³ |
 | Beat sheets | `listBeatSheets`, `getBeatSheet`, `createBeatSheet` ², `updateBeatSheet` ², `deleteBeatSheet` ³, `addBeatSheetAct` ², `updateBeatSheetAct` ², `deleteBeatSheetAct` ³, `addBeat` ², `updateBeat` ², `deleteBeat` ³, `addBeatRow` ², `updateBeatRow` ², `deleteBeatRow` ³, `placeBeatSheetScene` ², `removeBeatSheetScene` ³, `listBeatSheetTemplates`, `saveBeatSheetTemplate` ², `deleteBeatSheetTemplate` ³ |

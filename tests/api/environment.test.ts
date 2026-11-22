@@ -110,6 +110,74 @@ describe('the author’s timer', () => {
 	});
 });
 
+describe('the author’s timer, paused and resumed', () => {
+	it('is paused, let run again and given another mode, each as the call says and no more', async () => {
+		const golden = await createGolden();
+		const P = { projectId: golden.project.id };
+		const started = bodyOf((await ok(golden, 'startWritingSession', P, { type: 'stopwatch', writingMode: 'draft' }, 201))['session']);
+		expect(started['state']).toBe('focus');
+
+		const paused = await ok(golden, 'updateWritingSession', P, { paused: true });
+		expect(paused['session']).toMatchObject({ id: started['id'], state: 'paused', writingMode: 'draft' });
+		// Paused already is what was asked, and is no failure.
+		expect(bodyOf((await ok(golden, 'updateWritingSession', P, { paused: true }))['session'])['state']).toBe('paused');
+		// The mode alone leaves the clock as it stands.
+		expect((await ok(golden, 'updateWritingSession', P, { writingMode: 'revision' }))['session']).toMatchObject({ state: 'paused', writingMode: 'revision' });
+		const resumed = await ok(golden, 'updateWritingSession', P, { paused: false, writingMode: 'proofreading' });
+		expect(resumed['session']).toMatchObject({ id: started['id'], state: 'focus', writingMode: 'proofreading' });
+		// A call that says nothing changes nothing, and tells the session as it stands.
+		expect((await ok(golden, 'updateWritingSession', P, {}))['session']).toMatchObject({ state: 'focus', writingMode: 'proofreading' });
+		expect((await ok(golden, 'getWritingSession', P))['session']).toMatchObject({ state: 'focus', writingMode: 'proofreading' });
+
+		expect(refusal(await golden.call('updateWritingSession', P, { body: { paused: 'yes' } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await golden.call('updateWritingSession', P, { body: { writingMode: 'dreaming' } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await golden.call('updateWritingSession', P, { body: { type: 'countdown' } }))).toEqual([400, 'invalid-request']);
+		await ok(golden, 'stopWritingSession', P);
+	});
+
+	it('changes only the session of the project asked, and is refused where none is under way there', async () => {
+		const golden = await createGolden();
+		const P = { projectId: golden.project.id };
+		const none = await golden.call('updateWritingSession', P, { body: { paused: true } });
+		expect([refusal(none), faults(none)]).toEqual([[404, 'not-found'], []]);
+
+		await ok(golden, 'startWritingSession', P, { type: 'stopwatch' }, 201);
+		// The one session of the vault runs on another project, and is that project's.
+		const other = await golden.call('updateWritingSession', { projectId: golden.chinese.id }, { body: { paused: true } });
+		expect([refusal(other), faults(other)]).toEqual([[404, 'not-found'], []]);
+		expect(bodyOf((await ok(golden, 'getWritingSession', P))['session'])['state']).toBe('focus');
+
+		golden.host.state.access = 'read';
+		const low = await golden.call('updateWritingSession', P, { body: { paused: true } });
+		expect([refusal(low), faults(low)]).toEqual([[403, 'access-denied'], []]);
+		expect(bodyOf((await ok(golden, 'getWritingSession', P))['session'])['state']).toBe('focus');
+	});
+
+	it('leaves a pomodoro’s break to end on its own clock', async () => {
+		const golden = await createGolden();
+		const P = { projectId: golden.project.id };
+		const started = bodyOf((await ok(golden, 'startWritingSession', P, { type: 'pomodoro' }, 201))['session']);
+		expect(started['pomodoro']).toEqual({ phase: 'work', cycle: 1 });
+		// The author's work period is twenty-five minutes. A minute past it the break has begun.
+		golden.host.state.sinceNoon = 26 * 60_000;
+		const onBreak = bodyOf((await ok(golden, 'getWritingSession', P))['session']);
+		expect([onBreak['state'], onBreak['pomodoro']]).toEqual(['paused', { phase: 'break', cycle: 1 }]);
+
+		const lifted = await golden.call('updateWritingSession', P, { body: { paused: false, writingMode: 'revision' } });
+		expect([refusal(lifted), faults(lifted)]).toEqual([[409, 'session-on-break'], []]);
+		expect(typeof bodyOf(lifted.body)['remainingMs']).toBe('number');
+		// Refused whole: the mode sent with it was not taken either.
+		expect((await ok(golden, 'getWritingSession', P))['session']).toMatchObject({ state: 'paused', writingMode: 'draft', pomodoro: { phase: 'break' } });
+		// It is paused already, so asking for that is no failure, and the mode can be said during a break.
+		expect((await ok(golden, 'updateWritingSession', P, { paused: true, writingMode: 'revision' }))['session']).toMatchObject({
+			state: 'paused',
+			writingMode: 'revision',
+			pomodoro: { phase: 'break' },
+		});
+		await ok(golden, 'stopWritingSession', P);
+	});
+});
+
 describe('the mentions the author set aside', () => {
 	const mentioned = async (golden: Golden, notePath: string): Promise<number> =>
 		((await ok(golden, 'listNoteMentions', { projectId: golden.project.id, notePath }))['items'] as Body[]).length;

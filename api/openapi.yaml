@@ -2600,6 +2600,42 @@ paths:
                 $ref: "#/components/schemas/WritingSession"
         default:
           $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateWritingSession
+      tags: [Writing sessions]
+      summary: Pause or resume the writing session, or change its mode
+      description: |
+        Pauses the author's timer on a project, lets it run again, or says
+        what stage of the work the session is spent on, as the timer's own
+        menu does. Only the session of the project asked is changed, and where
+        none is under way there the call is refused. What the call leaves out
+        stays as it is.
+
+        A pomodoro's break is the timer's own pause. It ends on its own
+        clock, so a call that asks to resume during one is refused. A session
+        the author has only just begun is waited for until its clock runs.
+
+        The answer is the session as it then stands. A countdown that ran
+        out in that moment is over, and the answer says so with no session.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 6 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, session-on-break]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/WritingSessionPatch"
+      responses:
+        "200":
+          description: The session as it now stands, and today so far.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingSession"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/history:
     parameters:
@@ -11048,6 +11084,17 @@ components:
           maximum: 180
           description: How long a countdown runs. Left out, the author's own length. Only a countdown takes one.
 
+    WritingSessionPatch:
+      type: object
+      description: What to change of the session under way. What is left out stays.
+      additionalProperties: false
+      properties:
+        paused:
+          type: boolean
+          description: "`true` stops the clock until it is let run again. `false` lets it run again."
+        writingMode:
+          $ref: "#/components/schemas/WritingMode"
+
     MentionIgnore:
       type: object
       required: [id, scope, words, member, note, ordinal]
@@ -11357,6 +11404,9 @@ x-snowflake-problems:
   session-running:
     status: 409
     title: A writing session is already under way.
+  session-on-break:
+    status: 409
+    title: The session is in a break that ends by itself.
   internal-error:
     status: 500
     title: The operation failed.

@@ -121,6 +121,30 @@ export const environmentOperations: OperationGroup = {
 		return { status: 201, body: await tellSession(context, project) };
 	},
 
+	updateWritingSession: async (call, context) => {
+		const project = await context.writableProject(textParam(call, 'projectId'));
+		const body = bodyOf(call);
+		const sessions = context.host.sessions;
+		// A session the author has only just begun may still be counting what the project holds, and has no clock to pause until it is done.
+		await sessions.settled();
+		// Only a session of this project is changed. One that runs on another is that project's.
+		const live = sessions.live(project.projectFile);
+		if (live === null) {
+			throw new ApiError('not-found', 'No writing session is under way on the project. startWritingSession begins one.');
+		}
+		const paused = typeof body['paused'] === 'boolean' ? body['paused'] : null;
+		// A break is the timer's own pause and ends on its own clock. The plugin's menu does not offer to lift it either.
+		if (paused === false && live.pomodoro?.phase === 'break') {
+			throw new ApiError('session-on-break', 'The session is in a pomodoro break, which ends by itself. Ask again once the next work period has begun.', {
+				remainingMs: live.remainingMs,
+			});
+		}
+		if (typeof body['writingMode'] === 'string') sessions.setWritingMode(body['writingMode'] as WritingMode);
+		if (paused === true) sessions.pause();
+		if (paused === false) sessions.resume();
+		return { status: 200, body: await tellSession(context, project) };
+	},
+
 	stopWritingSession: async (call, context) => {
 		const project = await context.writableProject(textParam(call, 'projectId'));
 		// Only a session of this project is ended. One that runs on another is that project's to stop.

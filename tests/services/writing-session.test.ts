@@ -1445,6 +1445,41 @@ describe("WritingSessionService", () => {
 	});
 
 	/**
+	 * A session still starting has no clock, so a pause asked of it is passed
+	 * over. Whoever cannot see the screen waits for the start to run its
+	 * course, and then finds a session that takes the pause.
+	 */
+	it("lets a start be waited out before a pause is asked", async () => {
+		let release: () => void = () => undefined;
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const scopeNotes = projects.writingCount.scopeNotes.bind(projects.writingCount);
+		const slow = vi
+			.spyOn(projects.writingCount, "scopeNotes")
+			.mockImplementationOnce(async (ref) => {
+				await held;
+				return scopeNotes(ref);
+			});
+		const starting = sessions.start(project, options());
+		await settle();
+		expect(sessions.live()?.state).toBe("starting");
+		sessions.pause();
+		const waited = sessions.settled().then(() => sessions.live()?.state);
+		release();
+		// The pause asked too soon was passed over: the clock runs.
+		expect(await waited).toBe("focus");
+		await starting;
+		sessions.pause();
+		expect(sessions.live()?.state).toBe("paused");
+		slow.mockRestore();
+		// With nothing under way there is nothing to wait for.
+		await sessions.stop();
+		await sessions.settled();
+		expect(sessions.live()).toBeNull();
+	});
+
+	/**
 	 * Once a stop is reading the record out of the tracker, nothing may move
 	 * the tracker again: an event landing mid-stop would close the same open
 	 * stretch a second time, and the record would carry overlapping intervals

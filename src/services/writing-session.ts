@@ -704,6 +704,16 @@ export class WritingSessionService {
 		});
 	}
 
+	/**
+	 * Resolves once every start and stop asked for so far has run its
+	 * course. A session still starting has no clock yet, so a pause asked of
+	 * it would be passed over: whoever cannot see the screen waits here
+	 * first, and then finds a session that can be paused, or none.
+	 */
+	settled(): Promise<void> {
+		return this.enqueue(() => Promise.resolve());
+	}
+
 	pause(): void {
 		const live = this.liveState;
 		if (live?.tracker == null || live.stopping) return;
