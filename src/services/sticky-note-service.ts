@@ -20,6 +20,7 @@ import {
 	PROJECT_PATH_LAYOUTS,
 	getProjectPathLayout,
 	type ProjectRef,
+	type WriteOrigin,
 } from "./types";
 
 /** A sticky note as read from its file, with what a writer needs to write it back. */
@@ -138,9 +139,10 @@ export class StickyNoteService {
 		path: string,
 		body: string,
 		expectedRevision: string,
+		origin: WriteOrigin = {},
 	): Promise<StickyNoteRecord> {
 		await this.repository.replaceBody(path, body, expectedRevision, {
-			userInput: true,
+			userInput: origin.userInput ?? true,
 		});
 		const note = await this.read(path);
 		if (note === null) throw new ManagedFileNotFoundError(path);

@@ -231,6 +231,7 @@ import {
   type EntityInput,
   type EntityPatch,
   type WorldbuildingRecord,
+  type WriteOrigin,
 } from "./types";
 
 const STATIC_DOCUMENT_BY_STEP: Partial<Record<StepId, DocumentType>> = {
@@ -1019,7 +1020,7 @@ export class SnowflakeProjectService {
     );
     await this.repository.createManagedFile({
       path: projectPath,
-      userInput: true,
+      userInput: options.userInput ?? true,
       template: projectTemplate(title, locale),
       frontmatter: projectFrontmatter(
         projectId,
@@ -1041,6 +1042,7 @@ export class SnowflakeProjectService {
   async renameProject(
     projectLocator: ProjectLocator,
     title: string,
+    origin: WriteOrigin = {},
   ): Promise<ProjectSnapshot> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
@@ -1080,7 +1082,7 @@ export class SnowflakeProjectService {
       [FRONTMATTER_KEYS.projectName]: nextTitle,
     });
     await this.repository.updateFirstHeading(projectFile, nextTitle, {
-      userInput: true,
+      userInput: origin.userInput ?? true,
     });
     return this.loadProject(projectFile);
   }
@@ -5541,10 +5543,11 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     path: string,
     renames: readonly { path: string; title: string }[] = [],
+    origin: WriteOrigin = {},
   ): Promise<{ project: ProjectSnapshot; renumbered: SegmentRenameOutcome }> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
-    const merged = await this.manuscript.mergeWithNext(project, path, renames);
+    const merged = await this.manuscript.mergeWithNext(project, path, renames, origin);
     if (merged === null) {
       throw new Error(`There is no manuscript note after "${normalizePath(path)}".`);
     }
@@ -5569,10 +5572,11 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     path: string,
     renames: readonly { path: string; title: string }[] = [],
+    origin: WriteOrigin = {},
   ): Promise<{ neighbour: string | null; renumbered: SegmentRenameOutcome }> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
-    const gone = await this.manuscript.removeSegment(project, path, renames);
+    const gone = await this.manuscript.removeSegment(project, path, renames, origin);
     if (project.links.draft === gone.removed && gone.neighbour !== null) {
       await this.repository.updateFrontmatter(project.projectFile, {
         [FRONTMATTER_KEYS.draft]: toWikiLink(gone.neighbour, fileStem(gone.neighbour)),
@@ -5586,7 +5590,7 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     path: string,
     title: string,
-    options: { heading: boolean },
+    options: { heading: boolean } & WriteOrigin,
   ): Promise<{ from: string; to: string }> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
@@ -6908,11 +6912,12 @@ export class SnowflakeProjectService {
     path: string,
     values: Readonly<Record<string, string>>,
     expectedRevision: string,
+    origin: WriteOrigin = {},
   ): Promise<void> {
-    // The step panels' save button is the only door to this method, so what
-    // passes through it is a person's writing by definition.
+    // The step panels' save button passes a person's writing through here,
+    // and says nothing. A caller that is not a person says so.
     await this.repository.updateSections(path, values, expectedRevision, {
-      userInput: true,
+      userInput: origin.userInput ?? true,
     });
   }
 

@@ -29,6 +29,7 @@ import {
   PROJECT_PATH_LAYOUTS,
   getProjectPathLayout,
   type ProjectRef,
+  type WriteOrigin,
 } from "./types";
 
 export interface ManuscriptSegmentRecord extends ManuscriptSegment {
@@ -41,6 +42,14 @@ export interface ManuscriptSegmentRecord extends ManuscriptSegment {
    * here is what lets one pass over the notes answer both questions.
    */
   storedSequence: unknown;
+}
+
+/**
+ * What a new note starts with: the template's hint unless it is handed
+ * words of its own, and whose words they are.
+ */
+export interface SegmentStart extends WriteOrigin {
+  body?: string;
 }
 
 /** Where a new note goes: after a note, at the start, or at the end. */
@@ -290,9 +299,10 @@ export class ManuscriptService {
     path: string,
     body: string,
     expectedRevision?: string,
+    origin: WriteOrigin = {},
   ): Promise<void> {
     await this.repository.replaceBody(path, body, expectedRevision, {
-      userInput: true,
+      userInput: origin.userInput ?? true,
     });
     this.onSegmentWritten?.(normalizePath(path), body);
   }
@@ -300,9 +310,10 @@ export class ManuscriptService {
   async appendSegment(
     project: ProjectRef,
     title: string,
+    start: SegmentStart = {},
   ): Promise<string> {
     const segments = await this.settleOrder(project, lastOf);
-    return this.createSegment(project, title, sequenceAtEnd(segments));
+    return this.createSegment(project, title, sequenceAtEnd(segments), start);
   }
 
   /**
@@ -364,19 +375,21 @@ export class ManuscriptService {
   async prependSegment(
     project: ProjectRef,
     title: string,
+    start: SegmentStart = {},
   ): Promise<string> {
     const segments = await this.roomyOrder(project, firstOf, (ordered) =>
       sequenceBetween(null, ordered[0]?.sequence),
     );
     const sequence = sequenceBetween(null, segments[0]?.sequence);
     if (sequence === null) throw new Error("Cannot place a segment here.");
-    return this.createSegment(project, title, sequence);
+    return this.createSegment(project, title, sequence, start);
   }
 
   async insertSegmentAfter(
     project: ProjectRef,
     afterPath: string,
     title: string,
+    start: SegmentStart = {},
   ): Promise<string> {
     const target = normalizePath(afterPath);
     const segments = await this.roomyOrder(project, pairAt(target), (ordered) => {
@@ -394,7 +407,7 @@ export class ManuscriptService {
       segments[index + 1]?.sequence,
     );
     if (sequence === null) throw new Error("Cannot place a segment here.");
-    return this.createSegment(project, title, sequence);
+    return this.createSegment(project, title, sequence, start);
   }
 
   /**
@@ -407,6 +420,7 @@ export class ManuscriptService {
     path: string,
     offset: number,
     title: string,
+    origin: WriteOrigin = {},
   ): Promise<string> {
     // Placed first, because placing it may write a position into the note being
     // split, and the revision guarding the write below has to be read after
@@ -415,13 +429,15 @@ export class ManuscriptService {
       project,
       normalizePath(path),
       title,
+      origin,
     );
-    await this.cutInto(path, offset, created);
+    await this.cutInto(path, offset, created, origin);
     return created;
   }
 
   /** The cut itself: what stands from `offset` on moves into `created`. */
-  private async cutInto(path: string, offset: number, created: string): Promise<void> {
+  private async cutInto(path: string, offset: number, created: string, origin: WriteOrigin = {}): Promise<void> {
+    const userInput = origin.userInput ?? true;
     const source = await this.readSegment(path);
     const cut = Math.max(0, Math.min(offset, source.body.length));
     // Blank lines at the seam are closed up and nothing else is touched --
@@ -431,10 +447,10 @@ export class ManuscriptService {
     const after = `${source.body.slice(cut).replace(/^\n+/u, "").replace(/\n+$/u, "")}\n`;
 
     await this.repository.replaceBody(created, after, undefined, {
-      userInput: true,
+      userInput,
     });
     await this.repository.replaceBody(source.path, before, source.revision, {
-      userInput: true,
+      userInput,
     });
     // Everything from the cut down now lives in the new note, its offsets
     // shorter by the cut plus whatever blank lines the seam swallowed. The
@@ -470,22 +486,24 @@ export class ManuscriptService {
     placement: SegmentPlacement,
     title: string,
     renames: readonly { path: string; title: string }[] = [],
+    start: SegmentStart = {},
   ): Promise<{ path: string; renumbered: SegmentRenameOutcome }> {
     const run = await this.runRenames(
       await this.planRenames(project, renames, [], [
         this.plannedSegmentPath(project, title),
       ]),
+      start,
     );
     try {
       const path =
         "after" in placement
-          ? await this.insertSegmentAfter(project, placement.after, title)
+          ? await this.insertSegmentAfter(project, placement.after, title, start)
           : "atStart" in placement
-            ? await this.prependSegment(project, title)
-            : await this.appendSegment(project, title);
+            ? await this.prependSegment(project, title, start)
+            : await this.appendSegment(project, title, start);
       return { path, renumbered: run.outcome };
     } catch (error) {
-      await this.undoRenames(run.done);
+      await this.undoRenames(run.done, start);
       throw error;
     }
   }
@@ -497,20 +515,22 @@ export class ManuscriptService {
     offset: number,
     title: string,
     renames: readonly { path: string; title: string }[] = [],
+    origin: WriteOrigin = {},
   ): Promise<{ path: string; renumbered: SegmentRenameOutcome }> {
     const run = await this.runRenames(
       await this.planRenames(project, renames, [], [
         this.plannedSegmentPath(project, title),
       ]),
+      origin,
     );
     let created: string;
     try {
-      created = await this.insertSegmentAfter(project, normalizePath(path), title);
+      created = await this.insertSegmentAfter(project, normalizePath(path), title, origin);
     } catch (error) {
-      await this.undoRenames(run.done);
+      await this.undoRenames(run.done, origin);
       throw error;
     }
-    await this.cutInto(path, offset, created);
+    await this.cutInto(path, offset, created, origin);
     return { path: created, renumbered: run.outcome };
   }
 
@@ -533,6 +553,7 @@ export class ManuscriptService {
     project: ProjectRef,
     path: string,
     renames: readonly { path: string; title: string }[] = [],
+    origin: WriteOrigin = {},
   ): Promise<{
     kept: string;
     removed: string;
@@ -560,7 +581,7 @@ export class ManuscriptService {
       "",
     )}`;
     await this.repository.replaceBody(earlier.path, joined, head.revision, {
-      userInput: true,
+      userInput: origin.userInput ?? true,
     });
     // The later note's text now stands after the survivor's, one blank line
     // between them, so its offsets move forward rather than back.
@@ -577,7 +598,7 @@ export class ManuscriptService {
     // hand and the delete event that follows finds it already settled.
     this.onSegmentRemoved?.(later.path, tail.body);
     await this.repository.trashFile(later.path);
-    const { outcome: renumbered } = await this.runRenames(plan);
+    const { outcome: renumbered } = await this.runRenames(plan, origin);
     return { kept: earlier.path, removed: later.path, renumbered };
   }
 
@@ -615,8 +636,9 @@ export class ManuscriptService {
   async renameSegments(
     project: ProjectRef,
     renames: readonly { path: string; title: string }[],
+    origin: WriteOrigin = {},
   ): Promise<SegmentRenameOutcome> {
-    return (await this.runRenames(await this.planRenames(project, renames))).outcome;
+    return (await this.runRenames(await this.planRenames(project, renames), origin)).outcome;
   }
 
   /**
@@ -647,7 +669,7 @@ export class ManuscriptService {
     project: ProjectRef,
     path: string,
     title: string,
-    options: { heading: boolean },
+    options: { heading: boolean } & WriteOrigin,
   ): Promise<{ from: string; to: string }> {
     const name = title.replace(/\s+/gu, " ").trim();
     if (!name) throw new Error("Segment title is required.");
@@ -672,7 +694,7 @@ export class ManuscriptService {
       // Only a heading that is there is rewritten: a note without one is
       // not given one for having been renamed.
       if (heading !== null && heading !== name) {
-        await this.repository.updateFirstHeading(to, name, { userInput: true });
+        await this.repository.updateFirstHeading(to, name, { userInput: options.userInput ?? true });
       }
     }
     return { from, to };
@@ -689,6 +711,7 @@ export class ManuscriptService {
     project: ProjectRef,
     path: string,
     renames: readonly { path: string; title: string }[] = [],
+    origin: WriteOrigin = {},
   ): Promise<{
     removed: string;
     /** The note that stood before it, or after it where it was the first. */
@@ -710,7 +733,7 @@ export class ManuscriptService {
     }
     const plan = await this.planRenames(project, renames, [target]);
     await this.repository.trashFile(target);
-    const { outcome: renumbered } = await this.runRenames(plan);
+    const { outcome: renumbered } = await this.runRenames(plan, origin);
     const beside = ordered[index - 1] ?? ordered[index + 1];
     // A neighbour the renumbering moved is named by where it went.
     const moved = renumbered.renamed.find(({ from }) => from === beside?.path);
@@ -791,6 +814,7 @@ export class ManuscriptService {
 
   private async runRenames(
     plan: RenamePlan,
+    origin: WriteOrigin = {},
   ): Promise<{ outcome: SegmentRenameOutcome; done: RenameDone[] }> {
     const done: RenameDone[] = [];
     for (const step of plan.steps) {
@@ -801,7 +825,7 @@ export class ManuscriptService {
       done.push({ from: step.from, to, heading: own ? heading : null });
       if (own) {
         await this.repository.updateFirstHeading(to, step.title, {
-          userInput: true,
+          userInput: origin.userInput ?? true,
         });
       }
     }
@@ -815,12 +839,12 @@ export class ManuscriptService {
   }
 
   /** Puts a batch back, the last rename first, headings included. */
-  private async undoRenames(done: readonly RenameDone[]): Promise<void> {
+  private async undoRenames(done: readonly RenameDone[], origin: WriteOrigin = {}): Promise<void> {
     for (const step of [...done].reverse()) {
       const from = await this.repository.renameFile(step.to, step.from);
       if (step.heading !== null) {
         await this.repository.updateFirstHeading(from, step.heading, {
-          userInput: true,
+          userInput: origin.userInput ?? true,
         });
       }
     }
@@ -836,7 +860,7 @@ export class ManuscriptService {
     project: ProjectRef,
     title: string,
     sequence: number,
-    options: { body?: string; userInput?: boolean } = {},
+    options: SegmentStart = {},
   ): Promise<string> {
     const name = title.trim();
     if (!name) throw new Error("Segment title is required.");

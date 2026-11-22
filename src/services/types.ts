@@ -733,7 +733,17 @@ export interface CustomFieldTemplateInfo {
   path: string;
 }
 
-export interface CreateProjectOptions {
+/**
+ * Whose words a write carries. A write through the plugin's own screens is
+ * the author's typing, and is counted towards their writing. One that says
+ * false is somebody else's: a tool's through the local API, or the plugin's
+ * own housekeeping. The note is then read afresh and nothing is credited.
+ */
+export interface WriteOrigin {
+  userInput?: boolean;
+}
+
+export interface CreateProjectOptions extends WriteOrigin {
   name?: string;
   title?: string;
   rootPath?: string;
