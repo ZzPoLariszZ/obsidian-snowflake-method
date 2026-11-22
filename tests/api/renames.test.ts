@@ -96,7 +96,7 @@ describe('a change that would rename something, while Obsidian asks before it up
 			return false;
 		};
 		// The project's repair may come to a note that has to be moved home, so it says so too.
-		const saying = operations.filter((operation) => lists(operation.id)).map((operation) => operation.id);
+		const saying = operations.filter((operation) => operation.available && lists(operation.id)).map((operation) => operation.id);
 		expect(saying.sort()).toEqual([...Object.keys(RENAMES), 'repairProject'].sort());
 	});
 });

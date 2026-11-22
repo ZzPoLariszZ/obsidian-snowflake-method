@@ -2569,6 +2569,32 @@ paths:
                 $ref: "#/components/schemas/WritingSession"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: startWritingSession
+      tags: [Writing sessions]
+      summary: Start a writing session
+      description: |
+        Starts the author's timer on a project: a stopwatch, a countdown
+        or a pomodoro. Only one session runs at a time.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WritingSessionStart"
+      responses:
+        "201":
+          description: The session that began.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingSession"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/history:
     parameters:
@@ -2685,6 +2711,35 @@ paths:
                 $ref: "#/components/schemas/BeatSheetList"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createBeatSheet
+      tags: [Beat sheets]
+      summary: Create a beat sheet
+      description: |
+        Starts a beat sheet from one of the templates, the plugin's own or
+        the author's, with its acts and beats laid out and no scene placed.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeatSheetCreate"
+      responses:
+        "201":
+          description: The beat sheet that was made.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/beat-sheets/{beatSheetId}:
     parameters:
@@ -2710,6 +2765,48 @@ paths:
                 $ref: "#/components/schemas/BeatSheet"
         default:
           $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateBeatSheet
+      tags: [Beat sheets]
+      summary: Change a beat sheet
+      description: |
+        Changes a beat sheet's name and how it is drawn. Its acts, beats
+        and rows are changed by operations of their own.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/BeatSheetPatch"
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteBeatSheet
+      tags: [Beat sheets]
+      summary: Delete a beat sheet
+      description: |
+        Takes a beat sheet away with its acts, beats and rows. The scenes
+        it placed are notes of their own, and stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The beat sheet is gone.
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/beat-sheet-templates:
     parameters:
@@ -2729,6 +2826,33 @@ paths:
       responses:
         "200":
           description: The templates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheetTemplateList"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: saveBeatSheetTemplate
+      tags: [Beat sheets]
+      summary: Save a beat sheet as a template
+      description: |
+        Keeps the acts and beats of a beat sheet as a template of the
+        author's own, to start other sheets from. A template of that name is
+        replaced.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeatSheetTemplateSave"
+      responses:
+        "201":
+          description: The templates there now are.
           content:
             application/json:
               schema:
@@ -2760,6 +2884,35 @@ paths:
                 $ref: "#/components/schemas/FreeformViewList"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createFreeformView
+      tags: [Freeform]
+      summary: Create a freeform view
+      description: |
+        Makes a view with nothing on it yet, under a name no other view of
+        the project has.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FreeformViewCreate"
+      responses:
+        "201":
+          description: The view that was made.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeformView"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/freeform-views/{freeformViewId}:
     parameters:
@@ -2783,6 +2936,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FreeformView"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateFreeformView
+      tags: [Freeform]
+      summary: Rename a freeform view
+      description: |
+        Gives a view another name. What stands on it is changed with
+        `applyFreeformSteps`.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/FreeformViewPatch"
+      responses:
+        "200":
+          description: The view as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeformView"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteFreeformView
+      tags: [Freeform]
+      summary: Delete a freeform view
+      description: |
+        Sends a view to the trash with everything on it. What its cards
+        show are things of their own, and stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The view is gone.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -3394,6 +3589,1268 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/search:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: searchProject
+      tags: [Projects]
+      summary: Search a project for words
+      description: |
+        Finds words in the notes of one project: its manuscript, its
+        characters, scenes and worldbuilding, and the notes of its steps. Each
+        place found is told with the note it stands in and the line around it.
+        Until this is answered, Obsidian's own search does the same over the
+        project's folder.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: "The words to look for."
+          schema:
+            type: string
+            minLength: 1
+        - name: in
+          in: query
+          description: "Which notes to look in."
+          schema:
+            type: string
+            enum: [manuscript, notes, all]
+            default: all
+        - name: caseSensitive
+          in: query
+          description: "Whether capitals must match."
+          schema:
+            type: boolean
+            default: false
+        - name: wholeWord
+          in: query
+          description: "Whether the words must stand as whole words."
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The places found, in reading order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/replace:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: replaceInProject
+      tags: [Manuscript]
+      summary: Replace words across the manuscript
+      description: |
+        Puts other words in place of every match in the manuscript's notes,
+        or in the ones named. Sent with `dryRun`, nothing is written and the
+        answer says what would be. Each note is changed as one note is: against
+        its latest text, with the author's editor on it closed.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, concurrent-change]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceRequest"
+      responses:
+        "200":
+          description: What was replaced, or would be, note by note.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplaceResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/revisions/{revisionId}/accept:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/RevisionId"
+    post:
+      operationId: acceptRevision
+      tags: [Revisions]
+      summary: Accept a proposed revision
+      description: |
+        Makes the change a revision proposes in its manuscript note, and
+        takes the revision away. The passage is found again in the note as it
+        stands. A revision whose words the note no longer has is refused. The
+        words it puts in are not counted as the author's own typing.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, passage-not-found, concurrent-change]
+      responses:
+        "200":
+          description: The note as it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNote"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/move:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    post:
+      operationId: moveManuscriptNote
+      tags: [Manuscript]
+      summary: Move a manuscript note
+      description: |
+        Puts a note at another place in the reading order: after a note
+        that is named, or at the start or the end. The numbered notes around it
+        are renamed to keep the count, unless the call says not to.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptNoteMove"
+      responses:
+        "200":
+          description: The note where it now stands, and what was renamed.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNoteResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/manuscript/notes/{notePath}/append:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/NotePath"
+    post:
+      operationId: appendManuscriptNoteBody
+      tags: [Manuscript]
+      summary: Add text to the end of a manuscript note
+      description: |
+        Puts text after everything a note already says, with a blank line
+        between. It needs no version: what the author typed and had not saved is
+        saved first, and the text goes after it.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptNoteAppend"
+      responses:
+        "200":
+          description: The note as it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManuscriptNote"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/health/repair:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: repairProjectIssue
+      tags: [Projects]
+      summary: Repair one thing the health check found
+      description: |
+        Mends one issue of a project's health and nothing else, where
+        `repairProject` mends everything it can. The issue is named as the
+        health check names it, by its code and the note it is about.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectIssueRepair"
+      responses:
+        "200":
+          description: The health of the project after the repair.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectHealth"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/migrate:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: migrateProjectNotes
+      tags: [Projects]
+      summary: Bring a project's notes up to date
+      description: |
+        Rewrites the notes an older version of the plugin wrote into the
+        shape this one writes. The health check says how many there are, in
+        `outdatedNotes`. Nothing the author wrote is changed.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 2 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: How many notes were brought up to date, and the health after.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMigration"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/timelines:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: createTimeline
+      tags: [Timeline]
+      summary: Create a timeline
+      description: |
+        Starts a timeline with no times on it yet. It may be bound to one
+        character or one place, whose story it then tells.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TimelineCreate"
+      responses:
+        "201":
+          description: The timeline that was made.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/timelines/{timelineId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TimelineId"
+    patch:
+      operationId: updateTimeline
+      tags: [Timeline]
+      summary: Change a timeline
+      description: |
+        Changes a timeline's name, what it is bound to, and whether it is
+        the one pinned to the top of the board.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/TimelinePatch"
+      responses:
+        "200":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteTimeline
+      tags: [Timeline]
+      summary: Delete a timeline
+      description: |
+        Takes a timeline off the board with its rows. The times and the
+        scenes it placed are notes of their own, and stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The timeline is gone.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/timelines/{timelineId}/times/{timeId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TimelineId"
+      - $ref: "#/components/parameters/TimeId"
+    put:
+      operationId: addTimelineTime
+      tags: [Timeline]
+      summary: Put a time on a timeline
+      description: |
+        Gives a timeline a place for one of the project's time notes, so
+        that rows can be written under it. A time already there is left as it is.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      responses:
+        "200":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeTimelineTime
+      tags: [Timeline]
+      summary: Take a time off a timeline
+      description: |
+        Takes a time off a timeline with the rows written under it. The
+        time note itself stands.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/timelines/{timelineId}/rows:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TimelineId"
+    post:
+      operationId: addTimelineRow
+      tags: [Timeline]
+      summary: Add a row to a timeline
+      description: |
+        Writes a row under one of a timeline's times: a line of the
+        author's own, with the scenes that happen then.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TimelineRowCreate"
+      responses:
+        "201":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/timelines/{timelineId}/rows/{rowId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TimelineId"
+      - $ref: "#/components/parameters/RowId"
+    patch:
+      operationId: updateTimelineRow
+      tags: [Timeline]
+      summary: Change a row of a timeline
+      description: |
+        Changes what a row says, or moves it: under another time, or
+        before another row of its time.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/TimelineRowPatch"
+      responses:
+        "200":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteTimelineRow
+      tags: [Timeline]
+      summary: Delete a row of a timeline
+      description: |
+        Takes a row off a timeline. The scenes it placed are notes of
+        their own, and stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/timelines/{timelineId}/scenes/{sceneId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TimelineId"
+      - $ref: "#/components/parameters/SceneId"
+    put:
+      operationId: placeTimelineScene
+      tags: [Timeline]
+      summary: Place a scene on a timeline
+      description: |
+        Puts a scene in a row of a timeline. A scene stands in one row of
+        a timeline at most, so one already placed is moved.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScenePlacement"
+      responses:
+        "200":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeTimelineScene
+      tags: [Timeline]
+      summary: Take a scene off a timeline
+      description: |
+        Takes a scene out of the row it stands in. The scene note itself
+        stands.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The timeline as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/views:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: createTimelineView
+      tags: [Timeline]
+      summary: Create a view of the timelines
+      description: |
+        Makes a view: some of the timelines side by side, in an order, with
+        the look the author reads them in.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TimelineViewCreate"
+      responses:
+        "201":
+          description: The board with the view on it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineBoard"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/timeline/views/{timelineViewId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TimelineViewId"
+    patch:
+      operationId: updateTimelineView
+      tags: [Timeline]
+      summary: Change a view of the timelines
+      description: |
+        Changes a view's name, the timelines it shows and their order,
+        the order of its times, and how its scenes are drawn.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/TimelineViewPatch"
+      responses:
+        "200":
+          description: The board as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineBoard"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteTimelineView
+      tags: [Timeline]
+      summary: Delete a view of the timelines
+      description: |
+        Takes a view away. The timelines it showed are no part of it, and
+        stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The view is gone.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}/acts:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+    post:
+      operationId: addBeatSheetAct
+      tags: [Beat sheets]
+      summary: Add an act to a beat sheet
+      description: |
+        Adds an act with no beats yet, before another act or at the end.
+        The acts are numbered by where they stand.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActCreate"
+      responses:
+        "201":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}/acts/{actId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+      - $ref: "#/components/parameters/ActId"
+    patch:
+      operationId: updateBeatSheetAct
+      tags: [Beat sheets]
+      summary: Change an act of a beat sheet
+      description: |
+        Changes an act's label, or moves it before another act.
+        Its beats go with it.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/ActPatch"
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteBeatSheetAct
+      tags: [Beat sheets]
+      summary: Delete an act of a beat sheet
+      description: |
+        Takes an act away with its beats and their rows. The scenes they
+        placed stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}/beats:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+    post:
+      operationId: addBeat
+      tags: [Beat sheets]
+      summary: Add a beat to an act
+      description: |
+        Adds a beat to an act, with a name and what it is for, before
+        another beat of the act or at its end.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeatCreate"
+      responses:
+        "201":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}/beats/{beatId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+      - $ref: "#/components/parameters/BeatId"
+    patch:
+      operationId: updateBeat
+      tags: [Beat sheets]
+      summary: Change a beat
+      description: |
+        Changes a beat's name and what it is for, or moves it: into
+        another act, or before another beat.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/BeatPatch"
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteBeat
+      tags: [Beat sheets]
+      summary: Delete a beat
+      description: |
+        Takes a beat away with its rows. The scenes they placed stand.
+        The act it stood in stands too.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}/rows:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+    post:
+      operationId: addBeatRow
+      tags: [Beat sheets]
+      summary: Add a row to a beat
+      description: |
+        Writes a row under a beat: a line of the author's own, with the
+        scenes that carry the beat.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeatRowCreate"
+      responses:
+        "201":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}/rows/{rowId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+      - $ref: "#/components/parameters/RowId"
+    patch:
+      operationId: updateBeatRow
+      tags: [Beat sheets]
+      summary: Change a row of a beat
+      description: |
+        Changes what a row says, or moves it: under another beat, or
+        before another row of its beat.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/BeatRowPatch"
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteBeatRow
+      tags: [Beat sheets]
+      summary: Delete a row of a beat
+      description: |
+        Takes a row off a beat. The scenes it placed are notes of their
+        own, and stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheets/{beatSheetId}/scenes/{sceneId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetId"
+      - $ref: "#/components/parameters/SceneId"
+    put:
+      operationId: placeBeatSheetScene
+      tags: [Beat sheets]
+      summary: Place a scene on a beat sheet
+      description: |
+        Puts a scene in a row of a beat sheet. A scene stands in one row
+        of a sheet at most, so one already placed is moved.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScenePlacement"
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeBeatSheetScene
+      tags: [Beat sheets]
+      summary: Take a scene off a beat sheet
+      description: |
+        Takes a scene out of the row it stands in. The scene note itself
+        stands.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The beat sheet as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatSheet"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/beat-sheet-templates/{beatSheetTemplateId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/BeatSheetTemplateId"
+    delete:
+      operationId: deleteBeatSheetTemplate
+      tags: [Beat sheets]
+      summary: Delete a beat sheet template
+      description: |
+        Takes one of the author's own templates away. The plugin's own
+        templates are kept, and the sheets made from it stand.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The template is gone.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/freeform-views/{freeformViewId}/steps:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/FreeformViewId"
+    post:
+      operationId: applyFreeformSteps
+      tags: [Freeform]
+      summary: Change what stands on a freeform view
+      description: |
+        Takes a list of steps and makes them all, or none: cards added and
+        moved, frames drawn round them, lines drawn between them, things taken
+        off. One call is one change, as one gesture is on the author's screen.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 3 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FreeformSteps"
+      responses:
+        "200":
+          description: The view as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeformView"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/imports/inspect:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: inspectImport
+      tags: [Projects]
+      summary: See what another project could bring in
+      description: |
+        Looks at another project of the vault and says what of it could be
+        copied into this one: its characters, scenes, worldbuilding, vocabulary,
+        manuscript and boards, each with what stands in the way. Nothing is
+        written.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportSource"
+      responses:
+        "200":
+          description: What the other project has to bring.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportInspection"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/imports:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: runImport
+      tags: [Projects]
+      summary: Copy things in from another project
+      description: |
+        Copies what is chosen from another project of the vault into this
+        one. The other project is left as it was. The answer says what was
+        brought, what was left and why.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, link-updates-ask, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportRun"
+      responses:
+        "200":
+          description: What was brought over and what was not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportReport"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/exports/manuscript:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: exportManuscript
+      tags: [Manuscript]
+      summary: Export the manuscript to a file
+      description: |
+        Writes the manuscript, or some of its notes, into one Markdown file
+        or one per note, in a folder of the vault outside the manuscript. The
+        manuscript itself is not changed.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManuscriptExport"
+      responses:
+        "200":
+          description: The files that were written, each by its path in the vault.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/exports/canvas:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: exportCanvas
+      tags: [Freeform]
+      summary: Export a board as an Obsidian canvas
+      description: |
+        Writes a freeform view, a timeline view or a beat sheet as a
+        canvas file Obsidian opens by itself. A canvas already exported from the
+        same board is brought up to date.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CanvasExport"
+      responses:
+        "200":
+          description: The canvas that was written, by its path in the vault.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/members/{memberId}/gallery:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      operationId: addGalleryPictures
+      tags: [Members]
+      summary: Add pictures to a note's gallery
+      description: |
+        Puts pictures that already stand in the vault into the gallery of
+        a character, a scene or a worldbuilding note. Each is named by its path
+        in the vault. Put a picture into the vault first, with Obsidian's own
+        command line or any other way.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GalleryAdd"
+      responses:
+        "200":
+          description: The gallery as it now stands, each picture by its path.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gallery"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/members/{memberId}/gallery/{picturePath}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/MemberId"
+      - $ref: "#/components/parameters/PicturePath"
+    delete:
+      operationId: removeGalleryPicture
+      tags: [Members]
+      summary: Take a picture out of a note's gallery
+      description: |
+        Takes one picture out of a note's gallery, and sends its file to
+        the trash where no other note shows it.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 4 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The gallery as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gallery"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [Service]
+      summary: Read the plugin's settings
+      description: |
+        The author's settings that change what the API answers: how
+        writing is counted, the chapter numbering rule, the daily goals and the
+        marks dialogue is read by. Nothing of this device's own is told, and
+        nothing of the API's own access.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: []
+      responses:
+        "200":
+          description: The settings as they stand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateSettings
+      tags: [Service]
+      summary: Change the plugin's settings
+      description: |
+        Changes some of the settings `getSettings` tells. They are the
+        author's own, for every project, so this is asked for with care.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: []
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/SettingsPatch"
+      responses:
+        "200":
+          description: The settings as they now stand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/mentions/ignores:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listMentionIgnores
+      tags: [Mentions]
+      summary: List the mentions the author set aside
+      description: |
+        The words the author told the plugin not to mark as a mention
+        of a note, each with where it holds: everywhere, or in one note.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The rules there are.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MentionIgnoreList"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: addMentionIgnore
+      tags: [Mentions]
+      summary: Set a mention aside
+      description: |
+        Tells the plugin that some words are not a mention of a note,
+        everywhere in the project or in one manuscript note.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MentionIgnoreCreate"
+      responses:
+        "201":
+          description: The rules there now are.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MentionIgnoreList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/mentions/ignores/{ignoreId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/IgnoreId"
+    delete:
+      operationId: removeMentionIgnore
+      tags: [Mentions]
+      summary: Bring back a mention set aside
+      description: |
+        Takes one such rule away, so the words are marked as a mention
+        again. The rule is named by the id `listMentionIgnores` gives.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The rule is gone.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/writing/session/stop:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: stopWritingSession
+      tags: [Writing sessions]
+      summary: Stop the writing session
+      description: |
+        Ends the session under way and files it with the day's writing.
+        Where none is running there is nothing to stop.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: The day as it stands with the session filed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingSession"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -3560,6 +5017,78 @@ components:
       in: path
       required: true
       description: The `id` of one place a thread appears, as the thread gives it.
+      schema:
+        type: string
+        minLength: 1
+    TimelineId:
+      name: timelineId
+      in: path
+      required: true
+      description: "The `id` of a timeline, as `getTimeline` gives it."
+      schema:
+        type: string
+        minLength: 1
+    TimelineViewId:
+      name: timelineViewId
+      in: path
+      required: true
+      description: "The `id` of a view of the timelines, as `getTimeline` gives it."
+      schema:
+        type: string
+        minLength: 1
+    TimeId:
+      name: timeId
+      in: path
+      required: true
+      description: "The `id` of one of the project's time notes."
+      schema:
+        type: string
+        minLength: 1
+    RowId:
+      name: rowId
+      in: path
+      required: true
+      description: "The `id` of a row, as the board it stands on gives it."
+      schema:
+        type: string
+        minLength: 1
+    ActId:
+      name: actId
+      in: path
+      required: true
+      description: "The `id` of an act, as the beat sheet gives it."
+      schema:
+        type: string
+        minLength: 1
+    BeatId:
+      name: beatId
+      in: path
+      required: true
+      description: "The `id` of a beat, as the beat sheet gives it."
+      schema:
+        type: string
+        minLength: 1
+    BeatSheetTemplateId:
+      name: beatSheetTemplateId
+      in: path
+      required: true
+      description: "The `id` of a template, as `listBeatSheetTemplates` gives it."
+      schema:
+        type: string
+        minLength: 1
+    PicturePath:
+      name: picturePath
+      in: path
+      required: true
+      description: "A picture of the gallery by its path in the vault, percent-encoded into one segment."
+      schema:
+        type: string
+        minLength: 1
+    IgnoreId:
+      name: ignoreId
+      in: path
+      required: true
+      description: "The `id` of a rule, as `listMentionIgnores` gives it."
       schema:
         type: string
         minLength: 1
@@ -8165,6 +9694,985 @@ components:
           $ref: "#/components/schemas/Color"
         archived:
           type: boolean
+
+    SearchPage:
+      type: object
+      description: "The places some words were found in a project."
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchHit"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    SearchHit:
+      type: object
+      description: One place the words stand.
+      required: [path, relativePath, title, kind, range, line, text]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: The note, by its path in the vault.
+        relativePath:
+          type: string
+        title:
+          type: string
+        kind:
+          type: string
+          description: "`manuscript`, `character`, `scene`, the id of a worldbuilding kind, or `step` for a note of one of the steps."
+        range:
+          $ref: "#/components/schemas/TextRange"
+        line:
+          type: integer
+          description: The line of the note's text the words stand in, counted from 1.
+        text:
+          type: string
+          description: That line, as the note has it.
+
+    ReplaceRequest:
+      type: object
+      required: [query, replacement]
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          minLength: 1
+        replacement:
+          type: string
+        caseSensitive:
+          type: boolean
+          default: false
+        wholeWord:
+          type: boolean
+          default: false
+        notes:
+          type: array
+          description: The manuscript notes to change, each by its `relativePath`. Left out, every note of the manuscript.
+          items:
+            type: string
+        dryRun:
+          type: boolean
+          default: false
+          description: Whether to say what would be replaced and write nothing.
+
+    ReplaceResult:
+      type: object
+      required: [dryRun, replaced, notes]
+      additionalProperties: false
+      properties:
+        dryRun:
+          type: boolean
+        replaced:
+          type: integer
+          description: How many places were changed, or would be.
+        notes:
+          type: array
+          items:
+            type: object
+            required: [relativePath, replaced, etag]
+            additionalProperties: false
+            properties:
+              relativePath:
+                type: string
+              replaced:
+                type: integer
+              etag:
+                type: string
+                description: The note's version after the change, or as it stands for a dry run.
+
+    ManuscriptNoteMove:
+      type: object
+      additionalProperties: false
+      properties:
+        after:
+          type: string
+          minLength: 1
+          description: The `relativePath` of the note it should come after.
+        position:
+          type: string
+          enum: [start, end]
+          description: Where it goes when `after` is not sent.
+        renumber:
+          type: boolean
+          default: true
+
+    ManuscriptNoteAppend:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          minLength: 1
+          description: The text to put at the end, as Markdown.
+
+    ProjectIssueRepair:
+      type: object
+      required: [code, path]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: The issue's `code`, as `getProjectHealth` gives it.
+        path:
+          type: string
+          description: The issue's `path`, as `getProjectHealth` gives it.
+
+    ProjectMigration:
+      type: object
+      required: [migrated, health]
+      additionalProperties: false
+      properties:
+        migrated:
+          type: integer
+        health:
+          $ref: "#/components/schemas/ProjectHealth"
+
+    TimelineCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        binding:
+          description: The character or the place whose story the timeline tells, by its id. Null for none.
+          oneOf:
+            - $ref: "#/components/schemas/MemberRefInput"
+            - type: "null"
+
+    TimelinePatch:
+      type: object
+      description: What to change of a timeline. One read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Timeline"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        binding:
+          oneOf:
+            - $ref: "#/components/schemas/MemberRefInput"
+            - type: "null"
+        pinned:
+          type: boolean
+          description: Whether this is the timeline pinned to the top of the board. Only one is.
+
+    TimelineRowCreate:
+      type: object
+      required: [time, text]
+      additionalProperties: false
+      properties:
+        time:
+          $ref: "#/components/schemas/MemberRefInput"
+          description: The time the row is written under, by its id. It must be one the timeline has.
+        text:
+          type: string
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+        scenes:
+          type: array
+          description: The scenes of the row, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+
+    TimelineRowPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+        time:
+          $ref: "#/components/schemas/MemberRefInput"
+          description: The time to move the row under.
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+
+    ScenePlacement:
+      type: object
+      description: Where on a board a scene goes.
+      required: [row]
+      additionalProperties: false
+      properties:
+        row:
+          type: string
+          description: The `id` of the row to put it in.
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+
+    TimelineViewCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        timelineIds:
+          type: array
+          description: The timelines it shows, in order, each by its `id`.
+          items:
+            type: string
+
+    TimelineViewPatch:
+      type: object
+      description: What to change of a view. One read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/TimelineView"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        timelineIds:
+          type: array
+          items:
+            type: string
+        timeOrder:
+          type: array
+          description: The view's times in the order they are read, each by its id.
+          items:
+            type: string
+        presentation:
+          description: How scenes are drawn. Null takes the author's default.
+          oneOf:
+            - $ref: "#/components/schemas/ScenePresentation"
+            - type: "null"
+        showSubDescriptions:
+          type: boolean
+        cardStyle:
+          type: [string, "null"]
+          enum: [compact, standard, extended, null]
+        timesReversed:
+          type: boolean
+
+    BeatSheetCreate:
+      type: object
+      required: [name, templateId]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        templateId:
+          type: string
+          description: The template to lay it out from, by the `id` `listBeatSheetTemplates` gives.
+
+    BeatSheetPatch:
+      type: object
+      description: What to change of a beat sheet. One read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/BeatSheet"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        presentation:
+          description: How scenes are drawn. Null takes the author's default.
+          oneOf:
+            - $ref: "#/components/schemas/ScenePresentation"
+            - type: "null"
+        showSubDescriptions:
+          type: boolean
+        reversed:
+          type: boolean
+
+    ActCreate:
+      type: object
+      required: [label]
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+
+    ActPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+
+    BeatCreate:
+      type: object
+      required: [act, name]
+      additionalProperties: false
+      properties:
+        act:
+          type: string
+          description: The `id` of the act it belongs to.
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        description:
+          type: string
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+
+    BeatPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        description:
+          type: string
+        act:
+          type: string
+          description: The `id` of the act to move it into.
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+
+    BeatRowCreate:
+      type: object
+      required: [beat, text]
+      additionalProperties: false
+      properties:
+        beat:
+          type: string
+          description: The `id` of the beat it is written under.
+        text:
+          type: string
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+        scenes:
+          type: array
+          description: The scenes of the row, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+
+    BeatRowPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+        beat:
+          type: string
+          description: The `id` of the beat to move it under.
+        before:
+          type: [string, "null"]
+          description: The `id` of the one it should stand before. Null or left out, the end.
+
+    BeatSheetTemplateSave:
+      type: object
+      required: [beatSheet, name]
+      additionalProperties: false
+      properties:
+        beatSheet:
+          type: string
+          description: The `id` of the beat sheet whose acts and beats are kept.
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        description:
+          type: string
+
+    FreeformViewCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+
+    FreeformViewPatch:
+      type: object
+      description: What to change of a view. One read and sent back whole is taken, and only its name is looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/FreeformView"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+
+    FreeformResourceInput:
+      description: What a card shows. A note of the project or one of its records by its id, a file by where it stands inside the project, a web address, or words of the card's own.
+      oneOf:
+        - type: object
+          required: [type, member]
+          additionalProperties: false
+          properties:
+            type:
+              const: entity
+            member:
+              $ref: "#/components/schemas/MemberRefInput"
+        - type: object
+          required: [type, id]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [task, foreshadowing, revision, sticky-note]
+            id:
+              type: string
+        - type: object
+          required: [type, relativePath]
+          additionalProperties: false
+          properties:
+            type:
+              const: file
+            relativePath:
+              type: string
+        - type: object
+          required: [type, url]
+          additionalProperties: false
+          properties:
+            type:
+              const: link
+            url:
+              type: string
+            label:
+              type: string
+        - type: object
+          required: [type, text]
+          additionalProperties: false
+          properties:
+            type:
+              const: text
+            text:
+              type: string
+
+    FreeformStep:
+      description: |
+        One thing done to a view. `do` says which. A new card, frame or line
+        may be given an `id` of the caller's own making, so that a later step
+        of the same call can name it. Left out, one is made for it.
+      oneOf:
+        - type: object
+          description: Cards put on the view.
+          required: [do, placements]
+          additionalProperties: false
+          properties:
+            do:
+              const: add
+            placements:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [resource, x, y]
+                additionalProperties: false
+                properties:
+                  id:
+                    type: string
+                  resource:
+                    $ref: "#/components/schemas/FreeformResourceInput"
+                  x:
+                    type: number
+                  y:
+                    type: number
+                  width:
+                    type: number
+                  height:
+                    type: number
+                  frameId:
+                    type: [string, "null"]
+        - type: object
+          description: Frames drawn on the view.
+          required: [do, frames]
+          additionalProperties: false
+          properties:
+            do:
+              const: add-frames
+            frames:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [title, x, y, width, height]
+                additionalProperties: false
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  color:
+                    oneOf:
+                      - $ref: "#/components/schemas/Color"
+                      - type: "null"
+                  x:
+                    type: number
+                  y:
+                    type: number
+                  width:
+                    type: number
+                  height:
+                    type: number
+        - type: object
+          description: Lines drawn between cards or frames.
+          required: [do, edges]
+          additionalProperties: false
+          properties:
+            do:
+              const: connect
+            edges:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [source, target]
+                additionalProperties: false
+                properties:
+                  id:
+                    type: string
+                  source:
+                    type: string
+                  target:
+                    type: string
+                  label:
+                    type: string
+                  arrow:
+                    type: string
+                    enum: [none, start, end, both]
+                  line:
+                    type: string
+                    enum: [solid, dashed, dotted, dash-dot]
+        - type: object
+          description: Cards and frames moved, or given another size.
+          required: [do, places]
+          additionalProperties: false
+          properties:
+            do:
+              const: place
+            places:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [id, x, y]
+                additionalProperties: false
+                properties:
+                  id:
+                    type: string
+                  x:
+                    type: number
+                  y:
+                    type: number
+                  width:
+                    type: number
+                  height:
+                    type: number
+                  frameId:
+                    type: [string, "null"]
+        - type: object
+          description: The words of a text card changed.
+          required: [do, id, text]
+          additionalProperties: false
+          properties:
+            do:
+              const: text
+            id:
+              type: string
+            text:
+              type: string
+        - type: object
+          description: A frame given another title or tint.
+          required: [do, id]
+          additionalProperties: false
+          properties:
+            do:
+              const: edit-frame
+            id:
+              type: string
+            title:
+              type: string
+            color:
+              oneOf:
+                - $ref: "#/components/schemas/Color"
+                - type: "null"
+        - type: object
+          description: Lines given another label, arrow or stroke.
+          required: [do, edits]
+          additionalProperties: false
+          properties:
+            do:
+              const: edit-edges
+            edits:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [id]
+                additionalProperties: false
+                properties:
+                  id:
+                    type: string
+                  label:
+                    type: string
+                  arrow:
+                    type: string
+                    enum: [none, start, end, both]
+                  line:
+                    type: string
+                    enum: [solid, dashed, dotted, dash-dot]
+        - type: object
+          description: Cards, frames and lines taken off the view. What a card showed stands.
+          required: [do]
+          additionalProperties: false
+          properties:
+            do:
+              const: delete
+            nodes:
+              type: array
+              description: Cards and frames, each by its `id`.
+              items:
+                type: string
+            edges:
+              type: array
+              items:
+                type: string
+
+    FreeformSteps:
+      type: object
+      required: [steps]
+      additionalProperties: false
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/FreeformStep"
+
+    ImportSource:
+      type: object
+      required: [sourceProjectId]
+      additionalProperties: false
+      properties:
+        sourceProjectId:
+          type: string
+          description: The `id` of the project to bring things in from.
+
+    ImportInspection:
+      type: object
+      description: What another project holds that this one could take.
+      required: [source, groups]
+      additionalProperties: false
+      properties:
+        source:
+          $ref: "#/components/schemas/ProjectSummary"
+        groups:
+          type: array
+          items:
+            type: object
+            required: [group, items]
+            additionalProperties: false
+            properties:
+              group:
+                type: string
+                description: "`characters`, `scenes`, a worldbuilding kind, `vocabulary`, `manuscript`, `timeline`, `beat-sheets`, `freeform`, `tasks`, `foreshadowing` or `sticky-notes`."
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, state]
+                  additionalProperties: false
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    state:
+                      type: string
+                      enum: [new, same-name, already-imported]
+                      description: Whether this project has nothing like it, has one of the same name, or took this very one before.
+
+    ImportRun:
+      type: object
+      required: [sourceProjectId, items]
+      additionalProperties: false
+      properties:
+        sourceProjectId:
+          type: string
+        items:
+          type: array
+          description: What to bring, each by the `id` the inspection gave.
+          minItems: 1
+          items:
+            type: string
+        onSameName:
+          type: string
+          enum: [skip, rename]
+          default: skip
+          description: What to do where this project already has one of the same name.
+
+    ImportReport:
+      type: object
+      required: [imported, skipped, failed]
+      additionalProperties: false
+      properties:
+        imported:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportReportItem"
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportReportItem"
+        failed:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportReportItem"
+
+    ImportReportItem:
+      type: object
+      required: [id, name, group]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        group:
+          type: string
+        reason:
+          type: string
+          description: Why it was left or could not be brought. Absent for what was brought.
+        path:
+          type: [string, "null"]
+          description: Where it now stands in the vault, for what was brought as a note.
+
+    ManuscriptExport:
+      type: object
+      required: [folder]
+      additionalProperties: false
+      properties:
+        folder:
+          type: string
+          description: The folder to write into, as a path in the vault. It may not be the manuscript's own folder.
+        notes:
+          type: array
+          description: The notes to export, each by its `relativePath`. Left out, the whole manuscript.
+          items:
+            type: string
+        layout:
+          type: string
+          enum: [one-file, one-per-note]
+          default: one-file
+        headings:
+          type: string
+          enum: [keep, from-titles, none]
+          default: keep
+          description: Whether each note's own heading is kept, replaced by its title, or left out.
+
+    CanvasExport:
+      type: object
+      required: [board, id]
+      additionalProperties: false
+      properties:
+        board:
+          type: string
+          enum: [freeform, timeline, beat-sheet]
+        id:
+          type: string
+          description: The `id` of the freeform view, the timeline view or the beat sheet.
+
+    ExportResult:
+      type: object
+      required: [written]
+      additionalProperties: false
+      properties:
+        written:
+          type: array
+          description: The files written, each by its path in the vault.
+          items:
+            type: string
+        unchanged:
+          type: array
+          description: Files that already said what would have been written.
+          items:
+            type: string
+
+    GalleryAdd:
+      type: object
+      required: [paths]
+      additionalProperties: false
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          description: Pictures already in the vault, each by its path there.
+          items:
+            type: string
+        move:
+          type: boolean
+          default: false
+          description: Whether each picture is moved into the gallery's folder. Left false, it is copied.
+
+    Gallery:
+      type: object
+      required: [member, pictures]
+      additionalProperties: false
+      properties:
+        member:
+          $ref: "#/components/schemas/MemberRef"
+        pictures:
+          type: array
+          description: The pictures of the gallery in the author's order, each by its path in the vault.
+          items:
+            type: string
+
+    Settings:
+      type: object
+      description: The author's settings that change what the API answers.
+      required: [counting, chapterNumbering, dailyGoals, sessionScope, dialogueMarks, sensitiveWords]
+      additionalProperties: false
+      properties:
+        counting:
+          $ref: "#/components/schemas/Counting"
+        chapterNumbering:
+          type: object
+          required: [style]
+          additionalProperties: false
+          properties:
+            style:
+              type: string
+              description: "`off`, or the name of the style new chapters are numbered in."
+        dailyGoals:
+          type: object
+          required: [project, manuscript, scope]
+          additionalProperties: false
+          properties:
+            project:
+              type: integer
+            manuscript:
+              type: integer
+            scope:
+              $ref: "#/components/schemas/WritingScope"
+        sessionScope:
+          $ref: "#/components/schemas/WritingScope"
+        dialogueMarks:
+          type: array
+          description: The pairs of quotation marks dialogue is read by.
+          items:
+            type: string
+        sensitiveWords:
+          type: array
+          description: The words the author watches for.
+          items:
+            type: string
+
+    SettingsPatch:
+      type: object
+      description: What to change of the settings. Read and sent back whole they are taken, and only what differs is written.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Settings"
+      properties:
+        counting:
+          $ref: "#/components/schemas/Counting"
+        dailyGoals:
+          type: object
+          additionalProperties: false
+          properties:
+            project:
+              type: integer
+              minimum: 0
+            manuscript:
+              type: integer
+              minimum: 0
+            scope:
+              $ref: "#/components/schemas/WritingScope"
+        sessionScope:
+          $ref: "#/components/schemas/WritingScope"
+        sensitiveWords:
+          type: array
+          items:
+            type: string
+
+    WritingSessionStart:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [stopwatch, countdown, pomodoro]
+          description: Left out, the type the author starts with.
+        writingMode:
+          $ref: "#/components/schemas/WritingMode"
+        minutes:
+          type: integer
+          minimum: 1
+          description: How long a countdown runs. Left out, the author's own length.
+
+    MentionIgnore:
+      type: object
+      required: [id, words, member, note]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        words:
+          type: string
+          description: The words that are not to be marked.
+        member:
+          description: The note they are not a mention of. Null for whichever note they would name.
+          oneOf:
+            - $ref: "#/components/schemas/MemberRef"
+            - type: "null"
+        note:
+          description: The manuscript note the rule holds in. Null for the whole project.
+          oneOf:
+            - $ref: "#/components/schemas/ManuscriptNoteRef"
+            - type: "null"
+
+    MentionIgnoreList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MentionIgnore"
+
+    MentionIgnoreCreate:
+      type: object
+      required: [words]
+      additionalProperties: false
+      properties:
+        words:
+          type: string
+          minLength: 1
+        member:
+          $ref: "#/components/schemas/MemberRefInput"
+        note:
+          type: string
+          description: The manuscript note the rule holds in, by its `relativePath`. Left out, the whole project.
 
 x-snowflake-problems:
   invalid-request:
