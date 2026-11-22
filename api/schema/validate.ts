@@ -1,4 +1,4 @@
-import { isJsonObject, isRecord, type JsonObject, type JsonValue } from '../json';
+import { hasOwn, isJsonObject, isRecord, type JsonObject, type JsonValue } from '../json';
 import { dereference, resolveRef, type ApiDocument } from '../spec/document';
 import { ECHO_KEYWORD } from './keywords';
 
@@ -55,7 +55,7 @@ function sameJson(left: unknown, right: unknown): boolean {
 	}
 	if (isRecord(left) && isRecord(right)) {
 		const keys = Object.keys(left);
-		return keys.length === Object.keys(right).length && keys.every((key) => key in right && sameJson(left[key], right[key]));
+		return keys.length === Object.keys(right).length && keys.every((key) => hasOwn(right, key) && sameJson(left[key], right[key]));
 	}
 	return false;
 }
@@ -171,14 +171,16 @@ class Checker {
 		const required = schema['required'];
 		if (Array.isArray(required)) {
 			for (const name of required) {
-				if (typeof name === 'string' && !(name in value)) this.report(pointer, `The property ${name} is required.`);
+				if (typeof name === 'string' && !hasOwn(value, name)) this.report(pointer, `The property ${name} is required.`);
 			}
 		}
 		const others = schema['additionalProperties'];
 		const echoed = this.dropEchoed ? this.echoedBy(schema) : null;
 		for (const key of Object.keys(value)) {
 			const at = `${pointer}/${escapePointer(key)}`;
-			const own = known[key];
+			// Asked by the name alone, `__proto__` would find what every object is born with and be taken for a
+			// property the schema describes: one that asks nothing of its value.
+			const own = hasOwn(known, key) ? known[key] : undefined;
 			if (isJsonObject(own)) {
 				this.visit(own, value[key], at);
 			} else if (others === false) {

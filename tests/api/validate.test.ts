@@ -120,6 +120,25 @@ describe('a value held against a schema', () => {
 		expect(check(sample, schema, { a: 'x', 'b/c': 1 })).toEqual([{ pointer: '/b~1c', detail: 'The property b/c is not known here.' }]);
 	});
 
+	it('takes no name for one every object is born with', () => {
+		// As a caller's JSON carries it: a property of the body's own, by that name.
+		const sent = (text: string): unknown => JSON.parse(text) as unknown;
+		expect(faults(sent('{"name":"Anna","__proto__":{"size":99}}'))).toEqual(['/__proto__ The property __proto__ is not known here.']);
+		expect(faults(sent('{"constructor":1,"toString":"x"}'))).toEqual([
+			'/constructor The property constructor is not known here.',
+			'/toString The property toString is not known here.',
+		]);
+		// Under a schema for the rest, it is held to that schema like any other name.
+		expect(faults(sent('{"fields":{"__proto__":4}}'))).toEqual(['/fields/__proto__ Expected string, found integer.']);
+		// And a name that is required is one the value has itself.
+		const born: JsonObject = { type: 'object', required: ['constructor', 'toString'], properties: { constructor: { type: 'string' } } };
+		expect(check(sample, born, {})).toEqual([
+			{ pointer: '', detail: 'The property constructor is required.' },
+			{ pointer: '', detail: 'The property toString is required.' },
+		]);
+		expect(check(sample, born, sent('{"constructor":"x","toString":1}'))).toEqual([]);
+	});
+
 	it('holds the properties a schema does not name to the schema given for the rest', () => {
 		expect(faults({ fields: { one: 'a', two: 2 } })).toEqual(['/fields/two Expected string, found integer.']);
 	});
@@ -218,6 +237,14 @@ describe('a call held against its operation', () => {
 			{ pointer: 'params/limit', detail: 'Must be at least 1.' },
 			{ pointer: 'params/include/1', detail: 'Expected one of "counts", "usage".' },
 			{ pointer: 'params/page', detail: 'The parameter page is not known here.' },
+		]);
+	});
+
+	it('takes a parameter by a name of its own, as the command line’s JSON carries one', () => {
+		const params = JSON.parse('{"thingId":"thing-1","__proto__":"x","constructor":"y"}') as Record<string, unknown>;
+		expect(checkCall(sample, patch, { params, body: {} }).issues).toEqual([
+			{ pointer: 'params/__proto__', detail: 'The parameter __proto__ is not known here.' },
+			{ pointer: 'params/constructor', detail: 'The parameter constructor is not known here.' },
 		]);
 	});
 

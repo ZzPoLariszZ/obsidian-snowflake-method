@@ -1,4 +1,4 @@
-import { isJsonObject, type JsonObject, type JsonValue } from '../json';
+import { hasOwn, isJsonObject, type JsonObject, type JsonValue } from '../json';
 import { dereference, type ApiDocument } from '../spec/document';
 import type { OperationSpec } from '../spec/operations';
 import { check, type SchemaIssue } from './validate';
@@ -58,7 +58,7 @@ export function checkCall(
 	for (const parameter of operation.parameters) {
 		declared.add(parameter.name);
 		const at = `params/${parameter.name}`;
-		const sent = given.params[parameter.name];
+		const sent = hasOwn(given.params, parameter.name) ? given.params[parameter.name] : undefined;
 		if (sent === undefined) {
 			const fallback: JsonValue | undefined = dereference(document, parameter.schema)['default'];
 			if (fallback !== undefined) params[parameter.name] = fallback;

@@ -81,14 +81,16 @@ export class Router {
 				if (!allow.includes(operation.method)) allow.push(operation.method);
 				continue;
 			}
-			const asked: Record<string, string> = {};
+			// Kept by name in a map and not on an object: a name such as `constructor` or `__proto__` is one
+			// every object answers to already, and a query that sent it would be read as said twice, or lost.
+			const asked = new Map<string, string>();
 			new URLSearchParams(query).forEach((value, name) => {
 				// A name said twice is taken as a list of its values.
-				const before = asked[name];
-				asked[name] = before === undefined ? value : `${before},${value}`;
+				const before = asked.get(name);
+				asked.set(name, before === undefined ? value : `${before},${value}`);
 			});
 			// What the address itself says is not the query's to say again.
-			return { kind: 'found', operation, params: { ...asked, ...params } };
+			return { kind: 'found', operation, params: { ...Object.fromEntries(asked), ...params } };
 		}
 		return allow.length > 0 ? { kind: 'wrong-method', allow } : { kind: 'none' };
 	}

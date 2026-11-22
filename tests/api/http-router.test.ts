@@ -80,6 +80,18 @@ describe('an address led to its operation', () => {
 		expect(found('GET', '/v1/projects?q=a%20b+c%26d')).toEqual(['listProjects', { q: 'a b c&d' }]);
 	});
 
+	it('takes a name every object answers to as the name it is', () => {
+		const route = router.route('GET', '/v1/projects?constructor=a&toString=b&toString=c&__proto__=d&limit=5');
+		if (route.kind !== 'found') throw new Error('The address is one.');
+		expect(Object.keys(route.params).sort()).toEqual(['__proto__', 'constructor', 'limit', 'toString']);
+		expect(Object.entries(route.params).sort()).toEqual([
+			['__proto__', 'd'],
+			['constructor', 'a'],
+			['limit', '5'],
+			['toString', 'b,c'],
+		]);
+	});
+
 	it('lets the address speak for itself over a query that names the same thing', () => {
 		expect(found('GET', '/v1/projects/project-1?projectId=other')).toEqual(['getProject', { projectId: 'project-1' }]);
 	});
