@@ -3,7 +3,7 @@ import { normalizePath } from 'obsidian';
 import { entitiesOf, toWikiLink, type ProjectSnapshot, type WorldbuildingRecord } from '../../src/services';
 import { characterOf, entityOf, hasTimeFields, sceneOf } from '../dto/member';
 import { MemberDraft, characterChanges, entityChanges, sceneChanges } from '../dto/member-input';
-import { ApiError } from '../errors';
+import { ApiError, changedSince } from '../errors';
 import type { JsonObject } from '../json';
 import {
 	NOT_THE_AUTHOR,
@@ -136,11 +136,7 @@ interface Doomed {
  * plugin's own screen asks the author the same thing in a dialog.
  */
 async function trash(context: ApiContext, call: OperationCall, project: ProjectSnapshot, member: Doomed): Promise<OperationResult> {
-	if (revisionOf(call, member.revision) !== member.revision) {
-		throw new ApiError('concurrent-change', 'The note has changed since it was read. Read it again and decide again.', {
-			currentEtag: member.revision,
-		});
-	}
+	if (revisionOf(call, member.revision) !== member.revision) throw changedSince(member.revision);
 	const service = context.host.projects;
 	const usage = await service.memberUsageByPath(project, member.path);
 	const index = context.members(project);

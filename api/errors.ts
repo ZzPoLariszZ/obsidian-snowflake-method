@@ -32,6 +32,13 @@ export const refuse = (code: string, detail: string, extra: JsonObject = {}): ne
 	throw new ApiError(code, detail, extra);
 };
 
+/**
+ * The refusal of a change worked out from a version of a note that no
+ * longer stands, with the version that does.
+ */
+export const changedSince = (currentEtag: string): ApiError =>
+	new ApiError('concurrent-change', 'The note has changed since it was read. Read it again and decide again.', { currentEtag });
+
 export interface ProblemEntry {
 	readonly status: number;
 	readonly title: string;
@@ -90,11 +97,7 @@ export function problemOf(
  */
 export function mapError(error: unknown): ApiError {
 	if (error instanceof ApiError) return error;
-	if (error instanceof ConcurrentChangeError) {
-		return new ApiError('concurrent-change', 'The note has changed since it was read. Read it again and decide again.', {
-			currentEtag: error.actualRevision,
-		});
-	}
+	if (error instanceof ConcurrentChangeError) return changedSince(error.actualRevision);
 	if (error instanceof ManagedFileNotFoundError) return new ApiError('not-found', 'It is not there, or no longer there.');
 	if (error instanceof PathConflictError) {
 		return new ApiError('path-conflict', 'A file or folder already stands where this would go.', { path: error.path });

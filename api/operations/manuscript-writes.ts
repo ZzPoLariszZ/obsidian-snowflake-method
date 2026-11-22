@@ -9,7 +9,7 @@ import {
 } from '../../src/domain';
 import type { ManuscriptSegmentRecord, ProjectSnapshot, SegmentRenameOutcome } from '../../src/services';
 import { relativePathOf } from '../dto/manuscript';
-import { ApiError } from '../errors';
+import { ApiError, changedSince } from '../errors';
 import type { JsonObject } from '../json';
 import {
 	NOT_THE_AUTHOR,
@@ -64,13 +64,10 @@ async function ready(context: ApiContext, call: OperationCall, first: string, re
 	const paths = [first, ...rest];
 	await context.host.settleNotes(paths);
 	const standing = await context.host.projects.manuscript.readSegment(first);
-	if (call.ifMatch !== null && call.ifMatch !== '*' && standing.revision !== call.ifMatch) throw moved(standing.revision);
+	if (call.ifMatch !== null && call.ifMatch !== '*' && standing.revision !== call.ifMatch) throw changedSince(standing.revision);
 	await context.host.releaseNotes(paths);
 	return standing.revision;
 }
-
-const moved = (currentEtag: string): ApiError =>
-	new ApiError('concurrent-change', 'The note has changed since it was read. Read it again and decide again.', { currentEtag });
 
 /**
  * A note's text where it still stands at the version it was made ready at.
@@ -79,7 +76,7 @@ const moved = (currentEtag: string): ApiError =>
  */
 async function textAt(context: ApiContext, path: string, revision: string): Promise<string> {
 	const standing = await context.host.projects.manuscript.readSegment(path);
-	if (standing.revision !== revision) throw moved(standing.revision);
+	if (standing.revision !== revision) throw changedSince(standing.revision);
 	return standing.body;
 }
 
