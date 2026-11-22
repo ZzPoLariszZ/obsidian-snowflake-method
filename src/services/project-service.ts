@@ -2792,6 +2792,29 @@ export class SnowflakeProjectService {
   }
 
   /**
+   * Sends one member's note to the trash, and tidies after it: the lists
+   * that kept it lose the entry, and the pictures of its gallery no other
+   * note names go with it. Whether to do it at all is the caller's to have
+   * settled first, with whoever is asking: what else names the note is
+   * `memberUsage`, and nothing here asks.
+   *
+   * The note goes first. A failure after that leaves links the health check
+   * can still report, where lists edited first would stand edited for a
+   * deletion that never landed. The trash is the one the author chose in
+   * Obsidian's settings. Answers the pictures that would not go, by name.
+   */
+  async trashMember(
+    project: ProjectSnapshot,
+    member: { path: string; gallery: readonly string[] },
+  ): Promise<{ trashFailed: string[] }> {
+    await this.repository.trashFile(member.path);
+    await this.removeMemberReferences(project, member.path);
+    if (member.gallery.length === 0) return { trashFailed: [] };
+    const { failed } = await this.gallery.trashOrphans(project, member.gallery, member.path, [member.path]);
+    return { trashFailed: failed };
+  }
+
+  /**
    * Drops a deleted note from every list that keeps it: a scene's cast, and the
    * times and places a scene happens in. Called once the note is gone, so a
    * failure here leaves recoverable dangling links the health check reports

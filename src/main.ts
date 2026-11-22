@@ -3477,15 +3477,13 @@ export default class SnowflakeMethodPlugin
 		// Noted as one write on its way from here, the answer once given: the
 		// lists are edited only after the project has been read again without
 		// the note, and a quit in that reading must not leave them naming it.
+		// The note goes to the trash the prompt would have used, and the lists
+		// and the gallery are tidied after it: the service's one way of deleting
+		// a member, which a caller of the local API takes too.
 		await writeUnderWay(
 			(async () => {
-				// trashFile honours the same trash preference the prompt would have, so
-				// replacing that dialog does not quietly change where the note goes.
-				await this.projects.repository.trashFile(member.path);
-				// After the delete, so a failure here leaves links the health check can
-				// still report rather than lists edited for a deletion that never landed.
-				await this.projects.removeMemberReferences(project, member.path);
-				await this.tidyGallery(project, member);
+				const { trashFailed } = await this.projects.trashMember(project, member);
+				for (const name of trashFailed) new Notice(this.t('form.gallery.trashFailed', { name }));
 			})(),
 		);
 		new Notice(deleted);
