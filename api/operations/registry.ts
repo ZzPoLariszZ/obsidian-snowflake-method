@@ -1,6 +1,7 @@
 import { beatSheetWriteOperations } from './beat-sheet-writes';
 import { boardOperations } from './boards';
 import type { OperationGroup, OperationHandler } from './context';
+import { environmentOperations } from './environment';
 import { freeformWriteOperations } from './freeform-writes';
 import { manuscriptOperations } from './manuscript';
 import { manuscriptWriteOperations } from './manuscript-writes';
@@ -38,6 +39,7 @@ const GROUPS: readonly OperationGroup[] = [
 	beatSheetWriteOperations,
 	freeformWriteOperations,
 	transferOperations,
+	environmentOperations,
 ];
 
 /**

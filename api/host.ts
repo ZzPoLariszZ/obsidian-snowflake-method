@@ -1,4 +1,14 @@
-import type { CanvasExportWords, ChapterNumbering, DerivedTaskSources, MentionSource, ProjectLanguage, WritingSessionScope } from '../src/domain';
+import type {
+	CanvasExportWords,
+	ChapterNumbering,
+	DerivedTaskSources,
+	DialogueStyle,
+	MentionSource,
+	ProjectLanguage,
+	WritingMode,
+	WritingSessionScope,
+	WritingSessionType,
+} from '../src/domain';
 import type {
 	AnalysisConfig,
 	ImportReport,
@@ -19,10 +29,50 @@ export type MintedRecord = 'task' | 'foreshadowing' | 'occurrence' | 'revision';
 /**
  * What a change is told to the screens about: the task board's records, the
  * ones kept beside the manuscript's text (threads and revisions), the
- * sticky notes, the order the manuscript's notes are read in, and each of
- * the boards a project is laid out on.
+ * sticky notes, the order the manuscript's notes are read in, each of the
+ * boards a project is laid out on, and the words the author has said are no
+ * mention of a note.
  */
-export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript' | 'timeline' | 'beatSheets' | 'freeform';
+export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript' | 'timeline' | 'beatSheets' | 'freeform' | 'mentions';
+
+/**
+ * The author's settings that change what the API answers, and what a
+ * session falls back on where a call leaves something out. They are the
+ * author's own for every project of the vault.
+ */
+export interface AuthorSettings {
+	counting: NoteCountOptions;
+	/** `off`, or the name of the style chapters are numbered in. */
+	chapterNumbering: string;
+	dailyGoals: { project: number; manuscript: number; scope: WritingSessionScope };
+	sessionScope: WritingSessionScope;
+	session: {
+		type: WritingSessionType;
+		writingMode: WritingMode;
+		countdownMinutes: number;
+		pomodoroWorkMinutes: number;
+		pomodoroBreakMinutes: number;
+		pomodoroAutoRepeat: boolean;
+	};
+	dialogueMarks: readonly DialogueStyle[];
+	sensitiveWords: readonly string[];
+}
+
+/** The few of them a caller may change. What is left out stays as it is. */
+export interface AuthorSettingsChange {
+	counting?: Partial<NoteCountOptions>;
+	dailyGoals?: { project?: number; manuscript?: number; scope?: WritingSessionScope };
+	sessionScope?: WritingSessionScope;
+	sensitiveWords?: readonly string[];
+}
+
+/** A session to start. What is null is as the author has it set. */
+export interface SessionStart {
+	type: WritingSessionType | null;
+	writingMode: WritingMode | null;
+	/** How long a countdown runs, in minutes. */
+	minutes: number | null;
+}
 
 /**
  * What the plugin hands the local API. The API is given the services and a
@@ -128,6 +178,22 @@ export interface ApiHost {
 	exportDefaults(): ManuscriptExportOptions;
 	/** The words an exported canvas carries that no author wrote, in the project's language, as the boards themselves say them. */
 	canvasWords(project: ProjectSnapshot): CanvasExportWords;
+	/** The author's settings that change what the API answers. */
+	settings(): AuthorSettings;
+	/**
+	 * Changes some of them, as the plugin's own settings page does: held to
+	 * the bounds the page holds them to, saved, and every screen that shows
+	 * one of them told.
+	 */
+	changeSettings(change: AuthorSettingsChange): Promise<void>;
+	/**
+	 * Starts the author's timer on a project, as the plugin's own Start
+	 * button does, on the clock the author has set. A session already under
+	 * way is ended by it, so a caller asks first whether one is.
+	 */
+	startSession(project: ProjectSnapshot, start: SessionStart): Promise<void>;
+	/** Ends the session under way and files it with the day's writing. */
+	stopSession(): Promise<void>;
 	/**
 	 * Whether Obsidian is set to ask the author before it rewrites the links
 	 * to a note that moved. While it is, nothing is renamed through the API.

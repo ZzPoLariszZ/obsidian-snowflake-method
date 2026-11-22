@@ -97,6 +97,20 @@ describe('an operation the contract plans for a later round', () => {
 		expect(isJsonObject(sheets) ? Object.keys(sheets).filter((key) => key !== 'parameters') : []).toEqual(['get']);
 	});
 
+	it('is none of the contract as it stands: every operation is answered, each in the round that built it', () => {
+		const standing = readOperations(document);
+		expect(standing.filter((operation) => !operation.available).map((operation) => operation.id)).toEqual([]);
+		const rounds = new Map<number, number>();
+		for (const operation of standing) rounds.set(operation.round, (rounds.get(operation.round) ?? 0) + 1);
+		expect([...rounds.entries()].sort(([left], [right]) => left - right)).toEqual([
+			[1, 107],
+			[2, 7],
+			[3, 33],
+			[4, 6],
+			[5, 7],
+		]);
+	});
+
 	it('is shown in the contract as it stands, where it is answered', () => {
 		const standing = readOperations(document);
 		const text = JSON.stringify(publishedDocument(document, standing, 27125));

@@ -2575,11 +2575,16 @@ paths:
       summary: Start a writing session
       description: |
         Starts the author's timer on a project: a stopwatch, a countdown
-        or a pomodoro. Only one session runs at a time.
+        or a pomodoro, on the clock the author has set. What the call leaves out
+        is as the author has it. Only one session runs at a time, on one project,
+        so a call is refused while one is under way anywhere.
+
+        Words written through the API are not counted by a session. It counts
+        what the author types.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, session-running]
       requestBody:
         required: true
         content:
@@ -4773,12 +4778,14 @@ paths:
       tags: [Service]
       summary: Read the plugin's settings
       description: |
-        The author's settings that change what the API answers: how
-        writing is counted, the chapter numbering rule, the daily goals and the
-        marks dialogue is read by. Nothing of this device's own is told, and
-        nothing of the API's own access.
+        The author's settings that change what the API answers: how writing
+        is counted, the chapter numbering rule, the daily goals, the marks
+        dialogue is read by and the words the author watches for. With them,
+        what a session and an export fall back on where a call leaves something
+        out. Nothing of how the plugin looks is told, nothing of this device's
+        own, and nothing of the API's own access.
       x-snowflake-access: read
-      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: extended
       x-snowflake-errors: []
       responses:
@@ -4795,10 +4802,13 @@ paths:
       tags: [Service]
       summary: Change the plugin's settings
       description: |
-        Changes some of the settings `getSettings` tells. They are the
-        author's own, for every project, so this is asked for with care.
+        Changes a few of the settings `getSettings` tells: how writing is
+        counted, the daily goals, which notes a session's words are counted in,
+        and the words the author watches for. They are the author's own, for
+        every project of the vault, so this is asked for with care. The rest are
+        the author's to set in the plugin's settings.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: advanced
       x-snowflake-errors: []
       requestBody:
@@ -4825,10 +4835,12 @@ paths:
       tags: [Mentions]
       summary: List the mentions the author set aside
       description: |
-        The words the author told the plugin not to mark as a mention
-        of a note, each with where it holds: everywhere, or in one note.
+        The words the author told the plugin not to mark as a mention of
+        a note. A rule holds for the whole manuscript, for one manuscript note,
+        or for one place in a note. Each is told by an `id` worked out from what
+        it says, so the same rule has the same `id` for as long as it stands.
       x-snowflake-access: read
-      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
       responses:
@@ -4845,10 +4857,12 @@ paths:
       tags: [Mentions]
       summary: Set a mention aside
       description: |
-        Tells the plugin that some words are not a mention of a note,
-        everywhere in the project or in one manuscript note.
+        Tells the plugin that some words are not a mention of a note: in
+        the whole manuscript, in one manuscript note, or at one place in a note.
+        The words are given as `listNoteMentions` tells them, letter for letter.
+        A rule that already stands is left as it is.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
       requestBody:
@@ -4859,11 +4873,11 @@ paths:
               $ref: "#/components/schemas/MentionIgnoreCreate"
       responses:
         "201":
-          description: The rules there now are.
+          description: The rule by its id, and the rules there now are.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MentionIgnoreList"
+                $ref: "#/components/schemas/MentionIgnoreAdded"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -4879,7 +4893,7 @@ paths:
         Takes one such rule away, so the words are marked as a mention
         again. The rule is named by the id `listMentionIgnores` gives.
       x-snowflake-access: delete
-      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -4896,10 +4910,12 @@ paths:
       tags: [Writing sessions]
       summary: Stop the writing session
       description: |
-        Ends the session under way and files it with the day's writing.
-        Where none is running there is nothing to stop.
+        Ends the session under way on a project and files it with the
+        day's writing. Where none runs on this project there is nothing to stop,
+        and the answer says so by its `session` being null. A session that runs
+        on another project is left running.
       x-snowflake-access: write
-      x-snowflake-availability: { status: planned, round: 5 }
+      x-snowflake-availability: { status: available, round: 5 }
       x-snowflake-tier: advanced
       x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
       responses:
@@ -10779,7 +10795,7 @@ components:
     Settings:
       type: object
       description: The author's settings that change what the API answers.
-      required: [counting, chapterNumbering, dailyGoals, sessionScope, dialogueMarks, sensitiveWords]
+      required: [counting, chapterNumbering, dailyGoals, sessionScope, session, dialogueMarks, sensitiveWords, export]
       additionalProperties: false
       properties:
         counting:
@@ -10799,31 +10815,84 @@ components:
           properties:
             project:
               type: integer
+              description: The words the author means to write in a day, counted over the whole project.
             manuscript:
               type: integer
+              description: The same, counted in the manuscript alone.
             scope:
               $ref: "#/components/schemas/WritingScope"
+              description: Which of the two the day's goal is held against.
         sessionScope:
           $ref: "#/components/schemas/WritingScope"
+          description: Which notes a session's words are counted in as the author is shown them.
+        session:
+          type: object
+          description: What a session starts as where a call does not say.
+          required: [type, writingMode, countdownMinutes, pomodoroWorkMinutes, pomodoroBreakMinutes, pomodoroAutoRepeat]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [stopwatch, countdown, pomodoro]
+            writingMode:
+              $ref: "#/components/schemas/WritingMode"
+            countdownMinutes:
+              type: integer
+            pomodoroWorkMinutes:
+              type: integer
+            pomodoroBreakMinutes:
+              type: integer
+            pomodoroAutoRepeat:
+              type: boolean
         dialogueMarks:
           type: array
           description: The pairs of quotation marks dialogue is read by.
           items:
-            type: string
+            $ref: "#/components/schemas/QuotationMarks"
         sensitiveWords:
           type: array
-          description: The words the author watches for.
+          description: The words and phrases the author watches for.
           items:
             type: string
+        export:
+          type: object
+          description: How the manuscript is exported where a call does not say.
+          required: [folder, format, layout, separator, indent, paragraphSpacing]
+          additionalProperties: false
+          properties:
+            folder:
+              type: string
+              description: The folder exports go into, as a path in the vault.
+            format:
+              type: string
+              enum: [md, txt]
+            layout:
+              type: string
+              enum: [single, folder]
+            separator:
+              type: string
+              enum: [blank, rule, asterisks]
+            indent:
+              type: boolean
+            paragraphSpacing:
+              type: boolean
 
     SettingsPatch:
       type: object
-      description: What to change of the settings. Read and sent back whole they are taken, and only what differs is written.
+      description: What to change of the settings. Read and sent back whole they are taken, and only these are looked at.
       additionalProperties: false
       x-snowflake-echo: "#/components/schemas/Settings"
       properties:
         counting:
-          $ref: "#/components/schemas/Counting"
+          type: object
+          additionalProperties: false
+          properties:
+            mode:
+              type: string
+              enum: [jinjiang, chenggua, qidian, ms-word]
+            headings:
+              type: string
+              enum: [count, skip-first-h1, skip-h1, skip-all]
         dailyGoals:
           type: object
           additionalProperties: false
@@ -10831,15 +10900,19 @@ components:
             project:
               type: integer
               minimum: 0
+              maximum: 1000000
             manuscript:
               type: integer
               minimum: 0
+              maximum: 1000000
             scope:
               $ref: "#/components/schemas/WritingScope"
         sessionScope:
           $ref: "#/components/schemas/WritingScope"
         sensitiveWords:
           type: array
+          description: The whole list, as it should stand. Each a word or a phrase of one line.
+          maxItems: 2000
           items:
             type: string
 
@@ -10855,29 +10928,37 @@ components:
           $ref: "#/components/schemas/WritingMode"
         minutes:
           type: integer
-          minimum: 1
-          description: How long a countdown runs. Left out, the author's own length.
+          minimum: 5
+          maximum: 180
+          description: How long a countdown runs. Left out, the author's own length. Only a countdown takes one.
 
     MentionIgnore:
       type: object
-      required: [id, words, member, note]
+      required: [id, scope, words, member, note, ordinal]
       additionalProperties: false
       properties:
         id:
           type: string
+        scope:
+          type: string
+          enum: [manuscript, note, occurrence]
+          description: "`manuscript`: the words are no mention of that note anywhere. `note`: nor in one manuscript note. `occurrence`: one place in a note is no mention at all."
         words:
           type: string
           description: The words that are not to be marked.
         member:
-          description: The note they are not a mention of. Null for whichever note they would name.
+          description: The note they are not a mention of. Null for a rule about one place.
           oneOf:
             - $ref: "#/components/schemas/MemberRef"
             - type: "null"
         note:
-          description: The manuscript note the rule holds in. Null for the whole project.
+          description: The manuscript note the rule holds in. Null for the whole manuscript.
           oneOf:
             - $ref: "#/components/schemas/ManuscriptNoteRef"
             - type: "null"
+        ordinal:
+          type: [integer, "null"]
+          description: For a rule about one place, which of the note's places with those words it is, counted from 0.
 
     MentionIgnoreList:
       type: object
@@ -10891,17 +10972,26 @@ components:
 
     MentionIgnoreCreate:
       type: object
-      required: [words]
+      required: [scope, words]
       additionalProperties: false
       properties:
+        scope:
+          type: string
+          enum: [manuscript, note, occurrence]
         words:
           type: string
           minLength: 1
+          description: The words, letter for letter as `listNoteMentions` tells them.
         member:
           $ref: "#/components/schemas/MemberRefInput"
+          description: The note the words are no mention of. Needed for `manuscript` and `note`.
         note:
           type: string
-          description: The manuscript note the rule holds in, by its `relativePath`. Left out, the whole project.
+          description: The manuscript note the rule holds in, by its `relativePath`. Needed for `note` and `occurrence`.
+        ordinal:
+          type: integer
+          minimum: 0
+          description: Which of the note's places with those words is meant, counted from 0. Needed for `occurrence`.
 
     TimelineRowCreated:
       type: object
@@ -11007,6 +11097,19 @@ components:
                 path:
                   type: [string, "null"]
             - type: "null"
+
+    MentionIgnoreAdded:
+      type: object
+      required: [id, items]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: The `id` of the rule that was asked for.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MentionIgnore"
 
 x-snowflake-problems:
   invalid-request:
@@ -11135,6 +11238,9 @@ x-snowflake-problems:
   import-refused:
     status: 409
     title: Nothing can be brought in between these two projects.
+  session-running:
+    status: 409
+    title: A writing session is already under way.
   internal-error:
     status: 500
     title: The operation failed.

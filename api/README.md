@@ -97,19 +97,25 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Pictures.** `addGalleryPictures` takes pictures that already stand in the vault, each by its path, and copies them into the gallery folder of the note's kind. The API carries no picture's bytes. `removeGalleryPicture` sends a picture's file to the trash only where it stands in a gallery folder and no other note shows it.
 
+**Settings.** `getSettings` tells the author's settings that change what the API answers, and what a session and an export fall back on. `updateSettings` changes four of them: how writing is counted, the daily goals, which notes a session counts, and the words the author watches for. They hold for every project of the vault. The rest are the author's to set, the API's own switches among them.
+
+**The timer.** `startWritingSession` starts the author's timer on a project and is refused while a session runs anywhere, since the author's own Start button would end it. `stopWritingSession` ends the session of the project it is asked of, and no other. A session counts what the author types, never what a caller writes.
+
+**Mentions set aside.** A rule the author made about a mention has no id of its own, so `listMentionIgnores` tells each by an id worked out from what it says. `addMentionIgnore` takes the words letter for letter as `listNoteMentions` tells them.
+
 **Deleting.** A deleted note goes where the author's Obsidian sends deleted files. A deleted task, thread or revision cannot be brought back. A character, a scene or a worldbuilding note that other notes name is refused with what names it, unless the call says `force=true`. A project is never deleted here. `archiveProject` puts it away and `restoreProject` brings it back.
 
 **Reads that write.** A read changes nothing the author wrote. The plugin may still put three things right as it reads, as it does whenever it opens a project. A moved project has its link to the first manuscript note pointed at where that note stands. A record file that can no longer be read is set aside under a new name. Statistics and mentions are kept in a cache file of this device's own. `inspectImport` may put the plugin's record of earlier imports right where the two projects show it to be out of date.
 
 ## Operations
 
-153 operations are answered now: 58 read, 69 write and 26 delete. Later rounds are written into the contract and marked `planned`. A planned operation answers `501 planned-operation` and is left out of the document the API serves.
+All 160 operations of the contract are answered: 60 read, 73 write and 27 delete.
 
 A name marked ² needs the write level. A name marked ³ needs the delete level.
 
 | Group | Operations |
 | --- | --- |
-| Service | `getApiRoot`, `getReadiness`, `getOpenApiDocument` |
+| Service | `getApiRoot`, `getReadiness`, `getOpenApiDocument`, `getSettings`, `updateSettings` ² |
 | Projects | `listProjects`, `createProject` ², `getProject`, `updateProject` ², `getProjectHealth`, `archiveProject` ², `restoreProject` ², `repairProject` ², `repairProjectIssue` ², `migrateProjectNotes` ², `searchProject`, `inspectImport`, `runImport` ² |
 | Steps | `listSteps`, `getStep`, `setStepStatus` ², `getStepText`, `updateStepText` ² |
 | Kinds | `listKinds`, `createKind` ², `getKind`, `updateKind` ², `deleteKind` ³ |
@@ -125,19 +131,15 @@ A name marked ² needs the write level. A name marked ³ needs the delete level.
 | Revisions | `listRevisions`, `getRevision`, `createRevision` ², `updateRevision` ², `acceptRevision` ², `discardRevision` ³ |
 | Sticky notes | `listStickyNotes`, `getStickyNote`, `createStickyNote` ², `updateStickyNote` ², `deleteStickyNote` ³ |
 | Statistics | `getWritingCounts`, `getProseStatistics`, `getWordFrequency`, `getSensitiveWords`, `getDialogue`, `listNoteDialogue` |
-| Mentions | `getMentions`, `listNoteMentions` |
-| Writing sessions | `listWritingDays`, `getWritingSpread`, `getWritingSession` |
+| Mentions | `getMentions`, `listNoteMentions`, `listMentionIgnores`, `addMentionIgnore` ², `removeMentionIgnore` ³ |
+| Writing sessions | `listWritingDays`, `getWritingSpread`, `getWritingSession`, `startWritingSession` ², `stopWritingSession` ² |
 | History | `getHistory` |
 | Timeline | `getTimeline`, `createTimeline` ², `updateTimeline` ², `deleteTimeline` ³, `addTimelineTime` ², `removeTimelineTime` ³, `addTimelineRow` ², `updateTimelineRow` ², `deleteTimelineRow` ³, `placeTimelineScene` ², `removeTimelineScene` ³, `createTimelineView` ², `updateTimelineView` ², `deleteTimelineView` ³ |
 | Beat sheets | `listBeatSheets`, `getBeatSheet`, `createBeatSheet` ², `updateBeatSheet` ², `deleteBeatSheet` ³, `addBeatSheetAct` ², `updateBeatSheetAct` ², `deleteBeatSheetAct` ³, `addBeat` ², `updateBeat` ², `deleteBeat` ³, `addBeatRow` ², `updateBeatRow` ², `deleteBeatRow` ³, `placeBeatSheetScene` ², `removeBeatSheetScene` ³, `listBeatSheetTemplates`, `saveBeatSheetTemplate` ², `deleteBeatSheetTemplate` ³ |
 | Freeform | `listFreeformViews`, `getFreeformView`, `createFreeformView` ², `updateFreeformView` ², `deleteFreeformView` ³, `applyFreeformSteps` ², `exportCanvas` ² |
 | Relationship graph | `getRelationshipGraph` |
 
-### Planned
-
-| Round | What it adds | Operations |
-| --- | --- | --- |
-| 5 | Environment | `getSettings`, `updateSettings`, `startWritingSession`, `stopWritingSession`, `listMentionIgnores`, `addMentionIgnore`, `removeMentionIgnore` |
+Each operation says the round that built it in `x-snowflake-availability`. The contract may describe an operation before a build answers it, marked `planned` there. Such an operation answers `501 planned-operation` and is left out of the document the API serves. None is planned now.
 
 Each operation also carries a tier in `x-snowflake-tier`: `core`, `extended` or `advanced`. A client that offers a short list of tools can start with the core ones.
 

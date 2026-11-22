@@ -1,7 +1,9 @@
 import { addDays, daysBetween, isTaskDay, type BandSpan } from '../../src/domain';
+import type { ProjectSnapshot } from '../../src/services';
 import { dayBandOf, historyDayOf, liveSessionOf, modeTotalsOf, writingDayOf } from '../dto/sessions';
 import { ApiError } from '../errors';
-import { optionalTextParam, textParam, type OperationCall, type OperationGroup } from './context';
+import type { JsonObject } from '../json';
+import { optionalTextParam, textParam, type ApiContext, type OperationCall, type OperationGroup } from './context';
 
 const refuse = (pointer: string, detail: string): ApiError =>
 	new ApiError('invalid-request', 'The call does not match what the operation takes.', { errors: [{ pointer, detail }] });
@@ -24,6 +26,19 @@ function stretchOf(call: OperationCall, today: string, usual: number, longest: n
 	if (days < 1) throw refuse('params/from', 'The stretch ends before it begins.');
 	if (days > longest) throw refuse('params/from', `A stretch may be ${String(longest)} days long at most.`);
 	return { from, through };
+}
+
+/** The session under way on a project, or none, with the day's writing so far. */
+export async function tellSession(context: ApiContext, project: ProjectSnapshot): Promise<JsonObject> {
+	const scopes = context.host.sessionScopes();
+	const live = context.host.sessions.live(project.projectFile);
+	const today = await context.host.sessions.todaySummary(project);
+	return {
+		session: live === null ? null : liveSessionOf(live),
+		today: writingDayOf(today),
+		scope: scopes.shown,
+		goalScope: scopes.goal,
+	};
 }
 
 /**
@@ -57,18 +72,7 @@ export const sessionOperations: OperationGroup = {
 
 	getWritingSession: async (call, context) => {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
-		const scopes = context.host.sessionScopes();
-		const live = context.host.sessions.live(project.projectFile);
-		const today = await context.host.sessions.todaySummary(project);
-		return {
-			status: 200,
-			body: {
-				session: live === null ? null : liveSessionOf(live),
-				today: writingDayOf(today),
-				scope: scopes.shown,
-				goalScope: scopes.goal,
-			},
-		};
+		return { status: 200, body: await tellSession(context, project) };
 	},
 
 	getHistory: async (call, context) => {

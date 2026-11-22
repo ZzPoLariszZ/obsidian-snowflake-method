@@ -30,7 +30,10 @@ import {
 	createLocalApi,
 	mintToken,
 	type ApiHost,
+	type AuthorSettings,
+	type AuthorSettingsChange,
 	type ChangedRecords,
+	type SessionStart,
 	type LocalApi,
 } from '../api/index';
 
@@ -6115,6 +6118,10 @@ export default class SnowflakeMethodPlugin
 				return report;
 			},
 			exportDefaults: () => this.exportOptions(),
+			settings: () => this.settingsForCaller(),
+			changeSettings: (change) => this.changeSettingsForCaller(change),
+			startSession: (project, start) => this.startSessionForCaller(project, start),
+			stopSession: () => this.sessions.stop('manual'),
 			canvasWords: (project) => this.canvasExportWords((key, vars) => this.translateForProject(project.locale, key, vars)),
 			asksBeforeLinkUpdates: () => this.obsidianAsksBeforeLinkUpdates(),
 			settleNotes: (paths) => this.settleNotesForWriter(paths),
@@ -6151,6 +6158,69 @@ export default class SnowflakeMethodPlugin
 				}
 				this.settingTab?.refreshRows();
 			},
+		});
+	}
+
+	/** The settings a caller of the local API is told: the ones that change what it is answered. */
+	private settingsForCaller(): AuthorSettings {
+		const held = this.settings;
+		return {
+			counting: this.writingCountOptions(),
+			chapterNumbering: held.manuscriptChapterNumbering,
+			dailyGoals: {
+				project: held.sessionDailyWordGoalProject,
+				manuscript: held.sessionDailyWordGoalManuscript,
+				scope: held.sessionDailyGoalScope,
+			},
+			sessionScope: held.sessionScope,
+			session: {
+				type: held.sessionDefaultType,
+				writingMode: held.sessionWritingMode,
+				countdownMinutes: held.sessionCountdownMinutes,
+				pomodoroWorkMinutes: held.sessionPomodoroWorkMinutes,
+				pomodoroBreakMinutes: held.sessionPomodoroBreakMinutes,
+				pomodoroAutoRepeat: held.sessionPomodoroAutoRepeat,
+			},
+			dialogueMarks: this.dialogueStylesFromSettings(),
+			sensitiveWords: parseSensitiveWords(held.sensitiveWords),
+		};
+	}
+
+	/**
+	 * The few settings a caller of the local API may change, changed as the
+	 * settings page changes them: held to the bounds the page holds them to,
+	 * saved once, and each one that moved told to the screens that show it.
+	 * One sent as it already stands is neither saved nor told.
+	 */
+	private async changeSettingsForCaller(change: AuthorSettingsChange): Promise<void> {
+		const asked: Partial<SnowflakeSettings> = {};
+		if (change.counting?.mode !== undefined) asked.writingCountMode = change.counting.mode;
+		if (change.counting?.headings !== undefined) asked.writingCountHeadings = change.counting.headings;
+		if (change.dailyGoals?.project !== undefined) asked.sessionDailyWordGoalProject = change.dailyGoals.project;
+		if (change.dailyGoals?.manuscript !== undefined) asked.sessionDailyWordGoalManuscript = change.dailyGoals.manuscript;
+		if (change.dailyGoals?.scope !== undefined) asked.sessionDailyGoalScope = change.dailyGoals.scope;
+		if (change.sessionScope !== undefined) asked.sessionScope = change.sessionScope;
+		if (change.sensitiveWords !== undefined) asked.sensitiveWords = change.sensitiveWords.join('\n');
+		const kept = sanitizeSettings({ ...this.settings, ...asked });
+		const moved = (Object.keys(asked) as (keyof SnowflakeSettings)[]).filter((key) => kept[key] !== this.settings[key]);
+		if (moved.length === 0) return;
+		Object.assign(this.settings, Object.fromEntries(moved.map((key) => [key, kept[key]])));
+		await this.saveSettings();
+		for (const key of moved) await this.handleSettingsChanged(key);
+		this.settingTab?.refreshRows();
+	}
+
+	/** The author's timer started for a caller of the local API, on the clock the author has set. */
+	private async startSessionForCaller(project: ProjectSnapshot, start: SessionStart): Promise<void> {
+		const type = start.type ?? this.settings.sessionDefaultType;
+		const timing = this.sessionTiming(type);
+		if (start.minutes !== null && type === 'countdown') timing.targetDurationSeconds = start.minutes * 60;
+		await this.sessions.start(project, {
+			type,
+			writingMode: start.writingMode ?? this.settings.sessionWritingMode,
+			startMode: 'manual',
+			timing,
+			countOptions: this.writingCountOptions(),
 		});
 	}
 
@@ -6235,6 +6305,10 @@ export default class SnowflakeMethodPlugin
 		}
 		if (what === 'freeform') {
 			this.freeformBell.ring();
+			return;
+		}
+		if (what === 'mentions') {
+			this.applyManuscriptMentionMode();
 			return;
 		}
 		void this.announceMarginRecordsChanged().catch(lost);
