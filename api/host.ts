@@ -17,6 +17,8 @@ export interface ApiHost {
 	port(): number;
 	/** How far the author lets a caller go. */
 	access(): Access;
+	/** The access token, or null where none has been made or the store for secrets cannot be read. */
+	token(): string | null;
 	/**
 	 * Settles once the plugin can list projects, which is after Obsidian has
 	 * read the vault. `isReady` answers the same question without waiting.

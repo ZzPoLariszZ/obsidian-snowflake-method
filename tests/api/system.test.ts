@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { createLocalApi } from '../../api/index';
 import { isJsonObject } from '../../api/json';
 import { allHandlers } from '../../api/operations/registry';
 import { createFakeHost } from './helpers/fake-host';
+import { createTestApi } from './helpers/fake-listener';
 import { problemFaults, shapeFaults } from './helpers/shapes';
 import { document, operations } from './helpers/spec';
 
@@ -28,7 +28,7 @@ describe('the handlers and the contract', () => {
 
 describe('what the API says of itself', () => {
 	it('tells a caller with no token which service and contract this is, and nothing of the author’s', async () => {
-		const reply = await createLocalApi(createFakeHost()).dispatcher.dispatch(call('getApiRoot', false));
+		const reply = await createTestApi(createFakeHost()).api.dispatcher.dispatch(call('getApiRoot', false));
 		expect(reply.status).toBe(200);
 		expect(reply.body).toEqual({ service: 'snowflake-method', contract: document.version, authenticated: false });
 		expect(shapeFaults('getApiRoot', 200, reply.body)).toEqual([]);
@@ -36,7 +36,7 @@ describe('what the API says of itself', () => {
 
 	it('tells a caller with one the plugin, the vault, the access level and the limits', async () => {
 		const host = createFakeHost({ access: 'write' });
-		const reply = await createLocalApi(host).dispatcher.dispatch(call('getApiRoot'));
+		const reply = await createTestApi(host).api.dispatcher.dispatch(call('getApiRoot'));
 		expect(reply.body).toEqual({
 			service: 'snowflake-method',
 			contract: document.version,
@@ -52,7 +52,7 @@ describe('what the API says of itself', () => {
 
 	it('says whether it is ready without waiting to be', async () => {
 		const host = createFakeHost({ ready: false });
-		const api = createLocalApi(host);
+		const { api } = createTestApi(host);
 		const early = await api.dispatcher.dispatch(call('getReadiness', false));
 		expect(early.status).toBe(503);
 		expect(early.body).toMatchObject({ code: 'not-ready' });
@@ -64,7 +64,7 @@ describe('what the API says of itself', () => {
 	});
 
 	it('hands out its own description to a caller with the token only', async () => {
-		const api = createLocalApi(createFakeHost({ port: 31999 }));
+		const { api } = createTestApi(createFakeHost({ port: 31999 }));
 		expect((await api.dispatcher.dispatch(call('getOpenApiDocument', false))).status).toBe(401);
 		const reply = await api.dispatcher.dispatch(call('getOpenApiDocument'));
 		expect(reply.status).toBe(200);
@@ -75,7 +75,7 @@ describe('what the API says of itself', () => {
 	});
 
 	it('answers about itself even while the plugin cannot yet list projects', async () => {
-		const api = createLocalApi(createFakeHost({ ready: false }));
+		const { api } = createTestApi(createFakeHost({ ready: false }));
 		expect((await api.dispatcher.dispatch(call('getApiRoot'))).status).toBe(200);
 		expect((await api.dispatcher.dispatch(call('getOpenApiDocument'))).status).toBe(200);
 	});
