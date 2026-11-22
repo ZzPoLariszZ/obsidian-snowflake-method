@@ -135,6 +135,8 @@ export class HistoryLedger {
 	private queue: PendingHistoryEvent[] = [];
 	/** Events of the import under way, held until it ends and says where it came from. */
 	private held: PendingHistoryEvent[] | null = null;
+	/** How many pieces of the plugin's own work are under way: see `asPlugin`. */
+	private pluginDepth = 0;
 	/** Events the flush under way is filing: still the store's, and still followed, until it ends. */
 	private writing: PendingHistoryEvent[] = [];
 	private readonly recentEchoes = new Map<string, number>();
@@ -272,6 +274,21 @@ export class HistoryLedger {
 	}
 
 	// ---- imports ----
+
+	/**
+	 * Runs work that is the plugin's own doing and not the author's: a
+	 * caller of the local API changing a project. What would be put down to
+	 * the author while it runs is put down to the plugin. Work within work
+	 * is all of it the plugin's, until the outermost has ended.
+	 */
+	async asPlugin<T>(run: () => Promise<T>): Promise<T> {
+		this.pluginDepth += 1;
+		try {
+			return await run();
+		} finally {
+			this.pluginDepth -= 1;
+		}
+	}
 
 	/** From here until `endImport`, what happens is the import's doing. */
 	beginImport(): void {
@@ -513,6 +530,8 @@ export class HistoryLedger {
 		// Whatever happens while an import runs is the import's doing, save
 		// what the harvester read off the copies, which is nobody's.
 		if (this.held !== null && record.origin !== "inferred") record.origin = "import";
+		// And what happens under the plugin's own work is not the author's.
+		else if (this.pluginDepth > 0 && record.origin === "user") record.origin = "plugin";
 		const path = historyFilePath(
 			project.rootPath,
 			getProjectPathLayout(project.locale).directories.modificationHistory,

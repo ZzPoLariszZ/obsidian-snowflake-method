@@ -291,6 +291,38 @@ paths:
                 $ref: "#/components/schemas/ProjectPage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createProject
+      tags: [Projects]
+      summary: Create a project
+      description: |
+        Makes a new project under the folder the author keeps projects in,
+        with its folders, its ten steps and the note its manuscript begins with.
+        The project is written in the language given, which names its folders and
+        cannot be changed afterwards. It is not made the project the author is
+        working in. A title another project already goes by is refused.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [duplicate-name, path-conflict, project-creation-interrupted]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreate"
+      responses:
+        "201":
+          description: The project that was made.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}:
     parameters:
@@ -312,6 +344,34 @@ paths:
       responses:
         "200":
           description: The project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateProject
+      tags: [Projects]
+      summary: Rename a project or change its series
+      description: |
+        Changes a project's title, the series it is a book of, or both. A new
+        title moves the project's folder, so every `path` under it changes. Its
+        `id` stays. Send `series` as null to take the project out of its series.
+        What is left out is left as it is.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, path-conflict]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/ProjectPatch"
+      responses:
+        "200":
+          description: The project as it now stands.
           content:
             application/json:
               schema:
@@ -394,6 +454,35 @@ paths:
                 $ref: "#/components/schemas/Step"
         default:
           $ref: "#/components/responses/Problem"
+    put:
+      operationId: setStepStatus
+      tags: [Steps]
+      summary: Set how far a step has come
+      description: |
+        Marks a step as not started, in progress, complete or skipped. A step
+        can be completed only once the steps it rests on are. Only step 9 can be
+        skipped, and step 10 is either not started or complete. Taking a step
+        back can take the steps that rest on it back too, so the answer gives
+        all ten.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, step-prerequisites-incomplete, invalid-step-status]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StepStatusChange"
+      responses:
+        "200":
+          description: All ten steps as they now stand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StepList"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/steps/{step}/text:
     parameters:
@@ -416,6 +505,39 @@ paths:
       responses:
         "200":
           description: The step's text.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StepText"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateStepText
+      tags: [Steps]
+      summary: Write the text of a step
+      description: |
+        Writes one or more sections of the note of step 1, 2, 4 or 6. A
+        section left out is left as it is. Send the `etag` the text was read
+        with in `If-Match`. Steps 3, 5, 7, 8, 9 and 10 have no note of their own:
+        their work is the characters, the scenes and the manuscript.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, unsafe-section]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/StepTextPatch"
+      responses:
+        "200":
+          description: The text as it now stands.
           headers:
             ETag:
               $ref: "#/components/headers/ETag"
@@ -1780,6 +1902,83 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: archiveProject
+      tags: [Projects]
+      summary: Archive a project
+      description: |
+        Moves a project into the archive folder beside the others. Nothing of
+        it is deleted, and `restoreProject` brings it back. An archived project
+        can still be read. This is the way to put a project away: the API does
+        not delete projects.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict, archive-folder-is-project]
+      responses:
+        "200":
+          description: The project where it stands now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSummary"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: restoreProject
+      tags: [Projects]
+      summary: Restore an archived project
+      description: |
+        Moves an archived project back beside the others. Where another
+        project took its title while it was away, it comes back under the first
+        free one, such as "Name 2", and the answer says what it was called.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, not-archived, path-conflict]
+      responses:
+        "200":
+          description: The project as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoredProject"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/repair:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: repairProject
+      tags: [Projects]
+      summary: Repair a project
+      description: |
+        Puts back what a project is missing: a folder, a step's note, a
+        template, the note its manuscript begins with. Nothing the author wrote
+        is changed or removed. What cannot be put right this way is left, and
+        the health in the answer still names it.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: What was done, and the health of the project after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRepair"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -1790,6 +1989,16 @@ components:
         made on this computer and never leaves it.
 
   parameters:
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: |
+        The `etag` of the note as you last read it, in quotes or without. The
+        change is made only if the note still stands at that version.
+      schema:
+        type: string
+        minLength: 1
     ProjectId:
       name: projectId
       in: path
@@ -1978,6 +2187,10 @@ components:
         default: 100
 
   headers:
+    Location:
+      description: The address of what was made, under the base path.
+      schema:
+        type: string
     ETag:
       description: |
         The version of the note the answer describes, in quotes. The same
@@ -5211,6 +5424,99 @@ components:
           items:
             type: string
 
+    ProjectCreate:
+      type: object
+      required: [title, language]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+          description: What the project is called. It names the project's folder.
+        language:
+          $ref: "#/components/schemas/Language"
+        series:
+          description: The series the project is a book of. Left out or null for a book on its own.
+          oneOf:
+            - $ref: "#/components/schemas/Series"
+            - type: "null"
+
+    ProjectPatch:
+      type: object
+      description: What to change of a project. A project read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Project"
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        series:
+          oneOf:
+            - $ref: "#/components/schemas/Series"
+            - type: "null"
+
+    RestoredProject:
+      type: object
+      required: [project, renamedFrom]
+      additionalProperties: false
+      properties:
+        project:
+          $ref: "#/components/schemas/Project"
+        renamedFrom:
+          type: [string, "null"]
+          description: The title the project had in the archive, where it came back under another. Null where it kept its title.
+
+    ProjectRepair:
+      type: object
+      required: [created, repaired, unchanged, conflicts, health]
+      additionalProperties: false
+      properties:
+        created:
+          type: array
+          description: What was missing and was made, each as a path in the vault.
+          items:
+            type: string
+        repaired:
+          type: array
+          description: What was there and was put right.
+          items:
+            type: string
+        unchanged:
+          type: array
+          description: What was looked at and found in order.
+          items:
+            type: string
+        conflicts:
+          type: array
+          description: What could not be put right without touching the author's own text, and was left.
+          items:
+            type: string
+        health:
+          $ref: "#/components/schemas/ProjectHealth"
+
+    StepStatusChange:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          $ref: "#/components/schemas/StepStatus"
+
+    StepTextPatch:
+      type: object
+      description: The sections to write, each under its id. A step's text read and sent back whole is taken, and only `sections` is looked at.
+      required: [sections]
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/StepText"
+      properties:
+        sections:
+          type: object
+          description: The new text of each section named. `getStepText` gives the ids a step has.
+          additionalProperties:
+            type: string
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -5251,6 +5557,21 @@ x-snowflake-problems:
   unsafe-section:
     status: 409
     title: The note's section markers are damaged, so the section cannot be written safely.
+  duplicate-name:
+    status: 409
+    title: Something of that kind already goes by that name.
+  project-archived:
+    status: 409
+    title: The project stands in the archive, where it can be read and restored and nothing else.
+  not-archived:
+    status: 409
+    title: The project does not stand in the archive.
+  archive-folder-is-project:
+    status: 409
+    title: The folder archived projects go into is itself a project.
+  step-prerequisites-incomplete:
+    status: 409
+    title: The steps this one rests on are not complete.
   concurrent-change:
     status: 412
     title: The note has changed since it was read.
@@ -5263,12 +5584,18 @@ x-snowflake-problems:
   wrong-host:
     status: 421
     title: The call names a host this listener does not answer for.
+  invalid-step-status:
+    status: 422
+    title: That step cannot be given that status.
   precondition-required:
     status: 428
     title: The change must say which version of the note it is made against.
   internal-error:
     status: 500
     title: The operation failed.
+  project-creation-interrupted:
+    status: 500
+    title: The project was begun and could not be finished.
   planned-operation:
     status: 501
     title: The operation is planned and not answered by this build.

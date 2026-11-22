@@ -226,6 +226,11 @@ export class ModificationHistoryService {
 		return path.toLowerCase().endsWith(".md") && this.deps.projectAtPath(path) !== null;
 	}
 
+	/** Runs work whose doings the history files as the plugin's own: see the ledger's `asPlugin`. */
+	asPlugin<T>(run: () => Promise<T>): Promise<T> {
+		return this.ledger.asPlugin(run);
+	}
+
 	beginImport(): void {
 		this.ledger.beginImport();
 	}

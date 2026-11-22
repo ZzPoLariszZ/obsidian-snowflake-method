@@ -91,6 +91,12 @@ export interface FakeHost extends ApiHost {
 	becomeReady(): void;
 	/** How many pieces of work ran as the plugin's own. */
 	ranAsPlugin: number;
+	/**
+	 * Whose words each write carried, as the repository told it of every
+	 * body written and every note made: true for the author's own typing. A
+	 * test empties it and reads what one call added.
+	 */
+	readonly origins: boolean[];
 }
 
 export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost {
@@ -143,6 +149,13 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		clear: (): void => undefined,
 	};
 	const nothingKept = { load: (): unknown => null, save: (): void => undefined };
+	const origins: boolean[] = [];
+	projects.repository.onBodyWrite = (_path, _before, _after, userInput) => {
+		origins.push(userInput);
+	};
+	projects.repository.onManagedFileCreated = (_path, _content, userInput) => {
+		origins.push(userInput);
+	};
 	const sessions = new WritingSessionService({
 		repository: projects.repository,
 		writingCount: projects.writingCount,
@@ -195,6 +208,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		state,
 		environment,
 		ranAsPlugin: 0,
+		origins,
 		becomeReady: () => {
 			state.ready = true;
 			release?.();
@@ -237,8 +251,19 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		leaving: () => state.leaving,
 		asPlugin: async (run) => {
 			host.ranAsPlugin += 1;
-			return run();
+			return history.asPlugin(run);
 		},
+		// The project manager's work as the plugin does it, less the screens it keeps in step.
+		createProject: (request) => projects.createProject({ ...request, userInput: false }),
+		renameProject: async (project, title) => {
+			const renamed = await projects.renameProject(project.projectFile, title, { userInput: false });
+			// The plugin goes on working in the project it was working in, under the name it has now.
+			if (state.current === project.projectFile) state.current = renamed.projectFile;
+			return renamed;
+		},
+		setProjectSeries: (project, series) => projects.setSeries(project.projectFile, series),
+		archiveProject: (project) => projects.archiveProject(project.projectFile),
+		restoreProject: (project) => projects.restoreProject(project.projectFile),
 	};
 	return host;
 }

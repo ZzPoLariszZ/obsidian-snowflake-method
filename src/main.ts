@@ -597,6 +597,8 @@ const SETTINGS_SAVE_DELAY_MS = 400;
  * moment it takes to type the 5.
  */
 const LOCAL_API_PORT_REST_MS = 700;
+/** Whose words a caller of the local API writes: never the author's own typing. */
+const NOT_THE_AUTHOR: WriteOrigin = { userInput: false };
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const HIDE_SCROLLBARS_CLASS = 'snowflake-method-hide-scrollbars';
@@ -2807,6 +2809,8 @@ export default class SnowflakeMethodPlugin
 			...origin,
 		});
 		this.projectLocalesById.set(project.id, project.locale);
+		// A scan begun before the project was made does not hold it, and whoever asks next must not be handed that scan.
+		this.invalidateProjectDiscovery();
 		return project;
 	}
 
@@ -6080,7 +6084,13 @@ export default class SnowflakeMethodPlugin
 			ready: () => this.projectScanReady,
 			isReady: () => this.projectScanIsReady,
 			leaving: () => this.unloading || this.pageLeaving,
-			asPlugin: (run) => run(),
+			asPlugin: (run) => this.history.asPlugin(run),
+			createProject: (request) => this.performProjectCreate(request, NOT_THE_AUTHOR),
+			renameProject: (project, title) =>
+				this.performProjectRename({ path: project.projectFile, rootPath: project.rootPath }, title, NOT_THE_AUTHOR),
+			setProjectSeries: (project, series) => this.performProjectSeries(project.projectFile, series),
+			archiveProject: (project) => this.performProjectArchive({ path: project.projectFile, rootPath: project.rootPath }),
+			restoreProject: (project) => this.performProjectRestore({ path: project.projectFile, rootPath: project.rootPath }),
 		};
 		return createLocalApi(host, {
 			listeners: () => desktopListenerFactory(),

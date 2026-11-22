@@ -1,4 +1,4 @@
-import type { ProjectRef, ProjectSnapshot } from '../../src/services';
+import type { ProjectRef, ProjectSnapshot, WriteOrigin } from '../../src/services';
 import { MemberIndex } from '../dto/member';
 import { ApiError } from '../errors';
 import type { ApiHost } from '../host';
@@ -37,6 +37,13 @@ export type OperationHandler = (call: OperationCall, context: ApiContext) => Ope
 
 /** The handlers of one group, each under the name the contract gives its operation. */
 export type OperationGroup = Readonly<Record<string, OperationHandler>>;
+
+/**
+ * Whose words a write through the API carries: never the author's typing.
+ * Handed to every service call that asks, so nothing a caller writes is
+ * counted towards the author's day or filed as theirs in the history.
+ */
+export const NOT_THE_AUTHOR: WriteOrigin = { userInput: false };
 
 /** A project found by its id, with where it stands. */
 export interface FoundProject {
@@ -101,6 +108,24 @@ export class ApiContext {
 	}
 
 	/**
+	 * The project of that id, for a caller that means to change it. A
+	 * project in the archive can be read and restored and nothing else, and
+	 * one a newer version of the plugin wrote can only be read.
+	 */
+	async writableProject(projectId: string): Promise<ProjectSnapshot> {
+		const { project, archived } = await this.loadProject(projectId);
+		if (archived) {
+			throw new ApiError('project-archived', 'The project stands in the archive. restoreProject brings it back, and then it can be changed.');
+		}
+		if (project.readOnly) {
+			throw new ApiError('read-only', 'A newer version of the plugin wrote this project, and this one may only read it.', {
+				path: project.projectFile,
+			});
+		}
+		return project;
+	}
+
+	/**
 	 * Every member of a project, to be found by where its note stands. A
 	 * link is looked for inside the project first: Obsidian shortens a link
 	 * to a bare name where that was enough when it wrote it, and a second
@@ -133,6 +158,22 @@ export function textParam(call: OperationCall, name: string): string {
 export function optionalTextParam(call: OperationCall, name: string): string | null {
 	const value = call.params[name];
 	return typeof value === 'string' ? value : null;
+}
+
+/**
+ * The version a change is made against, as the services take it. A caller
+ * may send `*` for whichever version stands, and is then given the one
+ * that does.
+ */
+export function revisionOf(call: OperationCall, standing: string): string {
+	return call.ifMatch === null || call.ifMatch === '*' ? standing : call.ifMatch;
+}
+
+/** The body of a call as an object. The contract held it to its shape before a handler saw it. */
+export function bodyOf(call: OperationCall): Readonly<Record<string, unknown>> {
+	const body = call.body;
+	if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new ApiError('internal-error', 'The operation failed.');
+	return body as Readonly<Record<string, unknown>>;
 }
 
 export function numberParam(call: OperationCall, name: string): number {

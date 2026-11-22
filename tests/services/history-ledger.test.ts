@@ -261,6 +261,37 @@ describe("HistoryLedger", () => {
 		expect(filed()?.map((event) => event.origin)).toEqual(["plugin"]);
 	});
 
+	it("puts what happens under the plugin's own work down to the plugin, and what happens after it to the author again", async () => {
+		const ref = projectRefs[0] as ProjectRef;
+		const answer = await ledger.asPlugin(async () => {
+			ledger.taskEvent(ref, { kind: "created", tasks: [makeTask("task-tool")] });
+			// Work within work is the plugin's until the outermost has ended.
+			await ledger.asPlugin(async () => undefined);
+			ledger.taskEvent(ref, { kind: "created", tasks: [makeTask("task-tool-2")] });
+			return "done";
+		});
+		expect(answer).toBe("done");
+		ledger.taskEvent(ref, { kind: "created", tasks: [makeTask("task-own")] });
+		await ledger.flushNow();
+		expect(filed()?.map((event) => [event.subject.type === "task" ? event.subject.id : null, event.origin])).toEqual([
+			["task-tool", "plugin"],
+			["task-tool-2", "plugin"],
+			["task-own", "user"],
+		]);
+	});
+
+	it("ends the plugin's own work where that work fails", async () => {
+		const ref = projectRefs[0] as ProjectRef;
+		await expect(
+			ledger.asPlugin(async () => {
+				throw new Error("the work failed");
+			}),
+		).rejects.toThrow("the work failed");
+		ledger.taskEvent(ref, { kind: "created", tasks: [makeTask("task-after")] });
+		await ledger.flushNow();
+		expect(filed()?.map((event) => event.origin)).toEqual(["user"]);
+	});
+
 	it("passes over what the history has nothing to say about", async () => {
 		ledger.noteCreated(
 			`${project.rootPath}/70_Tool/Note.md`,

@@ -6,6 +6,7 @@ import {
 	UnsafeSectionError,
 	UnsupportedSchemaError,
 } from '../src/repository/errors';
+import { ArchiveFolderIsProjectError, DuplicateNameError, ProjectCreationInterruptedError } from '../src/services';
 import { isJsonObject, type JsonObject } from './json';
 import type { ApiDocument } from './spec/document';
 
@@ -105,6 +106,22 @@ export function mapError(error: unknown): ApiError {
 		return new ApiError('unsafe-section', 'The section markers in the note are damaged. Repair the project, then try again.', {
 			path: error.path,
 			section: error.sectionId,
+		});
+	}
+	if (error instanceof DuplicateNameError) {
+		return new ApiError('duplicate-name', 'Something of that kind already goes by that name. Names are told apart whatever their case.', {
+			kind: error.kind,
+			name: error.requestedName,
+		});
+	}
+	if (error instanceof ArchiveFolderIsProjectError) {
+		return new ApiError('archive-folder-is-project', 'The folder archived projects go into is itself a project, so nothing can be filed in it.', {
+			path: error.archiveRoot,
+		});
+	}
+	if (error instanceof ProjectCreationInterruptedError) {
+		return new ApiError('project-creation-interrupted', 'The project was begun and could not be finished. repairProject puts in what is missing.', {
+			path: error.projectPath,
 		});
 	}
 	if (error instanceof InvalidManagedDocumentError) {

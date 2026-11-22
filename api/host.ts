@@ -1,9 +1,10 @@
-import type { DerivedTaskSources, MentionSource, WritingSessionScope } from '../src/domain';
+import type { DerivedTaskSources, MentionSource, ProjectLanguage, WritingSessionScope } from '../src/domain';
 import type {
 	AnalysisConfig,
 	ModificationHistoryService,
 	NoteCountOptions,
 	ProjectRef,
+	ProjectSeries,
 	ProjectSnapshot,
 	SnowflakeProjectService,
 	WritingSessionService,
@@ -89,4 +90,15 @@ export interface ApiHost {
 	 * runs is put down to the plugin instead.
 	 */
 	asPlugin<T>(run: () => Promise<T>): Promise<T>;
+	/**
+	 * The work of the plugin's project manager, without its words: each does
+	 * what a button there does, under the folder the author keeps projects
+	 * in, and keeps the plugin's own picture of the projects in step. A
+	 * project made here is not made the one the author is working in.
+	 */
+	createProject(request: { title: string; locale: ProjectLanguage; series: ProjectSeries | null }): Promise<ProjectSnapshot>;
+	renameProject(project: ProjectRef, title: string): Promise<ProjectSnapshot>;
+	setProjectSeries(project: ProjectRef, series: ProjectSeries | null): Promise<void>;
+	archiveProject(project: ProjectRef): Promise<ProjectRef>;
+	restoreProject(project: ProjectRef): Promise<{ project: ProjectSnapshot; renamedFrom: string | null }>;
 }

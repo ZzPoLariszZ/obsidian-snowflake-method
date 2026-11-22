@@ -9,6 +9,7 @@ import {
 	UnsafeSectionError,
 	UnsupportedSchemaError,
 } from '../../src/repository/errors';
+import { ArchiveFolderIsProjectError, DuplicateNameError, ProjectCreationInterruptedError } from '../../src/services';
 import { problemFaults } from './helpers/shapes';
 import { document, problemRegistry } from './helpers/spec';
 
@@ -32,6 +33,26 @@ describe('what went wrong, as the contract names it', () => {
 			const mapped = mapError(error);
 			expect(mapped.code).toBe(code);
 			expect(problems.has(code), code).toBe(true);
+		}
+	});
+
+	it('gives each of the project service’s refusals its code, with what a caller needs to go on', () => {
+		const cases: [unknown, string, Record<string, unknown>][] = [
+			[new DuplicateNameError('character', 'Ada'), 'duplicate-name', { kind: 'character', name: 'Ada' }],
+			[new ArchiveFolderIsProjectError('Books/Snowflake Archive'), 'archive-folder-is-project', { path: 'Books/Snowflake Archive' }],
+			[
+				new ProjectCreationInterruptedError('Books/Novel/00_System/001_Project_Metadata.md', new Error('disk full')),
+				'project-creation-interrupted',
+				{ path: 'Books/Novel/00_System/001_Project_Metadata.md' },
+			],
+		];
+		for (const [error, code, extra] of cases) {
+			const mapped = mapError(error);
+			expect([mapped.code, mapped.extra]).toEqual([code, extra]);
+			expect(problems.has(code), code).toBe(true);
+			// The words are the API's own. The service's are written for the author and may be reworded any day.
+			expect(mapped.detail).not.toBe((error as Error).message);
+			expect(problemFaults(problemOf(problems, mapped).body)).toEqual([]);
 		}
 	});
 
