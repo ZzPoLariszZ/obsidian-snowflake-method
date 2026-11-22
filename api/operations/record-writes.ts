@@ -6,9 +6,7 @@ import {
 	captureOccurrence,
 	captureOccurrencePlacement,
 	captureRevision,
-	foldName,
 	isForeshadowingStatus,
-	isNameTaken,
 	isOccurrenceRole,
 	isStickyNoteColor,
 	isTaskDay,
@@ -34,30 +32,11 @@ import { NOT_THE_AUTHOR, bodyOf, textParam, type ApiContext, type OperationCall,
 import { noteAt } from './manuscript-writes';
 import { tellManuscriptNote } from './manuscript';
 import { gone, readPassageNotes, tellForeshadowing, tellRevision, tellTask } from './records';
-
-type Sent = Readonly<Record<string, unknown>>;
-
-const isSent = (value: unknown): value is Sent => typeof value === 'object' && value !== null && !Array.isArray(value);
-const textOf = (value: unknown): string => (typeof value === 'string' ? value : '');
+import { foreign, free, isSent, misfit, taken, textOf } from './refusals';
 
 /** What a thread starts as, and an appearance is taken for, where a caller does not say: as the plugin's own forms have it. */
 const FIRST_STATUS: ForeshadowingStatus = 'planned';
 const FIRST_ROLE: OccurrenceRole = 'plant';
-
-/** A part of a call the contract's shapes cannot hold to account, refused as one they can. */
-const misfit = (pointer: string, detail: string): ApiError =>
-	new ApiError('invalid-request', 'The call does not match what the operation takes.', { errors: [{ pointer, detail }] });
-
-/**
- * A record file a newer version of the plugin wrote. Such a file is read as
- * holding nothing and is never written: writing this version's shape over
- * it would drop whatever the newer one keeps there.
- */
-const foreign = (what: string): ApiError =>
-	new ApiError('read-only', `A newer version of the plugin wrote the project's ${what}, and this one may not change them.`);
-
-const taken = (kind: string, name: string): ApiError =>
-	new ApiError('duplicate-name', 'Another one already goes by that name. Names are told apart whatever their case.', { kind, name });
 
 /** What a service said a change came to, held to the one answer that lets a handler go on. */
 function settled(outcome: 'written' | 'deleted' | 'removed' | 'absent' | 'refused', what: string, list: string, file: string): void {
@@ -98,12 +77,6 @@ function dayOf(sent: unknown): string | null {
 	if (sent === null || sent === undefined) return null;
 	if (isTaskDay(sent)) return sent;
 	throw misfit('/dueDate', 'That is not a day the calendar has.');
-}
-
-/** Whether a name is free for a record that has `own` already, or none yet. Keeping a name is not taking one. */
-function free(others: readonly string[], name: string, own: string | null): boolean {
-	if (own !== null && foldName(name) === foldName(own)) return true;
-	return !isNameTaken(others, name);
 }
 
 /** A passage of a manuscript note as a caller names it, with where in the call it was named. */
