@@ -147,6 +147,19 @@ tags:
       note, by its name or by an alias, as a link or in plain words. Words
       more than one note could mean are told apart from the ones that are
       certain.
+  - name: Writing sessions
+    description: |
+      The plugin times the author's sittings and counts what each one added
+      and took away. Days are this computer's calendar days. A session
+      belongs to the day it began on. Every device that writes in the vault
+      keeps its own record, and a reading here is all of them together.
+  - name: History
+    description: |
+      What happened to a project day by day: the notes that were written,
+      made, renamed or deleted, and what was done to its tasks, its
+      foreshadowing and its revisions. The words come from the versions
+      Obsidian's own file recovery keeps, where it kept any, and from the
+      writing sessions otherwise.
 
 paths:
   /:
@@ -1401,6 +1414,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NoteMentionPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/writing/days:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listWritingDays
+      tags: [Writing sessions]
+      summary: List the writing done day by day
+      description: |
+        Every day of a stretch, oldest first, with how long the author sat
+        writing and how many words that added and took away. A day nothing was
+        written on is there at nothing. Left to itself this gives the thirty
+        days ending today. A stretch may run to a year and a day.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: from
+          in: query
+          description: "The first day of the stretch. Left out, the stretch is thirty days long."
+          schema:
+            $ref: "#/components/schemas/Day"
+        - name: through
+          in: query
+          description: "The last day of the stretch. Left out, it is today."
+          schema:
+            $ref: "#/components/schemas/Day"
+      responses:
+        "200":
+          description: The days.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingDays"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/writing/spread:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getWritingSpread
+      tags: [Writing sessions]
+      summary: Get how the writing is spread over the day
+      description: |
+        How the author's sittings fall over the parts of a day, and over the
+        stages of the work: planning, drafting, revising and proofreading. A
+        session does not record the minute each word arrived, so its words are
+        shared out over the hours it ran in proportion to the writing time in
+        each, and may come out as fractions.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: span
+          in: query
+          description: "Which sittings to read."
+          schema:
+            type: string
+            enum: [today, yesterday, all]
+            default: all
+      responses:
+        "200":
+          description: The spread.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingSpread"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/writing/session:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getWritingSession
+      tags: [Writing sessions]
+      summary: Get the writing session under way
+      description: |
+        The session the author is in the middle of in this project, as it
+        stands this moment, or none. One session runs at a time in a vault.
+        Today's totals come with it either way.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The session, if any, and today so far.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WritingSession"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/history:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getHistory
+      tags: [History]
+      summary: Get what happened day by day
+      description: |
+        Every day of a stretch, oldest first, with what happened to the
+        project's notes and records on it. Left to itself this gives the seven
+        days ending today. A stretch may run to ninety-three days. The versions
+        it reads are the ones the plugin has gathered from Obsidian's file
+        recovery so far, which it does every few minutes.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: from
+          in: query
+          description: "The first day of the stretch. Left out, the stretch is seven days long."
+          schema:
+            $ref: "#/components/schemas/Day"
+        - name: through
+          in: query
+          description: "The last day of the stretch. Left out, it is today."
+          schema:
+            $ref: "#/components/schemas/Day"
+      responses:
+        "200":
+          description: The days and what happened on each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/History"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -3724,6 +3872,514 @@ components:
           type: integer
         nextOffset:
           type: [integer, "null"]
+
+    Day:
+      type: string
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      description: A day on this computer's calendar, as `YYYY-MM-DD`.
+
+    WritingScope:
+      type: string
+      enum: [project, manuscript]
+      description: Which notes words are counted in. Every note of the project, or the manuscript's alone.
+
+    WritingMode:
+      type: string
+      enum: [planning, draft, revision, proofreading]
+      description: The stage of the work a session was spent on, as the author said when it began.
+
+    WritingDay:
+      type: object
+      description: One day's writing. Times are in milliseconds.
+      required: [day, sessions, focusMs, idleMs, totalMs, added, deleted, net, timedNet, goalNet]
+      additionalProperties: false
+      properties:
+        day:
+          $ref: "#/components/schemas/Day"
+        sessions:
+          type: integer
+          description: How many sessions began on the day.
+        focusMs:
+          type: integer
+          description: Time spent writing.
+        idleMs:
+          type: integer
+          description: Time a session ran with nothing being written.
+        totalMs:
+          type: integer
+          description: The two together. Time a session stood paused is in neither.
+        added:
+          type: integer
+          description: Words added, in the scope the answer names.
+        deleted:
+          type: integer
+          description: Words taken away.
+        net:
+          type: integer
+          description: The difference. Words written outside any session are counted here where the author has that switched on.
+        timedNet:
+          type: integer
+          description: The difference from timed sessions alone, which is what a pace is worked out from.
+        goalNet:
+          type: integer
+          description: The day's difference in the scope the author's daily goal is set in.
+
+    WritingDays:
+      type: object
+      required: [from, through, scope, goalScope, items]
+      additionalProperties: false
+      properties:
+        from:
+          $ref: "#/components/schemas/Day"
+        through:
+          $ref: "#/components/schemas/Day"
+        scope:
+          $ref: "#/components/schemas/WritingScope"
+          description: The scope the words are counted in, which is the author's setting.
+        goalScope:
+          $ref: "#/components/schemas/WritingScope"
+          description: The scope `goalNet` is counted in.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WritingDay"
+
+    DayBand:
+      type: object
+      description: What the sessions put into one part of the day.
+      required: [fromHour, toHour, focusMs, totalMs, added, deleted, net]
+      additionalProperties: false
+      properties:
+        fromHour:
+          type: integer
+          description: The hour the part begins at, from 0 to 23.
+        toHour:
+          type: integer
+          description: The hour it ends before, from 1 to 24.
+        focusMs:
+          type: number
+        totalMs:
+          type: number
+        added:
+          type: number
+        deleted:
+          type: number
+        net:
+          type: number
+
+    WritingModeTotals:
+      type: object
+      required: [mode, sessions, focusMs, totalMs, net]
+      additionalProperties: false
+      properties:
+        mode:
+          $ref: "#/components/schemas/WritingMode"
+        sessions:
+          type: integer
+        focusMs:
+          type: number
+        totalMs:
+          type: number
+        net:
+          type: number
+
+    WritingSpread:
+      type: object
+      required: [span, scope, bands, modes]
+      additionalProperties: false
+      properties:
+        span:
+          type: string
+          enum: [today, yesterday, all]
+        scope:
+          $ref: "#/components/schemas/WritingScope"
+        bands:
+          type: array
+          description: The parts of a day in the order the author's day runs, from early morning to the small hours.
+          items:
+            $ref: "#/components/schemas/DayBand"
+        modes:
+          type: array
+          description: Every stage of the work, in the order the stages come.
+          items:
+            $ref: "#/components/schemas/WritingModeTotals"
+
+    LiveWritingSession:
+      type: object
+      description: The session under way, as it stands this moment. Times are in milliseconds.
+      required: [id, type, startMode, writingMode, state, startedAt, focusMs, idleMs, pausedMs, totalMs, remainingMs, pomodoro, startWordCount, added, deleted, net, goalNet, notes]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [stopwatch, countdown, pomodoro]
+        startMode:
+          type: string
+          enum: [manual, auto]
+          description: Whether the author began it, or the plugin did when the author began to type.
+        writingMode:
+          $ref: "#/components/schemas/WritingMode"
+        state:
+          type: string
+          enum: [starting, focus, idle, paused]
+          description: "`starting` while the plugin is still counting what the project holds."
+        startedAt:
+          $ref: "#/components/schemas/Instant"
+        focusMs:
+          type: number
+        idleMs:
+          type: number
+        pausedMs:
+          type: number
+        totalMs:
+          type: number
+          description: Writing and idle time together.
+        remainingMs:
+          type: [number, "null"]
+          description: What is left of a countdown or of a pomodoro's part. Null for a stopwatch.
+        pomodoro:
+          description: Where a pomodoro session stands. Null for the other types.
+          oneOf:
+            - type: object
+              required: [phase, cycle]
+              additionalProperties: false
+              properties:
+                phase:
+                  type: string
+                  enum: [work, break]
+                cycle:
+                  type: integer
+            - type: "null"
+        startWordCount:
+          type: [integer, "null"]
+          description: How much the scope held when the session began. Null while it is starting.
+        added:
+          type: integer
+        deleted:
+          type: integer
+        net:
+          type: integer
+        goalNet:
+          type: integer
+        notes:
+          type: integer
+          description: How many notes the session has written in.
+
+    WritingSession:
+      type: object
+      required: [session, today, scope, goalScope]
+      additionalProperties: false
+      properties:
+        session:
+          oneOf:
+            - $ref: "#/components/schemas/LiveWritingSession"
+            - type: "null"
+        today:
+          $ref: "#/components/schemas/WritingDay"
+        scope:
+          $ref: "#/components/schemas/WritingScope"
+        goalScope:
+          $ref: "#/components/schemas/WritingScope"
+
+    HistoryNote:
+      type: object
+      description: A note as the history knows it now, under the name it has now.
+      required: [path, relativePath, kind, exists]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: The note, as a path in the vault.
+        relativePath:
+          type: string
+          description: Where the note stands inside the project.
+        kind:
+          type: string
+          enum: [manuscript, character, scene, worldbuilding, step, other]
+        worldbuildingKind:
+          type: string
+          description: The kind of a worldbuilding note, by its `kindId`.
+        step:
+          type: integer
+          enum: [1, 2, 4, 6]
+          description: The step a step's note stands for.
+        documentType:
+          type: string
+          description: What the note's properties say it is, where they say.
+        exists:
+          type: boolean
+          description: Whether the note still stands.
+
+    HistoryWords:
+      type: object
+      required: [added, deleted, net]
+      additionalProperties: false
+      properties:
+        added:
+          type: integer
+        deleted:
+          type: integer
+        net:
+          type: integer
+
+    HistoryImportSource:
+      type: object
+      description: The project notes were imported from.
+      required: [projectId, title]
+      additionalProperties: false
+      properties:
+        projectId:
+          type: string
+        title:
+          type: string
+
+    HistoryNoteEntry:
+      type: object
+      description: "One note's day: what became of it and how many words that came to."
+      required: [kind, id, day, at, until, action, note, versions, words, source, sessions]
+      additionalProperties: false
+      properties:
+        kind:
+          const: note
+        id:
+          type: string
+        day:
+          $ref: "#/components/schemas/Day"
+        at:
+          $ref: "#/components/schemas/Instant"
+          description: The first moment of what the entry covers.
+        until:
+          $ref: "#/components/schemas/Instant"
+          description: The last moment of what the entry covers.
+        action:
+          type: string
+          enum: [created, imported, first-recorded, edited, deleted]
+          description: "`first-recorded` is a note the history first saw already written."
+        note:
+          $ref: "#/components/schemas/HistoryNote"
+        versions:
+          type: integer
+          description: How many versions Obsidian's file recovery kept that day.
+        words:
+          $ref: "#/components/schemas/HistoryWords"
+        source:
+          type: string
+          enum: [snapshots, sessions, ledger]
+          description: Where the words were read from. The kept versions, the writing sessions, or the plugin's own record, which counts none.
+        sessions:
+          type: integer
+          description: How many timed sessions wrote in the note that day.
+        origin:
+          type: string
+          enum: [user, plugin, import, inferred]
+          description: Who made the note, where the entry is its making.
+        createdWords:
+          type: integer
+          description: How much the note held when it was made.
+        importedFrom:
+          $ref: "#/components/schemas/HistoryImportSource"
+        since:
+          $ref: "#/components/schemas/Day"
+          description: The day the words reach back to, where the day's first version was read against a much older one.
+
+    HistoryRenameEntry:
+      type: object
+      description: "A rename, or several made within a moment of one another, as a renumbering is."
+      required: [kind, id, day, at, until, items, inferred]
+      additionalProperties: false
+      properties:
+        kind:
+          const: renamed
+        id:
+          type: string
+        day:
+          $ref: "#/components/schemas/Day"
+        at:
+          $ref: "#/components/schemas/Instant"
+          description: The first moment of what the entry covers.
+        until:
+          $ref: "#/components/schemas/Instant"
+          description: The last moment of what the entry covers.
+        items:
+          type: array
+          items:
+            type: object
+            required: [from, note]
+            additionalProperties: false
+            properties:
+              from:
+                type: string
+                description: Where the note stood inside the project before.
+              note:
+                $ref: "#/components/schemas/HistoryNote"
+        inferred:
+          type: boolean
+          description: True where nobody saw the rename, and it was read off the versions.
+
+    HistoryImportEntry:
+      type: object
+      description: "Several notes one import brought."
+      required: [kind, id, day, at, until, from, notes]
+      additionalProperties: false
+      properties:
+        kind:
+          const: imported
+        id:
+          type: string
+        day:
+          $ref: "#/components/schemas/Day"
+        at:
+          $ref: "#/components/schemas/Instant"
+          description: The first moment of what the entry covers.
+        until:
+          $ref: "#/components/schemas/Instant"
+          description: The last moment of what the entry covers.
+        from:
+          oneOf:
+            - $ref: "#/components/schemas/HistoryImportSource"
+            - type: "null"
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryNote"
+
+    HistoryTaskEntry:
+      type: object
+      description: "Something done to a task."
+      required: [kind, id, day, at, until, event, task]
+      additionalProperties: false
+      properties:
+        kind:
+          const: task
+        id:
+          type: string
+        day:
+          $ref: "#/components/schemas/Day"
+        at:
+          $ref: "#/components/schemas/Instant"
+          description: The first moment of what the entry covers.
+        until:
+          $ref: "#/components/schemas/Instant"
+          description: The last moment of what the entry covers.
+        event:
+          type: string
+          enum: [task-created, task-status, task-archived, task-deleted]
+        task:
+          type: object
+          required: [id, title]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+          description: The column the task was moved to.
+
+    HistoryThreadEntry:
+      type: object
+      description: "Something done to a foreshadowing thread."
+      required: [kind, id, day, at, until, event, thread]
+      additionalProperties: false
+      properties:
+        kind:
+          const: thread
+        id:
+          type: string
+        day:
+          $ref: "#/components/schemas/Day"
+        at:
+          $ref: "#/components/schemas/Instant"
+          description: The first moment of what the entry covers.
+        until:
+          $ref: "#/components/schemas/Instant"
+          description: The last moment of what the entry covers.
+        event:
+          type: string
+          enum: [thread-created, thread-status, thread-deleted]
+        thread:
+          type: object
+          required: [id, name]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        status:
+          $ref: "#/components/schemas/ForeshadowingStatus"
+
+    HistoryRevisionEntry:
+      type: object
+      description: "A revision proposed, accepted or discarded."
+      required: [kind, id, day, at, until, event, revision, note]
+      additionalProperties: false
+      properties:
+        kind:
+          const: revision
+        id:
+          type: string
+        day:
+          $ref: "#/components/schemas/Day"
+        at:
+          $ref: "#/components/schemas/Instant"
+          description: The first moment of what the entry covers.
+        until:
+          $ref: "#/components/schemas/Instant"
+          description: The last moment of what the entry covers.
+        event:
+          type: string
+          enum: [revision-proposed, revision-accepted, revision-discarded]
+        revision:
+          type: object
+          required: [id]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+        note:
+          $ref: "#/components/schemas/HistoryNote"
+
+    HistoryEntry:
+      description: One thing that happened. `kind` says which of the six it is.
+      oneOf:
+        - $ref: "#/components/schemas/HistoryNoteEntry"
+        - $ref: "#/components/schemas/HistoryRenameEntry"
+        - $ref: "#/components/schemas/HistoryImportEntry"
+        - $ref: "#/components/schemas/HistoryTaskEntry"
+        - $ref: "#/components/schemas/HistoryThreadEntry"
+        - $ref: "#/components/schemas/HistoryRevisionEntry"
+
+    HistoryDay:
+      type: object
+      required: [day, entries]
+      additionalProperties: false
+      properties:
+        day:
+          $ref: "#/components/schemas/Day"
+        entries:
+          type: array
+          description: What happened on the day, earliest first.
+          items:
+            $ref: "#/components/schemas/HistoryEntry"
+
+    History:
+      type: object
+      required: [from, through, days]
+      additionalProperties: false
+      properties:
+        from:
+          $ref: "#/components/schemas/Day"
+        through:
+          $ref: "#/components/schemas/Day"
+        days:
+          type: array
+          description: Every day of the stretch, oldest first, the ones nothing happened on included.
+          items:
+            $ref: "#/components/schemas/HistoryDay"
 
 x-snowflake-problems:
   invalid-request:

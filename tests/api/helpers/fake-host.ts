@@ -1,8 +1,17 @@
 import type { ApiHost } from '../../../api/host';
 import type { Access } from '../../../api/spec/operations';
-import { DEFAULT_STOPWORDS, DIALOGUE_STYLE_TOKENS, parseQuotePair, type DialogueStyle, type MentionSource } from '../../../src/domain';
 import {
+	DEFAULT_STOPWORDS,
+	DIALOGUE_STYLE_TOKENS,
+	parseQuotePair,
+	type DialogueStyle,
+	type MentionSource,
+	type WritingSessionScope,
+} from '../../../src/domain';
+import {
+	ModificationHistoryService,
 	SnowflakeProjectService,
+	WritingSessionService,
 	entitiesOf,
 	toWikiLink,
 	type NoteCountOptions,
@@ -65,6 +74,9 @@ export interface FakeHost extends ApiHost {
 		dialogue: DialogueStyle[];
 		/** Words the author added to the common ones a count of words leaves out. */
 		stopwords: string[];
+		/** The notes a session's words are shown in, and the ones the daily goal is set in. */
+		sessionScope: WritingSessionScope;
+		goalScope: WritingSessionScope;
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -88,6 +100,8 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		sensitiveWords: [],
 		dialogue: [DIALOGUE_STYLE_TOKENS.curly, DIALOGUE_STYLE_TOKENS.straight].flatMap((token) => parseQuotePair(token) ?? []),
 		stopwords: [],
+		sessionScope: 'project',
+		goalScope: 'manuscript',
 		...start,
 	};
 	let release: (() => void) | null = null;
@@ -96,6 +110,65 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 	});
 	const environment = createFakeEnvironment();
 	const projects = new SnowflakeProjectService(environment.vault, environment.fileManager, environment.metadataCache);
+	// Noon of the day it is, in the zone every test reads days in.
+	const now = (): number => Date.parse(`${state.today}T12:00:00.000Z`);
+	// A clock that runs nothing by itself: a breath is taken at once, and whatever waits on a real delay waits for the test to ask.
+	const timers = {
+		set: (handler: () => void, ms: number): unknown => {
+			if (ms === 0) handler();
+			return 0;
+		},
+		clear: (): void => undefined,
+	};
+	const nothingKept = { load: (): unknown => null, save: (): void => undefined };
+	const sessions = new WritingSessionService({
+		repository: projects.repository,
+		writingCount: projects.writingCount,
+		recovery: nothingKept,
+		untimedRecovery: nothingKept,
+		deviceId: () => 'device-test',
+		scope: () => state.sessionScope,
+		goalScope: () => state.goalScope,
+		isNoteOpen: () => false,
+		trackUntimed: () => false,
+		projectAtPath: () => null,
+		countOptions: () => state.counting,
+		timers,
+		now,
+		timezone: () => 'UTC',
+	});
+	let minted = 0;
+	const history = new ModificationHistoryService({
+		repository: projects.repository,
+		writingCount: projects.writingCount,
+		tallies: sessions,
+		// Obsidian's own file recovery is not there to be read in a test.
+		reader: () => null,
+		projects: () => [],
+		projectAtPath: () => null,
+		frontmatterNow: () => null,
+		countOptions: () => state.counting,
+		cursor: nothingKept,
+		pending: nothingKept,
+		mint: () => {
+			minted += 1;
+			return `history-event-${String(minted)}`;
+		},
+		deviceId: () => 'device-test',
+		timezone: () => 'UTC',
+		timers,
+		now,
+	});
+	// Wired as the plugin wires them: what is done to a record is put down in the history.
+	projects.tasks.onEvent = (project, event) => {
+		history.taskEvent(project, event);
+	};
+	projects.foreshadowing.onEvent = (project, event) => {
+		history.threadEvent(project, event);
+	};
+	projects.revisions.onEvent = (project, event) => {
+		history.revisionEvent(project, event);
+	};
 	const host: FakeHost = {
 		state,
 		environment,
@@ -105,6 +178,8 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 			release?.();
 		},
 		projects,
+		sessions,
+		history,
 		roster: async () => ({
 			active: await projects.discoverProjects(),
 			archived: await projects.listArchivedProjects(),
@@ -112,6 +187,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		currentProjectPath: () => state.current,
 		countOptions: () => state.counting,
 		today: () => state.today,
+		sessionScopes: () => ({ shown: state.sessionScope, goal: state.goalScope }),
 		analysisConfig: (project) =>
 			Promise.resolve({
 				sensitiveTerms: state.sensitiveWords,

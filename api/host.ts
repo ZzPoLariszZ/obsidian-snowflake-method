@@ -1,5 +1,13 @@
-import type { MentionSource } from '../src/domain';
-import type { AnalysisConfig, NoteCountOptions, ProjectRef, ProjectSnapshot, SnowflakeProjectService } from '../src/services';
+import type { MentionSource, WritingSessionScope } from '../src/domain';
+import type {
+	AnalysisConfig,
+	ModificationHistoryService,
+	NoteCountOptions,
+	ProjectRef,
+	ProjectSnapshot,
+	SnowflakeProjectService,
+	WritingSessionService,
+} from '../src/services';
 import type { Access } from './spec/operations';
 
 /**
@@ -11,6 +19,10 @@ import type { Access } from './spec/operations';
 export interface ApiHost {
 	/** The plugin's own service for projects, with every other service it owns. */
 	readonly projects: SnowflakeProjectService;
+	/** The plugin's record of the author's sittings, on every device that writes in the vault. */
+	readonly sessions: WritingSessionService;
+	/** The plugin's record of what happened to each project's notes and records. */
+	readonly history: ModificationHistoryService;
 	/**
 	 * Every project under the folder the author keeps projects in, and every
 	 * one in the archive beside them, each by its title.
@@ -22,6 +34,8 @@ export interface ApiHost {
 	countOptions(): NoteCountOptions;
 	/** The day it is on this computer's calendar, as `YYYY-MM-DD`: the day the author's own boards go by. */
 	today(): string;
+	/** The notes a session's words are counted in as the author is shown them, and the ones the daily goal is set in. */
+	sessionScopes(): { shown: WritingSessionScope; goal: WritingSessionScope };
 	/**
 	 * What the manuscript's analysis reads of the author's settings, for one
 	 * project: the words to watch for, the quotation marks that are read,

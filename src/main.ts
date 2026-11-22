@@ -6010,6 +6010,8 @@ export default class SnowflakeMethodPlugin
 	private createLocalApiDoors(): LocalApi {
 		const host: ApiHost = {
 			projects: this.projects,
+			sessions: this.sessions,
+			history: this.history,
 			roster: async () => ({
 				active: await this.discoverProjects(),
 				archived: await this.projects.listArchivedProjects(this.settings.projectRoot),
@@ -6017,6 +6019,7 @@ export default class SnowflakeMethodPlugin
 			currentProjectPath: () => this.settings.recentProjectPath,
 			countOptions: () => this.writingCountOptions(),
 			today: () => this.sessions.today(),
+			sessionScopes: () => ({ shown: this.settings.sessionScope, goal: this.settings.sessionDailyGoalScope }),
 			analysisConfig: (project) => this.analysisConfigFor(project),
 			mentionSources: (project) => this.listWikilinkTargets(project.projectFile),
 			frequencyFilters: async (project) => ({

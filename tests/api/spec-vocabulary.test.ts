@@ -4,9 +4,14 @@ import { STEP_NAMES } from '../../api/dto/project';
 import { isJsonObject, type JsonValue } from '../../api/json';
 import { resolveRef } from '../../api/spec/document';
 import {
+	BAND_SPANS,
 	CHARACTER_TYPES,
 	DEFINITION_FILE_IDS,
 	FORESHADOWING_STATUSES,
+	HISTORY_EVENT_ORIGINS,
+	HISTORY_NOTE_KINDS,
+	HISTORY_SOURCES,
+	HISTORY_STEPS,
 	MACARON_COLORS,
 	OCCURRENCE_ROLES,
 	PROGRESS_STATUSES,
@@ -21,6 +26,9 @@ import {
 	TIME_KINDS,
 	WRITING_COUNT_HEADINGS,
 	WRITING_COUNT_MODES,
+	WRITING_MODES,
+	WRITING_SESSION_SCOPES,
+	WRITING_SESSION_TYPES,
 } from '../../src/domain';
 import { ON_DEMAND_DIRECTORY_KEYS, PROJECT_DIRECTORY_KEYS } from '../../src/services';
 import { document, textOf } from './helpers/spec';
@@ -107,6 +115,20 @@ describe('the contract’s listed values', () => {
 	it('give a sticky note the tints a scene has', () => {
 		expect(property('StickyNote', 'color')).toEqual({ $ref: '#/components/schemas/Color' });
 		expect(listed(schema('Color')['enum'])).toEqual([...STICKY_NOTE_COLORS]);
+	});
+
+	it('name every scope, stage and type a writing session can have, and every stretch its spread is read over', () => {
+		expect(listed(schema('WritingScope')['enum'])).toEqual([...WRITING_SESSION_SCOPES]);
+		expect(listed(schema('WritingMode')['enum'])).toEqual([...WRITING_MODES]);
+		expect(listed(property('LiveWritingSession', 'type')['enum'])).toEqual([...WRITING_SESSION_TYPES]);
+		expect(listed(property('WritingSpread', 'span')['enum'])).toEqual([...BAND_SPANS]);
+	});
+
+	it('name every kind of note the history knows, where its words come from and who made a note', () => {
+		expect(listed(property('HistoryNote', 'kind')['enum'])).toEqual([...HISTORY_NOTE_KINDS]);
+		expect(listed(property('HistoryNote', 'step')['enum'])).toEqual([...HISTORY_STEPS]);
+		expect(listed(property('HistoryNoteEntry', 'source')['enum'])).toEqual([...HISTORY_SOURCES]);
+		expect(listed(property('HistoryNoteEntry', 'origin')['enum'])).toEqual([...HISTORY_EVENT_ORIGINS]);
 	});
 
 	it('promise the folders every project has and leave room for the ones a tool makes when it is first used', () => {

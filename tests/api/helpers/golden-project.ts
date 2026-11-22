@@ -1,6 +1,13 @@
 import type { DispatchReply } from '../../../api/dispatch';
 import type { LocalApi } from '../../../api/index';
-import { captureOccurrencePlacement, captureRevision, type OccurrencePlacement, type Task } from '../../../src/domain';
+import {
+	captureOccurrencePlacement,
+	captureRevision,
+	type OccurrencePlacement,
+	type SessionWordTotals,
+	type Task,
+	type WritingSessionRecord,
+} from '../../../src/domain';
 import {
 	definitionRootPath,
 	nodeSelfPath,
@@ -88,6 +95,44 @@ function marked(path: string, body: string, words: string): OccurrencePlacement 
 	const { from, to } = spanOf(body, words);
 	return captureOccurrencePlacement(path, body, from, to);
 }
+
+/**
+ * A sitting another device recorded, begun at a moment of universal time
+ * and run for so many minutes of writing and so many with nothing written.
+ */
+function sitting(
+	began: string,
+	minutes: { writing: number; idle: number },
+	writingMode: WritingSessionRecord['writingMode'],
+	words: { project: SessionWordTotals; manuscript: SessionWordTotals },
+	notes: WritingSessionRecord['files'],
+): WritingSessionRecord {
+	const at = Date.parse(began);
+	const written = at + minutes.writing * 60_000;
+	const ended = written + minutes.idle * 60_000;
+	const stretch = (from: number, to: number): { startedAt: string; endedAt: string }[] =>
+		to > from ? [{ startedAt: new Date(from).toISOString(), endedAt: new Date(to).toISOString() }] : [];
+	return {
+		id: `session-${began}`,
+		schemaVersion: 1,
+		startedAt: new Date(at).toISOString(),
+		endedAt: new Date(ended).toISOString(),
+		timezone: 'UTC',
+		sessionType: 'stopwatch',
+		startMode: 'manual',
+		writingMode,
+		stopReason: 'manual',
+		activeIntervals: stretch(at, written),
+		idleIntervals: stretch(written, ended),
+		pausedIntervals: [],
+		words,
+		files: notes,
+		timing: { idleThresholdSeconds: 60 },
+	};
+}
+
+/** Where the plugin keeps a project's sittings, one file for each device and month. */
+export const SESSIONS_FOLDER = '70_Tool/71_Data_Statistics/711_Writing_Session';
 
 export const STEP_ONE_TEXT = {
 	genre: 'Winter mystery',
@@ -311,6 +356,26 @@ export async function createGolden(start: Partial<FakeHost['state']> = {}): Prom
 	);
 	const blank = await service.stickyNotes.create(created, 'macaron-5', new Date(Date.UTC(2026, 0, 6, 8)), 0);
 	const aside = await service.stickyNotes.create(created, 'macaron-2', new Date(Date.UTC(2026, 0, 4, 8)), 0, 'An old idea.', true);
+
+	// What was done to the records is filed in the history now, as the plugin files it after a quiet moment.
+	await host.history.flushNow();
+	// Two sittings another device recorded: half an hour of drafting the day before it is, and a short revision this morning.
+	const held = (added: number, deleted: number): SessionWordTotals => ({ start: 1000, end: 1000 + added - deleted, added, deleted, net: added - deleted });
+	await host.environment.fakeVault.seedFile(
+		`${created.rootPath}/${SESSIONS_FOLDER}/2026/2026_03_device-b_writing_session.json`,
+		JSON.stringify({
+			schemaVersion: 1,
+			sessions: [
+				sitting('2026-03-09T09:00:00.000Z', { writing: 30, idle: 0 }, 'draft', { project: held(220, 20), manuscript: held(150, 0) }, [
+					{ path: '50_Manuscript/Chapter 1.md', added: 150, deleted: 0, net: 150, manuscript: true },
+					{ path: '20_Character/Ada.md', added: 70, deleted: 20, net: 50, manuscript: false },
+				]),
+				sitting('2026-03-10T07:00:00.000Z', { writing: 20, idle: 5 }, 'revision', { project: held(10, 40), manuscript: held(10, 40) }, [
+					{ path: '50_Manuscript/Chapter 2.md', added: 10, deleted: 40, net: -30, manuscript: true },
+				]),
+			],
+		}),
+	);
 
 	const chinese = await service.createProject({ title: '北境之雪', locale: 'zh-CN' });
 	const old = await service.createProject({ title: 'Old Draft', locale: 'en' });
