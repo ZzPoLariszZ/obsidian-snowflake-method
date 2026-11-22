@@ -855,4 +855,35 @@ describe("ProjectImportService", () => {
 		expect(fakeVault.readCalls.filter((path) => path === target.projectFile).length).toBeLessThanOrEqual(3);
 		expect((await fresh(target)).characters).toHaveLength(50);
 	});
+
+	it("gives way through the host's own turn where it has one, and never waits on a clock for it", async () => {
+		const environment = createFakeEnvironment();
+		let turns = 0;
+		let clocks = 0;
+		const paced = new SnowflakeProjectService(environment.vault, environment.fileManager, environment.metadataCache, undefined, {
+			timers: {
+				set: (handler) => {
+					clocks += 1;
+					handler();
+					return 0;
+				},
+				clear: () => undefined,
+				turn: (handler) => {
+					turns += 1;
+					handler();
+				},
+			},
+		});
+		const from = await paced.createProject({ title: "Book 1", locale: "en" });
+		const into = await paced.createProject({ title: "Book 2", locale: "en" });
+		for (let index = 0; index < 60; index += 1) await paced.createCharacter(from, { name: `Character ${String(index).padStart(2, "0")}` });
+		const inspection = await paced.importer.inspectSource(from.projectFile, into);
+		turns = 0;
+		clocks = 0;
+		const report = await paced.importer.runImport(from.projectFile, into, selection(inspection));
+		expect(report.failed).toEqual([]);
+		// A turn for every twenty-five parts landed, and none of them asked of a clock.
+		expect(turns).toBeGreaterThanOrEqual(2);
+		expect(clocks).toBe(0);
+	});
 });

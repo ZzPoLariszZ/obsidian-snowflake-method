@@ -201,13 +201,30 @@ export interface ProjectImportDeps {
 	customFieldRootPath: (project: KindScope, kind: EntityKindId) => string;
 	mint: (prefix: string) => string;
 	now: () => number;
+	/**
+	 * One turn of the event loop, taken by whatever way the host knows to be
+	 * quickest where it stands, as the manuscript's walks take theirs. Left
+	 * out, a clock of no delay stands in.
+	 */
+	turn?: (handler: () => void) => void;
 }
 
 /** How many parts are written between two turns handed back to the event loop. */
 const YIELD_EVERY = 25;
 
-const yieldToEventLoop = (): Promise<void> =>
+/**
+ * A turn handed back to the event loop, so the app stays alive under a long
+ * run. A clock of no delay is handed out late to a window out of sight, and
+ * later the longer it stays there, so the host's own way is taken where it
+ * gave one: an import asked for while Obsidian sits behind another app
+ * would else take minutes over what takes a moment.
+ */
+const yieldToEventLoop = (turn: ((handler: () => void) => void) | undefined): Promise<void> =>
 	new Promise((resolve) => {
+		if (turn !== undefined) {
+			turn(resolve);
+			return;
+		}
 		// The app's window where there is one; a test runtime has none and need not wait.
 		const host = typeof window === "undefined" ? null : window;
 		if (host === null) resolve();
@@ -1459,7 +1476,7 @@ class ImportRun {
 		this.sinceYield += 1;
 		if (this.sinceYield >= YIELD_EVERY) {
 			this.sinceYield = 0;
-			await yieldToEventLoop();
+			await yieldToEventLoop(this.deps.turn);
 		}
 	}
 

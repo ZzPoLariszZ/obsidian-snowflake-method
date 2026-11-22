@@ -621,6 +621,7 @@ export class SnowflakeProjectService {
       customFieldRootPath,
       mint: (prefix) => createStableId(prefix),
       now: analysis.now ?? ((): number => Date.now()),
+      ...(analysis.timers?.turn === undefined ? {} : { turn: analysis.timers.turn }),
     });
   }
 
