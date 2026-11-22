@@ -68,7 +68,7 @@ export function kindIdsOf(project: ProjectSnapshot): string[] {
 export class MemberIndex {
 	readonly entries: MemberEntry[] = [];
 	private readonly byPath = new Map<string, MemberEntry>();
-	private readonly byId = new Map<string, MemberEntry>();
+	private readonly byIds = new Map<string, MemberEntry>();
 
 	constructor(
 		readonly project: ProjectSnapshot,
@@ -78,7 +78,7 @@ export class MemberIndex {
 			this.entries.push(entry);
 			this.byPath.set(entry.path, entry);
 			// A note copied by hand carries the id of the one it was copied from. The first is the one answered for.
-			if (!this.byId.has(entry.id)) this.byId.set(entry.id, entry);
+			if (!this.byIds.has(entry.id)) this.byIds.set(entry.id, entry);
 		};
 		for (const character of project.characters) {
 			add({ kind: 'character', id: character.characterId, name: character.name, path: character.path, aliases: character.aliases });
@@ -91,6 +91,11 @@ export class MemberIndex {
 				add({ kind: entity.kind, id: entity.entityId, name: entity.name, path: entity.path, aliases: entity.aliases });
 			}
 		}
+	}
+
+	/** The member of that id, or null. */
+	byId(id: string): MemberEntry | null {
+		return this.byIds.get(id) ?? null;
 	}
 
 	/** The member whose note stands at a path, or null. */
@@ -117,7 +122,7 @@ export class MemberIndex {
 	 * the note is gone, what the record last knew of it is all there is.
 	 */
 	refOfStored(stored: EntityRef): JsonObject {
-		const member = this.byId.get(stored.id);
+		const member = this.byIds.get(stored.id);
 		if (member !== undefined) return this.refOf(member);
 		return { kind: stored.kind, id: stored.id, name: stored.name, path: null, resolved: false };
 	}

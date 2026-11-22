@@ -1,6 +1,7 @@
 import { entitiesOf, type ProjectSnapshot, type WorldbuildingRecord } from '../../src/services';
 import { characterOf, entityOf, kindIdsOf, memberOf, namesHold, sceneOf } from '../dto/member';
 import { ApiError } from '../errors';
+import type { JsonObject } from '../json';
 import { pageOf } from '../paging';
 import { optionalTextParam, textParam, type OperationCall, type OperationGroup } from './context';
 
@@ -117,6 +118,24 @@ export const memberOperations: OperationGroup = {
 		}
 		const full = isFull(call);
 		return { status: 200, body: pageOf(rows, call, ({ record, place }) => entityOf(index, record, place, full), most(call)) };
+	},
+
+	getMemberUsage: async (call, context) => {
+		const { project } = await context.loadProject(textParam(call, 'projectId'));
+		const index = context.members(project);
+		const member = index.byId(textParam(call, 'memberId'));
+		if (member === null) throw gone('note');
+		const usage = await context.host.projects.memberUsageByPath(project, member.path);
+		const refs = (paths: readonly string[]): JsonObject[] => paths.map((path) => index.refAt(path));
+		return {
+			status: 200,
+			body: {
+				member: index.refAt(member.path),
+				listed: refs(usage.listed),
+				needsDecision: refs(usage.needsDecision),
+				records: refs(usage.records),
+			},
+		};
 	},
 
 	getEntity: async (call, context) => {

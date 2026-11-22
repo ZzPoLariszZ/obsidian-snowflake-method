@@ -1,6 +1,7 @@
 import { boardOperations } from './boards';
 import type { OperationGroup, OperationHandler } from './context';
 import { manuscriptOperations } from './manuscript';
+import { memberWriteOperations } from './member-writes';
 import { memberOperations } from './members';
 import { projectOperations } from './projects';
 import { recordOperations } from './records';
@@ -17,6 +18,7 @@ const GROUPS: readonly OperationGroup[] = [
 	stepOperations,
 	vocabularyOperations,
 	memberOperations,
+	memberWriteOperations,
 	manuscriptOperations,
 	recordOperations,
 	statisticsOperations,

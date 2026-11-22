@@ -668,6 +668,39 @@ paths:
                 $ref: "#/components/schemas/CharacterPage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createCharacter
+      tags: [Characters]
+      summary: Create a character
+      description: |
+        Makes a character's note at the end of the author's list. A name
+        another character already goes by is refused. A category or a label the
+        project's vocabulary does not have is refused too, unless
+        `createMissingVocabulary` says to add it.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CharacterCreate"
+      responses:
+        "201":
+          description: The character that was made.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Character"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/characters/{characterId}:
     parameters:
@@ -695,6 +728,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Character"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateCharacter
+      tags: [Characters]
+      summary: Change a character
+      description: |
+        Changes what is sent and leaves the rest as it is. A list sent
+        replaces the list the note had. Send the `etag` the character was read with
+        in `If-Match`. A new name renames the note, so its `path` changes and
+        its `id` stays, and every link to it follows.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/CharacterPatch"
+      responses:
+        "200":
+          description: The character as it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Character"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteCharacter
+      tags: [Characters]
+      summary: Delete a character
+      description: |
+        Sends the note to the trash the author chose in Obsidian's settings.
+        Where other notes name it, the delete is refused with which they are,
+        unless `force` is true. With it, the lists that held the note lose the
+        entry, and a note that named it in a place for one note only, or in a
+        sentence of its own, is left as it was and told in the answer. Send the
+        `etag` the character was read with in `If-Match`.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, in-use]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+        - name: force
+          in: query
+          description: "Delete the note even though other notes name it."
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: What was deleted and what was left naming it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberDeletion"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -734,6 +832,40 @@ paths:
                 $ref: "#/components/schemas/ScenePage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createScene
+      tags: [Scenes]
+      summary: Create a scene
+      description: |
+        Makes a scene's note at the end of the author's list. A title another
+        scene already goes by is refused. The characters, times and places it
+        names are given by their ids. A category or a label the project's
+        vocabulary does not have is refused, unless `createMissingVocabulary`
+        says to add it.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SceneCreate"
+      responses:
+        "201":
+          description: The scene that was made.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scene"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/scenes/{sceneId}:
     parameters:
@@ -761,6 +893,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Scene"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateScene
+      tags: [Scenes]
+      summary: Change a scene
+      description: |
+        Changes what is sent and leaves the rest as it is. A list sent
+        replaces the list the note had. Send the `etag` the scene was read with
+        in `If-Match`. A new name renames the note, so its `path` changes and
+        its `id` stays, and every link to it follows.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/ScenePatch"
+      responses:
+        "200":
+          description: The scene as it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scene"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteScene
+      tags: [Scenes]
+      summary: Delete a scene
+      description: |
+        Sends the note to the trash the author chose in Obsidian's settings.
+        Where other notes name it, the delete is refused with which they are,
+        unless `force` is true. With it, the lists that held the note lose the
+        entry, and a note that named it in a place for one note only, or in a
+        sentence of its own, is left as it was and told in the answer. Send the
+        `etag` the scene was read with in `If-Match`.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, in-use]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+        - name: force
+          in: query
+          description: "Delete the note even though other notes name it."
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: What was deleted and what was left naming it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberDeletion"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -800,6 +997,39 @@ paths:
                 $ref: "#/components/schemas/EntityPage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createEntity
+      tags: [Entities]
+      summary: Create a worldbuilding note
+      description: |
+        Makes a worldbuilding note of the kind named, at the end of that
+        kind's list. A name another note of the kind already goes by is refused.
+        A category or a label the project's vocabulary does not have is refused
+        too, unless `createMissingVocabulary` says to add it.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, invalid-time-span]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntityCreate"
+      responses:
+        "201":
+          description: The worldbuilding note that was made.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/entities/{entityId}:
     parameters:
@@ -826,6 +1056,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Entity"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateEntity
+      tags: [Entities]
+      summary: Change a worldbuilding note
+      description: |
+        Changes what is sent and leaves the rest as it is. A list sent
+        replaces the list the note had. Send the `etag` the worldbuilding note was read with
+        in `If-Match`. A new name renames the note, so its `path` changes and
+        its `id` stays, and every link to it follows.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, invalid-time-span]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/EntityPatch"
+      responses:
+        "200":
+          description: The worldbuilding note as it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteEntity
+      tags: [Entities]
+      summary: Delete a worldbuilding note
+      description: |
+        Sends the note to the trash the author chose in Obsidian's settings.
+        Where other notes name it, the delete is refused with which they are,
+        unless `force` is true. With it, the lists that held the note lose the
+        entry, and a note that named it in a place for one note only, or in a
+        sentence of its own, is left as it was and told in the answer. Send the
+        `etag` the worldbuilding note was read with in `If-Match`.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, in-use]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+        - name: force
+          in: query
+          description: "Delete the note even though other notes name it."
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: What was deleted and what was left naming it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberDeletion"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1979,6 +2274,139 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/characters/{characterId}/move:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/CharacterId"
+    post:
+      operationId: moveCharacter
+      tags: [Characters]
+      summary: Move a character in the author's order
+      description: |
+        Puts the character at another place in the author's list: at an index,
+        or before or after another character. Its place is kept in the note, so the
+        note's `etag` moves on.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberMove"
+      responses:
+        "200":
+          description: The character where it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Character"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/scenes/{sceneId}/move:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/SceneId"
+    post:
+      operationId: moveScene
+      tags: [Scenes]
+      summary: Move a scene in the author's order
+      description: |
+        Puts the scene at another place in the author's list: at an index,
+        or before or after another scene. Its place is kept in the note, so the
+        note's `etag` moves on.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberMove"
+      responses:
+        "200":
+          description: The scene where it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scene"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/entities/{entityId}/move:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/EntityId"
+    post:
+      operationId: moveEntity
+      tags: [Entities]
+      summary: Move a worldbuilding note in the author's order
+      description: |
+        Puts the worldbuilding note at another place in the author's list: at an index,
+        or before or after another worldbuilding note of its kind. Its place is kept in the note, so the
+        note's `etag` moves on.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberMove"
+      responses:
+        "200":
+          description: The worldbuilding note where it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/members/{memberId}/usage:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/MemberId"
+    get:
+      operationId: getMemberUsage
+      tags: [Members]
+      summary: Get what names a note
+      description: |
+        Which other notes of the project name a character, a scene or a
+        worldbuilding note, split by what deleting it would cost each. A note
+        that lists it among others would lose the entry. A note that names it
+        where only one note fits, or in a sentence of its own, would be left
+        pointing at nothing. Ask this before a delete.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The notes that name it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberUsageReport"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -2129,6 +2557,14 @@ components:
       in: path
       required: true
       description: A freeform view's `id`, as `listFreeformViews` gives it.
+      schema:
+        type: string
+        minLength: 1
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      description: The `id` of a character, a scene or a worldbuilding note, as `listMembers` gives it.
       schema:
         type: string
         minLength: 1
@@ -5517,6 +5953,631 @@ components:
           additionalProperties:
             type: string
 
+    MemberRefInput:
+      type: object
+      description: A note of the project, named by its id. A reference as it was read is taken, and only its `id` is looked at.
+      required: [id]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          minLength: 1
+        kind:
+          type: [string, "null"]
+        name:
+          type: string
+        path:
+          type: [string, "null"]
+        resolved:
+          type: boolean
+
+    TermInput:
+      description: A note of the project by its id, or plain words.
+      oneOf:
+        - $ref: "#/components/schemas/MemberRefInput"
+        - type: object
+          required: [text]
+          additionalProperties: false
+          properties:
+            text:
+              type: string
+              pattern: "\\S"
+
+    RecordClauseInput:
+      description: |
+        One thing a record line says beside its text, which is always a note
+        of the project. `target` is who a relationship is with. `at` takes a
+        place, `when` a time, and `with` any other note. Plain words belong
+        in the line's `text`.
+      oneOf:
+        - type: object
+          required: [kind, term]
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              enum: [target, at, when, with]
+            term:
+              $ref: "#/components/schemas/MemberRefInput"
+        - type: object
+          description: The older way to say a period, taken so that a line read with one can be sent back.
+          required: [kind, start, end]
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              const: span
+            start:
+              $ref: "#/components/schemas/TermInput"
+            end:
+              $ref: "#/components/schemas/TermInput"
+
+    RecordLineInput:
+      type: object
+      description: One line of a note's world status or relationships.
+      required: [label]
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+          pattern: "\\S"
+          description: The word the line stands under, by its path in the kind's `world-status` or `relationship` vocabulary, such as `Mood/Calm`.
+        labelPath:
+          type: [string, "null"]
+          description: Given by a read and not looked at here.
+        text:
+          type: string
+          default: ""
+        clauses:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordClauseInput"
+
+    PointOfViewInput:
+      description: Whose eyes a scene is seen through. Null for none said.
+      oneOf:
+        - type: "null"
+        - type: object
+          required: [mode]
+          additionalProperties: false
+          properties:
+            mode:
+              type: string
+              enum: [omniscient, multiple]
+        - type: object
+          required: [mode, character]
+          additionalProperties: false
+          properties:
+            mode:
+              type: string
+              const: character
+            character:
+              $ref: "#/components/schemas/MemberRefInput"
+
+    ManuscriptLinkInput:
+      description: A manuscript note a scene is written in. Either the note by its address, or a link as a read gave it, which is kept as it is.
+      oneOf:
+        - type: object
+          required: [relativePath]
+          additionalProperties: false
+          properties:
+            relativePath:
+              type: string
+              minLength: 1
+              description: The note's address in the manuscript, as `listManuscriptNotes` gives it.
+        - type: object
+          required: [link]
+          additionalProperties: false
+          properties:
+            link:
+              type: string
+              pattern: "^\\[\\[.+\\]\\]$"
+            path:
+              type: [string, "null"]
+
+    EntityTimeInput:
+      description: When a time is. Looked at for a note of the kind `time` only. Null leaves it as it is.
+      oneOf:
+        - type: "null"
+        - type: object
+          additionalProperties: false
+          properties:
+            kind:
+              type: [string, "null"]
+              enum: [point, period, null]
+            start:
+              oneOf:
+                - $ref: "#/components/schemas/TermInput"
+                - type: "null"
+            end:
+              oneOf:
+                - $ref: "#/components/schemas/TermInput"
+                - type: "null"
+
+    CharacterCreate:
+      type: object
+      description: "A character to make. Only the name is needed."
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        role:
+          $ref: "#/components/schemas/CharacterRole"
+        aliases:
+          type: array
+          description: Other names the note goes by.
+          items:
+            type: string
+        categories:
+          type: array
+          description: The words of the kind's `category` vocabulary the note is sorted under, each by its path in the tree.
+          items:
+            type: string
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        oneSentenceStoryline:
+          type: string
+        motivation:
+          type: string
+        goal:
+          type: string
+        conflict:
+          type: string
+        growth:
+          type: string
+        oneParagraphStoryline:
+          type: string
+        characterSynopsis:
+          type: string
+        characterProfile:
+          type: string
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        customFields:
+          type: array
+          description: The fields the author added, in order. No two may share a title.
+          items:
+            $ref: "#/components/schemas/CustomField"
+        createMissingVocabulary:
+          type: boolean
+          default: false
+          description: Add a category or a label the vocabulary does not have yet. Left false, such a word is refused, so a slip in spelling cannot grow the vocabulary.
+
+    CharacterPatch:
+      type: object
+      description: "What to change of a character. A character read and sent back whole is taken, and only these are looked at."
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Character"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        role:
+          $ref: "#/components/schemas/CharacterRole"
+        aliases:
+          type: array
+          description: Other names the note goes by.
+          items:
+            type: string
+        categories:
+          type: array
+          description: The words of the kind's `category` vocabulary the note is sorted under, each by its path in the tree.
+          items:
+            type: string
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        oneSentenceStoryline:
+          type: string
+        motivation:
+          type: string
+        goal:
+          type: string
+        conflict:
+          type: string
+        growth:
+          type: string
+        oneParagraphStoryline:
+          type: string
+        characterSynopsis:
+          type: string
+        characterProfile:
+          type: string
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        customFields:
+          type: array
+          description: The fields the author added, in order. No two may share a title.
+          items:
+            $ref: "#/components/schemas/CustomField"
+        createMissingVocabulary:
+          type: boolean
+          default: false
+          description: Add a category or a label the vocabulary does not have yet. Left false, such a word is refused, so a slip in spelling cannot grow the vocabulary.
+
+    SceneCreate:
+      type: object
+      description: "A scene to make. Only the title is needed."
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        aliases:
+          type: array
+          description: Other names the note goes by.
+          items:
+            type: string
+        categories:
+          type: array
+          description: The words of the kind's `category` vocabulary the note is sorted under, each by its path in the tree.
+          items:
+            type: string
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        pov:
+          $ref: "#/components/schemas/PointOfViewInput"
+        characters:
+          type: array
+          description: The characters in the scene, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+        times:
+          type: array
+          description: When the scene happens. A time note by its id, or plain words.
+          items:
+            $ref: "#/components/schemas/TermInput"
+        locations:
+          type: array
+          description: Where the scene happens. A place by its id, or plain words.
+          items:
+            $ref: "#/components/schemas/TermInput"
+        conflict:
+          type: string
+        events:
+          type: string
+        planning:
+          type: string
+        linkedManuscript:
+          type: array
+          description: The manuscript notes the scene is written in.
+          items:
+            $ref: "#/components/schemas/ManuscriptLinkInput"
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        customFields:
+          type: array
+          description: The fields the author added, in order. No two may share a title.
+          items:
+            $ref: "#/components/schemas/CustomField"
+        createMissingVocabulary:
+          type: boolean
+          default: false
+          description: Add a category or a label the vocabulary does not have yet. Left false, such a word is refused, so a slip in spelling cannot grow the vocabulary.
+
+    ScenePatch:
+      type: object
+      description: "What to change of a scene. A scene read and sent back whole is taken, and only these are looked at."
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Scene"
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        aliases:
+          type: array
+          description: Other names the note goes by.
+          items:
+            type: string
+        categories:
+          type: array
+          description: The words of the kind's `category` vocabulary the note is sorted under, each by its path in the tree.
+          items:
+            type: string
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        pov:
+          $ref: "#/components/schemas/PointOfViewInput"
+        characters:
+          type: array
+          description: The characters in the scene, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+        times:
+          type: array
+          description: When the scene happens. A time note by its id, or plain words.
+          items:
+            $ref: "#/components/schemas/TermInput"
+        locations:
+          type: array
+          description: Where the scene happens. A place by its id, or plain words.
+          items:
+            $ref: "#/components/schemas/TermInput"
+        conflict:
+          type: string
+        events:
+          type: string
+        planning:
+          type: string
+        linkedManuscript:
+          type: array
+          description: The manuscript notes the scene is written in.
+          items:
+            $ref: "#/components/schemas/ManuscriptLinkInput"
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        customFields:
+          type: array
+          description: The fields the author added, in order. No two may share a title.
+          items:
+            $ref: "#/components/schemas/CustomField"
+        createMissingVocabulary:
+          type: boolean
+          default: false
+          description: Add a category or a label the vocabulary does not have yet. Left false, such a word is refused, so a slip in spelling cannot grow the vocabulary.
+
+    EntityCreate:
+      type: object
+      description: "A worldbuilding note to make. Its kind and its name are needed."
+      required: [kind, name]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          minLength: 1
+          description: The kind of note to make, by its `kindId`. `listKinds` gives the kinds there are.
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        aliases:
+          type: array
+          description: Other names the note goes by.
+          items:
+            type: string
+        categories:
+          type: array
+          description: The words of the kind's `category` vocabulary the note is sorted under, each by its path in the tree.
+          items:
+            type: string
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        description:
+          type: string
+        notes:
+          type: string
+        time:
+          $ref: "#/components/schemas/EntityTimeInput"
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        customFields:
+          type: array
+          description: The fields the author added, in order. No two may share a title.
+          items:
+            $ref: "#/components/schemas/CustomField"
+        createMissingVocabulary:
+          type: boolean
+          default: false
+          description: Add a category or a label the vocabulary does not have yet. Left false, such a word is refused, so a slip in spelling cannot grow the vocabulary.
+
+    EntityPatch:
+      type: object
+      description: "What to change of a worldbuilding note. A note read and sent back whole is taken, and only these are looked at. Its kind is not changed here."
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Entity"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 200
+        aliases:
+          type: array
+          description: Other names the note goes by.
+          items:
+            type: string
+        categories:
+          type: array
+          description: The words of the kind's `category` vocabulary the note is sorted under, each by its path in the tree.
+          items:
+            type: string
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ProgressStatus"
+            - type: "null"
+        color:
+          oneOf:
+            - $ref: "#/components/schemas/Color"
+            - type: "null"
+        description:
+          type: string
+        notes:
+          type: string
+        time:
+          $ref: "#/components/schemas/EntityTimeInput"
+        worldStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordLineInput"
+        customFields:
+          type: array
+          description: The fields the author added, in order. No two may share a title.
+          items:
+            $ref: "#/components/schemas/CustomField"
+        createMissingVocabulary:
+          type: boolean
+          default: false
+          description: Add a category or a label the vocabulary does not have yet. Left false, such a word is refused, so a slip in spelling cannot grow the vocabulary.
+
+    MemberMove:
+      description: Where to put a note in the author's order. One of the three.
+      oneOf:
+        - type: object
+          required: [index]
+          additionalProperties: false
+          properties:
+            index:
+              type: integer
+              minimum: 0
+              description: The place it should take, from 0. A number past the end puts it last.
+        - type: object
+          required: [before]
+          additionalProperties: false
+          properties:
+            before:
+              type: string
+              minLength: 1
+              description: The `id` of the note it should stand before.
+        - type: object
+          required: [after]
+          additionalProperties: false
+          properties:
+            after:
+              type: string
+              minLength: 1
+              description: The `id` of the note it should stand after.
+
+    MemberUsage:
+      type: object
+      description: The notes that name one note, split by what deleting it would cost each.
+      required: [listed, needsDecision, records]
+      additionalProperties: false
+      properties:
+        listed:
+          type: array
+          description: Notes that list it among others, such as a scene's cast. They would lose the entry and nothing else.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        needsDecision:
+          type: array
+          description: Notes that name it where only one note fits, such as a scene's point of view. They would be left pointing at nothing.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        records:
+          type: array
+          description: Notes whose world status or relationships mention it in a line of their own, which would be left as written.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+
+    MemberUsageReport:
+      type: object
+      required: [member, listed, needsDecision, records]
+      additionalProperties: false
+      properties:
+        member:
+          $ref: "#/components/schemas/MemberRef"
+        listed:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        needsDecision:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberRef"
+
+    MemberDeletion:
+      type: object
+      required: [kind, id, name, path, detached, dangling, picturesKept]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+          description: Where the note stood before it went to the trash.
+        detached:
+          type: array
+          description: The notes that listed it and no longer do.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        dangling:
+          type: array
+          description: The notes that still name it, and now point at nothing. The health of the project names each.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        picturesKept:
+          type: array
+          description: Pictures of its gallery that should have gone with it and could not be sent to the trash, by name.
+          items:
+            type: string
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -5572,6 +6633,9 @@ x-snowflake-problems:
   step-prerequisites-incomplete:
     status: 409
     title: The steps this one rests on are not complete.
+  in-use:
+    status: 409
+    title: Other notes name it.
   concurrent-change:
     status: 412
     title: The note has changed since it was read.
@@ -5587,6 +6651,24 @@ x-snowflake-problems:
   invalid-step-status:
     status: 422
     title: That step cannot be given that status.
+  invalid-segment:
+    status: 422
+    title: A part of the path is not a name a vocabulary word can have.
+  too-deep:
+    status: 422
+    title: The path has more levels than a vocabulary can have.
+  unknown-vocabulary-node:
+    status: 422
+    title: The vocabulary has no such word.
+  invalid-reference:
+    status: 422
+    title: An id names no note of the kind it should.
+  invalid-time-span:
+    status: 422
+    title: A period needs both its ends, or neither.
+  duplicate-field-title:
+    status: 422
+    title: Two of the fields share a title.
   precondition-required:
     status: 428
     title: The change must say which version of the note it is made against.

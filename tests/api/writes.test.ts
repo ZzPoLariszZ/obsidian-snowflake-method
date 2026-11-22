@@ -16,13 +16,13 @@ interface Sent {
 /**
  * One call of every operation that changes something, as it would be made
  * of the project whose id is handed in. What each is refused for below is
- * decided before anything it names inside the project is looked for, so the
- * ids here need only be of the right shape.
+ * decided before anything it names inside the project is looked for, so
+ * the ids of the first project's notes do for any project.
  *
  * `of` says what the operation is about: a project that must be one of the
  * working ones, a project that must stand in the archive, or no project.
  */
-const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (projectId: string) => Sent }> = {
+const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (projectId: string, golden: Golden) => Sent }> = {
 	createProject: { of: 'none', send: () => ({ body: { title: 'Another book', language: 'en' } }) },
 	updateProject: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { title: 'Another name' } }) },
 	archiveProject: { of: 'project', send: (projectId) => ({ params: { projectId } }) },
@@ -33,11 +33,50 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 		of: 'project',
 		send: (projectId) => ({ params: { projectId, step: 1 }, body: { sections: { genre: 'Thriller' } }, ifMatch: '*' }),
 	},
+	createCharacter: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'Cy', motivation: 'To be useful.' } }) },
+	updateCharacter: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, characterId: golden.members.ben.characterId }, body: { goal: 'Home.' }, ifMatch: '*' }),
+	},
+	deleteCharacter: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, characterId: golden.members.ben.characterId, force: true }, ifMatch: '*' }),
+	},
+	moveCharacter: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, characterId: golden.members.ada.characterId }, body: { index: 1 } }),
+	},
+	createScene: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { title: 'The thaw', events: 'The ice goes out.' } }) },
+	updateScene: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, sceneId: golden.members.morning.sceneId }, body: { conflict: 'Nobody slept.' }, ifMatch: '*' }),
+	},
+	deleteScene: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, sceneId: golden.members.morning.sceneId, force: true }, ifMatch: '*' }),
+	},
+	moveScene: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, sceneId: golden.members.stops.sceneId }, body: { index: 1 } }),
+	},
+	createEntity: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { kind: 'location', name: 'Harbour', notes: 'Iced in.' } }) },
+	updateEntity: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, entityId: golden.members.guild.entityId }, body: { description: 'Keepers of the clock.' }, ifMatch: '*' }),
+	},
+	deleteEntity: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, entityId: golden.members.guild.entityId, force: true }, ifMatch: '*' }),
+	},
+	moveEntity: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, entityId: golden.members.winter.entityId }, body: { index: 0 } }),
+	},
 };
 
 const changing = operations.filter((operation) => operation.available && operation.access !== 'read');
 const send = (golden: Golden, operationId: string, projectId: string) => {
-	const sent = WRITES[operationId]?.send(projectId) ?? {};
+	const sent = WRITES[operationId]?.send(projectId, golden) ?? {};
 	return golden.call(operationId, sent.params ?? {}, { body: sent.body, ...(sent.ifMatch === undefined ? {} : { ifMatch: sent.ifMatch }) });
 };
 
@@ -106,10 +145,18 @@ describe('every operation that changes something', () => {
 	it('writes nothing as the author’s own typing', async () => {
 		const golden = await createGolden();
 		golden.host.origins.length = 0;
-		for (const operation of changing) {
-			await send(golden, operation.id, WRITES[operation.id]?.of === 'archived' ? golden.archived.id : golden.project.id);
+		// What moves or puts away the project itself comes last, so the rest find it where it was.
+		const last = ['updateProject', 'archiveProject'];
+		const ordered = [...changing.filter((entry) => !last.includes(entry.id)), ...changing.filter((entry) => last.includes(entry.id))];
+		const landed: string[] = [];
+		for (const operation of ordered) {
+			const reply = await send(golden, operation.id, WRITES[operation.id]?.of === 'archived' ? golden.archived.id : golden.project.id);
+			if (!reply.failed) landed.push(operation.id);
 		}
+		// Most of them land, so this is said of real writes and not of refusals.
+		expect(landed.length).toBeGreaterThan(ordered.length / 2);
 		// Whatever each came to, no body it wrote and no note it made was told as the author's.
+		expect(golden.host.origins.length).toBeGreaterThan(0);
 		expect(golden.host.origins.filter((userInput) => userInput)).toEqual([]);
 	});
 });
