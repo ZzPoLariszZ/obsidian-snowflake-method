@@ -6,6 +6,9 @@ import { resolveRef } from '../../api/spec/document';
 import {
 	BAND_SPANS,
 	CHARACTER_TYPES,
+	DEFAULT_STICKY_NOTE_COLOR,
+	DEFAULT_TASK_PRIORITY,
+	DEFAULT_TASK_STATUS,
 	DEFINITION_FILE_IDS,
 	DERIVED_TASK_KEYS,
 	FORESHADOWING_STATUSES,
@@ -123,6 +126,16 @@ describe('the contract’s listed values', () => {
 	it('give a sticky note the tints a scene has', () => {
 		expect(property('StickyNote', 'color')).toEqual({ $ref: '#/components/schemas/Color' });
 		expect(listed(schema('Color')['enum'])).toEqual([...STICKY_NOTE_COLORS]);
+	});
+
+	it('say what a record is made with where a caller leaves it out, as the plugin’s own forms have it', () => {
+		const said = (name: string): string => textOf(schema(name)['description']);
+		expect(said('TaskCreate')).toContain(`its status is \`${DEFAULT_TASK_STATUS}\``);
+		expect(said('TaskCreate')).toContain(`its priority is \`${DEFAULT_TASK_PRIORITY}\``);
+		expect(said('StickyNoteCreate')).toContain(`\`${DEFAULT_STICKY_NOTE_COLOR}\``);
+		// The first of each list is what the plugin's forms start a thread and an appearance as.
+		expect(said('ForeshadowingCreate')).toContain(`\`${FORESHADOWING_STATUSES[0]}\``);
+		expect(textOf(property('OccurrenceCreate', 'role')['description'])).toContain(`\`${OCCURRENCE_ROLES[0]}\``);
 	});
 
 	it('name every scope, stage and type a writing session can have, and every stretch its spread is read over', () => {

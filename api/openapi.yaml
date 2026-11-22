@@ -1686,6 +1686,36 @@ paths:
                 $ref: "#/components/schemas/TaskPage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createTask
+      tags: [Tasks]
+      summary: Create a task
+      description: |
+        Adds a task to the author's board, at the end of its column. Only a
+        title is needed, and it must be one no other task of the project has.
+        The notes it is about are given by their ids.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreate"
+      responses:
+        "201":
+          description: The task that was made.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/tasks/{taskId}:
     parameters:
@@ -1709,6 +1739,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateTask
+      tags: [Tasks]
+      summary: Change a task
+      description: |
+        Changes what is sent and leaves the rest as it is. A task given
+        another column goes to that column's end. Send `archived` to set a task
+        aside or to bring it back. A title another task has is refused.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/TaskPatch"
+      responses:
+        "200":
+          description: The task as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteTask
+      tags: [Tasks]
+      summary: Delete a task
+      description: |
+        Takes one task off the board for good. To set a task aside and keep
+        it, change `archived` instead.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The task is gone.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1745,6 +1818,37 @@ paths:
                 $ref: "#/components/schemas/ForeshadowingPage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createForeshadowing
+      tags: [Foreshadowing]
+      summary: Create a foreshadowing thread
+      description: |
+        Starts a thread, with the places it appears where any are sent.
+        Each place is a passage of a manuscript note, named by its words or by
+        where it stands. The name must be one no other thread of the project
+        has.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-reference, passage-not-found, ambiguous-passage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForeshadowingCreate"
+      responses:
+        "201":
+          description: The thread that was made.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Foreshadowing"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/foreshadowing/{foreshadowingId}:
     parameters:
@@ -1768,6 +1872,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Foreshadowing"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateForeshadowing
+      tags: [Foreshadowing]
+      summary: Change a foreshadowing thread
+      description: |
+        Changes a thread's name, what it is, how it stands and the notes it
+        is about. The places it appears are changed one by one, with their own
+        operations.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/ForeshadowingPatch"
+      responses:
+        "200":
+          description: The thread as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Foreshadowing"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteForeshadowing
+      tags: [Foreshadowing]
+      summary: Delete a foreshadowing thread
+      description: |
+        Takes a thread out with every place it appears. The manuscript is
+        not touched.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The thread is gone.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1809,6 +1956,41 @@ paths:
                 $ref: "#/components/schemas/RevisionPage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createRevision
+      tags: [Revisions]
+      summary: Propose a revision
+      description: |
+        Proposes a change to a passage of a manuscript note without making
+        it: other words in place of the passage, new words after it, or its
+        removal. It shows beside the text as a card until the author accepts or
+        discards it. This is the way to suggest a change and leave the prose to
+        the author. A passage that part of another revision already stands over
+        is refused. To propose new words at a place with nothing before it, the
+        head of a note or an empty one, send the passage as a place where
+        `from` and `to` are the same.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, passage-not-found, ambiguous-passage, overlapping-revision]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevisionCreate"
+      responses:
+        "201":
+          description: The revision that was proposed.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Revision"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/revisions/{revisionId}:
     parameters:
@@ -1831,6 +2013,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Revision"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateRevision
+      tags: [Revisions]
+      summary: Change a proposed revision
+      description: |
+        Changes what a revision proposes or the comment on it. The passage
+        it was made over is not changed. A replacement whose proposal is made
+        empty becomes a deletion, and the other way about.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/RevisionPatch"
+      responses:
+        "200":
+          description: The revision as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Revision"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: discardRevision
+      tags: [Revisions]
+      summary: Discard a proposed revision
+      description: |
+        Takes a proposed change away without making it. The manuscript is
+        not touched.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The revision is gone.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1869,6 +2094,37 @@ paths:
                 $ref: "#/components/schemas/StickyNotePage"
         default:
           $ref: "#/components/responses/Problem"
+    post:
+      operationId: createStickyNote
+      tags: [Sticky notes]
+      summary: Create a sticky note
+      description: |
+        Makes a sticky note beside the project, holding the words sent with
+        it, in the tint asked for.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StickyNoteCreate"
+      responses:
+        "201":
+          description: The sticky note that was made.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickyNote"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /projects/{projectId}/sticky-notes/{stickyNoteId}:
     parameters:
@@ -1895,6 +2151,57 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StickyNote"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateStickyNote
+      tags: [Sticky notes]
+      summary: Change a sticky note
+      description: |
+        Changes what a sticky note says, its tint, or whether it is set
+        aside. Send the `etag` the note was read with in `If-Match`. Where the
+        author has typed in the note since, the answer is `412` and nothing is
+        written.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/StickyNotePatch"
+      responses:
+        "200":
+          description: The sticky note as it now stands.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickyNote"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteStickyNote
+      tags: [Sticky notes]
+      summary: Delete a sticky note
+      description: |
+        Sends a sticky note to the trash the author chose in Obsidian's
+        settings. Send the `etag` the note was read with in `If-Match`.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change]
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "204":
+          description: The sticky note is gone.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -2937,6 +3244,144 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/tasks/{taskId}/move:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TaskId"
+    post:
+      operationId: moveTask
+      tags: [Tasks]
+      summary: Move a task on the board
+      description: |
+        Puts a task in a column, before another task of that column or at
+        the column's end. Left without a column, it is moved within its own.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskMove"
+      responses:
+        "200":
+          description: The task where it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/archived-tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    delete:
+      operationId: purgeArchivedTasks
+      tags: [Tasks]
+      summary: Delete every archived task
+      description: |
+        Takes every task the author set aside off the board for good, and
+        says how many went. A task brought back in the meantime is spared.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "200":
+          description: How many tasks went.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskPurge"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/foreshadowing/{foreshadowingId}/occurrences:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ForeshadowingId"
+    post:
+      operationId: addForeshadowingOccurrence
+      tags: [Foreshadowing]
+      summary: Mark a place a thread appears
+      description: |
+        Ties a thread to a passage of a manuscript note, as a plant, an echo
+        or a payoff. The passage is named by its words, with a few of the words
+        around them where the note says them more than once, or by where it
+        stands. The manuscript is not touched.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, passage-not-found, ambiguous-passage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OccurrenceCreate"
+      responses:
+        "201":
+          description: The appearance that was marked, with the id it was given.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Occurrence"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/foreshadowing/{foreshadowingId}/occurrences/{occurrenceId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ForeshadowingId"
+      - $ref: "#/components/parameters/OccurrenceId"
+    patch:
+      operationId: updateForeshadowingOccurrence
+      tags: [Foreshadowing]
+      summary: Change a place a thread appears
+      description: |
+        Changes what an appearance does for the thread and the author's
+        remark on it. Where a `passage` is sent, the appearance is put on
+        those words instead, in the note it stands in or in the one `note`
+        names.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, passage-not-found, ambiguous-passage]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/OccurrencePatch"
+      responses:
+        "200":
+          description: The appearance as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Occurrence"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteForeshadowingOccurrence
+      tags: [Foreshadowing]
+      summary: Unmark a place a thread appears
+      description: |
+        Takes one appearance off a thread. The thread stands even where it
+        was the last.
+      x-snowflake-access: delete
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      responses:
+        "204":
+          description: The appearance is gone.
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -3095,6 +3540,14 @@ components:
       in: path
       required: true
       description: The `id` of a character, a scene or a worldbuilding note, as `listMembers` gives it.
+      schema:
+        type: string
+        minLength: 1
+    OccurrenceId:
+      name: occurrenceId
+      in: path
+      required: true
+      description: The `id` of one place a thread appears, as the thread gives it.
       schema:
         type: string
         minLength: 1
@@ -7443,6 +7896,258 @@ components:
           items:
             type: string
 
+    PassageSelector:
+      description: |
+        A passage of a manuscript note. Either the words themselves, with a
+        few of the words around them where the note says them more than once,
+        or where it stands in the note's `body`, counted in UTF-16 code units.
+        Naming the words is the surer way, since a note's text moves.
+      oneOf:
+        - type: object
+          required: [exact]
+          additionalProperties: false
+          properties:
+            exact:
+              type: string
+              minLength: 1
+              description: The words, exactly as the note has them.
+            prefix:
+              type: string
+              description: A few words that stand right before them.
+            suffix:
+              type: string
+              description: A few words that stand right after them.
+        - type: object
+          required: [from, to]
+          additionalProperties: false
+          properties:
+            from:
+              type: integer
+              minimum: 0
+            to:
+              type: integer
+              minimum: 0
+
+    TaskCreate:
+      type: object
+      description: A task to add. Where they are left out, its status is `todo`, its priority is `medium`, and it has no day due.
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 500
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        dueDate:
+          type: [string, "null"]
+          pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          description: The day the task is due, as `YYYY-MM-DD`, or null for none.
+        related:
+          type: array
+          description: The notes of the project the task is about, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+        archived:
+          type: boolean
+          description: Whether the task is set aside.
+
+    TaskPatch:
+      type: object
+      description: What to change of a task. A task read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Task"
+      properties:
+        title:
+          type: string
+          pattern: "\\S"
+          maxLength: 500
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        dueDate:
+          type: [string, "null"]
+          pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          description: The day the task is due, as `YYYY-MM-DD`, or null for none.
+        related:
+          type: array
+          description: The notes of the project the task is about, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+        archived:
+          type: boolean
+          description: Whether the task is set aside.
+
+    TaskMove:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+          description: The column to put it in. Left out, its own.
+        before:
+          type: [string, "null"]
+          description: The `id` of the task of that column it should stand before. Null or left out, the end of the column.
+
+    TaskPurge:
+      type: object
+      required: [removed]
+      additionalProperties: false
+      properties:
+        removed:
+          type: integer
+          description: How many archived tasks were deleted.
+
+    OccurrenceCreate:
+      type: object
+      description: A place a thread appears.
+      required: [note, passage]
+      additionalProperties: false
+      properties:
+        note:
+          type: string
+          minLength: 1
+          description: The manuscript note the passage stands in, by its `relativePath`.
+        passage:
+          $ref: "#/components/schemas/PassageSelector"
+        role:
+          $ref: "#/components/schemas/OccurrenceRole"
+          description: What the appearance does for the thread. Left out, `plant`.
+        comment:
+          type: string
+          description: A remark on this appearance.
+
+    OccurrencePatch:
+      type: object
+      description: What to change of an appearance. One read and sent back whole is taken. `note` is then the note it was read in, and is looked at only beside a `passage`.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Occurrence"
+      properties:
+        role:
+          $ref: "#/components/schemas/OccurrenceRole"
+        comment:
+          type: string
+        note:
+          description: The manuscript note the new passage stands in, by its `relativePath`. Left out, the note the appearance stands in now.
+          oneOf:
+            - type: string
+              minLength: 1
+            - $ref: "#/components/schemas/ManuscriptNoteRef"
+        passage:
+          $ref: "#/components/schemas/PassageSelector"
+
+    ForeshadowingCreate:
+      type: object
+      description: A thread to start. Where it is left out, its status is `planned`.
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 500
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/ForeshadowingStatus"
+        related:
+          type: array
+          description: The notes of the project the thread is about, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+        occurrences:
+          type: array
+          description: The places the thread appears.
+          items:
+            $ref: "#/components/schemas/OccurrenceCreate"
+
+    ForeshadowingPatch:
+      type: object
+      description: What to change of a thread. A thread read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Foreshadowing"
+      properties:
+        name:
+          type: string
+          pattern: "\\S"
+          maxLength: 500
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/ForeshadowingStatus"
+        related:
+          type: array
+          description: The notes of the project the thread is about, each by its id.
+          items:
+            $ref: "#/components/schemas/MemberRefInput"
+
+    RevisionCreate:
+      type: object
+      required: [note, kind, passage]
+      additionalProperties: false
+      properties:
+        note:
+          type: string
+          minLength: 1
+          description: The manuscript note the passage stands in, by its `relativePath`.
+        passage:
+          $ref: "#/components/schemas/PassageSelector"
+        kind:
+          $ref: "#/components/schemas/RevisionKind"
+          description: "`replace` puts `proposed` in place of the passage. `delete` takes the passage out. `insert` puts `proposed` right after the passage, which stays."
+        proposed:
+          type: string
+          description: The words proposed. Needed to replace or to insert, and not looked at for a deletion.
+        comment:
+          type: string
+          description: Why the change is proposed, for the author to read on the card.
+
+    RevisionPatch:
+      type: object
+      description: What to change of a revision. One read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/Revision"
+      properties:
+        proposed:
+          type: string
+        comment:
+          type: string
+
+    StickyNoteCreate:
+      type: object
+      description: A sticky note to make. Left without a `color`, it takes `macaron-3`, the tint a note made in the plugin starts with.
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          description: What the note says, as Markdown.
+        color:
+          $ref: "#/components/schemas/Color"
+        archived:
+          type: boolean
+          default: false
+
+    StickyNotePatch:
+      type: object
+      description: What to change of a sticky note. One read and sent back whole is taken, and only these are looked at.
+      additionalProperties: false
+      x-snowflake-echo: "#/components/schemas/StickyNote"
+      properties:
+        body:
+          type: string
+        color:
+          $ref: "#/components/schemas/Color"
+        archived:
+          type: boolean
+
 x-snowflake-problems:
   invalid-request:
     status: 400
@@ -7510,6 +8215,9 @@ x-snowflake-problems:
   nothing-to-merge:
     status: 409
     title: No manuscript note stands after that one.
+  overlapping-revision:
+    status: 409
+    title: Another revision already stands over part of that passage.
   concurrent-change:
     status: 412
     title: The note has changed since it was read.

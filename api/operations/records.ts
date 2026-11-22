@@ -11,6 +11,7 @@ import {
 import type { ProjectSnapshot } from '../../src/services';
 import { PassageNotes, foreshadowingOf, revisionOf, stickyNoteOf, taskOf } from '../dto/records';
 import { ApiError } from '../errors';
+import type { JsonObject } from '../json';
 import { pageOf } from '../paging';
 import { optionalTextParam, textParam, type ApiContext, type OperationCall, type OperationGroup } from './context';
 
@@ -20,7 +21,7 @@ function inState(call: OperationCall, archived: boolean): boolean {
 	return state === 'all' || (state === 'archived') === archived;
 }
 
-const gone = (what: string, list: string): ApiError =>
+export const gone = (what: string, list: string): ApiError =>
 	new ApiError('not-found', `There is no ${what} with that id in the project. It may have been deleted. ${list} gives the ones there are.`);
 
 /**
@@ -29,7 +30,7 @@ const gone = (what: string, list: string): ApiError =>
  * record is a file like any other, and a path written into it by hand
  * could name any note of the vault.
  */
-async function readPassageNotes(context: ApiContext, project: ProjectSnapshot, named: readonly string[]): Promise<PassageNotes> {
+export async function readPassageNotes(context: ApiContext, project: ProjectSnapshot, named: readonly string[]): Promise<PassageNotes> {
 	const notes = new PassageNotes(project, await context.host.projects.manuscript.listSegmentsFromFiles(project));
 	for (const path of new Set(named)) {
 		if (!notes.holds(path)) continue;
@@ -37,6 +38,29 @@ async function readPassageNotes(context: ApiContext, project: ProjectSnapshot, n
 		notes.keep(path, (await context.host.projects.repository.tryReadManaged(path))?.body ?? null);
 	}
 	return notes;
+}
+
+/** One task, as it stands in the file now. */
+export async function tellTask(context: ApiContext, project: ProjectSnapshot, id: string): Promise<JsonObject> {
+	const task = (await context.host.projects.tasks.list(project)).find((entry) => entry.id === id);
+	if (task === undefined) throw gone('task', 'listTasks');
+	return taskOf(context.members(project), task, context.host.today());
+}
+
+/** One thread with every place it appears, in reading order. */
+export async function tellForeshadowing(context: ApiContext, project: ProjectSnapshot, id: string): Promise<JsonObject> {
+	const item = (await context.host.projects.foreshadowing.list(project)).find((entry) => entry.id === id);
+	if (item === undefined) throw gone('foreshadowing thread', 'listForeshadowing');
+	const named = item.occurrences.map((occurrence) => occurrence.path);
+	const notes = await readPassageNotes(context, project, named);
+	return foreshadowingOf(context.members(project), notes, item, orderOccurrences(item, notes.order(named), notes.bodyOf));
+}
+
+/** One proposed revision, held against its note as the note is now. */
+export async function tellRevision(context: ApiContext, project: ProjectSnapshot, id: string): Promise<JsonObject> {
+	const revision = (await context.host.projects.revisions.list(project)).find((entry) => entry.id === id);
+	if (revision === undefined) throw gone('revision', 'listRevisions');
+	return revisionOf(await readPassageNotes(context, project, [revision.path]), revision);
 }
 
 /**
@@ -62,10 +86,7 @@ export const recordOperations: OperationGroup = {
 
 	getTask: async (call, context) => {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
-		const id = textParam(call, 'taskId');
-		const task = (await context.host.projects.tasks.list(project)).find((entry) => entry.id === id);
-		if (task === undefined) throw gone('task', 'listTasks');
-		return { status: 200, body: taskOf(context.members(project), task, context.host.today()) };
+		return { status: 200, body: await tellTask(context, project, textParam(call, 'taskId')) };
 	},
 
 	listForeshadowing: async (call, context) => {
@@ -86,15 +107,7 @@ export const recordOperations: OperationGroup = {
 
 	getForeshadowing: async (call, context) => {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
-		const id = textParam(call, 'foreshadowingId');
-		const item = (await context.host.projects.foreshadowing.list(project)).find((entry) => entry.id === id);
-		if (item === undefined) throw gone('foreshadowing thread', 'listForeshadowing');
-		const named = item.occurrences.map((occurrence) => occurrence.path);
-		const notes = await readPassageNotes(context, project, named);
-		return {
-			status: 200,
-			body: foreshadowingOf(context.members(project), notes, item, orderOccurrences(item, notes.order(named), notes.bodyOf)),
-		};
+		return { status: 200, body: await tellForeshadowing(context, project, textParam(call, 'foreshadowingId')) };
 	},
 
 	listRevisions: async (call, context) => {
@@ -121,10 +134,7 @@ export const recordOperations: OperationGroup = {
 
 	getRevision: async (call, context) => {
 		const { project } = await context.loadProject(textParam(call, 'projectId'));
-		const id = textParam(call, 'revisionId');
-		const revision = (await context.host.projects.revisions.list(project)).find((entry) => entry.id === id);
-		if (revision === undefined) throw gone('revision', 'listRevisions');
-		return { status: 200, body: revisionOf(await readPassageNotes(context, project, [revision.path]), revision) };
+		return { status: 200, body: await tellRevision(context, project, textParam(call, 'revisionId')) };
 	},
 
 	listStickyNotes: async (call, context) => {

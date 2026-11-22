@@ -29,6 +29,7 @@ import {
 	createLocalApi,
 	mintToken,
 	type ApiHost,
+	type ChangedRecords,
 	type LocalApi,
 } from '../api/index';
 
@@ -6088,6 +6089,15 @@ export default class SnowflakeMethodPlugin
 			settleNotes: (paths) => this.settleNotesForWriter(paths),
 			releaseNotes: (paths) => this.releaseNotesForWriter(paths),
 			chapterNumbering: () => this.chapterNumbering(),
+			now: () => Date.now(),
+			mint: (kind) => createStableId(kind),
+			recordsChanged: (what) => {
+				this.tellRecordsChanged(what);
+			},
+			stickyNoteDeleted: (id) => {
+				this.closeStickyFloats(id);
+				this.stickyNoteHub.forget(id);
+			},
 			createProject: (request) => this.performProjectCreate(request, NOT_THE_AUTHOR),
 			renameProject: (project, title) =>
 				this.performProjectRename({ path: project.projectFile, rootPath: project.rootPath }, title, NOT_THE_AUTHOR),
@@ -6128,13 +6138,44 @@ export default class SnowflakeMethodPlugin
 		await this.settleWriting();
 	}
 
-	/** The stream's editor on each of these notes closed, where a stream has one open on it. */
+	/**
+	 * The plugin's own editor on each of these notes closed, where one is
+	 * open: a stream's on a manuscript note, and whichever surface holds a
+	 * sticky note for editing. Each writes what it holds on its way down.
+	 */
 	private async releaseNotesForWriter(paths: readonly string[]): Promise<void> {
 		for (const leaf of this.app.workspace.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)) {
 			const view = leaf.view;
 			if (!(view instanceof SnowflakeManuscriptView)) continue;
 			for (const path of paths) await view.releaseSegment(path);
 		}
+		for (const path of paths) {
+			if (!isStickyNotePath(path)) continue;
+			// A sticky note's editor is held by the note's id, which its file says.
+			const note = await this.projects.stickyNotes.read(path);
+			if (note !== null) await this.stickyNoteHub.claims.evict(note.id);
+		}
+	}
+
+	/**
+	 * The screens told that records were changed from outside them, at once
+	 * and as each is told by the plugin's own buttons: the task board by its
+	 * bell, the sticky notes by their hub, and the streams and dashboards
+	 * for a thread or a revision. The vault's own word of the change follows
+	 * a moment later and finds them level.
+	 */
+	private tellRecordsChanged(what: ChangedRecords): void {
+		if (what === 'tasks') {
+			this.taskBell.ring();
+			return;
+		}
+		if (what === 'stickyNotes') {
+			this.stickyNoteHub.notify();
+			return;
+		}
+		void this.announceMarginRecordsChanged().catch((error: unknown) => {
+			console.error('Snowflake: the screens could not follow a change made through the local API', error);
+		});
 	}
 
 	/**

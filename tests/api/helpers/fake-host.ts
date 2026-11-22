@@ -16,6 +16,7 @@ import {
 	SnowflakeProjectService,
 	WritingSessionService,
 	entitiesOf,
+	isStickyNotePath,
 	toWikiLink,
 	type NoteCountOptions,
 	type ProjectSnapshot,
@@ -107,6 +108,12 @@ export interface FakeHost extends ApiHost {
 	 */
 	readonly typed: Map<string, string>;
 	/**
+	 * What the screens were told had changed, in the order they were told:
+	 * `tasks`, `margin` or `stickyNotes`, and `deleted <id>` for a sticky
+	 * note that is gone for good.
+	 */
+	readonly told: string[];
+	/**
 	 * Whose words each write carried, as the repository told it of every
 	 * body written and every note made: true for the author's own typing. A
 	 * test empties it and reads what one call added.
@@ -153,9 +160,10 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		release = resolve;
 	});
 	const environment = createFakeEnvironment();
-	const projects = new SnowflakeProjectService(environment.vault, environment.fileManager, environment.metadataCache);
 	// Noon of the day it is, in the zone every test reads days in.
 	const now = (): number => Date.parse(`${state.today}T12:00:00.000Z`);
+	// The records the services stamp are stamped by the same clock, so a test can say when a thing was changed.
+	const projects = new SnowflakeProjectService(environment.vault, environment.fileManager, environment.metadataCache, undefined, { now });
 	// A clock that runs nothing by itself: a breath is taken at once, and whatever waits on a real delay waits for the test to ask.
 	const timers = {
 		set: (handler: () => void, ms: number): unknown => {
@@ -167,7 +175,9 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 	const nothingKept = { load: (): unknown => null, save: (): void => undefined };
 	const origins: boolean[] = [];
 	const editors: string[] = [];
+	const told: string[] = [];
 	const typed = new Map<string, string>();
+	const mintedRecords = new Map<string, number>();
 	projects.repository.onBodyWrite = (path, _before, _after, userInput) => {
 		origins.push(userInput);
 		editors.push(`write ${path}`);
@@ -229,6 +239,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		ranAsPlugin: 0,
 		origins,
 		editors,
+		told,
 		typed,
 		becomeReady: () => {
 			state.ready = true;
@@ -276,9 +287,14 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		},
 		settleNotes: async (paths) => {
 			editors.push(`settle ${paths.join(', ')}`);
-			// A stream writes every note it holds typing for, whichever was asked after.
+			// A stream writes every note it holds typing for, whichever was asked after, and so does a sticky note's editor.
 			for (const [path, body] of [...typed]) {
 				typed.delete(path);
+				if (isStickyNotePath(path)) {
+					const standing = await projects.stickyNotes.read(path);
+					if (standing !== null) await projects.stickyNotes.writeBody(path, body, standing.revision);
+					continue;
+				}
 				const standing = await projects.manuscript.readSegment(path);
 				await projects.manuscript.writeSegment(path, body, standing.revision);
 			}
@@ -288,6 +304,19 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 			return Promise.resolve();
 		},
 		chapterNumbering: () => compileChapterNumbering(state.numbering),
+		now,
+		// Ids a test can name: the first task made through the API is `task-made-1`.
+		mint: (kind) => {
+			const count = (mintedRecords.get(kind) ?? 0) + 1;
+			mintedRecords.set(kind, count);
+			return `${kind}-made-${String(count)}`;
+		},
+		recordsChanged: (what) => {
+			told.push(what);
+		},
+		stickyNoteDeleted: (id) => {
+			told.push(`deleted ${id}`);
+		},
 		// The project manager's work as the plugin does it, less the screens it keeps in step.
 		createProject: (request) => projects.createProject({ ...request, userInput: false }),
 		renameProject: async (project, title) => {

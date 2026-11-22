@@ -27,7 +27,7 @@ type Sent = Readonly<Record<string, unknown>>;
 type Rename = { path: string; title: string };
 
 /** The note at an address a body or a query gives, among the manuscript's notes in hand. */
-function noteAt(project: ProjectSnapshot, segments: readonly ManuscriptSegmentRecord[], relativePath: string, pointer: string): ManuscriptSegmentRecord {
+export function noteAt(project: ProjectSnapshot, segments: readonly ManuscriptSegmentRecord[], relativePath: string, pointer: string): ManuscriptSegmentRecord {
 	const wanted = normalizePath(`${project.rootPath}/${relativePath}`);
 	const found = segments.find((segment) => segment.path === wanted);
 	if (found === undefined) {

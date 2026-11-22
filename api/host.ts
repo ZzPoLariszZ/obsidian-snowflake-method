@@ -11,6 +11,16 @@ import type {
 } from '../src/services';
 import type { Access } from './spec/operations';
 
+/** The records the API mints an id for. Sticky notes take theirs from the service that makes them. */
+export type MintedRecord = 'task' | 'foreshadowing' | 'occurrence' | 'revision';
+
+/**
+ * The records a change is told to the screens about: the task board's, the
+ * ones kept beside the manuscript's text (threads and revisions), and the
+ * sticky notes.
+ */
+export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes';
+
 /**
  * What the plugin hands the local API. The API is given the services and a
  * handful of answers only the plugin can give, and nothing of the screens:
@@ -99,13 +109,29 @@ export interface ApiHost {
 	settleNotes(paths: readonly string[]): Promise<void>;
 	/**
 	 * The plugin's own editor on each of these notes is closed, where one
-	 * is open. Asked once a change is sure to be made: an editor left
+	 * is open: a stream's on a manuscript note, a card's or a panel's on a
+	 * sticky note. Asked once a change is sure to be made: an editor left
 	 * standing would write its own text back over the change the next time
 	 * the author typed.
 	 */
 	releaseNotes(paths: readonly string[]): Promise<void>;
 	/** The author's chapter numbering rule, or null while none is switched on. */
 	chapterNumbering(): ChapterNumbering | null;
+	/** The moment it is, as a count of milliseconds: what a record made now is stamped with. */
+	now(): number;
+	/** A new id for a record of that kind, minted as the plugin mints its own. */
+	mint(kind: MintedRecord): string;
+	/**
+	 * The plugin's screens told that records were changed, as its own
+	 * buttons tell them: at once, where the vault's word of the change comes
+	 * a moment later. Nothing the screens then read is waited for.
+	 */
+	recordsChanged(what: ChangedRecords): void;
+	/**
+	 * A sticky note is gone for good: its floating panel is closed, and what
+	 * this device remembers of where the panel stood is dropped.
+	 */
+	stickyNoteDeleted(id: string): void;
 	/**
 	 * The work of the plugin's project manager, without its words: each does
 	 * what a button there does, under the folder the author keeps projects

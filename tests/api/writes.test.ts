@@ -118,6 +118,53 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 	},
 	mergeManuscriptNoteWithNext: { of: 'project', send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 2.md' } }) },
 	deleteManuscriptNote: { of: 'project', send: (projectId) => ({ params: { projectId, notePath: '50_Manuscript/Chapter 1.md' }, ifMatch: '*' }) },
+	createTask: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { title: 'Count the bells' } }) },
+	updateTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-map' }, body: { priority: 'high' } }) },
+	deleteTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-letter' } }) },
+	moveTask: { of: 'project', send: (projectId) => ({ params: { projectId, taskId: 'task-bell' }, body: { status: 'in-progress' } }) },
+	purgeArchivedTasks: { of: 'project', send: (projectId) => ({ params: { projectId } }) },
+	createForeshadowing: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'The frozen harbour' } }) },
+	updateForeshadowing: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, foreshadowingId: 'foreshadowing-letter' }, body: { status: 'active' } }),
+	},
+	deleteForeshadowing: { of: 'project', send: (projectId) => ({ params: { projectId, foreshadowingId: 'foreshadowing-key' } }) },
+	addForeshadowingOccurrence: {
+		of: 'project',
+		send: (projectId) => ({
+			params: { projectId, foreshadowingId: 'foreshadowing-letter' },
+			body: { note: '50_Manuscript/Chapter 2.md', passage: { exact: 'did not come home' } },
+		}),
+	},
+	updateForeshadowingOccurrence: {
+		of: 'project',
+		send: (projectId) => ({
+			params: { projectId, foreshadowingId: 'foreshadowing-clock', occurrenceId: 'occurrence-plant' },
+			body: { comment: 'The first sign.' },
+		}),
+	},
+	deleteForeshadowingOccurrence: {
+		of: 'project',
+		send: (projectId) => ({ params: { projectId, foreshadowingId: 'foreshadowing-clock', occurrenceId: 'occurrence-payoff' } }),
+	},
+	createRevision: {
+		of: 'project',
+		send: (projectId) => ({
+			params: { projectId },
+			body: { note: '50_Manuscript/Chapter 2.md', kind: 'replace', passage: { exact: 'Ben' }, proposed: 'Benjamin' },
+		}),
+	},
+	updateRevision: { of: 'project', send: (projectId) => ({ params: { projectId, revisionId: 'revision-beat' }, body: { comment: 'Or two.' } }) },
+	discardRevision: { of: 'project', send: (projectId) => ({ params: { projectId, revisionId: 'revision-lost' } }) },
+	createStickyNote: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { body: 'Ask about the bell.' } }) },
+	updateStickyNote: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, stickyNoteId: golden.stickyNotes.key.id }, body: { body: 'Ask Ada instead.' }, ifMatch: '*' }),
+	},
+	deleteStickyNote: {
+		of: 'project',
+		send: (projectId, golden) => ({ params: { projectId, stickyNoteId: golden.stickyNotes.old.id }, ifMatch: '*' }),
+	},
 };
 
 /**
