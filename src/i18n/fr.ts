@@ -970,7 +970,7 @@ export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.status.denied': 'Le système a refusé le port {port}. Choisissez un autre port.',
 	'localApi.status.failed': 'L\'API locale n\'a pas pu démarrer.',
 	'localApi.status.no-listener': 'Cet appareil ne peut pas faire fonctionner l\'API locale.',
-	'localApi.status.no-token': 'Aucun jeton d\'accès n\'a pu être créé, l\'API locale reste donc désactivée.',
+	'localApi.status.no-token': 'Il n\'y a pas de jeton d\'accès, l\'API locale est donc désactivée.',
 	'localApi.cli.description': 'Appeler une opération de l\'API locale',
 	'localApi.cli.flag.op': 'Nom de l\'opération',
 	'localApi.cli.flag.params': 'Paramètres de l\'opération, en objet JSON',

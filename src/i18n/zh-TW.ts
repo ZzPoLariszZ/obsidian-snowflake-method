@@ -951,7 +951,7 @@ export const zhTW = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.status.denied': '系統拒絕使用連線埠 {port}，請換一個連線埠。',
 	'localApi.status.failed': '本機 API 未能啟動。',
 	'localApi.status.no-listener': '本裝置無法執行本機 API。',
-	'localApi.status.no-token': '未能產生存取權杖，本機 API 保持關閉。',
+	'localApi.status.no-token': '沒有存取權杖，本機 API 已關閉。',
 	'localApi.cli.description': '呼叫本機 API 的一項操作',
 	'localApi.cli.flag.op': '操作名稱',
 	'localApi.cli.flag.params': '操作參數，寫成一個 JSON 物件',

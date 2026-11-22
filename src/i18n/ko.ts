@@ -952,7 +952,7 @@ export const ko = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.status.denied': '시스템이 {port}번 포트를 거부했습니다. 다른 포트를 선택하세요.',
 	'localApi.status.failed': '로컬 API를 시작하지 못했습니다.',
 	'localApi.status.no-listener': '이 기기에서는 로컬 API를 실행할 수 없습니다.',
-	'localApi.status.no-token': '액세스 토큰을 만들지 못해 로컬 API가 꺼진 상태로 유지됩니다.',
+	'localApi.status.no-token': '액세스 토큰이 없어 로컬 API가 꺼져 있습니다.',
 	'localApi.cli.description': '로컬 API의 작업 하나를 호출',
 	'localApi.cli.flag.op': '작업 이름',
 	'localApi.cli.flag.params': '작업 매개변수(JSON 객체)',

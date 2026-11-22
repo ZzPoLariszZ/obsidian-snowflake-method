@@ -16,7 +16,7 @@ Open **Settings → Snowflake Method → Local API**.
 | Enable local API | Answers calls on `127.0.0.1` at the port below. Off by default. |
 | Port | `27125` unless changed. Two vaults open at once need two ports. |
 | Access | **Read only** (the default), **Read and write**, or **Read, write and delete**. |
-| Access token | Made on this device and kept in Obsidian's keychain. Copy it for the caller. Making a new one ends the old one. |
+| Access token | Made on this device and kept in Obsidian's keychain. Copy it for the caller. Making a new one ends the old one. Taking it out of the keychain ends it too, and stops the listener. |
 | Command line bridge | Answers the same operations through Obsidian's own command line. Off by default. No token is asked there. |
 
 The listener binds to `127.0.0.1` only. A call from a web page is refused, since a page always says where it comes from and the API takes no call that does.

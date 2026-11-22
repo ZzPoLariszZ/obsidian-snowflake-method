@@ -101,4 +101,37 @@ describe('the listener’s life', () => {
 		expect((await ask('snowflake_first'))?.status).toBe(401);
 		expect((await ask('snowflake_second'))?.status).toBe(200);
 	});
+
+	it('stops where the token is taken away, and starts again where one is made', async () => {
+		const host = createFakeHost({ token: 'snowflake_first' });
+		const { api, listeners, statuses } = createTestApi(host);
+		await api.server.start(27125);
+		// A token put in place of another changes nothing for the listener.
+		host.state.token = 'snowflake_second';
+		expect(await api.server.tokenChanged()).toEqual({ state: 'listening', port: 27125 });
+		expect([listeners.started, listeners.closed]).toEqual([1, 0]);
+		host.state.token = null;
+		expect(await api.server.tokenChanged()).toEqual({ state: 'failed', port: 27125, reason: 'no-token' });
+		expect(listeners.open.size).toBe(0);
+		expect([listeners.started, listeners.closed]).toEqual([1, 1]);
+		// Told again with none still there, it has nothing new to say.
+		const told = statuses.length;
+		await api.server.tokenChanged();
+		expect(statuses.length).toBe(told);
+		host.state.token = 'snowflake_third';
+		expect(await api.server.tokenChanged()).toEqual({ state: 'listening', port: 27125 });
+		expect([...listeners.open.keys()]).toEqual([27125]);
+	});
+
+	it('is not started by a token while it is off, or stopped for another reason', async () => {
+		const host = createFakeHost({ token: null });
+		const listeners = createFakeListeners();
+		const { api } = createTestApi(host, { listeners });
+		host.state.token = 'snowflake_first';
+		expect(await api.server.tokenChanged()).toEqual({ state: 'off' });
+		listeners.open.set(27125, () => {});
+		await api.server.start(27125);
+		expect(await api.server.tokenChanged()).toEqual({ state: 'failed', port: 27125, reason: 'in-use' });
+		expect(listeners.started).toBe(0);
+	});
 });

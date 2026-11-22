@@ -966,7 +966,7 @@ export const de = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.status.denied': 'Das System hat Port {port} verweigert. Wähle einen anderen Port.',
 	'localApi.status.failed': 'Die lokale API konnte nicht gestartet werden.',
 	'localApi.status.no-listener': 'Auf diesem Gerät kann die lokale API nicht laufen.',
-	'localApi.status.no-token': 'Es konnte kein Zugriffstoken erzeugt werden, die lokale API bleibt daher aus.',
+	'localApi.status.no-token': 'Es gibt kein Zugriffstoken, daher ist die lokale API aus.',
 	'localApi.cli.description': 'Eine Operation der lokalen API aufrufen',
 	'localApi.cli.flag.op': 'Name der Operation',
 	'localApi.cli.flag.params': 'Parameter der Operation als JSON-Objekt',

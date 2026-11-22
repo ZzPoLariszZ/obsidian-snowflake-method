@@ -977,7 +977,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'localApi.status.denied': '系统拒绝使用端口 {port}，请换一个端口。',
 	'localApi.status.failed': '本地接口未能启动。',
 	'localApi.status.no-listener': '本设备无法运行本地接口。',
-	'localApi.status.no-token': '未能生成访问令牌，本地接口保持关闭。',
+	'localApi.status.no-token': '没有访问令牌，本地接口已关闭。',
 	'localApi.cli.description': '调用本地接口的一个操作',
 	'localApi.cli.flag.op': '操作名称',
 	'localApi.cli.flag.params': '操作参数，写成一个 JSON 对象',

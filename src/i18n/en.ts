@@ -1062,7 +1062,7 @@ export const en = {
 	'localApi.status.denied': 'The system refused port {port}. Choose another port.',
 	'localApi.status.failed': 'The local API could not be started.',
 	'localApi.status.no-listener': 'This device cannot run the local API.',
-	'localApi.status.no-token': 'No access token could be made, so the local API stays off.',
+	'localApi.status.no-token': 'There is no access token, so the local API is off.',
 	'localApi.cli.description': 'Call an operation of the local API',
 	'localApi.cli.flag.op': 'Operation name',
 	'localApi.cli.flag.params': 'Operation parameters as a JSON object',

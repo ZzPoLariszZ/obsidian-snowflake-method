@@ -931,8 +931,6 @@ export default class SnowflakeMethodPlugin
 	private localApi: LocalApi | null = null;
 	/** The local API's choices as last read from the device. */
 	private localApiChoices: LocalApiPreferences | null = null;
-	/** The local API's access token as last read from Obsidian's store for secrets. Undefined until it is first asked for. */
-	private localApiTokenHeld: string | null | undefined = undefined;
 	/** The rest a typed port is given, and whoever waits for the listener to be moved once it is over. */
 	private localApiPortTimer: number | null = null;
 	private readonly localApiPortWaiters: (() => void)[] = [];
@@ -1600,7 +1598,10 @@ export default class SnowflakeMethodPlugin
 		// answer on. Making it opens nothing. Its listener is started below,
 		// once the layout stands, and only where the device's choices say so.
 		this.localApi = desktopSystem() === null ? null : this.createLocalApiDoors();
-		if (this.localApi !== null) this.registerLocalApiCommand(this.localApi);
+		if (this.localApi !== null) {
+			this.registerLocalApiCommand(this.localApi);
+			this.followLocalApiToken(this.localApi);
+		}
 		// And the history hears what the plugin itself made: a note created,
 		// and every task, foreshadowing and revision the services write.
 		this.projects.repository.onManagedFileCreated = (path, content, userInput) => {
@@ -6407,22 +6408,23 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The access token, or null where none has been made or Obsidian's store
-	 * for secrets cannot be read. It is asked of the store once and kept:
-	 * the store notes every reading of a secret, and a caller is checked
-	 * against the token on every call.
+	 * The access token, or null where there is none or Obsidian's store for
+	 * secrets cannot be read. It is asked of the store each time and never
+	 * kept here. The store is the author's keychain: a token they take out
+	 * of it there, or put another in place of, must be worth nothing from
+	 * that moment, and one kept here went on letting its holder in until
+	 * Obsidian was next started. Asking costs nothing: the store holds its
+	 * secrets in memory, and writes down that one was read once in five
+	 * minutes at most.
 	 */
 	private localApiToken(): string | null {
-		if (this.localApiTokenHeld === undefined) {
-			let found: string | null = null;
-			try {
-				found = this.app.secretStorage.getSecret(LOCAL_API_SECRET);
-			} catch {
-				found = null;
-			}
-			this.localApiTokenHeld = found === null || found === '' ? null : found;
+		let found: string | null = null;
+		try {
+			found = this.app.secretStorage.getSecret(LOCAL_API_SECRET);
+		} catch {
+			found = null;
 		}
-		return this.localApiTokenHeld;
+		return found === null || found === '' ? null : found;
 	}
 
 	/**
@@ -6431,14 +6433,31 @@ export default class SnowflakeMethodPlugin
 	 * nothing from this moment on.
 	 */
 	private renewLocalApiToken(): boolean {
-		const token = mintToken();
 		try {
-			this.app.secretStorage.setSecret(LOCAL_API_SECRET, token);
+			this.app.secretStorage.setSecret(LOCAL_API_SECRET, mintToken());
 		} catch {
 			return false;
 		}
-		this.localApiTokenHeld = token;
 		return true;
+	}
+
+	/**
+	 * Has the listener follow the keychain. The store says so whenever a
+	 * secret is kept or deleted, the token among them, whoever did it: the
+	 * plugin's own settings, or the author in Obsidian's keychain. The
+	 * listener then stops where the token is gone, and starts again where
+	 * one is made after it had stopped for want of one.
+	 *
+	 * The store's word for it is the app's own and not in its published
+	 * API. Whether a caller is let in never rests on it, since the token is
+	 * asked of the store at every call. Only what the status row says does.
+	 */
+	private followLocalApiToken(api: LocalApi): void {
+		this.registerEvent(
+			this.app.secretStorage.on('changed', () => {
+				void api.server.tokenChanged();
+			}),
+		);
 	}
 
 	/**

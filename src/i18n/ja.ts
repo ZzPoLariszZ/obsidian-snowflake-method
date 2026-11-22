@@ -953,7 +953,7 @@ export const ja = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.status.denied': 'システムがポート{port}の使用を拒否しました。別のポートを選んでください。',
 	'localApi.status.failed': 'ローカルAPIを開始できませんでした。',
 	'localApi.status.no-listener': 'このデバイスではローカルAPIを実行できません。',
-	'localApi.status.no-token': 'アクセストークンを作成できなかったため、ローカルAPIはオフのままです。',
+	'localApi.status.no-token': 'アクセストークンがないため、ローカルAPIはオフです。',
 	'localApi.cli.description': 'ローカルAPIの操作を1つ呼び出す',
 	'localApi.cli.flag.op': '操作名',
 	'localApi.cli.flag.params': '操作のパラメーター（JSONオブジェクト）',

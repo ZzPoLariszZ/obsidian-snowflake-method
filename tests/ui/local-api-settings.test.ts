@@ -281,7 +281,7 @@ describe('the listener’s status row', () => {
 			[{ state: 'failed', port: 80, reason: 'denied' }, 'The system refused port 80. Choose another port.'],
 			[{ state: 'failed', port: 0, reason: 'failed' }, 'The local API could not be started.'],
 			[{ state: 'failed', port: 27125, reason: 'no-listener' }, 'This device cannot run the local API.'],
-			[{ state: 'failed', port: 27125, reason: 'no-token' }, 'No access token could be made, so the local API stays off.'],
+			[{ state: 'failed', port: 27125, reason: 'no-token' }, 'There is no access token, so the local API is off.'],
 		];
 		for (const [status, words] of cases) expect(localApiStatusText(t, status), words).toBe(words);
 	});
