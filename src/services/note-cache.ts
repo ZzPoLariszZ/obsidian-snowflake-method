@@ -9,6 +9,12 @@ export const FLUSH_QUIET_MS = 5_000;
 export interface NoteCacheTimers {
 	set: (handler: () => void, ms: number) => unknown;
 	clear: (handle: unknown) => void;
+	/**
+	 * One turn of the event loop, taken by whatever way the host knows to be
+	 * quickest where it stands: a walk breathes through it. Left out, a
+	 * clock of no delay stands in.
+	 */
+	turn?: (handler: () => void) => void;
 }
 
 /** What every per-note cache state carries, whatever its records hold. */
@@ -148,9 +154,11 @@ export abstract class QuietFlushingNoteCache<
 		const timers = this.timers;
 		if (timers === null) return Promise.resolve();
 		return new Promise((resolve) => {
-			timers.set(() => {
+			const taken = (): void => {
 				resolve();
-			}, 0);
+			};
+			if (timers.turn === undefined) timers.set(taken, 0);
+			else timers.turn(taken);
 		});
 	}
 

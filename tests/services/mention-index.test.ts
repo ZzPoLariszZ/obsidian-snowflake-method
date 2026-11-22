@@ -222,6 +222,50 @@ describe("MentionIndexService", () => {
 		expect(after?.notes[path]).toBeDefined();
 	});
 
+	it("breathes by the host's own turn where it is handed one, and by a clock of no delay where it is not", async () => {
+		await chapter("One", "Alice waited.");
+		await chapter("Two", "Bob waited.");
+		await chapter("Three", "Alice and Bob left.");
+		// Every look at the clock finds it a breath further on, so the walk gives way after each chapter.
+		let now = 1_000_000;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => {
+			now += 50;
+			return now;
+		});
+		try {
+			const delays: number[] = [];
+			const set = (handler: () => void, ms: number): unknown => {
+				delays.push(ms);
+				if (ms === 0) handler();
+				return delays.length;
+			};
+			const clear = (): void => undefined;
+			let turns = 0;
+			const handed = new MentionIndexService(service.repository, service.manuscript, service.mentionStore, {
+				set,
+				clear,
+				turn: (handler) => {
+					turns += 1;
+					handler();
+				},
+			});
+			await handed.aggregate(project, handed.matcherFor(ROSTER));
+			handed.dispose();
+			// The draft a project is made with, and the three chapters after it.
+			expect(turns).toBe(4);
+			expect(delays.filter((ms) => ms === 0)).toEqual([]);
+
+			const plain = new MentionIndexService(service.repository, service.manuscript, service.mentionStore, { set, clear });
+			plain.forget("Snowflake Projects/Novel", { children: true });
+			delays.length = 0;
+			await plain.aggregate(project, plain.matcherFor(ROSTER));
+			plain.dispose();
+			expect(delays.filter((ms) => ms === 0)).toHaveLength(4);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
 	it("makes a second cold caller wait out the fold-in instead of walking", async () => {
 		await chapter("One", "Alice waited.");
 		const matcher = service.mentions.matcherFor(ROSTER);

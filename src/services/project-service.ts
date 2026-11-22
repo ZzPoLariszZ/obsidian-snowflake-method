@@ -170,6 +170,7 @@ import {
 } from "./mirror-sync";
 import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
+import type { NoteCacheTimers } from "./note-cache";
 import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { FreeformService } from "./freeform-service";
@@ -497,10 +498,7 @@ export class SnowflakeProjectService {
       onFreeformCorrupt?: (path: string) => void;
       onFreeformForeign?: (path: string, version: number) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
-      timers?: {
-        set: (handler: () => void, ms: number) => unknown;
-        clear: (handle: unknown) => void;
-      };
+      timers?: NoteCacheTimers;
     } = {},
   ) {
     this.repository = new VaultRepository(vault, fileManager, metadataCache);

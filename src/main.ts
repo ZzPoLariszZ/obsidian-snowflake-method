@@ -204,6 +204,7 @@ import {
 	type ManagedFrontmatter,
 } from './repository';
 import {
+	createMessageTurns,
 	createStableId,
 	type CharacterPatch,
 	type EntityPatch,
@@ -241,6 +242,7 @@ import {
 	type EntityMentionAggregate,
 	type MemberUsage,
 	type MentionAggregate,
+	type MessageTurns,
 	type NoteCountOptions,
 	type SensitiveTermAggregate,
 	type ProjectRef,
@@ -914,6 +916,8 @@ export default class SnowflakeMethodPlugin
 	/** The recording's choices as last read from the device. */
 	private recordingChoices: RecordingPreferences | null = null;
 	/** The local API, on the desktop alone: null on a phone or a tablet, where nothing listens and no command answers. */
+	/** The way a walk gives way while the window is out of sight, made the first time one does. */
+	private hiddenTurns: MessageTurns | null = null;
 	private localApi: LocalApi | null = null;
 	/** The local API's choices as last read from the device. */
 	private localApiChoices: LocalApiPreferences | null = null;
@@ -1436,6 +1440,19 @@ export default class SnowflakeMethodPlugin
 					set: (handler, ms) => window.setTimeout(handler, ms),
 					clear: (handle) => {
 						window.clearTimeout(handle as number);
+					},
+					// A walk gives way to the screen on a clock of no delay.
+					// Out of sight there is no screen to give way to, and
+					// the clock there is handed out late, so the walk gives
+					// way by a message to itself instead: a caller of the
+					// local API asks while Obsidian sits behind another app.
+					turn: (handler) => {
+						if (this.app.workspace.containerEl.doc.hidden) {
+							this.hiddenTurns ??= createMessageTurns();
+							this.hiddenTurns.take(handler);
+						} else {
+							window.setTimeout(handler, 0);
+						}
 					},
 				},
 			},
@@ -1961,6 +1978,8 @@ export default class SnowflakeMethodPlugin
 		// still write index files into the vault seconds after unload.
 		this.projects.mentions.dispose();
 		this.projects.analysis.dispose();
+		this.hiddenTurns?.close();
+		this.hiddenTurns = null;
 		// The history's timers likewise: no pass over the store and no ledger
 		// flush after unload.
 		this.history.dispose();

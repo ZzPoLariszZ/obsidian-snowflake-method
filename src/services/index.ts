@@ -24,6 +24,7 @@ export * from "./manuscript-service";
 export * from "./manuscript-analysis";
 export * from "./mention-index";
 export * from "./mention-store";
+export * from "./message-turns";
 export * from "./mirror-sync";
 export * from "./project-import-service";
 export * from "./project-service";
