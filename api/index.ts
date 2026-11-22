@@ -1,4 +1,5 @@
 import type { LoopbackListenerFactory } from '../src/services/desktop-listener';
+import { createCliDoor } from './cli/door';
 import { Dispatcher } from './dispatch';
 import type { ApiHost } from './host';
 import { createHttpDoor } from './http/door';
@@ -11,6 +12,7 @@ import { OperationQueue } from './queue';
 import { contract } from './spec/document';
 import { readOperations } from './spec/operations';
 
+export { CLI_COMMAND, CLI_FLAGS, CLI_FLAG_VALUES, type CliFlagName } from './cli/door';
 export type { ApiHost } from './host';
 export type { ServerStatus } from './http/server';
 export { mintToken } from './http/token';
@@ -36,6 +38,8 @@ export interface LocalApi {
 	readonly dispatcher: Dispatcher;
 	/** The HTTP door's listener, started and stopped by the plugin. */
 	readonly server: ApiServer;
+	/** The command line's door: the flags of one call in, one line of JSON out. It never rejects. */
+	readonly cli: (flags: Readonly<Record<string, string>>) => Promise<string>;
 }
 
 export function createLocalApi(host: ApiHost, deps: LocalApiDeps): LocalApi {
@@ -60,5 +64,6 @@ export function createLocalApi(host: ApiHost, deps: LocalApiDeps): LocalApi {
 			deps.serverChanged(status);
 		},
 	});
-	return { dispatcher, server };
+	const cli = createCliDoor({ dispatcher, basePath: document.basePath, enabled: () => host.cliEnabled() });
+	return { dispatcher, server, cli };
 }

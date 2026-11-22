@@ -12,6 +12,7 @@ export interface FakeHost extends ApiHost {
 		leaving: boolean;
 		port: number;
 		token: string | null;
+		cli: boolean;
 	};
 	/** Makes the plugin ready, as Obsidian does once it has read the vault. */
 	becomeReady(): void;
@@ -20,7 +21,7 @@ export interface FakeHost extends ApiHost {
 }
 
 export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost {
-	const state: FakeHost['state'] = { access: 'delete', ready: true, leaving: false, port: 27125, token: 'snowflake_test', ...start };
+	const state: FakeHost['state'] = { access: 'delete', ready: true, leaving: false, port: 27125, token: 'snowflake_test', cli: true, ...start };
 	let release: (() => void) | null = null;
 	const waiting = new Promise<void>((resolve) => {
 		release = resolve;
@@ -38,6 +39,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		port: () => state.port,
 		access: () => state.access,
 		token: () => state.token,
+		cliEnabled: () => state.cli,
 		ready: () => (state.ready ? Promise.resolve() : waiting),
 		isReady: () => state.ready,
 		leaving: () => state.leaving,
