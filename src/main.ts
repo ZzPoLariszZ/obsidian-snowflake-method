@@ -5997,6 +5997,7 @@ export default class SnowflakeMethodPlugin
 			}),
 			currentProjectPath: () => this.settings.recentProjectPath,
 			countOptions: () => this.writingCountOptions(),
+			today: () => this.sessions.today(),
 			pluginVersion: () => this.manifest.version,
 			vaultName: () => this.app.vault.getName(),
 			projectsRoot: () => normalizeProjectRoot(this.settings.projectRoot),

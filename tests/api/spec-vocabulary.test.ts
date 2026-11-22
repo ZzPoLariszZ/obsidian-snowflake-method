@@ -6,12 +6,18 @@ import { resolveRef } from '../../api/spec/document';
 import {
 	CHARACTER_TYPES,
 	DEFINITION_FILE_IDS,
+	FORESHADOWING_STATUSES,
 	MACARON_COLORS,
+	OCCURRENCE_ROLES,
 	PROGRESS_STATUSES,
 	PROJECT_LANGUAGES,
+	REVISION_KINDS,
 	STEP_IDS,
 	STEP_SECTION_IDS,
 	STEP_STATUSES,
+	STICKY_NOTE_COLORS,
+	TASK_PRIORITIES,
+	TASK_STATUSES,
 	TIME_KINDS,
 	WRITING_COUNT_HEADINGS,
 	WRITING_COUNT_MODES,
@@ -85,6 +91,22 @@ describe('the contract’s listed values', () => {
 	it('name every convention writing can be counted by', () => {
 		expect(listed(property('Counting', 'mode')['enum'])).toEqual([...WRITING_COUNT_MODES]);
 		expect(listed(property('Counting', 'headings')['enum'])).toEqual([...WRITING_COUNT_HEADINGS]);
+	});
+
+	it('name every column and priority a task can have, in the order of the board', () => {
+		expect(listed(schema('TaskStatus')['enum'])).toEqual([...TASK_STATUSES]);
+		expect(listed(schema('TaskPriority')['enum'])).toEqual([...TASK_PRIORITIES]);
+	});
+
+	it('name every way a thread can stand, every part an appearance can play, and every kind of revision', () => {
+		expect(listed(schema('ForeshadowingStatus')['enum'])).toEqual([...FORESHADOWING_STATUSES]);
+		expect(listed(schema('OccurrenceRole')['enum'])).toEqual([...OCCURRENCE_ROLES]);
+		expect(listed(schema('RevisionKind')['enum'])).toEqual([...REVISION_KINDS]);
+	});
+
+	it('give a sticky note the tints a scene has', () => {
+		expect(property('StickyNote', 'color')).toEqual({ $ref: '#/components/schemas/Color' });
+		expect(listed(schema('Color')['enum'])).toEqual([...STICKY_NOTE_COLORS]);
 	});
 
 	it('promise the folders every project has and leave room for the ones a tool makes when it is first used', () => {

@@ -7,6 +7,7 @@ import {
 	isWorldbuildingKind,
 	kindIdFromFolderName,
 	parseWikiLink,
+	type EntityRef,
 } from '../../src/domain';
 import {
 	definitionRootPath,
@@ -67,6 +68,7 @@ export function kindIdsOf(project: ProjectSnapshot): string[] {
 export class MemberIndex {
 	readonly entries: MemberEntry[] = [];
 	private readonly byPath = new Map<string, MemberEntry>();
+	private readonly byId = new Map<string, MemberEntry>();
 
 	constructor(
 		readonly project: ProjectSnapshot,
@@ -75,6 +77,8 @@ export class MemberIndex {
 		const add = (entry: MemberEntry): void => {
 			this.entries.push(entry);
 			this.byPath.set(entry.path, entry);
+			// A note copied by hand carries the id of the one it was copied from. The first is the one answered for.
+			if (!this.byId.has(entry.id)) this.byId.set(entry.id, entry);
 		};
 		for (const character of project.characters) {
 			add({ kind: 'character', id: character.characterId, name: character.name, path: character.path, aliases: character.aliases });
@@ -99,6 +103,18 @@ export class MemberIndex {
 		if (member !== undefined) return this.refOf(member);
 		// The note is gone. Its name is all that is left to tell.
 		return { kind: null, id: null, name: fileStem(path), path: null, resolved: false };
+	}
+
+	/**
+	 * A note another record names by its id, as a task and a foreshadowing
+	 * thread do. An id outlives a rename, and a move from one kind to
+	 * another, so what the member says of itself now is what is told. Once
+	 * the note is gone, what the record last knew of it is all there is.
+	 */
+	refOfStored(stored: EntityRef): JsonObject {
+		const member = this.byId.get(stored.id);
+		if (member !== undefined) return this.refOf(member);
+		return { kind: stored.kind, id: stored.id, name: stored.name, path: null, resolved: false };
 	}
 
 	/** What a clause or a field names: a member, a link that leads to none, or plain words. */

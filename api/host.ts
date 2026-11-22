@@ -19,6 +19,8 @@ export interface ApiHost {
 	currentProjectPath(): string | null;
 	/** The convention writing is counted by, as the author set it. */
 	countOptions(): NoteCountOptions;
+	/** The day it is on this computer's calendar, as `YYYY-MM-DD`: the day the author's own boards go by. */
+	today(): string;
 	/** The plugin's version, as its manifest states it. */
 	pluginVersion(): string;
 	/** The name of the vault this window has open. */

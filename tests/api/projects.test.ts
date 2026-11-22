@@ -116,6 +116,23 @@ describe('one project, read', () => {
 		expect(bodyOf(reply.body)).toMatchObject({ title: 'Old Draft', archived: true, current: false });
 	});
 
+	it('has its link to the manuscript put right the first time it is read after it was moved, and nothing after that', async () => {
+		const moved = await createGolden();
+		const before = vaultState(moved.host);
+		await moved.call('getProject', { projectId: moved.archived.id });
+		const after = vaultState(moved.host);
+		// The one thing a read of a project can write, which the plugin writes whenever it opens a project that was moved.
+		const properties = 'Snowflake Projects/Snowflake Archive/Old Draft/00_System/001_Project_Metadata.md';
+		expect(Object.keys(after)).toEqual(Object.keys(before));
+		expect(Object.keys(after).filter((path) => after[path] !== before[path])).toEqual([properties]);
+		const was = (before[properties] ?? '').split('\n');
+		const changed = (after[properties] ?? '').split('\n').filter((line, index) => line !== was[index]);
+		expect(changed).toEqual(['  "snowflake-draft": "[[Snowflake Projects/Snowflake Archive/Old Draft/50_Manuscript/Draft|Draft]]",']);
+		await moved.call('getProject', { projectId: moved.archived.id });
+		await moved.call('listSteps', { projectId: moved.archived.id });
+		expect(vaultState(moved.host)).toEqual(after);
+	});
+
 	it('is not found under an id no project carries', async () => {
 		const reply = await golden.call('getProject', { projectId: 'project-nonsense' });
 		expect(reply.status).toBe(404);

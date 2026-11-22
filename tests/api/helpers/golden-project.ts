@@ -1,5 +1,6 @@
 import type { DispatchReply } from '../../../api/dispatch';
 import type { LocalApi } from '../../../api/index';
+import { captureOccurrencePlacement, captureRevision, type OccurrencePlacement, type Task } from '../../../src/domain';
 import {
 	definitionRootPath,
 	nodeSelfPath,
@@ -8,6 +9,7 @@ import {
 	type ProjectRef,
 	type ProjectSnapshot,
 	type SceneRecord,
+	type StickyNoteRecord,
 	type WorldbuildingRecord,
 } from '../../../src/services';
 import { serializeCustomFields, type RecordLine } from '../../../src/templates';
@@ -50,6 +52,13 @@ export interface Golden {
 	};
 	/** The manuscript's notes in reading order: the one a project is made with, then two chapters. */
 	manuscript: { draft: string; first: string; second: string };
+	/**
+	 * The sticky notes of the first project: one with something to say, one
+	 * made a day later and still blank, and one set aside. The tasks, the
+	 * foreshadowing threads and the revisions beside them are known by the
+	 * ids they are made with below.
+	 */
+	stickyNotes: { key: StickyNoteRecord; blank: StickyNoteRecord; old: StickyNoteRecord };
 	/** One call through the dispatcher, as a caller with the token. */
 	call(
 		operationId: string,
@@ -58,6 +67,26 @@ export interface Golden {
 	): Promise<DispatchReply>;
 	/** The project again as it stands now. */
 	reload(): Promise<ProjectSnapshot>;
+}
+
+/** What the two chapters say. */
+export const CHAPTER_ONE = '# Chapter 1\n\nThe clock stopped at midnight.\n';
+export const CHAPTER_TWO = 'Ben did not come home.\n\nNobody asked why.\n';
+
+/** The moment the records beside the project were made: 3 February 2026, half past nine, universal time. */
+export const RECORDS_MADE = Date.UTC(2026, 1, 3, 9, 30);
+
+/** Where some words stand in a text. */
+function spanOf(body: string, words: string): { from: number; to: number } {
+	const from = body.indexOf(words);
+	if (from < 0) throw new Error(`The text says "${words}".`);
+	return { from, to: from + words.length };
+}
+
+/** Some words marked in a note, as the note stood when they were. */
+function marked(path: string, body: string, words: string): OccurrencePlacement {
+	const { from, to } = spanOf(body, words);
+	return captureOccurrencePlacement(path, body, from, to);
 }
 
 export const STEP_ONE_TEXT = {
@@ -175,12 +204,113 @@ export async function createGolden(start: Partial<FakeHost['state']> = {}): Prom
 	const [first, second] = await service.manuscript.appendSegments(
 		created,
 		[
-			{ title: 'Chapter 1', body: '# Chapter 1\n\nThe clock stopped at midnight.\n' },
-			{ title: 'Chapter 2', body: 'Ben did not come home.\n\nNobody asked why.\n' },
+			{ title: 'Chapter 1', body: CHAPTER_ONE },
+			{ title: 'Chapter 2', body: CHAPTER_TWO },
 		],
 		{ userInput: true },
 	);
 	if (first === undefined || second === undefined) throw new Error('The manuscript took both chapters.');
+
+	// What the author keeps beside the project. A note that has left the manuscript is still named by what was marked in it.
+	const cut = `${draft.slice(0, draft.lastIndexOf('/'))}/Cut chapter.md`;
+	const task = (id: string, title: string, rest: Partial<Task> = {}): Task => ({
+		id,
+		title,
+		description: '',
+		status: 'todo',
+		priority: 'medium',
+		dueDate: null,
+		related: [],
+		archived: false,
+		createdAt: RECORDS_MADE,
+		updatedAt: RECORDS_MADE,
+		...rest,
+	});
+	await service.tasks.createMany(created, [
+		task('task-outline', 'Outline the thaw', {
+			description: 'Three beats at most.',
+			priority: 'high',
+			dueDate: '2026-03-01',
+			updatedAt: RECORDS_MADE + 60_000,
+			related: [
+				{ kind: 'character', id: ada.characterId, name: 'Ada' },
+				// Kept under a name and a kind the note has since left behind.
+				{ kind: 'time', id: tower.entityId, name: 'The old tower' },
+				// A note deleted since.
+				{ kind: 'location', id: 'entity-gone', name: 'The old mill' },
+			],
+		}),
+		task('task-letter', 'Write the letter', { status: 'done', dueDate: '2026-03-01' }),
+		task('task-map', 'Draw the town map', { status: 'in-progress', priority: 'low' }),
+		task('task-guild', 'Rename the guild', { priority: 'urgent', dueDate: '2026-04-01', archived: true }),
+		// From a file that kept no moments.
+		task('task-bell', 'Check the bell', { createdAt: 0, updatedAt: 0 }),
+	]);
+	await service.foreshadowing.createMany(created, [
+		{
+			id: 'foreshadowing-clock',
+			name: 'The stopped clock',
+			description: 'It is counting down.',
+			status: 'active',
+			related: [{ kind: 'character', id: ada.characterId, name: 'Ada' }],
+			createdAt: RECORDS_MADE,
+			updatedAt: RECORDS_MADE,
+			// Kept in the order they were marked in, which is not the order they are read in.
+			occurrences: [
+				{ id: 'occurrence-payoff', role: 'payoff', note: 'Paid off quietly.', ...marked(second, CHAPTER_TWO, 'Nobody asked why') },
+				{ id: 'occurrence-plant', role: 'plant', note: '', ...marked(first, CHAPTER_ONE, 'stopped at midnight') },
+			],
+		},
+		{
+			id: 'foreshadowing-letter',
+			name: 'The unsent letter',
+			description: '',
+			status: 'planned',
+			related: [],
+			createdAt: RECORDS_MADE,
+			updatedAt: RECORDS_MADE,
+			occurrences: [],
+		},
+		{
+			id: 'foreshadowing-key',
+			name: 'The missing key',
+			description: '',
+			status: 'resolved',
+			related: [],
+			createdAt: RECORDS_MADE,
+			updatedAt: RECORDS_MADE,
+			occurrences: [
+				// Marked in a chapter that has since left the manuscript.
+				{ id: 'occurrence-stray', role: 'payoff', note: '', ...marked(cut, 'The key turned.\n', 'key turned') },
+				// Marked before four characters were cut from the head of the chapter.
+				{ id: 'occurrence-moved', role: 'reinforce', note: '', ...marked(second, `So. ${CHAPTER_TWO}`, 'did not come home') },
+				// Marked over words the chapter no longer has.
+				{ id: 'occurrence-lost', role: 'plant', note: '', ...marked(second, 'A key lay under the mat.\n', 'key lay under') },
+			],
+		},
+	]);
+	const neat = spanOf(CHAPTER_TWO, 'Nobody asked why.');
+	const beat = spanOf(CHAPTER_TWO, 'Ben did not come home.').to;
+	const noon = spanOf(CHAPTER_ONE, 'midnight');
+	// Kept in the order they were proposed in.
+	await service.revisions.createMany(created, [
+		captureRevision(second, CHAPTER_TWO, 'delete', neat.from, neat.to, '', 'Too neat.', 'revision-neat', RECORDS_MADE),
+		captureRevision(second, CHAPTER_TWO, 'insert', beat, beat, ' Not that night.', 'A beat more.', 'revision-beat', RECORDS_MADE + 1000),
+		captureRevision(first, CHAPTER_ONE, 'replace', noon.from, noon.to, 'noon', 'Earlier is eerier.', 'revision-noon', RECORDS_MADE + 2000),
+		// Proposed over words the chapter no longer has.
+		captureRevision(second, 'Somebody asked why.\n', 'replace', 0, 8, 'Everybody', '', 'revision-lost', RECORDS_MADE + 3000),
+		// Proposed in a chapter that has since left the manuscript.
+		captureRevision(cut, 'The key turned.\n', 'replace', 4, 7, 'lock', '', 'revision-stray', RECORDS_MADE + 4000),
+	]);
+	const key = await service.stickyNotes.create(
+		created,
+		'macaron-1',
+		new Date(Date.UTC(2026, 0, 5, 8)),
+		0,
+		'Ask **Ben** about the *key*.\n\n- And the bell.\n',
+	);
+	const blank = await service.stickyNotes.create(created, 'macaron-5', new Date(Date.UTC(2026, 0, 6, 8)), 0);
+	const aside = await service.stickyNotes.create(created, 'macaron-2', new Date(Date.UTC(2026, 0, 4, 8)), 0, 'An old idea.', true);
 
 	const chinese = await service.createProject({ title: '北境之雪', locale: 'zh-CN' });
 	const old = await service.createProject({ title: 'Old Draft', locale: 'en' });
@@ -223,6 +353,7 @@ export async function createGolden(start: Partial<FakeHost['state']> = {}): Prom
 			guild: entity(guild.entityId),
 		},
 		manuscript: { draft, first, second },
+		stickyNotes: { key, blank, old: aside },
 		call: (operationId, params = {}, extra = {}) =>
 			api.dispatcher.dispatch({
 				operationId,

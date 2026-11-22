@@ -20,6 +20,8 @@ export interface FakeHost extends ApiHost {
 		current: string | null;
 		/** The convention writing is counted by. */
 		counting: NoteCountOptions;
+		/** The day it is. */
+		today: string;
 	};
 	/** The vault the services stand on, with its own records of what was read and written. */
 	readonly environment: ReturnType<typeof createFakeEnvironment>;
@@ -39,6 +41,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		cli: true,
 		current: null,
 		counting: { mode: 'ms-word', headings: 'count' },
+		today: '2026-03-10',
 		...start,
 	};
 	let release: (() => void) | null = null;
@@ -62,6 +65,7 @@ export function createFakeHost(start: Partial<FakeHost['state']> = {}): FakeHost
 		}),
 		currentProjectPath: () => state.current,
 		countOptions: () => state.counting,
+		today: () => state.today,
 		pluginVersion: () => '9.9.9',
 		vaultName: () => 'Test Vault',
 		projectsRoot: () => 'Snowflake Projects',

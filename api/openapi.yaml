@@ -25,6 +25,13 @@ info:
     path segment. Renaming such a note changes its address, and the answer
     says where it went.
 
+    **Reading.** A read changes nothing the author wrote. The plugin may still
+    put two things right as it reads, as it does whenever it opens a project
+    itself. A project whose folder was moved has its link to the first note of
+    its manuscript pointed at where that note stands now. A record file that
+    can no longer be read is set aside whole under a new name, and read as
+    empty.
+
     **Changing a note.** A note-backed thing carries an `etag`. Send it back in
     `If-Match` when you change or delete that thing. If the note has changed
     since you read it, the answer is `412` with the current `etag`, and nothing
@@ -105,6 +112,26 @@ tags:
       chapter, a scene, or whatever unit the author writes in. It has no id.
       It is addressed by where it stands inside the project, and renaming it
       changes that address.
+  - name: Tasks
+    description: |
+      The author's own to-do list for a project, as the cards of its task
+      board. A task can name the characters, scenes and other notes it is
+      about.
+  - name: Foreshadowing
+    description: |
+      A foreshadowing is a thread the author is laying through the
+      manuscript: something planted early and paid off later. Each place it
+      appears is an occurrence, tied to a passage of a manuscript note.
+  - name: Revisions
+    description: |
+      A revision is a change proposed to a passage of the manuscript and not
+      yet made: a replacement, an insertion or a deletion, with a comment. It
+      stands beside the text as a card until the author accepts or discards
+      it. To suggest a change without touching the author's prose, make one.
+  - name: Sticky notes
+    description: |
+      Short notes the author keeps beside a project, each a small note of
+      its own with a tint.
 
 paths:
   /:
@@ -856,6 +883,256 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listTasks
+      tags: [Tasks]
+      summary: List the tasks
+      description: |
+        The author's tasks in the order of the board: column by column, each
+        column from its top. Tasks set aside in the archive are left out
+        unless `state` asks for them.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - $ref: "#/components/parameters/ArchiveState"
+        - name: status
+          in: query
+          description: Give only tasks in this column.
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+        - name: priority
+          in: query
+          description: Give only tasks of this priority.
+          schema:
+            $ref: "#/components/schemas/TaskPriority"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The tasks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/tasks/{taskId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      operationId: getTask
+      tags: [Tasks]
+      summary: Get one task
+      description: |
+        One task with the notes it is about, each told as the note it leads
+        to now.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/foreshadowing:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listForeshadowing
+      tags: [Foreshadowing]
+      summary: List the foreshadowing threads
+      description: |
+        The threads in the order of the author's own table: by how each
+        stands, then by where it first appears in the manuscript. Each comes
+        with every place it appears, in reading order, and each place says
+        whether its words still stand where they were marked.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: status
+          in: query
+          description: Give only threads that stand so.
+          schema:
+            $ref: "#/components/schemas/ForeshadowingStatus"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The threads.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForeshadowingPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/foreshadowing/{foreshadowingId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ForeshadowingId"
+    get:
+      operationId: getForeshadowing
+      tags: [Foreshadowing]
+      summary: Get one foreshadowing thread
+      description: |
+        One thread with each place it appears in the manuscript, in reading
+        order.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The thread.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Foreshadowing"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listRevisions
+      tags: [Revisions]
+      summary: List the proposed revisions
+      description: |
+        Every change proposed to the manuscript and not yet accepted or
+        discarded, in reading order. Each says whether the passage it was made
+        over still stands where it was.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: core
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - name: note
+          in: query
+          description: Give only revisions on this manuscript note, by its `relativePath`.
+          schema:
+            type: string
+            minLength: 1
+        - name: kind
+          in: query
+          description: Give only revisions of this kind.
+          schema:
+            $ref: "#/components/schemas/RevisionKind"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The revisions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/revisions/{revisionId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      operationId: getRevision
+      tags: [Revisions]
+      summary: Get one proposed revision
+      description: |
+        One proposed change with the passage it was made over.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Revision"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/sticky-notes:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listStickyNotes
+      tags: [Sticky notes]
+      summary: List the sticky notes
+      description: |
+        The project's sticky notes, newest first unless asked otherwise, each
+        with the start of what it says. Notes set aside in the archive are left
+        out unless `state` asks for them.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      parameters:
+        - $ref: "#/components/parameters/ArchiveState"
+        - name: sort
+          in: query
+          description: Which notes come first.
+          schema:
+            type: string
+            enum: [newest, oldest]
+            default: newest
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: The sticky notes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickyNotePage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /projects/{projectId}/sticky-notes/{stickyNoteId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/StickyNoteId"
+    get:
+      operationId: getStickyNote
+      tags: [Sticky notes]
+      summary: Get one sticky note
+      description: |
+        One sticky note with everything it says, and the version to send
+        back with a change.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 1 }
+      x-snowflake-tier: extended
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: The sticky note.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickyNote"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     bearer:
@@ -943,6 +1220,46 @@ components:
       schema:
         type: string
         minLength: 1
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      description: A task's `id`, as `listTasks` gives it.
+      schema:
+        type: string
+        minLength: 1
+    ForeshadowingId:
+      name: foreshadowingId
+      in: path
+      required: true
+      description: A foreshadowing thread's `id`, as `listForeshadowing` gives it.
+      schema:
+        type: string
+        minLength: 1
+    RevisionId:
+      name: revisionId
+      in: path
+      required: true
+      description: A revision's `id`, as `listRevisions` gives it.
+      schema:
+        type: string
+        minLength: 1
+    StickyNoteId:
+      name: stickyNoteId
+      in: path
+      required: true
+      description: A sticky note's `id`, as `listStickyNotes` gives it.
+      schema:
+        type: string
+        minLength: 1
+    ArchiveState:
+      name: state
+      in: query
+      description: Whether to give what is in use, what was set aside in the archive, or both.
+      schema:
+        type: string
+        enum: [active, archived, all]
+        default: active
     NotePath:
       name: notePath
       in: path
@@ -1559,7 +1876,10 @@ components:
       description: |
         Another note of the project that this one points at. While the note
         is there, `resolved` is true and `kind` and `id` say which it is.
-        Once it is gone they are null, and `name` is what is left of it.
+        Once it is gone, `resolved` is false, `path` is null, and `name` is
+        what is left of it. A note that pointed at it by a link then has
+        nothing more to tell, so `kind` and `id` are null. A task or a
+        foreshadowing thread, which keep the id, still give both.
       required: [kind, id, name, path, resolved]
       additionalProperties: false
       properties:
@@ -2455,6 +2775,314 @@ components:
         next:
           type: [string, "null"]
           description: The `relativePath` of the note after this one, or null for the last.
+
+    Instant:
+      type: [string, "null"]
+      format: date-time
+      description: A moment, in RFC 3339 form and universal time. Null where none was kept.
+
+    ManuscriptNoteRef:
+      type: object
+      description: The manuscript note a marked passage stands in.
+      required: [path, relativePath, title]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: The note, as a path in the vault.
+        relativePath:
+          type: [string, "null"]
+          description: |
+            The note's address in the manuscript, as `getManuscriptNote` takes
+            it. Null where the note is no longer one of the manuscript's
+            notes. A passage in such a note reads as `conflict`.
+        title:
+          type: string
+          description: The note's name.
+
+    TextRange:
+      type: object
+      description: |
+        A stretch of a note's text, counted from the start of its `body` in
+        UTF-16 code units, as JavaScript counts a string. `to` is one past the
+        last unit.
+      required: [from, to]
+      additionalProperties: false
+      properties:
+        from:
+          type: integer
+          minimum: 0
+        to:
+          type: integer
+          minimum: 0
+
+    PassageState:
+      type: string
+      enum: [anchored, moved, conflict]
+      description: |
+        Whether a marked passage still stands in its note. `anchored` where
+        it stands where it was marked. `moved` where the same words were found
+        elsewhere in the note, and `range` says where. `conflict` where they
+        are no longer there, or stand in more places than can be told apart,
+        or the note is no longer one of the manuscript's.
+
+    TaskStatus:
+      type: string
+      enum: [todo, in-progress, blocked, in-review, done, cancelled]
+      description: The column a task stands in.
+
+    TaskPriority:
+      type: string
+      enum: [low, medium, high, urgent]
+
+    Task:
+      type: object
+      required: [id, title, description, status, priority, dueDate, related, archived, overdue, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        dueDate:
+          type: [string, "null"]
+          pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          description: The day the task is due, as `YYYY-MM-DD`, or null.
+        related:
+          type: array
+          description: The notes of the project the task is about.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        archived:
+          type: boolean
+          description: True where the author set the task aside without deleting it.
+        overdue:
+          type: boolean
+          description: True where the task is past its day and neither done nor cancelled, by this computer's calendar.
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+
+    TaskPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    ForeshadowingStatus:
+      type: string
+      enum: [planned, active, resolved, abandoned]
+
+    OccurrenceRole:
+      type: string
+      enum: [plant, reinforce, payoff]
+      description: What one appearance does for the thread. It lays it down, echoes it, or pays it off.
+
+    Occurrence:
+      type: object
+      description: One place a foreshadowing thread appears in the manuscript.
+      required: [id, role, comment, note, range, text, context, state]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        role:
+          $ref: "#/components/schemas/OccurrenceRole"
+        comment:
+          type: string
+          description: The author's own remark about this appearance.
+        note:
+          $ref: "#/components/schemas/ManuscriptNoteRef"
+        range:
+          $ref: "#/components/schemas/TextRange"
+          description: Where the words stand in the note now. For a `conflict`, where they last stood.
+        text:
+          type: string
+          description: The words that were marked.
+        context:
+          $ref: "#/components/schemas/PassageContext"
+        state:
+          $ref: "#/components/schemas/PassageState"
+
+    PassageContext:
+      type: object
+      description: A few characters of the note on either side of a marked passage, by which it is found again after the note changes.
+      required: [before, after]
+      additionalProperties: false
+      properties:
+        before:
+          type: string
+        after:
+          type: string
+
+    Foreshadowing:
+      type: object
+      required: [id, name, description, status, related, createdAt, updatedAt, occurrences]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/ForeshadowingStatus"
+        related:
+          type: array
+          description: The notes of the project the thread is about.
+          items:
+            $ref: "#/components/schemas/MemberRef"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+        occurrences:
+          type: array
+          description: Each place the thread appears, in reading order.
+          items:
+            $ref: "#/components/schemas/Occurrence"
+
+    ForeshadowingPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Foreshadowing"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    RevisionKind:
+      type: string
+      enum: [replace, insert, delete]
+
+    Revision:
+      type: object
+      description: A change proposed to a passage of the manuscript and not yet made.
+      required: [id, note, kind, range, originalText, proposed, comment, context, createdAt, state]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        note:
+          $ref: "#/components/schemas/ManuscriptNoteRef"
+        kind:
+          $ref: "#/components/schemas/RevisionKind"
+        range:
+          $ref: "#/components/schemas/TextRange"
+          description: |
+            Where the passage stands in the note now. For a `conflict`, where
+            it last stood. An insertion is a point, with `from` equal to `to`.
+        originalText:
+          type: string
+          description: The text the revision was made over. Empty for an insertion.
+        proposed:
+          type: string
+          description: What should stand instead. Empty for a deletion.
+        comment:
+          type: string
+          description: Why, in the proposer's words.
+        context:
+          $ref: "#/components/schemas/PassageContext"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        state:
+          $ref: "#/components/schemas/PassageState"
+
+    RevisionPage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Revision"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
+
+    StickyNote:
+      type: object
+      description: |
+        A sticky note. `body` is given when one note is read. A list gives
+        `preview` only.
+      required: [id, path, color, createdAt, archived, etag, readOnly, preview]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+          description: The note, as a path in the vault.
+        color:
+          $ref: "#/components/schemas/Color"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        archived:
+          type: boolean
+        etag:
+          type: string
+          description: The version of the note. Send it in `If-Match` to change what it says or to delete it.
+        readOnly:
+          type: boolean
+        preview:
+          type: string
+          description: The start of what the note says, on one line.
+        body:
+          type: string
+          description: Everything the note says, as Markdown.
+
+    StickyNotePage:
+      type: object
+      required: [items, total, offset, limit, nextOffset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StickyNote"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        nextOffset:
+          type: [integer, "null"]
 
 x-snowflake-problems:
   invalid-request:
