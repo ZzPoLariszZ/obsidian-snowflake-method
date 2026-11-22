@@ -218,6 +218,7 @@ const WRITES: Record<string, { of: 'project' | 'archived' | 'none'; send: (proje
 	createFreeformView: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { name: 'Second board' } }) },
 	updateFreeformView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).canvas }, body: { name: 'Cast board' } }) },
 	deleteFreeformView: { of: 'project', send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).spareCanvas } }) },
+	updateRelationshipGraphView: { of: 'project', send: (projectId) => ({ params: { projectId }, body: { display: { arrows: false } } }) },
 	applyFreeformSteps: {
 		of: 'project',
 		send: (projectId, golden) => ({ params: { projectId, freeformViewId: boardsOf(golden).canvas }, body: { steps: [{ do: 'text', id: 'card-text', text: 'Changed.' }] } }),

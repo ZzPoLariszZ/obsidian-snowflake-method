@@ -33,7 +33,7 @@ export type MintedRecord = 'task' | 'foreshadowing' | 'occurrence' | 'revision';
  * boards a project is laid out on, and the words the author has said are no
  * mention of a note.
  */
-export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript' | 'timeline' | 'beatSheets' | 'freeform' | 'mentions';
+export type ChangedRecords = 'tasks' | 'margin' | 'stickyNotes' | 'manuscript' | 'timeline' | 'beatSheets' | 'freeform' | 'relationshipGraph' | 'mentions';
 
 /**
  * The author's settings that change what the API answers, and what a

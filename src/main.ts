@@ -6317,6 +6317,10 @@ export default class SnowflakeMethodPlugin
 			this.freeformBell.ring();
 			return;
 		}
+		if (what === 'relationshipGraph') {
+			this.relationshipGraphBell.ring();
+			return;
+		}
 		if (what === 'mentions') {
 			this.applyManuscriptMentionMode();
 			return;

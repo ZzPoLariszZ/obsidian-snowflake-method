@@ -93,6 +93,8 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **What a step can do.** Every change the view's own right-click menus make to what stands on it has a step. `add`, `add-frames` and `connect` put cards, frames and lines on the view. `place` moves and sizes them, and puts a card into a frame or takes it out. `display` shows a card another way. `restack` raises or lowers what lies over other things. `text` and `link` change what a text card or a link card says. `edit-frame` and `edit-edges` change a frame's title and tint, and a line's label, arrow and stroke. `reconnect` gives a line another end, or another side to leave or arrive by. A frame drawn round cards is two steps of one call: `add-frames` with a name in `id`, then `place` with that name as each card's `frameId`.
 
+**The relationship graph.** Its lines are the notes' own relationships, so a line is changed where a note is changed. `getRelationshipGraphView` tells how the graph is set to be drawn, and `updateRelationshipGraphView` changes it: the kinds and labels that are hidden, the colour groups, how the picture is drawn, the forces, how far a local graph reaches, and how its timeline reads the lines. That is what the graph's own panel of controls sets. It is kept in the project, and a graph the author has open follows at once.
+
 **Importing.** `inspectImport` says what another project of the vault has to bring, part by part, and `runImport` copies the parts named. Whatever a part cannot stand without comes with it. A link to a part that was not brought is dropped from the copy, and the answer says which. The other project is never changed.
 
 **Exporting.** `exportManuscript` writes plain text or Markdown into the folder the author keeps exports in, or a folder below it, and nowhere else. It writes nothing into the folder of a project, this one or another. `exportCanvas` writes a canvas beside the board's own file. Neither writes over a file that already stands unless the call says `overwrite`.
@@ -111,7 +113,7 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 ## Operations
 
-All 161 operations of the contract are answered: 60 read, 74 write and 27 delete.
+All 163 operations of the contract are answered: 61 read, 75 write and 27 delete.
 
 A name marked ² needs the write level. A name marked ³ needs the delete level.
 
@@ -139,7 +141,7 @@ A name marked ² needs the write level. A name marked ³ needs the delete level.
 | Timeline | `getTimeline`, `createTimeline` ², `updateTimeline` ², `deleteTimeline` ³, `addTimelineTime` ², `removeTimelineTime` ³, `addTimelineRow` ², `updateTimelineRow` ², `deleteTimelineRow` ³, `placeTimelineScene` ², `removeTimelineScene` ³, `createTimelineView` ², `updateTimelineView` ², `deleteTimelineView` ³ |
 | Beat sheets | `listBeatSheets`, `getBeatSheet`, `createBeatSheet` ², `updateBeatSheet` ², `deleteBeatSheet` ³, `addBeatSheetAct` ², `updateBeatSheetAct` ², `deleteBeatSheetAct` ³, `addBeat` ², `updateBeat` ², `deleteBeat` ³, `addBeatRow` ², `updateBeatRow` ², `deleteBeatRow` ³, `placeBeatSheetScene` ², `removeBeatSheetScene` ³, `listBeatSheetTemplates`, `saveBeatSheetTemplate` ², `deleteBeatSheetTemplate` ³ |
 | Freeform | `listFreeformViews`, `getFreeformView`, `createFreeformView` ², `updateFreeformView` ², `deleteFreeformView` ³, `applyFreeformSteps` ², `exportCanvas` ² |
-| Relationship graph | `getRelationshipGraph` |
+| Relationship graph | `getRelationshipGraph`, `getRelationshipGraphView`, `updateRelationshipGraphView` ² |
 
 Each operation says the round that built it in `x-snowflake-availability`. The contract may describe an operation before a build answers it, marked `planned` there. Such an operation answers `501 planned-operation` and is left out of the document the API serves. None is planned now.
 

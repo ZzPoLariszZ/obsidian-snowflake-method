@@ -109,6 +109,7 @@ describe('an operation the contract plans for a later round', () => {
 			[4, 6],
 			[5, 7],
 			[6, 1],
+			[7, 2],
 		]);
 	});
 

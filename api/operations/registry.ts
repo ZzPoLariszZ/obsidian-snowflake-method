@@ -3,6 +3,7 @@ import { boardOperations } from './boards';
 import type { OperationGroup, OperationHandler } from './context';
 import { environmentOperations } from './environment';
 import { freeformWriteOperations } from './freeform-writes';
+import { graphWriteOperations } from './graph-writes';
 import { manuscriptOperations } from './manuscript';
 import { manuscriptWriteOperations } from './manuscript-writes';
 import { memberWriteOperations } from './member-writes';
@@ -38,6 +39,7 @@ const GROUPS: readonly OperationGroup[] = [
 	timelineWriteOperations,
 	beatSheetWriteOperations,
 	freeformWriteOperations,
+	graphWriteOperations,
 	transferOperations,
 	environmentOperations,
 ];

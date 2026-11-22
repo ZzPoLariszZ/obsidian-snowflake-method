@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUILT_IN_BEAT_SHEET_TEMPLATE_IDS, FREEFORM_LIMITS } from '../../src/domain';
+import { BUILT_IN_BEAT_SHEET_TEMPLATE_IDS, DEFAULT_GRAPH_FORCES, FREEFORM_LIMITS } from '../../src/domain';
 import { seedBoards, type GoldenBoards } from './helpers/golden-boards';
 import { createGolden, faults, vaultState, type Golden } from './helpers/golden-project';
 
@@ -387,6 +387,81 @@ describe('a beat sheet, made and changed', () => {
 		expect((await golden.call('deleteBeatSheetTemplate', { ...P, beatSheetTemplateId: boards.template })).status).toBe(204);
 		expect(refusal(await golden.call('deleteBeatSheetTemplate', { ...P, beatSheetTemplateId: boards.template }))).toEqual([404, 'not-found']);
 		expect(refusal(await golden.call('deleteBeatSheetTemplate', { ...P, beatSheetTemplateId: 'three-act' }))).toEqual([400, 'invalid-request']);
+	});
+});
+
+describe('the relationship graph, set as its own panel sets it', () => {
+	it('is told as a project starts with it, and changed a setting at a time', async () => {
+		const { golden, P } = await ground({ access: 'write' });
+		const before = vaultState(golden.host);
+		expect(await ok(golden, 'getRelationshipGraphView', P)).toEqual({
+			filters: { hiddenKinds: ['scene'], hiddenLabels: [], unresolved: true, orphans: true },
+			groups: null,
+			display: { arrows: true, captions: 'relationship', textFade: 0, nodeSize: 1, lineSize: 1 },
+			forces: { ...DEFAULT_GRAPH_FORCES },
+			local: { depth: 1, incoming: true, outgoing: true, neighbours: false },
+			timeline: { rule: 'latest', undated: 'before' },
+			viewport: null,
+		});
+		// Reading how it is set writes no file for a project that has never moved a control.
+		expect(vaultState(golden.host)).toEqual(before);
+
+		const changed = await ok(golden, 'updateRelationshipGraphView', P, {
+			filters: { hiddenKinds: ['scene', 'time', 'Faction', 'time'], hiddenLabels: ['Family/Sibling'], orphans: false },
+			groups: [
+				{ query: 'kind:character', color: '#AA3366' },
+				{ query: 'Ada OR Ben', color: '#00aa88' },
+			],
+			display: { captions: 'both', nodeSize: 2.5 },
+			forces: { repel: 15 },
+			local: { depth: 3, neighbours: true },
+			timeline: { rule: 'since' },
+			viewport: { x: 10, y: -20, zoom: 0.5 },
+		});
+		expect(changed).toEqual({
+			filters: { hiddenKinds: ['scene', 'time', 'Faction'], hiddenLabels: ['Family/Sibling'], unresolved: true, orphans: false },
+			groups: [
+				{ query: 'kind:character', color: '#aa3366' },
+				{ query: 'Ada OR Ben', color: '#00aa88' },
+			],
+			display: { arrows: true, captions: 'both', textFade: 0, nodeSize: 2.5, lineSize: 1 },
+			forces: { ...DEFAULT_GRAPH_FORCES, repel: 15 },
+			local: { depth: 3, incoming: true, outgoing: true, neighbours: true },
+			timeline: { rule: 'since', undated: 'before' },
+			viewport: { x: 10, y: -20, zoom: 0.5 },
+		});
+		expect(golden.host.told).toEqual(['relationshipGraph']);
+		expect(await ok(golden, 'getRelationshipGraphView', P)).toEqual(changed);
+		// Read and sent back whole, it changes nothing.
+		const standing = vaultState(golden.host);
+		expect(await ok(golden, 'updateRelationshipGraphView', P, changed)).toEqual(changed);
+		expect(vaultState(golden.host)).toEqual(standing);
+		// Null gives every kind its own colour back, and lets the picture fit the screen again.
+		const reset = await ok(golden, 'updateRelationshipGraphView', P, { groups: null, viewport: null });
+		expect([reset['groups'], reset['viewport'], reset['display']]).toEqual([null, null, changed['display']]);
+	});
+
+	it('is refused a kind or a label the project does not have, and what its sliders do not reach', async () => {
+		const { golden, P } = await ground();
+		const before = vaultState(golden.host);
+		const sent = (body: Body) => golden.call('updateRelationshipGraphView', P, { body });
+		const kind = await sent({ filters: { hiddenKinds: ['scene', 'dragon'] } });
+		expect([refusal(kind), pointerOf(kind), faults(kind)]).toEqual([[422, 'invalid-reference'], '/filters/hiddenKinds/1', []]);
+		const label = await sent({ filters: { hiddenLabels: ['Family/Cousin'] } });
+		expect([refusal(label), pointerOf(label)]).toEqual([[422, 'invalid-reference'], '/filters/hiddenLabels/0']);
+		expect(refusal(await sent({ display: { nodeSize: 9 } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ display: { captions: 'loud' } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ forces: { linkDistance: 5 } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ local: { depth: 1.5 } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ timeline: { rule: 'never' } }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ groups: [{ query: 'Ada', color: 'red' }] }))).toEqual([400, 'invalid-request']);
+		expect(refusal(await sent({ viewport: { x: 0, y: 0, zoom: 0 } }))).toEqual([400, 'invalid-request']);
+		// What the author is searching for is the open tab's own, and no part of this.
+		expect(refusal(await sent({ query: 'Ada' }))).toEqual([400, 'invalid-request']);
+		expect(vaultState(golden.host)).toEqual(before);
+		expect(golden.host.told).toEqual([]);
+		golden.host.state.access = 'read';
+		expect(refusal(await sent({ display: { arrows: false } }))).toEqual([403, 'access-denied']);
 	});
 });
 

@@ -398,7 +398,15 @@ describe('the boards, read', () => {
 	it('leave the vault as it was, a project that has made none included', async () => {
 		const before = vaultState(golden.host);
 		for (const projectId of [pid(), golden.chinese.id]) {
-			for (const operation of ['listDerivedTasks', 'getTimeline', 'listBeatSheets', 'listBeatSheetTemplates', 'listFreeformViews', 'getRelationshipGraph']) {
+			for (const operation of [
+				'listDerivedTasks',
+				'getTimeline',
+				'listBeatSheets',
+				'listBeatSheetTemplates',
+				'listFreeformViews',
+				'getRelationshipGraph',
+				'getRelationshipGraphView',
+			]) {
 				const reply = await golden.call(operation, { projectId });
 				expect([reply.status, faults(reply)], `${operation} ${projectId}`).toEqual([200, []]);
 			}

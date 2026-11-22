@@ -3050,6 +3050,68 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /projects/{projectId}/relationship-graph/view:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getRelationshipGraphView
+      tags: [Relationship graph]
+      summary: Get how the relationship graph is set
+      description: |
+        How the relationship graph is drawn for the project: which kinds of
+        note and which relationships are hidden, how the nodes are coloured,
+        how the picture is drawn, how hard the forces pull, how far a local
+        graph reaches, and how the timeline under the graph reads the lines.
+        It is what the graph's own panel of controls sets. It is kept in the
+        project, so it is the same on every device.
+      x-snowflake-access: read
+      x-snowflake-availability: { status: available, round: 7 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document]
+      responses:
+        "200":
+          description: How the graph is set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelationshipGraphView"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateRelationshipGraphView
+      tags: [Relationship graph]
+      summary: Change how the relationship graph is set
+      description: |
+        Changes what the graph's panel of controls sets. What the call leaves
+        out stays, a part at a time and a setting at a time. A list is taken
+        whole. A graph the author has open follows at once.
+
+        The lines themselves are the notes' own relationships. Those are
+        changed where a note is changed, with `updateCharacter` and its like.
+        Where each node stands is not kept, since the picture settles afresh
+        each time it is drawn. What the author is searching for, and the note
+        a local graph is drawn about, are the open tab's own and are not told
+        or set here.
+      x-snowflake-access: write
+      x-snowflake-availability: { status: available, round: 7 }
+      x-snowflake-tier: advanced
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-reference]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/RelationshipGraphViewPatch"
+      responses:
+        "200":
+          description: How the graph is now set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelationshipGraphView"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /projects/{projectId}/archive:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -8516,9 +8578,260 @@ components:
             $ref: "#/components/schemas/GraphEdge"
         labels:
           type: array
-          description: Every relationship word in use, in the order each is first met.
+          description: Every relationship in use, by its path among the labels, in the order each is first met. A line tells its own as `labelPath`.
           items:
             type: string
+
+    GraphColorGroup:
+      type: object
+      description: One colour group. The notes its query answers take the colour, and where two groups answer a note the first has it.
+      required: [query, color]
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          maxLength: 500
+          description: |
+            What the graph's own search takes. A word is looked for in a
+            note's name and its other names. `kind:` names a kind of note,
+            `path:` a part of where the note stands, and `relationship:` a
+            label one of its lines goes by. `OR` joins two, a leading `-` turns
+            one about, and brackets group them.
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+          description: A colour as `#rrggbb`.
+
+    GraphPlace:
+      type: object
+      description: Where the picture stands on the screen, in the graph's own measure.
+      required: [x, y, zoom]
+      additionalProperties: false
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        zoom:
+          type: number
+          minimum: 0.0078125
+          maximum: 8
+
+    RelationshipGraphView:
+      type: object
+      description: How the relationship graph is set to be drawn, as its panel of controls keeps it.
+      required: [filters, groups, display, forces, local, timeline, viewport]
+      additionalProperties: false
+      properties:
+        filters:
+          type: object
+          required: [hiddenKinds, hiddenLabels, unresolved, orphans]
+          additionalProperties: false
+          properties:
+            hiddenKinds:
+              type: array
+              description: The kinds of note that are not drawn. Each is `character`, `scene` or the `id` of a worldbuilding kind. Scenes start hidden.
+              items:
+                type: string
+            hiddenLabels:
+              type: array
+              description: The relationships whose lines are not drawn, each by its path as `getRelationshipGraph` lists them under `labels`.
+              items:
+                type: string
+            unresolved:
+              type: boolean
+              description: Whether a relationship that points at no note is drawn, with a faint node of its own.
+            orphans:
+              type: boolean
+              description: Whether a note with no line is drawn.
+        groups:
+          description: The colour groups, in the order they are tried. Null while every kind wears its own colour.
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/GraphColorGroup"
+            - type: "null"
+        display:
+          type: object
+          required: [arrows, captions, textFade, nodeSize, lineSize]
+          additionalProperties: false
+          properties:
+            arrows:
+              type: boolean
+            captions:
+              type: string
+              enum: [none, relationship, text, both]
+              description: "What a line is captioned with: the relationship's label, the words written on it, both or neither."
+            textFade:
+              type: number
+              description: How soon the names fade as the picture is drawn smaller, from -3 to 3.
+            nodeSize:
+              type: number
+              description: How large a node is drawn, as so many times its own size, from 0.1 to 5.
+            lineSize:
+              type: number
+              description: How thick a line is drawn, as so many times its own width, from 0.1 to 5.
+        forces:
+          type: object
+          description: How hard the forces that lay the picture out pull, each as its slider stands.
+          required: [center, repel, link, linkDistance]
+          additionalProperties: false
+          properties:
+            center:
+              type: number
+              description: From 0 to 1.
+            repel:
+              type: number
+              description: From 0 to 20.
+            link:
+              type: number
+              description: From 0 to 1.
+            linkDistance:
+              type: number
+              description: From 30 to 500.
+        local:
+          type: object
+          description: How far a graph drawn about one note reaches.
+          required: [depth, incoming, outgoing, neighbours]
+          additionalProperties: false
+          properties:
+            depth:
+              type: integer
+              description: How many lines away from the note, from 1 to 5.
+            incoming:
+              type: boolean
+              description: Whether lines that point at a note are followed.
+            outgoing:
+              type: boolean
+              description: Whether lines that leave a note are followed.
+            neighbours:
+              type: boolean
+              description: Whether a line between two notes that were reached is drawn too.
+        timeline:
+          type: object
+          description: How the timeline under the graph reads the lines.
+          required: [rule, undated]
+          additionalProperties: false
+          properties:
+            rule:
+              type: string
+              enum: [latest, since]
+              description: "How long a line dated by one time stands. `latest`: until the same note dates another toward the same note. `since`: from then on."
+            undated:
+              type: string
+              enum: [before, after]
+              description: "Where the lines no time is said of stand. `before`: there from the start. `after`: held back until the end."
+        viewport:
+          description: Where the picture was left. Null while it has not been moved, which fits the whole graph to the screen.
+          oneOf:
+            - $ref: "#/components/schemas/GraphPlace"
+            - type: "null"
+
+    RelationshipGraphViewPatch:
+      type: object
+      description: What to change of how the graph is set. Read and sent back whole it is taken, and changes nothing.
+      additionalProperties: false
+      properties:
+        filters:
+          type: object
+          additionalProperties: false
+          properties:
+            hiddenKinds:
+              type: array
+              description: The whole list, as it should stand. Each must be a kind the project has.
+              maxItems: 200
+              items:
+                type: string
+                minLength: 1
+            hiddenLabels:
+              type: array
+              description: The whole list, as it should stand. Each must be one of the `labels` the graph has.
+              maxItems: 500
+              items:
+                type: string
+                minLength: 1
+            unresolved:
+              type: boolean
+            orphans:
+              type: boolean
+        groups:
+          description: The whole list, as it should stand. Null gives every kind its own colour back.
+          oneOf:
+            - type: array
+              maxItems: 50
+              items:
+                $ref: "#/components/schemas/GraphColorGroup"
+            - type: "null"
+        display:
+          type: object
+          additionalProperties: false
+          properties:
+            arrows:
+              type: boolean
+            captions:
+              type: string
+              enum: [none, relationship, text, both]
+            textFade:
+              type: number
+              minimum: -3
+              maximum: 3
+            nodeSize:
+              type: number
+              minimum: 0.1
+              maximum: 5
+            lineSize:
+              type: number
+              minimum: 0.1
+              maximum: 5
+        forces:
+          type: object
+          additionalProperties: false
+          properties:
+            center:
+              type: number
+              minimum: 0
+              maximum: 1
+            repel:
+              type: number
+              minimum: 0
+              maximum: 20
+            link:
+              type: number
+              minimum: 0
+              maximum: 1
+            linkDistance:
+              type: number
+              minimum: 30
+              maximum: 500
+        local:
+          type: object
+          additionalProperties: false
+          properties:
+            depth:
+              type: integer
+              minimum: 1
+              maximum: 5
+            incoming:
+              type: boolean
+            outgoing:
+              type: boolean
+            neighbours:
+              type: boolean
+        timeline:
+          type: object
+          additionalProperties: false
+          properties:
+            rule:
+              type: string
+              enum: [latest, since]
+            undated:
+              type: string
+              enum: [before, after]
+        viewport:
+          description: Where the picture should stand when it is next drawn. Null fits the whole graph to the screen.
+          oneOf:
+            - $ref: "#/components/schemas/GraphPlace"
+            - type: "null"
 
     ProjectCreate:
       type: object

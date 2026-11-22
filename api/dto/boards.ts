@@ -6,6 +6,7 @@ import type {
 	BuiltInBeatSheetTemplate,
 	DerivedTask,
 	EntityGraph,
+	EntityGraphState,
 	FreeformEdge,
 	FreeformFrame,
 	FreeformPlacement,
@@ -215,6 +216,34 @@ export function freeformViewOf(index: MemberIndex, project: ProjectRef, view: Fr
 		edges: view.edges.map(edgeOf),
 		createdAt: instantOf(view.createdAt),
 		updatedAt: instantOf(view.updatedAt),
+	};
+}
+
+/**
+ * How the relationship graph is set to be drawn, as its panel of controls
+ * keeps it in the project. A place on the screen is told as the freeform
+ * views tell theirs, with the zoom by its name.
+ */
+export function relationshipGraphViewOf(state: EntityGraphState): JsonObject {
+	return {
+		filters: {
+			hiddenKinds: [...state.filters.kindsOff],
+			hiddenLabels: [...state.filters.labelsOff],
+			unresolved: state.filters.unresolved,
+			orphans: state.filters.orphans,
+		},
+		groups: state.groups === null ? null : state.groups.map((group) => ({ query: group.query, color: group.color })),
+		display: {
+			arrows: state.display.arrows,
+			captions: state.display.labels,
+			textFade: state.display.textFade,
+			nodeSize: state.display.nodeSize,
+			lineSize: state.display.lineSize,
+		},
+		forces: { center: state.forces.center, repel: state.forces.repel, link: state.forces.link, linkDistance: state.forces.linkDistance },
+		local: { depth: state.local.depth, incoming: state.local.incoming, outgoing: state.local.outgoing, neighbours: state.local.neighbours },
+		timeline: { rule: state.timeline.rule, undated: state.timeline.undated },
+		viewport: state.viewport === null ? null : { x: state.viewport.x, y: state.viewport.y, zoom: state.viewport.k },
 	};
 }
 

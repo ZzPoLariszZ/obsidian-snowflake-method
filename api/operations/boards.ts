@@ -8,6 +8,7 @@ import {
 	freeformViewOf,
 	freeformViewSummaryOf,
 	relationshipGraphOf,
+	relationshipGraphViewOf,
 	timelineBoardOf,
 } from '../dto/boards';
 import { ApiError } from '../errors';
@@ -72,5 +73,11 @@ export const boardOperations: OperationGroup = {
 		const index = context.members(project);
 		const graph = buildEntityGraph(graphMembersOf(project), (link, sourcePath) => index.pathOf(link, sourcePath));
 		return { status: 200, body: relationshipGraphOf(graph) };
+	},
+
+	getRelationshipGraphView: async (call, context) => {
+		const { project } = await context.loadProject(textParam(call, 'projectId'));
+		const held = await context.host.projects.relationshipGraph.read(project);
+		return { status: 200, body: relationshipGraphViewOf(held.entities) };
 	},
 };
