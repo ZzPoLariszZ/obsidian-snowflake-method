@@ -2869,6 +2869,68 @@ describe("WritingSessionService", () => {
 		expect(day.deleted).toBe(0);
 	});
 
+	it("counts what the plugin saved in the last beat before a session takes the project over", async () => {
+		sessions.noteChanged(NOTES, written("one two three"));
+		await timers.flush();
+		// A save of the plugin's own, a form's or a stream's, in the note
+		// already and still waiting for the count when the session starts.
+		fakeVault.write(NOTES, written("one two three four five")());
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three")(),
+			written("one two three four five")(),
+			true,
+		);
+		await startSession();
+		await timers.flush();
+		// The session's first reading held those words, so they are none of
+		// its own. They are the day's, and were counted to it once.
+		expect(sessions.live()?.added).toBe(0);
+		await sessions.stop();
+		const day = await sessions.todaySummary(project);
+		expect([day.added, day.deleted]).toEqual([2, 0]);
+	});
+
+	it("keeps a merge level where a session starts right behind it", async () => {
+		const later = "Snowflake Projects/Novel/80_Material/Later.md";
+		await seedNote(later, "four five six seven");
+		sessions.noteChanged(NOTES, written("one two three"));
+		sessions.noteChanged(later, written("four five six seven"));
+		await timers.flush();
+		// The merge as the plugin tells it: the earlier note saved with the
+		// later one's words, and the later one counted out as it goes.
+		const joined = written("one two three\n\nfour five six seven");
+		fakeVault.write(NOTES, joined());
+		sessions.notePersistedByPlugin(NOTES, written("one two three")(), joined(), true);
+		sessions.noteRemovedByPlugin(later, "four five six seven\n", { manuscript: false });
+		fakeVault.delete(later);
+		sessions.noteDeleted(later);
+		await startSession();
+		await timers.flush();
+		await sessions.stop();
+		// Four words went out of one note and into the other. The day lost none.
+		const day = await sessions.todaySummary(project);
+		expect([day.added, day.deleted]).toEqual([4, 4]);
+	});
+
+	it("leaves what an editor still holds to the session, and counts it once", async () => {
+		openNotes.add(NOTES);
+		sessions.noteChanged(NOTES, written("one two three"));
+		await timers.flush();
+		// A word typed and not saved in the last beat before the session:
+		// the note does not hold it yet, so the session's reading does not
+		// either, and the next key counts both.
+		let editor = "one two three four";
+		sessions.noteChanged(NOTES, () => written(editor)());
+		await startSession();
+		editor = "one two three four five";
+		sessions.noteChanged(NOTES, () => written(editor)());
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		await sessions.stop();
+		expect((await sessions.todaySummary(project)).added).toBe(2);
+	});
+
 	it("credits nobody for a rewrite of a note the author has open", async () => {
 		openNotes.add(NOTES);
 		sessions.noteChanged(NOTES, written("one two three four"));

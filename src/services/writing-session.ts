@@ -601,6 +601,10 @@ export class WritingSessionService {
 				if (options.startMode === "auto") return;
 				await this.finishLive("replaced-by-new-session", null);
 			}
+			// Counted to the day before the session takes the project over,
+			// while the day still holds what it would be counted against.
+			const waiting = this.untimedStates.get(project.id);
+			if (waiting !== undefined) await this.settleSavedTexts(waiting, project);
 			const layout = getProjectPathLayout(project.locale);
 			const live: LiveState = {
 				id: this.sessionId(),
@@ -632,6 +636,9 @@ export class WritingSessionService {
 			// baselines describe a world the session's own seed is about to
 			// re-measure, and kept, the first edit after the stop would be
 			// diffed against them and credit the whole session over again.
+			// What is still in flight by now is an editor's, which the
+			// session counts at the next key: the plugin's own saves were
+			// counted above.
 			const dormant = this.untimedStates.get(project.id);
 			if (dormant !== undefined) {
 				dormant.pending.clear();
@@ -675,6 +682,58 @@ export class WritingSessionService {
 			this.armDebounce();
 			this.emit({ kind: "changed", counted: false });
 		});
+	}
+
+	/**
+	 * What a save of the plugin's own left waiting to be counted, counted to
+	 * the day as the next drain would have counted it. Asked as a session is
+	 * about to take the project over: such text is in its note already, so
+	 * the session's first reading holds it and would credit it to nobody,
+	 * and the day is about to forget it was waiting.
+	 *
+	 * A merge is where the loss showed. The note that went is counted out at
+	 * once, the words it gave the note before it wait for the drain, and a
+	 * session started in between left the day short by the whole of them.
+	 *
+	 * What an editor still holds is left alone. It is not in its note yet,
+	 * so the session reads the note without it and counts it at the next
+	 * key. Counted here as well, it would be counted twice.
+	 */
+	private async settleSavedTexts(
+		state: UntimedState,
+		ref: ProjectRef,
+	): Promise<void> {
+		// A drain the debounce already fired keeps the entries it claimed,
+		// and is let finish with them, as a stop lets it.
+		await this.drainRun;
+		if (this.untimedStates.get(state.projectId) !== state) return;
+		const saved = [...state.pending].filter(([, entry]) =>
+			isSavedText(entry.content),
+		);
+		if (saved.length === 0) return;
+		this.rolloverIfNeeded(state);
+		if (!state.hydrated) {
+			try {
+				await this.hydrateUntimed(state);
+			} catch {
+				// The day's own record would not be read. Nothing is counted
+				// into a day that cannot be told from its file.
+				return;
+			}
+			if (this.untimedStates.get(state.projectId) !== state) return;
+		}
+		let moved = false;
+		for (const [path, entry] of saved) {
+			// Taken off the queue before it is counted, so a drain on its
+			// own timer does not count it as well.
+			if (state.pending.get(path) !== entry) continue;
+			state.pending.delete(path);
+			moved = (await this.applyUntimedPending(state, ref, path, entry)) || moved;
+			if (this.untimedStates.get(state.projectId) !== state) return;
+		}
+		if (!moved) return;
+		this.markUntimedDirty(state);
+		this.emit({ kind: "changed", counted: true });
 	}
 
 	/** Starts an auto session only where there is none to disturb. */
