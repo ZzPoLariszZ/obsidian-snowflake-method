@@ -1738,11 +1738,17 @@ export class SnowflakeProjectService {
    * system template.
    * Health checks never call this method; it is only used by an explicit
    * per-item Repair button after the current snapshot confirms the problem.
+   *
+   * `code` says which issue is meant. One note can carry two that share
+   * its path and its field, a link whose target is missing beside a link
+   * that still shows its target's old name, and the one asked for is the
+   * one mended. Left out, the first that can be mended is taken.
    */
   async repairMissingStructureItem(
     projectLocator: ProjectLocator,
     path: string,
     field?: string,
+    code?: string,
   ): Promise<ProjectSnapshot> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
@@ -1751,6 +1757,7 @@ export class SnowflakeProjectService {
       (candidate) =>
         candidate.path === normalized &&
         (field === undefined ? candidate.field === undefined : candidate.field === field) &&
+        (code === undefined || candidate.code === code) &&
         candidate.repairable,
     );
     if (issue === undefined) {

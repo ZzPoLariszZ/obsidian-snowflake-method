@@ -211,7 +211,7 @@ describe('repair report actions for unsafe member forms', () => {
 		const entry: RepairReportEntryViewModel = {
 			path: 'Novel/Scenes/Damaged.md', sectionId: 'scene-events', sectionLabel: 'Events',
 			status: 'conflict', message: 'Missing marker', names: [], action: null,
-			canOpen: true, repairable: false, repairField: null, memberId: 'scene-1', canEdit,
+			canOpen: true, repairable: false, repairField: null, repairCode: null, memberId: 'scene-1', canEdit,
 		};
 		const openFile = vi.fn(async () => undefined);
 		const editMember = vi.fn(async () => ({ summary: '', entries: [] }));

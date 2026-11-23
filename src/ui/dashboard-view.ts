@@ -5874,6 +5874,7 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 				await this.host.repairMissingStructureItem(
 					entry.path,
 					entry.repairField ?? undefined,
+					entry.repairCode ?? undefined,
 				);
 				await this.refresh();
 				return this.host.checkCurrentProject();

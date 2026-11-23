@@ -329,6 +329,8 @@ export interface RepairReportEntryViewModel {
 	canOpen: boolean;
 	repairable: boolean;
 	repairField: string | null;
+	/** Which issue the row is, for a repair to mend that one and no other the note carries. */
+	repairCode: string | null;
 	/** Set when the entry is a member note, so the report can offer its form. */
 	memberId: string | null;
 	/** False when that member's form cannot safely save the current note. */
@@ -1153,7 +1155,7 @@ export interface DashboardHost {
 		options?: { newTab?: boolean; projectPath?: string | null; corkboardView?: CorkboardView },
 	): Promise<void>;
 	checkCurrentProject(): Promise<RepairReportViewModel>;
-	repairMissingStructureItem(path: string, field?: string): Promise<void>;
+	repairMissingStructureItem(path: string, field?: string, code?: string): Promise<void>;
 	/** Writes the fields block into every member note that predates it. */
 	migrateMemberNotes(): Promise<{ migrated: number; skipped: number }>;
 }

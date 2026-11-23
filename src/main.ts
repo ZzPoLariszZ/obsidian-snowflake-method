@@ -4356,6 +4356,7 @@ export default class SnowflakeMethodPlugin
 						canOpen: issue.canOpen,
 						repairable: issue.repairable,
 						repairField: issue.repairField,
+						repairCode: issue.code,
 						memberId: member?.id ?? null,
 						canEdit: member !== undefined && !model.readOnly && !member.readOnly &&
 							!member.healthIssues.some((health) => health.blocking),
@@ -4386,19 +4387,21 @@ export default class SnowflakeMethodPlugin
 						canOpen: this.app.vault.getFileByPath(recent) instanceof TFile,
 						repairable: false,
 						repairField: null,
+						repairCode: null,
 					},
 				],
 			};
 		}
 	}
 
-	async repairMissingStructureItem(path: string, field?: string): Promise<void> {
+	async repairMissingStructureItem(path: string, field?: string, code?: string): Promise<void> {
 		const project = await this.requireCurrentProject();
 		try {
 			await this.projects.repairMissingStructureItem(
 				project.projectFile,
 				path,
 				field,
+				code,
 			);
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -15241,6 +15244,7 @@ export default class SnowflakeMethodPlugin
 				await this.repairMissingStructureItem(
 					entry.path,
 					entry.repairField ?? undefined,
+					entry.repairCode ?? undefined,
 				);
 				await this.refreshDashboards();
 				return this.checkCurrentProject();

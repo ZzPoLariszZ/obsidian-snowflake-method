@@ -5591,6 +5591,42 @@ describe("SnowflakeProjectService", () => {
       ),
     ).toEqual([]);
 
+    // Two issues on one note, under one path and no field: a link that
+    // leads nowhere beside one that shows a name its target no longer goes
+    // by. The one named by its code is the one mended.
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(ada.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.category] = [
+          `[[${categoryRoot}/Gone/Gone|Gone]]`,
+          `[[${categoryRoot}/Kin/Elf/Elf|Race/Elf]]`,
+        ];
+      },
+    );
+    const paired = (await service.loadProject(project.projectFile)).structureIssues
+      .filter((issue) => issue.path === ada.path)
+      .map((issue) => issue.code);
+    expect(paired).toEqual(["unresolved-definition-link", "stale-definition-alias"]);
+    await service.repairMissingStructureItem(
+      project.projectFile,
+      ada.path,
+      undefined,
+      "stale-definition-alias",
+    );
+    expect(
+      (await service.loadProject(project.projectFile)).structureIssues
+        .filter((issue) => issue.path === ada.path)
+        .map((issue) => issue.code),
+    ).toEqual(["unresolved-definition-link"]);
+    expect(fakeVault.getFileByPath(`${categoryRoot}/Gone/Gone.md`)).toBeNull();
+    await service.repairMissingStructureItem(
+      project.projectFile,
+      ada.path,
+      undefined,
+      "unresolved-definition-link",
+    );
+    expect(fakeVault.getFileByPath(`${categoryRoot}/Gone/Gone.md`)).not.toBeNull();
+
     // A node folder whose note was deleted by hand.
     fakeVault.delete(`${categoryRoot}/Kin/Elf/Elf.md`);
     snapshot = await service.loadProject(project.projectFile);

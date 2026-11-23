@@ -420,6 +420,39 @@ describe('one thing the health check found, repaired', () => {
 		expect(vaultState(golden.host)).toEqual(before);
 	});
 
+	it('mends the issue it was asked for where a note carries two under one path', async () => {
+		const golden = await fresh();
+		const ada = golden.members.ada.path;
+		const vault = golden.host.environment.fakeVault;
+		// One link to a category that stands, under a name it no longer goes by, and one to a category that is not there.
+		const text = vault.contents.get(ada) ?? '';
+		vault.write(
+			ada,
+			text
+				.split('|Guild/Clockmakers]]')
+				.join('|Old name]]')
+				.replace(
+					/("\[\[[^"]*Clockmakers\|Old name\]\]")/u,
+					'$1,\n    "[[Snowflake Projects/North Wind/20_Character/21_Category/Missing/Missing/Missing|Missing/Missing]]"',
+				),
+		);
+		const codes = async (): Promise<unknown[]> => (await issues(golden)).filter((issue) => issue['path'] === ada).map((issue) => issue['code']);
+		expect((await codes()).sort()).toEqual(['stale-definition-alias', 'unresolved-definition-link']);
+		const made = (): string[] => [...vault.contents.keys()].filter((path) => path.includes('/21_Category/Missing/'));
+
+		const renamed = await repair(golden, { code: 'stale-definition-alias', path: ada });
+		expect([renamed.status, faults(renamed)]).toEqual([200, []]);
+		// The name was brought level, and nothing was made for the link that leads nowhere.
+		expect(await codes()).toEqual(['unresolved-definition-link']);
+		expect(vault.contents.get(ada)).toContain('|Guild/Clockmakers]]');
+		expect(made()).toEqual([]);
+
+		const raised = await repair(golden, { code: 'unresolved-definition-link', path: ada });
+		expect([raised.status, faults(raised)]).toEqual([200, []]);
+		expect(await codes()).toEqual([]);
+		expect(made().length).toBeGreaterThan(0);
+	});
+
 	it('is refused a repair that renames a note while Obsidian asks before it updates links', async () => {
 		const golden = await fresh({ asksAboutLinks: true });
 		const ben = golden.members.ben.path;

@@ -108,7 +108,8 @@ export const projectOperations: OperationGroup = {
 		if (!issue.repairable) throw unmendable('This is nothing the plugin can mend by itself. The author has to see to it.');
 		let mended: ProjectSnapshot;
 		try {
-			mended = await context.host.projects.repairMissingStructureItem(project.projectFile, issue.path, issue.field);
+			// Named by its code as well: a note may carry another issue under the same path and field.
+			mended = await context.host.projects.repairMissingStructureItem(project.projectFile, issue.path, issue.field, issue.code);
 		} catch (error) {
 			// The service says in a plain error that it found nothing safe to do. Its words are the author's, so only that it said so is handed on.
 			const refused =
