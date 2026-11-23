@@ -2984,10 +2984,10 @@ paths:
     patch:
       operationId: updateFreeformView
       tags: [Freeform]
-      summary: Rename a freeform view
+      summary: Rename a freeform view, or set where it opens
       description: |
-        Gives a view another name. What stands on it is changed with
-        `applyFreeformSteps`.
+        Gives a view another name, sets where it opens, or both as one
+        change. What stands on it is changed with `applyFreeformSteps`.
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 3 }
       x-snowflake-tier: extended
