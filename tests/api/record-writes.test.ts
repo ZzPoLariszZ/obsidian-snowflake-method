@@ -715,10 +715,19 @@ describe('a sticky note, changed', () => {
 		expect(tinted).toMatchObject({ color: 'macaron-4', body: read['body'], archived: false });
 		expect(golden.host.editors).toEqual([`settle ${path}`]);
 		golden.host.editors.length = 0;
+		// Read and sent back whole with only its tint changed, it names its own text again. That is no change to the text, and the editor stays open.
+		const again = await landed(golden, 'updateStickyNote', key(golden), { body: { ...structuredClone(tinted), color: 'macaron-2' }, ifMatch: String(tinted['etag']) });
+		expect(again).toMatchObject({ color: 'macaron-2', body: read['body'], archived: false });
+		expect(golden.host.editors).toEqual([`settle ${path}`]);
+		golden.host.editors.length = 0;
 		// Read and sent back whole with one thing changed. What it says is the same, so it is not written again.
-		const aside = await landed(golden, 'updateStickyNote', key(golden), { body: { ...structuredClone(tinted), archived: true }, ifMatch: String(tinted['etag']) });
-		expect(aside).toMatchObject({ archived: true, color: 'macaron-4', body: read['body'] });
+		const aside = await landed(golden, 'updateStickyNote', key(golden), { body: { ...structuredClone(again), archived: true }, ifMatch: String(again['etag']) });
+		expect(aside).toMatchObject({ archived: true, color: 'macaron-2', body: read['body'] });
 		expect(golden.host.editors).toEqual([`settle ${path}`, `release ${path}`]);
+		golden.host.editors.length = 0;
+		// Set aside already and sent back so, there is nothing more to close.
+		await landed(golden, 'updateStickyNote', key(golden), { body: structuredClone(aside), ifMatch: String(aside['etag']) });
+		expect(golden.host.editors).toEqual([`settle ${path}`]);
 		expect(items((await ask(golden, 'listStickyNotes', { state: 'archived' })).body).map((note) => note['id'])).toContain(read['id']);
 		expect(await landed(golden, 'updateStickyNote', key(golden), { body: { archived: false }, ifMatch: '*' })).toMatchObject({ archived: false });
 		// No body was written at any point: only the note's properties.

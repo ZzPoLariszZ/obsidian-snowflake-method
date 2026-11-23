@@ -178,15 +178,23 @@ async function stickyNoteOfId(context: ApiContext, project: ProjectSnapshot, id:
  * ready. What the author typed into it and had not saved is saved first.
  * The version a caller names is held against the note as it stands after
  * that. Only then, and only where the change asks it, is the author's
- * editor on the note closed. Answers the note as it was held: a change to
- * what it says is made against that version and no later one.
+ * editor on the note closed. Whether it asks is said of the note as it then
+ * stands: a note read and sent back whole names its text again, which is no
+ * change to it and no reason to close anything. Answers the note as it was
+ * held: a change to what it says is made against that version and no later
+ * one.
  */
-async function readySticky(context: ApiContext, call: OperationCall, note: StickyNoteRecord, release: boolean): Promise<StickyNoteRecord> {
+async function readySticky(
+	context: ApiContext,
+	call: OperationCall,
+	note: StickyNoteRecord,
+	release: (standing: StickyNoteRecord) => boolean,
+): Promise<StickyNoteRecord> {
 	await context.host.settleNotes([note.path]);
 	const standing = await context.host.projects.stickyNotes.read(note.path);
 	if (standing === null) throw gone('sticky note', 'listStickyNotes');
 	if (call.ifMatch !== null && call.ifMatch !== '*' && standing.revision !== call.ifMatch) throw changedSince(standing.revision);
-	if (release) await context.host.releaseNotes([note.path]);
+	if (release(standing)) await context.host.releaseNotes([note.path]);
 	return standing;
 }
 
@@ -549,7 +557,13 @@ export const recordWriteOperations: OperationGroup = {
 		const text = typeof body['body'] === 'string' ? body['body'] : null;
 		const archived = typeof body['archived'] === 'boolean' ? body['archived'] : null;
 		// An editor left open would write its own text back over new words, and the plugin's own screens close one before a note is set aside.
-		const standing = await readySticky(context, call, note, text !== null || archived === true);
+		// Text that is the note's own already, and a note set aside that is aside already, change nothing and close nothing.
+		const standing = await readySticky(
+			context,
+			call,
+			note,
+			(held) => (text !== null && text !== held.body) || (archived === true && !held.archived),
+		);
 		const notes = context.host.projects.stickyNotes;
 		if (text !== null && text !== standing.body) await notes.writeBody(note.path, text, standing.revision, NOT_THE_AUTHOR);
 		const color = body['color'];
@@ -564,7 +578,7 @@ export const recordWriteOperations: OperationGroup = {
 	deleteStickyNote: async (call, context) => {
 		const project = await context.writableProject(textParam(call, 'projectId'));
 		const note = await stickyNoteOfId(context, project, textParam(call, 'stickyNoteId'));
-		await readySticky(context, call, note, true);
+		await readySticky(context, call, note, () => true);
 		await context.host.projects.stickyNotes.trash(note.path);
 		context.host.stickyNoteDeleted(note.id);
 		context.host.recordsChanged('stickyNotes');
