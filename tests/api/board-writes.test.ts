@@ -467,6 +467,25 @@ describe('the relationship graph, set as its own panel sets it', () => {
 		expect(refusal(await sent({ display: { arrows: false } }))).toEqual([403, 'access-denied']);
 	});
 
+	it('tells what the file holds within the contract, and takes it back whole, whatever the author has made', async () => {
+		const { golden, P } = await ground({ access: 'write' });
+		// More colour groups than a caller is likely to send, a query as long as the author cared to type, and a
+		// zoom written by hand past what the graph stands at. The panel holds the author to none of the first two.
+		const groups = Array.from({ length: 60 }, (_unused, at) => ({ query: `kind:character ${'Ada OR '.repeat(90)}Ben ${String(at)}`, color: '#336699' }));
+		await golden.host.projects.relationshipGraph.updateEntities(golden.project, { groups, viewport: { x: 4, y: 9, k: 20 } });
+		const told = await ok(golden, 'getRelationshipGraphView', P);
+		expect((told['groups'] as Body[]).length).toBe(60);
+		expect(String((told['groups'] as Body[])[0]?.['query']).length).toBeGreaterThan(500);
+		expect(told['viewport']).toEqual({ x: 4, y: 9, zoom: 8 });
+		// Read and sent back whole it is taken, and changes nothing.
+		const standing = vaultState(golden.host);
+		expect(await ok(golden, 'updateRelationshipGraphView', P, told)).toEqual(told);
+		expect(vaultState(golden.host)).toEqual(standing);
+		// And one setting changed beside them leaves them as they stand.
+		const changed = await ok(golden, 'updateRelationshipGraphView', P, { ...told, display: { arrows: false } });
+		expect([(changed['groups'] as Body[]).length, bodyOf(changed['display'])['arrows']]).toEqual([60, false]);
+	});
+
 	it('leaves a setting the author moved a moment before as it then stands', async () => {
 		const { golden, P } = await ground({ access: 'write' });
 		const service = golden.host.projects.relationshipGraph;

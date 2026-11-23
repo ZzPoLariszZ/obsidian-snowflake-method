@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	DEFAULT_GRAPH_FORCES,
+	GRAPH_ZOOM_RANGE,
 	defaultEntityGraphState,
 	defaultGraphColorName,
 	forceSlider,
@@ -107,6 +108,16 @@ describe('the entity graph state', () => {
 		expect(read.groups).toBeNull();
 		expect(readEntityGraphState({ viewport: { x: 1, y: Number.NaN, k: 1 } }).viewport).toBeNull();
 		expect(readEntityGraphState({ groups: [] }).groups).toEqual([]);
+	});
+
+	it('holds a stored zoom to the range the graph can stand at', () => {
+		// Written by hand or by another build: the graph would hold it to the range as it took the place up.
+		expect(readEntityGraphState({ viewport: { x: 1, y: 2, k: 20 } }).viewport).toEqual({ x: 1, y: 2, k: GRAPH_ZOOM_RANGE.max });
+		expect(readEntityGraphState({ viewport: { x: 1, y: 2, k: 0.001 } }).viewport).toEqual({ x: 1, y: 2, k: GRAPH_ZOOM_RANGE.min });
+		expect([GRAPH_ZOOM_RANGE.min, GRAPH_ZOOM_RANGE.max]).toEqual([1 / 128, 8]);
+		// Either end is itself a zoom, and stands.
+		expect(readEntityGraphState({ viewport: { x: 0, y: 0, k: 8 } }).viewport?.k).toBe(8);
+		expect(readEntityGraphState({ viewport: { x: 0, y: 0, k: 1 / 128 } }).viewport?.k).toBe(1 / 128);
 	});
 
 	it('writes what it reads', () => {

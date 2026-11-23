@@ -113,6 +113,8 @@ export const GRAPH_REPEL_RANGE = { min: 0, max: 20, step: 0.01 } as const;
 export const GRAPH_LINK_RANGE = { min: 0, max: 1, step: 0.01 } as const;
 export const GRAPH_LINK_DISTANCE_RANGE = { min: 30, max: 500, step: 1 } as const;
 export const GRAPH_LOCAL_DEPTH_RANGE = { min: 1, max: 5, step: 1 } as const;
+/** The native graph's zoom range, in the units a place is kept in: a world unit is one device pixel at zoom 1. */
+export const GRAPH_ZOOM_RANGE = { min: 1 / 128, max: 8 } as const;
 
 /**
  * The native graph's slider for a force strength: Obsidian keeps strengths
@@ -229,7 +231,9 @@ const readViewport = (value: unknown): GraphViewport | null => {
 	const { x, y, k } = value;
 	if (typeof x !== 'number' || typeof y !== 'number' || typeof k !== 'number') return null;
 	if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(k) || k <= 0) return null;
-	return { x, y, k };
+	// A zoom past the range is one the graph would not stand at: it is held to the range here, as
+	// the graph holds it when it takes the place up, so what is read is always what can be shown.
+	return { x, y, k: Math.min(GRAPH_ZOOM_RANGE.max, Math.max(GRAPH_ZOOM_RANGE.min, k)) };
 };
 
 /**

@@ -11,15 +11,12 @@
  * maths over points, so the tests can run without a canvas.
  */
 
-import type { GraphViewport } from '../domain';
+import { GRAPH_ZOOM_RANGE, type GraphViewport } from '../domain';
 
 export interface Point {
 	readonly x: number;
 	readonly y: number;
 }
-
-/** The native graph's zoom range. */
-export const GRAPH_ZOOM_RANGE = { min: 1 / 128, max: 8 } as const;
 
 /** How far the zoom glides towards its target in one frame, as a share of the gap: the native graph's step. */
 export const GRAPH_ZOOM_GLIDE = 0.15;

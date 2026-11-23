@@ -42,6 +42,7 @@ import { select } from 'd3-selection';
 import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior } from 'd3-zoom';
 
 import {
+	GRAPH_ZOOM_RANGE,
 	repelStrength,
 	sliderForce,
 	UNRESOLVED_GROUP,
@@ -67,7 +68,6 @@ import {
 	GRAPH_DIM_ALPHA,
 	GRAPH_LABEL_GAP,
 	GRAPH_LINE_HIT_TOLERANCE,
-	GRAPH_ZOOM_RANGE,
 	homeViewport,
 	inBox,
 	lineWidth,

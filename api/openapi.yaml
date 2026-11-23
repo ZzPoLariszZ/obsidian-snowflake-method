@@ -8597,7 +8597,6 @@ components:
       properties:
         query:
           type: string
-          maxLength: 500
           description: |
             What the graph's own search takes. A word is looked for in a
             note's name and its other names. `kind:` names a kind of note,
@@ -8746,14 +8745,12 @@ components:
             hiddenKinds:
               type: array
               description: The whole list, as it should stand. Each must be a kind the project has.
-              maxItems: 200
               items:
                 type: string
                 minLength: 1
             hiddenLabels:
               type: array
               description: The whole list, as it should stand. Each must be one of the `labels` the graph has.
-              maxItems: 500
               items:
                 type: string
                 minLength: 1
@@ -8765,7 +8762,6 @@ components:
           description: The whole list, as it should stand. Null gives every kind its own colour back.
           oneOf:
             - type: array
-              maxItems: 50
               items:
                 $ref: "#/components/schemas/GraphColorGroup"
             - type: "null"
