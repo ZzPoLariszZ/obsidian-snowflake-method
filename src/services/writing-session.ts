@@ -893,9 +893,10 @@ export class WritingSessionService {
 	 * the save is credited with what it changed and nothing more. The ledgers
 	 * measure whole text, rendered blocks included, which is what makes a
 	 * form's field count and makes creating a note and deleting it weigh the
-	 * same. A mechanical rewrite -- a reconcile, a migration, a repair --
-	 * says false and is treated exactly like a stranger's write: it can
-	 * re-render whatever it likes, and the note only re-baselines under it.
+	 * same. A mechanical rewrite -- a reconcile, a migration, a repair, a
+	 * change made through the local API -- says false and is credited to
+	 * nobody: it can re-render whatever it likes, and the note's baseline
+	 * only moves under it, as `noteRewrittenByPlugin` says how.
 	 */
 	notePersistedByPlugin(
 		path: string,
@@ -904,7 +905,7 @@ export class WritingSessionService {
 		userInput: boolean,
 	): void {
 		if (!userInput) {
-			this.noteWrittenExternally(path);
+			this.noteRewrittenByPlugin(path, before, after);
 			return;
 		}
 		const live = this.liveState;
@@ -924,13 +925,13 @@ export class WritingSessionService {
 				if (!live.baseline.has(path) && !live.seedTexts.has(path)) {
 					live.seedTexts.set(path, before);
 				}
-				live.pending.set(path, () => after);
+				live.pending.set(path, savedText(after));
 				this.armDebounce();
 				return;
 			}
 			// Frozen: the save's words fall to the untimed day below, and the
 			// after-text is the freshest answer the thaw can re-measure by.
-			live.dirtyWhilePaused.set(path, () => after);
+			live.dirtyWhilePaused.set(path, savedText(after));
 		}
 		const state = this.untimedFor(path);
 		if (state === null) return;
@@ -940,12 +941,104 @@ export class WritingSessionService {
 			else state.rebase.add(path);
 		}
 		const entry = state.pending.get(path) ?? {};
-		entry.content = () => after;
+		entry.content = savedText(after);
 		if (!state.baseline.has(path) && entry.seedText === undefined) {
 			entry.seedText = before;
 		}
 		state.pending.set(path, entry);
 		this.armDebounce();
+	}
+
+	/**
+	 * A rewrite of the plugin's own that nobody typed: a reconcile, a
+	 * migration, a repair, a change made through the local API. It is a
+	 * stranger's write in all but one thing, which is that both texts are in
+	 * hand. That matters where a stranger's write has to be left alone: a
+	 * note open in an editor, or one with a change on its way to the count.
+	 * Left alone there, the baseline goes stale and the rewrite's words are
+	 * credited to the next keystroke. Re-baselined from the disk there, what
+	 * was typed since the last count is credited to nobody. So the baseline
+	 * moves by exactly what the rewrite changed, and a save's text still
+	 * waiting to be counted is brought up to what the note now holds, which
+	 * leaves that save credited with what it changed and no more.
+	 *
+	 * A note with no baseline yet, and one whose texts will not parse, are
+	 * settled as a stranger's write is.
+	 */
+	private noteRewrittenByPlugin(path: string, before: string, after: string): void {
+		const live = this.liveState;
+		if (live !== null && !live.stopping && this.worthReading(live, path)) {
+			if (live.tracker?.currentPhase() !== "paused") {
+				const moved = this.baselineUnder(
+					live.options,
+					live.baseline,
+					path,
+					live.pending.has(path),
+					before,
+					after,
+				);
+				if (moved === null) {
+					this.noteWrittenExternally(path);
+					return;
+				}
+				live.baseline.set(path, moved);
+				if (isSavedText(live.pending.get(path))) {
+					live.pending.set(path, savedText(after));
+				}
+				return;
+			}
+			// Frozen: a save's text remembered for the thaw is no longer what
+			// the note holds, and anything else is marked as a stranger's
+			// write marks it.
+			if (isSavedText(live.dirtyWhilePaused.get(path))) {
+				live.dirtyWhilePaused.set(path, savedText(after));
+			} else if (!live.dirtyWhilePaused.has(path)) {
+				live.dirtyWhilePaused.set(path, undefined);
+			}
+		}
+		const state = this.untimedFor(path);
+		const moved =
+			state === null
+				? null
+				: this.baselineUnder(
+						state.options,
+						state.baseline,
+						path,
+						state.pending.has(path),
+						before,
+						after,
+					);
+		if (state === null || moved === null) {
+			this.noteWrittenExternally(path);
+			return;
+		}
+		state.baseline.set(path, moved);
+		const entry = state.pending.get(path);
+		if (entry !== undefined && isSavedText(entry.content)) {
+			entry.content = savedText(after);
+		}
+	}
+
+	/**
+	 * Where a note's baseline stands once a rewrite nobody typed is taken
+	 * out of what it is measured against, or null where the rewrite is a
+	 * stranger's write to settle: no editor holds the note and nothing
+	 * waits to be counted, it has no baseline yet, or a text will not parse.
+	 */
+	private baselineUnder(
+		options: NoteCountOptions,
+		baseline: ReadonlyMap<string, number>,
+		path: string,
+		waiting: boolean,
+		before: string,
+		after: string,
+	): number | null {
+		if (!waiting && !this.deps.isNoteOpen(path)) return null;
+		const base = baseline.get(path);
+		if (base === undefined) return null;
+		const was = this.totalFromText(options, before);
+		const is = this.totalFromText(options, after);
+		return was === null || is === null ? null : base + is - was;
 	}
 
 	/**
@@ -3440,6 +3533,23 @@ function moveKey<T>(map: Map<string, T>, from: string, to: string): void {
 	const value = map.get(from) as T;
 	map.delete(from);
 	map.set(to, value);
+}
+
+/**
+ * The texts a save of the plugin's own left in a note, told from an
+ * editor's: an editor answers with whatever it holds when it is asked, and
+ * one of these answers with what one save wrote, whatever was written since.
+ */
+const SAVED_TEXTS = new WeakSet<NoteTextProvider>();
+
+function savedText(text: string): NoteTextProvider {
+	const provider: NoteTextProvider = () => text;
+	SAVED_TEXTS.add(provider);
+	return provider;
+}
+
+function isSavedText(provider: NoteTextProvider | undefined): boolean {
+	return provider !== undefined && SAVED_TEXTS.has(provider);
 }
 
 function resolveText(

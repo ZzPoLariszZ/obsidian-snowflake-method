@@ -350,6 +350,102 @@ describe("WritingSessionService", () => {
 		expect(sessions.live()?.added).toBe(3);
 	});
 
+	it("credits nobody for the plugin's own rewrite of a note open in an editor", async () => {
+		await startSession();
+		openNotes.add(NOTES);
+		// Words the local API put into the note, with the texts of before and
+		// after in hand. A stranger's write to an open note is left alone,
+		// and left alone these words would be the next keystroke's.
+		fakeVault.write(NOTES, written("one two three four five six")());
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three")(),
+			written("one two three four five six")(),
+			false,
+		);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		// The editor shows them, and the next key is credited with itself.
+		sessions.noteChanged(NOTES, written("one two three four five six seven"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	it("keeps what was typed and not yet counted when the plugin rewrites the note under it", async () => {
+		await startSession();
+		openNotes.add(NOTES);
+		// A word typed and still waiting for the count when the rewrite
+		// lands. The editor answers with what it holds when it is asked,
+		// which by then is the rewritten note.
+		let editor = "one two three typed";
+		sessions.noteChanged(NOTES, () => written(editor)());
+		fakeVault.write(NOTES, written("one two three typed four five six")());
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three typed")(),
+			written("one two three typed four five six")(),
+			false,
+		);
+		editor = "one two three typed four five six";
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	it("credits a save with what it changed where the plugin rewrites the note before the count", async () => {
+		await startSession();
+		// A stream's own save and a change through the local API in one
+		// beat: the stream writes what the author typed as it gives the note
+		// up, and the API's words land a moment after.
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three")(),
+			written("one two three typed")(),
+			true,
+		);
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three typed")(),
+			written("one two three typed four five six")(),
+			false,
+		);
+		fakeVault.write(NOTES, written("one two three typed four five six")());
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		// And the next save is measured against the note as the rewrite left it.
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three typed four five six")(),
+			written("one two three typed four five six seven")(),
+			true,
+		);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	it("does not hand the plugin's own rewrite to the thaw of a paused session", async () => {
+		await startSession();
+		openNotes.add(NOTES);
+		sessions.pause();
+		fakeVault.write(NOTES, written("one two three four five six")());
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three")(),
+			written("one two three four five six")(),
+			false,
+		);
+		await timers.flush();
+		sessions.resume();
+		sessions.noteChanged(NOTES, written("one two three four five six seven"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		// Nor was it the day's while the clock stood still.
+		await sessions.stop();
+		expect((await sessions.todaySummary(project)).added).toBe(1);
+	});
+
 	it("moves a renamed note's tallies without inventing a delta", async () => {
 		await startSession();
 		sessions.noteChanged(NOTES, written("one two three four"));
@@ -2770,6 +2866,28 @@ describe("WritingSessionService", () => {
 		// rebase that would have read the disk after the save.
 		const day = await sessions.todaySummary(project);
 		expect(day.added).toBe(3);
+		expect(day.deleted).toBe(0);
+	});
+
+	it("credits nobody for a rewrite of a note the author has open", async () => {
+		openNotes.add(NOTES);
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		fakeVault.write(NOTES, written("one two three four rendered more words")());
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three four")(),
+			written("one two three four rendered more words")(),
+			false,
+		);
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four rendered more words typed"),
+		);
+		await timers.flush();
+		// The word typed before the rewrite and the one typed after it.
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(2);
 		expect(day.deleted).toBe(0);
 	});
 
