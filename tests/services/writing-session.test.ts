@@ -28,6 +28,10 @@ const MONTH_FILE =
 const UNTIMED_FILE =
 	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-a_untimed_writing.json";
 
+/** Where the project is made, and where a test moves it to with nobody told. */
+const ROOT = "Snowflake Projects/Novel";
+const MOVED = "Snowflake Projects/Novel moved";
+
 const countOptions = { mode: "ms-word", headings: "count" } as const;
 
 const options = (
@@ -244,6 +248,10 @@ describe("WritingSessionService", () => {
 		// Past the discard rule, so a stop always leaves a record behind.
 		clock += 20_000;
 	};
+
+	/** Everything the vault holds under the place the project was made at. */
+	const underOldRoot = (): string[] =>
+		[...fakeVault.contents.keys()].filter((path) => path.startsWith(`${ROOT}/`));
 
 	const monthFile = (): { sessions: WritingSessionRecord[] } | null => {
 		const content = fakeVault.contents.get(MONTH_FILE);
@@ -785,6 +793,49 @@ describe("WritingSessionService", () => {
 		const revived = buildService();
 		const record = await revived.recoverAtStartup();
 		expect(record?.stopReason).toBe("recovered");
+	});
+
+	it("lets a session cut short go when its project is gone from where it ran", async () => {
+		await startSession();
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
+		await timers.flush();
+		clock += 10_000;
+		sessions.markShutdown();
+		expect(store.value).not.toBeNull();
+		// Moved while the app was closed, by hand or by another device: no
+		// rename ever reached the service.
+		fakeVault.rename(ROOT, MOVED);
+
+		const revived = buildService();
+		events = [];
+		await expect(revived.recoverAtStartup()).resolves.toBeNull();
+		// Filed nowhere: under the old name the record would raise a folder
+		// holding nothing else, in the way of the project coming back.
+		expect(projects.repository.getFolder(ROOT)).toBeNull();
+		expect(underOldRoot()).toEqual([]);
+		expect(events.some((event) => event.kind === "recovered")).toBe(false);
+		// And not kept for the next launch to try again.
+		expect(store.value).toBeNull();
+	});
+
+	it("files nothing when a session is stopped after its project was deleted under it", async () => {
+		await startSession();
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		// Trashed with the session still running, and told as the vault tells it.
+		fakeVault.delete(ROOT);
+		sessions.noteDeleted(ROOT, { children: true });
+		expect(sessions.isRunning()).toBe(true);
+
+		await sessions.stop();
+		expect(sessions.isRunning()).toBe(false);
+		expect(events.filter((event) => event.kind === "stopped")).toEqual([
+			{ kind: "stopped", record: null, reason: "manual" },
+		]);
+		expect(projects.repository.getFolder(ROOT)).toBeNull();
+		expect(underOldRoot()).toEqual([]);
+		expect(store.value).toBeNull();
 	});
 
 	it("starts an auto session only into silence, and stops only its own", async () => {
@@ -1960,6 +2011,112 @@ describe("WritingSessionService", () => {
 		) as { days: unknown[] };
 		expect(retried.days).toHaveLength(1);
 		expect(untimedStore.value).toBeNull();
+	});
+
+	it("lets a finished day go when its project was moved away with nothing listening", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		clock += 26 * 3_600_000;
+		// Moved while the app was closed, by hand or by another device.
+		fakeVault.rename(ROOT, MOVED);
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		// Filed nowhere: under the old name the day would raise a folder
+		// holding nothing but its record.
+		expect(projects.repository.getFolder(ROOT)).toBeNull();
+		expect(underOldRoot()).toEqual([]);
+		// And dropped from the store, so no later launch tries again.
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("does not resume a day still underway for a project that is gone", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		expect(untimedStore.value).not.toBeNull();
+		fakeVault.delete(ROOT);
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		expect(untimedStore.value).toBeNull();
+		// No day came home, so no flush beat waits to write one.
+		await timers.flush();
+		expect(projects.repository.getFolder(ROOT)).toBeNull();
+		expect(underOldRoot()).toEqual([]);
+	});
+
+	it("brings the other projects' days home when one project is gone", async () => {
+		const other = await projects.createProject({ title: "Sequel", locale: "en" });
+		projectRefs = [project, other];
+		const otherNotes = `${other.rootPath}/80_Material/Notes.md`;
+		await fakeVault.seedFile(
+			otherNotes,
+			written("one two three").call(null).replace(project.id, other.id),
+		);
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		sessions.noteChanged(otherNotes, () =>
+			written("one two three four five six")().replace(project.id, other.id),
+		);
+		await timers.flush();
+		sessions.markShutdown();
+		clock += 26 * 3_600_000;
+		fakeVault.delete(ROOT);
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		// The project that stands has its day filed, as ever.
+		const filed = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE.replace(ROOT, other.rootPath)) ?? "{}",
+		) as { days: { words: { project: { net: number } } }[] };
+		expect(filed.days).toHaveLength(1);
+		expect(filed.days[0]?.words.project.net).toBe(3);
+		// The one that is gone raised nothing.
+		expect(projects.repository.getFolder(ROOT)).toBeNull();
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("lets an accruing day go at its flush beat when the project went without a word", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(2);
+		// Gone with nothing told: neither a rename nor a deletion reached here.
+		fakeVault.rename(ROOT, MOVED);
+		clock += 6 * 60_000;
+		await timers.flush();
+		expect(projects.repository.getFolder(ROOT)).toBeNull();
+		expect(underOldRoot()).toEqual([]);
+		// The day went with its project, out of memory and out of the store.
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("lets a day it was about to file go when tracking is switched off after the project went", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		fakeVault.rename(ROOT, MOVED);
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		expect(projects.repository.getFolder(ROOT)).toBeNull();
+		expect(underOldRoot()).toEqual([]);
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("files the day under the project's new name when the move was heard", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// Renamed in front of the plugin, which tells the service at once.
+		fakeVault.rename(ROOT, MOVED);
+		sessions.notePathRenamed(ROOT, MOVED);
+		clock += 6 * 60_000;
+		await timers.flush();
+		await timers.flush();
+		const filed = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE.replace(ROOT, MOVED)) ?? "{}",
+		) as { days: { words: { project: { net: number } } }[] };
+		expect(filed.days).toHaveLength(1);
+		expect(filed.days[0]?.words.project.net).toBe(2);
+		expect(underOldRoot()).toEqual([]);
 	});
 
 	it("reads untimed words into words and goals but never into time or pace", async () => {

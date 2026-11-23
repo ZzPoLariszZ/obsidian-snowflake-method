@@ -1966,6 +1966,22 @@ export class WritingSessionService {
 	}
 
 	/**
+	 * Whether a project's folder still stands where a record remembers it.
+	 * Every record here is filed inside its project, and one filed under a
+	 * folder that is gone raises the folder again: a project of the old name
+	 * holding nothing but the record, in the way of the real one coming back.
+	 * A project that goes while the plugin listens is heard of, and what
+	 * waited for it follows it or is let go. This asks for the one nobody
+	 * told of: moved, archived or deleted while the app was closed or the
+	 * plugin off, by hand or by another device, with a day or a session
+	 * still waiting. Such a record has nowhere to file and is let go, as a
+	 * deleted project's is.
+	 */
+	private stands(rootPath: string): boolean {
+		return this.deps.repository.getFolder(rootPath) !== null;
+	}
+
+	/**
 	 * One record into its JSON file: created when the file is absent, else
 	 * parsed, merged and rewritten in one transform. A file that will not
 	 * parse is never destroyed: it is set aside whole, and a healthy file
@@ -2034,8 +2050,16 @@ export class WritingSessionService {
 	 */
 	private async flushDirtyUntimed(): Promise<void> {
 		let remaining = false;
-		for (const state of this.untimedStates.values()) {
+		for (const state of [...this.untimedStates.values()]) {
 			if (!state.dirty) continue;
+			// The project went without a word reaching here: its day has
+			// nowhere to file, and goes with it.
+			if (!this.stands(state.rootPath)) {
+				if (this.untimedStates.get(state.projectId) === state) {
+					this.untimedStates.delete(state.projectId);
+				}
+				continue;
+			}
 			// Cleared before the write and restored on failure, so a credit
 			// landing during the write's await keeps the fresh mark it set
 			// instead of being clobbered by a reset after the fact.
@@ -2088,6 +2112,12 @@ export class WritingSessionService {
 	 */
 	private async flushUnflushed(): Promise<void> {
 		for (const [key, flush] of [...this.unflushed]) {
+			// A finished day whose project is gone from where it stood is
+			// let go rather than kept for a retry that would raise the folder.
+			if (!this.stands(flush.rootPath)) {
+				this.unflushed.delete(key);
+				continue;
+			}
 			try {
 				await this.appendUntimedRecord(
 					flush.rootPath,
@@ -2166,7 +2196,9 @@ export class WritingSessionService {
 				return null;
 			}
 			const record = finalizeSnapshot(snapshot);
-			if (shouldDiscard(record)) {
+			// A session too slight to keep, or one whose project is gone from
+			// where it ran: neither is filed, and the store is cleared of it.
+			if (shouldDiscard(record) || !this.stands(snapshot.projectRoot)) {
 				this.deps.recovery.save(null);
 				return null;
 			}
@@ -2203,6 +2235,10 @@ export class WritingSessionService {
 		let touched = false;
 		for (const entry of snapshot.states) {
 			if (entry.files.length === 0) continue;
+			// A day whose project is gone from where it stood comes home to
+			// nothing: neither resumed nor queued, and so dropped from the
+			// store when it is rewritten below.
+			if (!this.stands(entry.projectRoot)) continue;
 			if (calendarDay(this.now(), entry.timezone) === entry.day) {
 				const kept = this.untimedStates.get(entry.projectId);
 				if (kept !== undefined && kept.day === entry.day) {
@@ -3093,7 +3129,9 @@ export class WritingSessionService {
 		this.liveState = null;
 		this.clearTimers();
 		this.rearmForUntimedBacklog();
-		if (shouldDiscard(record)) {
+		// A session too slight to keep, or one whose project was deleted
+		// under it: the stop is told, and nothing is filed.
+		if (shouldDiscard(record) || !this.stands(live.project.rootPath)) {
 			this.deps.recovery.save(null);
 			this.emit({ kind: "stopped", record: null, reason });
 			return;
