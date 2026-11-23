@@ -23,6 +23,7 @@ import {
 	type OperationGroup,
 } from './context';
 import { findManuscriptNote, tellManuscriptNote } from './manuscript';
+import { fileable } from './refusals';
 
 type Sent = Readonly<Record<string, unknown>>;
 type Rename = { path: string; title: string };
@@ -106,9 +107,12 @@ function removing(context: ApiContext, segments: readonly ManuscriptSegmentRecor
 	return numbering === null ? [] : followerRenames(proposeChapterRemovalAmong(segments, index, numbering));
 }
 
-/** The name a new note takes: the one sent, or the one the rule offers, and one of the two there must be. */
+/**
+ * The name a new note takes: the one sent, or the one the rule offers, and one of the two there must be.
+ * One sent is held to what a file can be called before any note is made ready for the change.
+ */
 function titleOf(body: Sent, head: string | null): string {
-	if (typeof body['title'] === 'string') return body['title'].trim();
+	if (typeof body['title'] === 'string') return fileable(body['title'].trim());
 	if (head !== null) return head;
 	throw new ApiError('invalid-request', 'The call does not match what the operation takes.', {
 		errors: [{ pointer: '/title', detail: "No title was sent, and the author's numbering rule offers none at this place." }],
@@ -223,10 +227,11 @@ export const manuscriptWriteOperations: OperationGroup = {
 		writable(segment);
 		const body = bodyOf(call);
 		const service = context.host.projects;
+		const title = fileable(String(body['title']));
 		renamable(context, segment.path);
 		await ready(context, call, segment.path);
 		const heading = typeof body['heading'] === 'boolean' ? body['heading'] : (await service.manuscript.segmentNaming(segment.path)).matches;
-		const moved = await service.renameManuscriptSegment(project, segment.path, String(body['title']), { heading, ...NOT_THE_AUTHOR });
+		const moved = await service.renameManuscriptSegment(project, segment.path, title, { heading, ...NOT_THE_AUTHOR });
 		const { project: after } = await context.loadProject(projectId);
 		const told = await tellManuscriptNote(context, after, moved.to);
 		return {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldName, freeName, isNameTaken, safeFileName } from '../../src/domain/names';
+import { UnsafeFileNameError, foldName, freeName, isNameTaken, isSafeFileName, safeFileName } from '../../src/domain/names';
 
 describe('folding a name for comparison', () => {
 	it('ignores surrounding space and casing', () => {
@@ -89,6 +89,25 @@ describe('a safe file name', () => {
 	it('throws where nothing safe is left', () => {
 		for (const name of ['', '   ', '.', '..', '...', '. .']) {
 			expect(() => safeFileName(name)).toThrow('safe file name');
+		}
+	});
+
+	it('refuses in a class of its own, which says the name that was asked for', () => {
+		let thrown: unknown = null;
+		try {
+			safeFileName(' ... ');
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(UnsafeFileNameError);
+		expect((thrown as UnsafeFileNameError).requestedName).toBe(' ... ');
+	});
+
+	it('says without a throw whether a name can be worn as it is written', () => {
+		expect(isSafeFileName('Two words')).toBe(true);
+		// Safe once it is changed is not safe as written.
+		for (const name of ['Sliced/Name', 'Trailing.', '.hidden', ' padded ', '', '...']) {
+			expect(isSafeFileName(name), name).toBe(false);
 		}
 	});
 });

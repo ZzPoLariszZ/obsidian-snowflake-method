@@ -301,6 +301,9 @@ describe('a field template, made, changed and deleted', () => {
 		const twice = await golden.call('createFieldTemplate', P, { body: { kind: 'scene', name: 'Pairs', fields: [{ title: 'A', content: '' }, { title: 'a', content: '' }] } });
 		expect(refusal(twice)).toEqual([422, 'duplicate-field-title']);
 		expect(refusal(await golden.call('createFieldTemplate', P, { body: { kind: 'scene', name: 'Sub/Name' } }))).toEqual([422, 'invalid-name']);
+		// Dots alone are no name for a note either, at the making and at the renaming.
+		expect(refusal(await golden.call('createFieldTemplate', P, { body: { kind: 'scene', name: '...' } }))).toEqual([422, 'invalid-name']);
+		expect(refusal(await golden.call('updateFieldTemplate', { ...P, kindId: 'scene', templateName: 'Beats' }, { body: { name: '..' } }))).toEqual([422, 'invalid-name']);
 		const kind = await golden.call('createFieldTemplate', P, { body: { kind: 'weather', name: 'Fronts' } });
 		expect(refusal(kind)).toEqual([400, 'invalid-request']);
 		expect(vaultState(golden.host)).toEqual(before);

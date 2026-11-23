@@ -49,6 +49,19 @@ export function freeName(name: string, taken: readonly string[]): string {
 }
 
 /**
+ * Raised for a name no file or folder could be called by: nothing is left
+ * of it once what a path cannot hold is taken off, as with a name of dots
+ * alone. It is a class of its own so that whoever asked can be told it was
+ * the name, and which, where a plain error says only that something failed.
+ */
+export class UnsafeFileNameError extends Error {
+	constructor(readonly requestedName: string) {
+		super('The name does not contain a safe file name.');
+		this.name = 'UnsafeFileNameError';
+	}
+}
+
+/**
  * A name a file or folder can actually be given. Lossy on purpose — what a
  * path cannot hold is dropped rather than escaped — so a file name can never
  * be read back as the name it came from. A dot at the start goes with the
@@ -65,9 +78,18 @@ export function safeFileName(value: string): string {
 		.replace(/^\.+/u, '')
 		.trim();
 	if (!normalized || normalized === '.' || normalized === '..') {
-		throw new Error('The name does not contain a safe file name.');
+		throw new UnsafeFileNameError(value);
 	}
 	return normalized;
+}
+
+/** Whether a name can be given to a file or folder exactly as it is written. */
+export function isSafeFileName(value: string): boolean {
+	try {
+		return safeFileName(value) === value;
+	} catch {
+		return false;
+	}
 }
 
 /** The file name of a path, without the Markdown extension, whatever its case on disk. */

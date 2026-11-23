@@ -327,7 +327,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [duplicate-name, path-conflict, project-creation-interrupted]
+      x-snowflake-errors: [duplicate-name, invalid-name, path-conflict, project-creation-interrupted]
       requestBody:
         required: true
         content:
@@ -385,7 +385,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, path-conflict, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, path-conflict, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -792,7 +792,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title]
       requestBody:
         required: true
         content:
@@ -854,7 +854,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -957,7 +957,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title]
       requestBody:
         required: true
         content:
@@ -1019,7 +1019,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -1121,7 +1121,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, invalid-time-span]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, invalid-time-span]
       requestBody:
         required: true
         content:
@@ -1182,7 +1182,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, invalid-time-span, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, duplicate-name, invalid-name, unknown-vocabulary-node, invalid-reference, invalid-segment, too-deep, duplicate-field-title, precondition-required, concurrent-change, unsafe-section, invalid-time-span, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -1579,7 +1579,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-name, path-conflict, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -3459,7 +3459,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, path-conflict, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-name, path-conflict, link-updates-ask]
       requestBody:
         required: true
         content:
@@ -3496,7 +3496,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict, passage-not-found, ambiguous-passage, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, invalid-name, path-conflict, passage-not-found, ambiguous-passage, link-updates-ask]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:

@@ -1,4 +1,4 @@
-import { foldName, isNameTaken } from '../../src/domain';
+import { foldName, isNameTaken, safeFileName } from '../../src/domain';
 import { ApiError } from '../errors';
 
 /**
@@ -26,6 +26,18 @@ export const foreign = (what: string): ApiError =>
 
 export const taken = (kind: string, name: string): ApiError =>
 	new ApiError('duplicate-name', 'Another one already goes by that name. Names are told apart whatever their case.', { kind, name });
+
+/**
+ * A name a note is to be filed under, refused where no file could be called
+ * by it: of a name of dots alone nothing is left. The services refuse such a
+ * name too, and it is answered the same either way. A handler asks here
+ * first where the service would look only after something was done towards
+ * the change, such as an editor of the author's closed for it.
+ */
+export function fileable(name: string): string {
+	safeFileName(name);
+	return name;
+}
 
 /** Whether a name is free for a thing that has `own` already, or none yet. Keeping a name is not taking one. */
 export function free(others: readonly string[], name: string, own: string | null): boolean {

@@ -7028,6 +7028,14 @@ describe("SnowflakeProjectService", () => {
           fields: [],
         }),
       ).toEqual({ ok: false, code: "invalid-name" });
+      // A name of dots alone is refused the same way, and not by a throw.
+      expect(
+        await service.saveCustomFieldTemplate(project.projectFile, "character", {
+          name: "...",
+          description: "",
+          fields: [],
+        }),
+      ).toEqual({ ok: false, code: "invalid-name" });
       // An export lands on the standing note: identity kept, the rest replaced.
       const overwrite = await service.saveCustomFieldTemplate(
         project.projectFile,

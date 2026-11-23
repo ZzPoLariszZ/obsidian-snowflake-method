@@ -1,6 +1,6 @@
 import { normalizePath } from 'obsidian';
 
-import type { ProjectLanguage } from '../../src/domain';
+import { UnsafeFileNameError, type ProjectLanguage } from '../../src/domain';
 import { KindRegistrationRefusedError, type ProjectRef, type ProjectSeries, type ProjectSnapshot } from '../../src/services';
 import { healthOf, projectOf, projectSummary } from '../dto/project';
 import { ApiError } from '../errors';
@@ -111,7 +111,10 @@ export const projectOperations: OperationGroup = {
 			mended = await context.host.projects.repairMissingStructureItem(project.projectFile, issue.path, issue.field);
 		} catch (error) {
 			// The service says in a plain error that it found nothing safe to do. Its words are the author's, so only that it said so is handed on.
-			const refused = error instanceof KindRegistrationRefusedError || (error instanceof Error && error.constructor === Error);
+			const refused =
+				error instanceof KindRegistrationRefusedError ||
+				error instanceof UnsafeFileNameError ||
+				(error instanceof Error && error.constructor === Error);
 			if (!refused) throw error;
 			throw unmendable('The plugin found no safe way to mend this as the project stands. getProjectHealth says how it stands now.');
 		}

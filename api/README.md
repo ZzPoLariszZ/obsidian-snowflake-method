@@ -77,6 +77,8 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Word counts.** Text written through the API is not counted as the author's own typing, and the modification history files it as the plugin's. A note deleted through the API counts as words the project lost, as any deleted note does.
 
+**Names.** A project, a character, a scene and a worldbuilding note keep the name they are sent, and are filed under what a file can be called: what a path cannot hold becomes a dash, and the dots at either end are left off. A manuscript note's name is its file's name, so it is kept in that form. A name of dots alone leaves nothing to file it under, and answers `422 invalid-name` before anything is written. A kind and a field template are sent a name a file can carry as it stands.
+
 **Renaming.** Obsidian rewrites the links to a note that takes another name. Where the author has Obsidian ask first, it opens a dialog and waits, and a caller cannot answer a dialog. While **Automatically update internal links** is off in Obsidian's **Files and links** settings, every change that would rename a note or a folder answers `409 link-updates-ask` before anything is written. `GET /v1` says which way it is set, in `canRename`.
 
 **After a rename.** Obsidian may shorten a link it rewrites. The health check then reports `incomplete-link` as repairable, and `repairProject` writes the link back in full.

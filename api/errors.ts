@@ -7,6 +7,7 @@ import {
 	UnsafeSectionError,
 	UnsupportedSchemaError,
 } from '../src/repository/errors';
+import { UnsafeFileNameError } from '../src/domain';
 import { ArchiveFolderIsProjectError, DuplicateNameError, ProjectCreationInterruptedError } from '../src/services';
 import { isJsonObject, type JsonObject } from './json';
 import type { ApiDocument } from './spec/document';
@@ -130,6 +131,13 @@ export function mapError(error: unknown): ApiError {
 			kind: error.kind,
 			name: error.requestedName,
 		});
+	}
+	if (error instanceof UnsafeFileNameError) {
+		return new ApiError(
+			'invalid-name',
+			'A note or a folder is filed under its name, and nothing of this one is left once the dots and spaces at its ends are taken off. Send a name that holds more than dots.',
+			{ name: error.requestedName },
+		);
 	}
 	if (error instanceof ArchiveFolderIsProjectError) {
 		return new ApiError('archive-folder-is-project', 'The folder archived projects go into is itself a project, so nothing can be filed in it.', {

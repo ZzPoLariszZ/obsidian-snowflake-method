@@ -32,6 +32,7 @@ import {
   freeName,
   parseStickyNoteCreated,
   safeFileName,
+  isSafeFileName,
   WORLDBUILDING_KIND_DEFINITIONS,
   isDocumentType,
   isCharacterType,
@@ -6624,7 +6625,7 @@ export class SnowflakeProjectService {
     this.assertProjectWritable(project);
     const userInput = options.userInput ?? true;
     const name = input.name.trim();
-    if (name.length === 0 || safeFileName(name) !== name) {
+    if (name.length === 0 || !isSafeFileName(name)) {
       return { ok: false, code: "invalid-name" };
     }
     const root = customFieldRootPath(project, kind);

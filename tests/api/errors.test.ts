@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError, mapError, problemOf, readProblems } from '../../api/errors';
+import { UnsafeFileNameError } from '../../src/domain';
 import {
 	ConcurrentChangeError,
 	InvalidManagedDocumentError,
@@ -40,6 +41,8 @@ describe('what went wrong, as the contract names it', () => {
 		const cases: [unknown, string, Record<string, unknown>][] = [
 			[new DuplicateNameError('character', 'Ada'), 'duplicate-name', { kind: 'character', name: 'Ada' }],
 			[new ArchiveFolderIsProjectError('Books/Snowflake Archive'), 'archive-folder-is-project', { path: 'Books/Snowflake Archive' }],
+			// The domain's own refusal of a name, raised by whichever service came to file something under it.
+			[new UnsafeFileNameError('...'), 'invalid-name', { name: '...' }],
 			[
 				new ProjectCreationInterruptedError('Books/Novel/00_System/001_Project_Metadata.md', new Error('disk full')),
 				'project-creation-interrupted',
