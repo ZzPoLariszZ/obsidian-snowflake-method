@@ -71,13 +71,22 @@ export class RelationshipGraphService {
 		return this.revise(project, forgetSceneManuscriptOptions);
 	}
 
-	/** The entity view's state, one or more parts at a time. */
+	/**
+	 * The entity view's state, one or more parts at a time. A patch may be
+	 * worked out from the state instead of handed in whole: it is then given
+	 * the state as the file has it when the write runs, for a change that
+	 * leaves some settings of a part as they stand and cannot see the
+	 * controls that may be moving them.
+	 */
 	updateEntities(
 		project: ProjectRef,
-		patch: Partial<EntityGraphState>,
+		patch: Partial<EntityGraphState> | ((held: EntityGraphState) => Partial<EntityGraphState>),
 	): Promise<RelationshipGraphWrite> {
 		return this.revise(project, (held) => {
-			const entities = patchEntityGraphState(held.entities, patch);
+			const entities = patchEntityGraphState(
+				held.entities,
+				typeof patch === 'function' ? patch(held.entities) : patch,
+			);
 			return sameEntityGraphState(entities, held.entities) ? null : { ...held, entities };
 		});
 	}

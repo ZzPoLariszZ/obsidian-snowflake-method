@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { BUILT_IN_BEAT_SHEET_TEMPLATE_IDS, DEFAULT_GRAPH_FORCES, FREEFORM_LIMITS } from '../../src/domain';
 import { seedBoards, type GoldenBoards } from './helpers/golden-boards';
@@ -462,6 +462,24 @@ describe('the relationship graph, set as its own panel sets it', () => {
 		expect(golden.host.told).toEqual([]);
 		golden.host.state.access = 'read';
 		expect(refusal(await sent({ display: { arrows: false } }))).toEqual([403, 'access-denied']);
+	});
+
+	it('leaves a setting the author moved a moment before as it then stands', async () => {
+		const { golden, P } = await ground({ access: 'write' });
+		const service = golden.host.projects.relationshipGraph;
+		const read = service.read.bind(service);
+		// The author drags the node size in the open graph while the call is on its way. The slider's own
+		// write lands after the call has read the view, and before the call writes.
+		const slid = vi.spyOn(service, 'read').mockImplementationOnce(async (project) => {
+			const held = await read(project);
+			await service.updateEntities(project, { display: { ...held.entities.display, nodeSize: 2 } });
+			return held;
+		});
+		const changed = await ok(golden, 'updateRelationshipGraphView', P, { display: { arrows: false }, forces: { repel: 15 } });
+		slid.mockRestore();
+		// The call set what it named, and the slider's place is kept.
+		expect(changed['display']).toEqual({ arrows: false, captions: 'relationship', textFade: 0, nodeSize: 2, lineSize: 1 });
+		expect(bodyOf(changed['forces'])['repel']).toBe(15);
 	});
 });
 
