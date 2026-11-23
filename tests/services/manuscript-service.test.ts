@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FRONTMATTER_KEYS, findSequenceIssues } from "../../src/domain";
-import { parseMarkdownFrontmatter } from "../../src/repository";
+import { ConcurrentChangeError, parseMarkdownFrontmatter } from "../../src/repository";
 import {
   SnowflakeProjectService,
   type ProjectSnapshot,
@@ -1146,6 +1146,68 @@ describe("renaming manuscript notes in a batch", () => {
       "Chapter 5",
       "Chapter 6",
     ]);
+  });
+
+  it("refuses to split a note that moved on from the version the place was found in, before anything is renamed", async () => {
+    const before = renameCalls.length;
+    const source = await service.manuscript.readSegment(`${folder}/Chapter 3.md`);
+    await service.manuscript.writeSegment(source.path, `One more line.\n\n${source.body}`, source.revision);
+
+    await expect(
+      service.manuscript.splitSegmentAt(
+        project,
+        source.path,
+        source.body.length,
+        "Chapter 4",
+        [
+          { path: `${folder}/Chapter 4.md`, title: "Chapter 5" },
+          { path: `${folder}/Chapter 5.md`, title: "Chapter 6" },
+        ],
+        { expectedRevision: source.revision },
+      ),
+    ).rejects.toBeInstanceOf(ConcurrentChangeError);
+
+    expect(renameCalls.length).toBe(before);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4", "Chapter 5"]);
+    expect(bodyOf(source.path)).toContain("One more line.");
+  });
+
+  it("puts everything back where the note changes while the notes after it are renamed", async () => {
+    const source = await service.manuscript.readSegment(`${folder}/Chapter 3.md`);
+    const headings = [4, 5].map((number) => bodyOf(`${folder}/Chapter ${String(number)}.md`));
+    // The author saves a line into the note in the middle of the renumbering.
+    const rename = service.repository.renameFile.bind(service.repository);
+    let typed = false;
+    const renaming = vi
+      .spyOn(service.repository, "renameFile")
+      .mockImplementation(async (from, to) => {
+        if (!typed) {
+          typed = true;
+          const standing = await service.manuscript.readSegment(source.path);
+          await service.manuscript.writeSegment(source.path, `One more line.\n\n${standing.body}`, standing.revision);
+        }
+        return rename(from, to);
+      });
+
+    await expect(
+      service.manuscript.splitSegmentAt(
+        project,
+        source.path,
+        source.body.length,
+        "Chapter 4",
+        [
+          { path: `${folder}/Chapter 4.md`, title: "Chapter 5" },
+          { path: `${folder}/Chapter 5.md`, title: "Chapter 6" },
+        ],
+        { expectedRevision: source.revision },
+      ),
+    ).rejects.toBeInstanceOf(ConcurrentChangeError);
+    renaming.mockRestore();
+
+    // No note was made, every note has the name and the heading it had, and the author's line stands.
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4", "Chapter 5"]);
+    expect([4, 5].map((number) => bodyOf(`${folder}/Chapter ${String(number)}.md`))).toEqual(headings);
+    expect(bodyOf(source.path)).toBe(`One more line.\n\n${source.body}`);
   });
 
   it("refuses a note whose name a moved note is about to take, nothing renamed and nothing made", async () => {

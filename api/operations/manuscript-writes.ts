@@ -259,9 +259,10 @@ export const manuscriptWriteOperations: OperationGroup = {
 			renames.map((rename) => rename.path),
 		);
 		const manuscript = context.host.projects.manuscript;
-		// Found in the text as it stands once the author's last words are in it.
+		// Found in the text as it stands once the author's last words are in it, and cut in that text or not at all:
+		// the service is told which version the place was found in, and refuses a note that has moved on from it.
 		const offset = cutOf(await textAt(context, segment.path, revision), body['at']);
-		const cut = await manuscript.splitSegmentAt(project, segment.path, offset, title, renames, NOT_THE_AUTHOR);
+		const cut = await manuscript.splitSegmentAt(project, segment.path, offset, title, renames, { ...NOT_THE_AUTHOR, expectedRevision: revision });
 		const { project: after } = await context.loadProject(projectId);
 		const told = await tellManuscriptNote(context, after, cut.path);
 		const head = await manuscript.readSegment(segment.path);

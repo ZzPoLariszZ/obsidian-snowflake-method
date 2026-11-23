@@ -13,6 +13,7 @@ import {
   type StoredSegment,
 } from "../domain";
 import {
+  ConcurrentChangeError,
   InvalidManagedDocumentError,
   ManagedFileNotFoundError,
   PathConflictError,
@@ -435,10 +436,27 @@ export class ManuscriptService {
     return created;
   }
 
-  /** The cut itself: what stands from `offset` on moves into `created`. */
-  private async cutInto(path: string, offset: number, created: string, origin: WriteOrigin = {}): Promise<void> {
+  /**
+   * The cut itself: what stands from `offset` on moves into `created`.
+   *
+   * `sighted` is the note as a caller saw it when it found the place to
+   * cut. Placing the new note may have written a position into this one,
+   * so its version has moved by the plugin's own hand, and it is the words
+   * that are held: a note that says anything else by now is not cut at a
+   * place found in other words.
+   */
+  private async cutInto(
+    path: string,
+    offset: number,
+    created: string,
+    origin: WriteOrigin = {},
+    sighted: { body: string; revision: string } | null = null,
+  ): Promise<void> {
     const userInput = origin.userInput ?? true;
     const source = await this.readSegment(path);
+    if (sighted !== null && source.body !== sighted.body) {
+      throw new ConcurrentChangeError(source.path, sighted.revision, source.revision);
+    }
     const cut = Math.max(0, Math.min(offset, source.body.length));
     // Blank lines at the seam are closed up and nothing else is touched --
     // indentation on the first line that carries over is the author's, and a
@@ -508,15 +526,34 @@ export class ManuscriptService {
     }
   }
 
-  /** `splitSegment` with the renumbering `createSegmentAt` does, settled and undone the same way. */
+  /**
+   * `splitSegment` with the renumbering `createSegmentAt` does, settled and
+   * undone the same way.
+   *
+   * `expectedRevision` is the version of the note the place to cut was
+   * found in, for a caller that worked `offset` out from a reading of its
+   * own. A note that has moved on since is refused before anything is
+   * renamed or made, and one that changes while the notes after it are
+   * renamed is refused at the cut. Either way nothing of it has moved: the
+   * note made for its second half goes, the renames are put back, and the
+   * same split can be asked for again.
+   */
   async splitSegmentAt(
     project: ProjectRef,
     path: string,
     offset: number,
     title: string,
     renames: readonly { path: string; title: string }[] = [],
-    origin: WriteOrigin = {},
+    origin: WriteOrigin & { expectedRevision?: string } = {},
   ): Promise<{ path: string; renumbered: SegmentRenameOutcome }> {
+    let sighted: { body: string; revision: string } | null = null;
+    if (origin.expectedRevision !== undefined) {
+      const standing = await this.readSegment(path);
+      if (standing.revision !== origin.expectedRevision) {
+        throw new ConcurrentChangeError(standing.path, origin.expectedRevision, standing.revision);
+      }
+      sighted = { body: standing.body, revision: standing.revision };
+    }
     const run = await this.runRenames(
       await this.planRenames(project, renames, [], [
         this.plannedSegmentPath(project, title),
@@ -530,7 +567,17 @@ export class ManuscriptService {
       await this.undoRenames(run.done, origin);
       throw error;
     }
-    await this.cutInto(path, offset, created, origin);
+    try {
+      await this.cutInto(path, offset, created, origin, sighted);
+    } catch (error) {
+      // The note changed under the cut, so the cut was not made and the
+      // note still says everything it said.
+      if (error instanceof ConcurrentChangeError) {
+        await this.repository.trashFile(created);
+        await this.undoRenames(run.done, origin);
+      }
+      throw error;
+    }
     return { path: created, renumbered: run.outcome };
   }
 

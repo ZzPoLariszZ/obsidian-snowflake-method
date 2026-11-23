@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CHAPTER_ONE, CHAPTER_TWO, createGolden, faults, vaultState, type Golden } from './helpers/golden-project';
 
@@ -281,6 +281,28 @@ describe('a manuscript note, split', () => {
 		expect(vaultState(golden.host)).toEqual(before);
 		const told = await golden.call('splitManuscriptNote', params, { body: { at: { exact: 'waited. Then', prefix: 'She ' }, title: 'After' }, ifMatch: etag });
 		expect([told.status, noteOf(told)['body']]).toEqual([201, 'waited. Then she left.\n']);
+	});
+
+	it('is not cut at a place found in words the note no longer says', async () => {
+		const golden = await fresh();
+		const manuscript = golden.host.projects.manuscript;
+		const params = { projectId: golden.project.id, notePath: FIRST };
+		const seen = await read(golden, FIRST);
+		// The author's own editor, another tab of theirs, saves a sentence in the moment after the place is found.
+		const split = manuscript.splitSegmentAt.bind(manuscript);
+		const written = vi.spyOn(manuscript, 'splitSegmentAt').mockImplementationOnce(async (...asked) => {
+			const standing = await manuscript.readSegment(golden.manuscript.first);
+			await manuscript.writeSegment(golden.manuscript.first, `A new sentence. ${standing.body}`, standing.revision);
+			return split(...asked);
+		});
+		const reply = await golden.call('splitManuscriptNote', params, { body: { at: { exact: 'The clock' }, title: 'Cut', renumber: false }, ifMatch: String(seen['etag']) });
+		written.mockRestore();
+		const now = await read(golden, FIRST);
+		expect([refusal(reply), faults(reply)]).toEqual([[412, 'concurrent-change'], []]);
+		expect(bodyOf(reply.body)['currentEtag']).toBe(now['etag']);
+		// The note says all it said, the new sentence with it, and no note was made beside it.
+		expect(now['body']).toBe(`A new sentence. ${CHAPTER_ONE}`);
+		expect((await manuscript.listSegmentsFromFiles(golden.project)).map((segment) => segment.title)).toEqual(['Draft', 'Chapter 1', 'Chapter 2']);
 	});
 
 	it('is refused without a version, and where the author typed in the note since it was read', async () => {
