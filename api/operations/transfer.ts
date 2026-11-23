@@ -308,16 +308,22 @@ export const transferOperations: OperationGroup = {
 		const repository = context.host.projects.repository;
 		const draft: GalleryDraft = galleryDraftOf(keeper.record.gallery, keeper.record.galleryMain);
 		const main = typeof body['main'] === 'string' ? normalizePath(body['main']) : null;
+		let amongSent = false;
 		(Array.isArray(body['paths']) ? body['paths'] : []).forEach((sent: unknown, at) => {
 			const path = normalizePath(textOf(sent));
 			const pointer = `/paths/${String(at)}`;
 			if (!isImagePath(path)) throw misfit(pointer, 'A gallery takes pictures: a file Obsidian draws as an image, told by the ending of its name.');
 			if (repository.getFile(path) === null) throw noSuch(pointer, 'The vault has no file there. Put the picture into the vault first.');
-			if (path === main) draft.mainIndex = draft.entries.length;
+			if (path === main) {
+				draft.mainIndex = draft.entries.length;
+				amongSent = true;
+			}
 			draft.entries.push({ kind: 'vault', path });
 		});
-		if (main !== null && draft.mainIndex === null) {
-			// The main picture may be one the gallery already has.
+		if (main !== null && !amongSent) {
+			// The main picture may be one the gallery already has. Asked by whether it was among those sent, and
+			// not by whether the draft names a main picture: it begins with the one that stands, which says
+			// nothing of the one asked for.
 			const kept = keeper.record.gallery.findIndex((link) => pictureAt(context, link, keeper.record.path) === main);
 			if (kept === -1) throw noSuch('/main', 'The main picture is one of the pictures sent, or one the gallery already has.');
 			draft.mainIndex = kept;

@@ -263,6 +263,30 @@ describe('the pictures a note keeps', () => {
 		expect(picturesOf(shared).map((entry) => entry['path'])).toEqual([`${folder}/ada.png`]);
 	});
 
+	it('take a main picture from among those the gallery already has, in place of the one that stands', async () => {
+		const golden = await createGolden();
+		const at = { projectId: golden.project.id, memberId: golden.members.ada.characterId };
+		for (const name of ['ada.png', 'tower.webp', 'third.png', 'fourth.png']) await picture(golden, `Pictures/${name}`);
+		const folder = `${golden.project.rootPath}/20_Character/25_Gallery`;
+		await ok(golden, 'addGalleryPictures', at, { paths: ['Pictures/ada.png', 'Pictures/tower.webp'], main: 'Pictures/tower.webp' });
+		// Another picture comes in, and the main one moves to one that was there before it.
+		const moved = await ok(golden, 'addGalleryPictures', at, { paths: ['Pictures/third.png'], main: `${folder}/ada.png` });
+		expect(picturesOf(moved).map((entry) => [entry['path'], entry['main']])).toEqual([
+			[`${folder}/ada.png`, true],
+			[`${folder}/tower.webp`, false],
+			[`${folder}/third.png`, false],
+		]);
+		// Left out, the main picture stays the one that stands.
+		const kept = await ok(golden, 'addGalleryPictures', at, { paths: ['Pictures/fourth.png'] });
+		expect(picturesOf(kept).filter((entry) => entry['main'] === true).map((entry) => entry['path'])).toEqual([`${folder}/ada.png`]);
+		// One that names no picture is refused whether or not a main picture stands, and nothing is added for it.
+		await picture(golden, 'Pictures/fifth.png');
+		const before = vaultState(golden.host);
+		const lost = await golden.call('addGalleryPictures', at, { body: { paths: ['Pictures/fifth.png'], main: 'Pictures/nowhere.png' } });
+		expect([refusal(lost), pointerOf(lost)]).toEqual([[422, 'invalid-reference'], '/main']);
+		expect(vaultState(golden.host)).toEqual(before);
+	});
+
 	it('are taken off one at a time, the file going to the trash where no other note shows it', async () => {
 		const golden = await createGolden();
 		const { ada, ben } = golden.members;
