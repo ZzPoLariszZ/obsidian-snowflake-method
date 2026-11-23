@@ -31,7 +31,7 @@ import {
 	nextCustomKindPrefix,
 	parseWikiLink,
 	galleryDraftOf,
-	safeFileName,
+	isSafeFileName,
 	type EntityKindId,
 	type GraphMemberGroup,
 	type ProjectWorldbuildingKind,
@@ -4182,7 +4182,9 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		name: string,
 		previousName: string | null,
 	): string | null {
-		if (safeFileName(name) !== name) {
+		// Asked without a throw: of a name of dots alone nothing is left for
+		// a file to wear, and that is an objection like any other.
+		if (!isSafeFileName(name)) {
 			return this.t('modal.customFieldTemplate.invalidName', { name });
 		}
 		const taken = (model.customFieldTemplates[kind] ?? []).some(

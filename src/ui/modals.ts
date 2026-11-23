@@ -33,7 +33,7 @@ import {
 	isNameTaken,
 	isTimeKind,
 	normalizeSceneCast,
-	safeFileName,
+	isSafeFileName,
 	type EntityKindId,
 	type GalleryDraft,
 	type ProgressStatus,
@@ -571,10 +571,12 @@ async function exportCustomFields(
 		title: t('modal.customFieldTemplate.exportTitle'),
 		submitLabel: t('common.save'),
 		rows: null,
+		// Asked without a throw: a name of dots alone is one no file can wear
+		// either, and the dialog says so as it says it of any other.
 		objection: (name) =>
-			safeFileName(name) !== name
-				? t('modal.customFieldTemplate.invalidName', { name })
-				: null,
+			isSafeFileName(name)
+				? null
+				: t('modal.customFieldTemplate.invalidName', { name }),
 		advisory: (name) => {
 			const match = namesake(name);
 			return match === null
