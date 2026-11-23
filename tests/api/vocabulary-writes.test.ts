@@ -97,6 +97,29 @@ describe('a kind, changed', () => {
 		expect(bodyOf(unknown.body)['pointer']).toBe('/defaultFieldTemplate');
 	});
 
+	it('renames nothing for a call that names a template the kind does not have', async () => {
+		const golden = await fresh();
+		const P = { projectId: golden.project.id };
+		const before = vaultState(golden.host);
+		const reply = await golden.call('updateKind', { ...P, kindId: 'Faction' }, { body: { name: 'Guild', icon: 'shield', defaultFieldTemplate: 'Missing template' } });
+		expect([refusal(reply), bodyOf(reply.body)['pointer'], faults(reply)]).toEqual([[422, 'invalid-reference'], '/defaultFieldTemplate', []]);
+		// The kind answers under the name it had, in the folder it had, and looks as it did.
+		expect(vaultState(golden.host)).toEqual(before);
+		expect((await golden.call('getKind', { ...P, kindId: 'Faction' })).status).toBe(200);
+		expect(refusal(await golden.call('getKind', { ...P, kindId: 'Guild' }))).toEqual([404, 'not-found']);
+	});
+
+	it('takes a new name and a template of the kind’s own in one call, the template found where the folder went', async () => {
+		const golden = await fresh();
+		const P = { projectId: golden.project.id };
+		const made = await golden.call('createFieldTemplate', P, { body: { kind: 'Faction', name: 'Charter', fields: [{ title: 'Oath', content: '' }] } });
+		expect(made.status).toBe(201);
+		const reply = await golden.call('updateKind', { ...P, kindId: 'Faction' }, { body: { name: 'Guild', defaultFieldTemplate: 'Charter' } });
+		expect([reply.status, faults(reply)]).toEqual([200, []]);
+		expect(bodyOf(reply.body)).toMatchObject({ id: 'Guild', name: 'Guild', defaultFieldTemplate: 'Charter' });
+		expect(String(bodyOf(reply.body)['path']).endsWith('/64_Guild')).toBe(true);
+	});
+
 	it('keeps the kinds every project has as they are, and takes one of them read and sent back whole', async () => {
 		const golden = await fresh();
 		const P = { projectId: golden.project.id };

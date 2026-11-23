@@ -241,6 +241,17 @@ export const vocabularyOperations: OperationGroup = {
 			throw new ApiError('built-in-kind', 'Every project has this kind. It keeps its name and wears no icon, and only its field template can be set.');
 		}
 		const service = context.host.projects;
+		const wanted = 'defaultFieldTemplate' in body ? body['defaultFieldTemplate'] : undefined;
+		const noTemplate = (): ApiError =>
+			new ApiError('invalid-reference', 'The kind has no field template of that name. listFieldTemplates gives the ones there are.', {
+				pointer: '/defaultFieldTemplate',
+			});
+		/** The kind's template of the name sent, where its folder stands now. */
+		const templateOf = async (name: string): Promise<{ path: string } | undefined> =>
+			((await service.listCustomFieldTemplates(project.projectFile, FROM_FILES))[kind] ?? []).find((entry) => entry.name === name);
+		// Looked for before anything is changed: a call that names a template the kind does not have is
+		// refused with the kind under the name, and in the folder, it had.
+		if (typeof wanted === 'string' && (await templateOf(wanted)) === undefined) throw noTemplate();
 		if (renamed) {
 			const moved = await service.renameWorldbuildingKind(project, kind, name);
 			if (!moved.ok) throw kindRefusal(moved.code, name);
@@ -253,19 +264,13 @@ export const vocabularyOperations: OperationGroup = {
 			};
 			await service.setKindAppearance(project.projectFile, kind, { icon: said('icon'), description: said('description') });
 		}
-		if ('defaultFieldTemplate' in body) {
-			const wanted = body['defaultFieldTemplate'];
+		if (wanted !== undefined) {
 			if (typeof wanted !== 'string') {
 				await service.setKindTemplate(project.projectFile, kind, null);
 			} else {
-				const template = ((await service.listCustomFieldTemplates(project.projectFile, FROM_FILES))[kind] ?? []).find(
-					(entry) => entry.name === wanted,
-				);
-				if (template === undefined) {
-					throw new ApiError('invalid-reference', 'The kind has no field template of that name. listFieldTemplates gives the ones there are.', {
-						pointer: '/defaultFieldTemplate',
-					});
-				}
+				// Found again where it stands now: a kind's templates move with its folder when it is renamed.
+				const template = await templateOf(wanted);
+				if (template === undefined) throw noTemplate();
 				await service.setKindTemplate(project.projectFile, kind, template.path);
 			}
 		}
