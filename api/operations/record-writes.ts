@@ -183,6 +183,11 @@ async function stickyNoteOfId(context: ApiContext, project: ProjectSnapshot, id:
  * change to it and no reason to close anything. Answers the note as it was
  * held: a change to what it says is made against that version and no later
  * one.
+ *
+ * An editor writes whatever was typed in the moment before as it closes.
+ * The note is read once more after that, and a note that moved is one the
+ * caller has not seen: the change is refused, as it is for a manuscript
+ * note, and those last words stand.
  */
 async function readySticky(
 	context: ApiContext,
@@ -190,11 +195,16 @@ async function readySticky(
 	note: StickyNoteRecord,
 	release: (standing: StickyNoteRecord) => boolean,
 ): Promise<StickyNoteRecord> {
+	const notes = context.host.projects.stickyNotes;
 	await context.host.settleNotes([note.path]);
-	const standing = await context.host.projects.stickyNotes.read(note.path);
+	const standing = await notes.read(note.path);
 	if (standing === null) throw gone('sticky note', 'listStickyNotes');
 	if (call.ifMatch !== null && call.ifMatch !== '*' && standing.revision !== call.ifMatch) throw changedSince(standing.revision);
-	if (release(standing)) await context.host.releaseNotes([note.path]);
+	if (!release(standing)) return standing;
+	await context.host.releaseNotes([note.path]);
+	const closed = await notes.read(note.path);
+	if (closed === null) throw gone('sticky note', 'listStickyNotes');
+	if (closed.revision !== standing.revision) throw changedSince(closed.revision);
 	return standing;
 }
 

@@ -753,6 +753,43 @@ describe('a sticky note, deleted', () => {
 		expect(refusal(await ask(golden, 'deleteStickyNote', { stickyNoteId: id }, { ifMatch: '*' }))).toEqual([404, 'not-found']);
 	});
 
+	it('is kept where its editor wrote more as it closed, whichever version the caller named', async () => {
+		for (const named of ['read', '*'] as const) {
+			const golden = await fresh();
+			const { id, path, revision } = golden.stickyNotes.key;
+			const notes = golden.host.projects.stickyNotes;
+			// An editor that writes its last words on its way down, as a card's does.
+			const release = golden.host.releaseNotes.bind(golden.host);
+			golden.host.releaseNotes = async (paths) => {
+				const held = await notes.read(path);
+				if (held !== null) await notes.writeBody(path, `${held.body}\nFinishing this sentence.`, held.revision);
+				return release(paths);
+			};
+			const reply = await ask(golden, 'deleteStickyNote', { stickyNoteId: id }, { ifMatch: named === 'read' ? revision : '*' });
+			const kept = await notes.read(path);
+			expect([refusal(reply), faults(reply)], named).toEqual([[412, 'concurrent-change'], []]);
+			// The note stands with the words the caller never saw, and the answer says which version that is.
+			expect(kept?.body.endsWith('Finishing this sentence.'), named).toBe(true);
+			expect(bodyOf(reply.body)['currentEtag'], named).toBe(kept?.revision);
+			expect(golden.host.told, named).toEqual([]);
+		}
+	});
+
+	it('is not set aside over words its editor wrote as it closed', async () => {
+		const golden = await fresh();
+		const { id, path, revision } = golden.stickyNotes.key;
+		const notes = golden.host.projects.stickyNotes;
+		const release = golden.host.releaseNotes.bind(golden.host);
+		golden.host.releaseNotes = async (paths) => {
+			const held = await notes.read(path);
+			if (held !== null) await notes.writeBody(path, `${held.body}\nOne more line.`, held.revision);
+			return release(paths);
+		};
+		const reply = await ask(golden, 'updateStickyNote', { stickyNoteId: id }, { body: { archived: true }, ifMatch: revision });
+		expect([refusal(reply), faults(reply)]).toEqual([[412, 'concurrent-change'], []]);
+		expect((await notes.read(path))?.archived).toBe(false);
+	});
+
 	it('is neither changed nor deleted where a newer version of the plugin wrote it', async () => {
 		const golden = await fresh();
 		const { id, path } = golden.stickyNotes.blank;
