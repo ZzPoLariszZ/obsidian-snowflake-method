@@ -10617,7 +10617,11 @@ components:
 
     FreeformViewPatch:
       type: object
-      description: What to change of a view. One read and sent back whole is taken, and only its name and its viewport are looked at.
+      description: |
+        What to change of a view. One read and sent back whole is taken, and
+        only its name and its viewport are looked at. The viewport it carries
+        is set again as it was read, over a place a tab has left since. A
+        caller that only renames a view sends the name alone.
       additionalProperties: false
       x-snowflake-echo: "#/components/schemas/FreeformView"
       properties:
