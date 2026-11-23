@@ -4788,6 +4788,25 @@ describe("SnowflakeProjectService", () => {
     });
     expect([again.type, again.categories]).toEqual([null, plain.categories]);
 
+    // Given back to a note with no category left, it is written as a
+    // category, and the note is not taken for one from before the migration.
+    const recast = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: again.revision,
+      categoryPaths: [],
+    });
+    expect(recast.categories).toEqual([]);
+    const minor = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: recast.revision,
+      type: "minor",
+    });
+    expect([minor.type, minor.unmigrated]).toEqual(["minor", false]);
+    expect(minor.categories).toEqual([expect.stringContaining("|Minor]]")]);
+    expect(
+      parseMarkdownFrontmatter(fakeVault.contents.get(ada.path) ?? "").frontmatter[
+        FRONTMATTER_KEYS.characterType
+      ],
+    ).toBeUndefined();
+
     // A note the migration has not reached keeps its role under a key of its own.
     const ben = await service.createCharacter(project, { name: "Ben" });
     await fakeFileManager.processFrontMatter(

@@ -2671,7 +2671,10 @@ export class SnowflakeProjectService {
         frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
       }
     } else if (patch.type !== undefined) {
-      if (character.categories.length > 0) {
+      // A note the migration has reached keeps its role among its categories
+      // though it has no other: judged by its having none, it would be given
+      // the legacy key and read as unmigrated from then on.
+      if (character.categories.length > 0 || !character.unmigrated) {
         nextCategories = replacedRoleCategories(
           project.locale,
           character.categories,

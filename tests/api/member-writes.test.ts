@@ -250,6 +250,16 @@ describe('a character, changed', () => {
 		expect((await golden.call('createCharacter', P, { body: { name: 'Fay', role: null } })).status).toBe(400);
 	});
 
+	it('is given a role as a category though it has no other, and is not left looking like an older note', async () => {
+		const golden = await fresh();
+		const P = { projectId: golden.project.id };
+		const made = bodyOf((await golden.call('createCharacter', P, { body: { name: 'Gil', customFields: [] } })).body);
+		expect([made['role'], made['categories'], made['needsMigration']]).toEqual([null, [], false]);
+		const cast = await golden.call('updateCharacter', { ...P, characterId: made['id'] }, { body: { role: 'minor' }, ifMatch: String(made['etag']) });
+		expect([cast.status, faults(cast)]).toEqual([200, []]);
+		expect(bodyOf(cast.body)).toMatchObject({ role: 'minor', categories: ['Minor'], needsMigration: false });
+	});
+
 	it('has what is sent changed and the rest left as it was, against the version it was read at', async () => {
 		const golden = await fresh();
 		const { ada } = golden.members;
