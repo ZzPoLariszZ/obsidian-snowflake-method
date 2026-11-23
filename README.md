@@ -103,6 +103,7 @@ Thank you for your support!
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions in the text. |
 | Modification history | Read each day's work back: the versions Obsidian kept, your writing sessions, and the notes, tasks, foreshadowing and revisions the plugin changed. |
 | Screen recording | Record the screen while you write, with macOS's own recorder or OBS Studio, as proof that the words are yours. |
+| Local API | Let programs on your computer read and write your projects. It answers on this computer only. |
 | Task board | Put everything that's waiting on one Kanban board: your own tasks and the ones the plugin derives from your writing. |
 | Revision | Propose a replacement, a deletion or an insertion beside the manuscript. The chapter only changes once you accept the proposal. |
 | Foreshadowing | Follow a thread from its plant to its payoff. Each of its passages is marked in the text, and they're all listed together. |
@@ -305,7 +306,7 @@ Writing is easier to keep up when you can see it. The dashboard's **Data statist
 
 <p align="center"><a href="assets/screenshots/entity_tracking_2_en.png"><img src="assets/screenshots/entity_tracking_2_en.png" width="100%" alt="The second chapter of the manuscript stream in reading view, in focus mode with the chrome hidden. The chapter title No One Remembers and the names Mistriver, Nora, Arthur Linden, Linden's Clock Shop and Edmund Crane are marked in the accent color within the prose, each an unlinked mention of an entity." /></a></p>
 
-**The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose. Notes in your projects that use the typography get the same marks and the same menus.
+**The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The same menu opens the entity's note, and **Edit entity** opens its form without leaving the chapter. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose. Notes in your projects that use the typography get the same marks and the same menus.
 
 <p align="center"><a href="assets/screenshots/modification_history_en.png"><img src="assets/screenshots/modification_history_en.png" width="100%" alt="The Data statistics pane's Modification history tab for one week: the days newest first, each row naming what happened at what time, and Open File recovery beside every row." /></a></p>
 
@@ -328,6 +329,14 @@ A story can grow out of another. The project menu at the bottom of the dashboard
 **Tick what you want.** Each group can be taken whole or opened to pick single notes, and the search box narrows the rows. The manuscript is off by default, and the revisions anchored in it come only with its chapters. A link to a note you haven't ticked is kept only when a note of that name is already here. So the footer counts those links, and **Select them** ticks the notes in one click. A note whose name is already taken is skipped, or replaced if you choose so. The import is confirmed before it runs, because it can't be undone, and a source in another language is pointed out when you choose it. A report lists whatever was skipped, dropped or failed.
 
 **Books in a series share a design.** The create form and the project manager can put a project in a series with a book number, and the project menu then groups the books together. The project manager lists them the same way, with each series folding like the archive, and the archive is grouped by series as well. A new book can start from another book's design. Every copy remembers where it came from, so **Update from series** works in both directions. The book that imported takes a sibling's later changes into the copies it hasn't edited. The book it imported from takes back what the sibling changed in those copies. Notes edited on both sides are listed and left alone unless you tick them. Chapters, pictures and tool records are brought once and never updated.
+
+### Local API
+
+The **Local API** lets programs on your computer read and write your Snowflake projects. It's off until you switch it on in the plugin's settings, under **Local API**, and it runs on the desktop only. It answers on this computer and nowhere else, and a program that calls it has to send an access token made on your device. You choose how far a caller may go: **Read only**, **Read and write**, or **Read, write and delete**. With the **Command line bridge** on, the same calls also work through Obsidian's command line, where no token is asked for. That needs Obsidian's own **Command line interface** on too, under **General** in its settings, and the plugin's settings warn you when it's off.
+
+**What a caller can do.** It works with the plugin's own things: projects, steps, characters, scenes, worldbuilding, the manuscript, tasks, foreshadowing, revisions, sticky notes, timelines, beat sheets and freeform views. It can search a project, find and replace across the manuscript, and bring parts in from another project. It can export the manuscript, save a view as an Obsidian Canvas, and start or stop a writing session. It can also set how the relationship graph is drawn, how the manuscript's page looks, your word count rule and your daily goals. To suggest a change rather than make it, a caller can propose a revision and leave the decision to you. The whole contract is in [`api/openapi.yaml`](api/openapi.yaml), with a guide in [`api/README.md`](api/README.md).
+
+**Your writing comes first.** What a caller writes is never counted as your typing, and the modification history files it as the plugin's. If you're writing in a chapter when a change to it arrives, your unsaved words are saved first. The change goes through only if it was made from that latest text. If your words can't be saved, on a full disk for one, the change is refused too. Either way your editor stays open. Renaming through the API needs **Automatically update internal links** on, under **Files and links** in Obsidian's settings.
 
 <a id="installation"></a>
 
@@ -412,6 +421,7 @@ The visualization workspace, with its corkboard, freeform canvas, timeline, beat
 | Open freeform workspace | Open the visualization workspace to its freeform canvas, where notes, records, files and text become cards you can connect and frame. |
 | Open dashboard | Open the current project's dashboard, or bring it into view. |
 | Open health checker | Check the project's structure and fix any issues that are safe to fix. |
+| Open local API settings | Open the plugin's settings on their Local API section. |
 | Open manuscript stream | Open the manuscript at the note you last wrote in. |
 | Open margin card sidebar | Open the stream's revision and foreshadowing cards in their own sidebar. |
 | Open modification history | Open the Data statistics pane on its Modification history tab. |
@@ -554,6 +564,11 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Port | 4455 | The port of OBS's WebSocket server. |
 | Password | None | The secret that holds OBS's server password. |
 | Video quality | 1080p | With OBS, record at Native, 2K, 1080p or 720p, or keep OBS's own size. |
+| Enable local API | Off | Let programs on this computer call the local API, at the port below. |
+| Port | 27125 | The port the local API answers on. |
+| Access | Read only | How far a caller may go: read only, read and write, or read, write and delete. |
+| Access token | None | The token a caller sends. Copy it, or make a new one. |
+| Command line bridge | Off | Answer the same calls through Obsidian's own command line. |
 
 <a id="privacy"></a>
 
@@ -563,7 +578,8 @@ Snowflake Method for Obsidian is local-first. Your project files and plugin sett
 
 - You don't need an account, a subscription, or any outside service.
 - The plugin makes no requests to the internet and includes no AI service, telemetry, or analytics. A web link on the freeform canvas shows its address and loads nothing.
-- Screen recording is the one feature that reaches outside Obsidian. It starts macOS's own recorder, or opens OBS Studio and talks to it on the same computer. The video is saved in the folder you chose and is never sent anywhere.
+- Screen recording starts macOS's own recorder, or opens OBS Studio and talks to it on the same computer. The video is saved in the folder you chose and is never sent anywhere.
+- The local API is off until you switch it on, and then answers only programs on this computer. The plugin sends nothing through it, but a program you let in can pass on what it reads. Give access only to programs you trust.
 - **Show mobile diagnostics** only shows what your device reports. The report leaves the device only if you copy it and share it yourself.
 - Projects are made of ordinary files that work in Obsidian. You can still read and edit them when the plugin is turned off.
 
@@ -728,6 +744,7 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Contents wheel in the manuscript stream (0.32.0)
 - [x] Six more languages (0.33.0)
 - [x] Screen recording (0.33.0)
+- [x] Local API (0.34.0)
 
 <a id="development"></a>
 
@@ -894,6 +911,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 实体追踪 | 追踪每个角色、地点与物品在正文中的足迹，并在原处标出对它们的提及。 |
 | 修改历史 | 按日回看做过的事：Obsidian 保留的版本、写作时段，以及插件改动过的笔记、任务、伏笔和修订。 |
 | 屏幕录制 | 写作时用 macOS 自带的录屏工具或 OBS Studio 录下屏幕，留作文字出自你手的证明。 |
+| 本地接口 | 让本机上的程序读写你的项目。它只在本机应答。 |
 | 任务看板 | 把待办的事情放上看板，既有你自己写下的任务，也有插件根据你的写作派生出的任务。 |
 | 修订 | 在正文旁提出替换、删除或插入的建议，只有接受后才会改动正文。 |
 | 伏笔 | 追踪一条线索从埋设到回收，在每一处落点上标出，并把它们汇总列出。 |
@@ -1096,7 +1114,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 <p align="center"><a href="assets/screenshots/entity_tracking_2_cn.png"><img src="assets/screenshots/entity_tracking_2_cn.png" width="100%" alt="正文流的第二章，阅读视图，专注模式下界面元素都隐藏了。章节标题「无人记得」以及林晚、林知远、林记钟表铺、周明川与怀表这些名字，在正文原处以强调色标出，每一处都是未链接的实体提及。" /></a></p>
 
-**同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。用上排版的项目笔记也会这样标出，菜单也一样。
+**同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。同一个菜单还能打开这个实体的笔记，**编辑实体**则不用离开章节就能打开它的表单。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。用上排版的项目笔记也会这样标出，菜单也一样。
 
 <p align="center"><a href="assets/screenshots/modification_history_cn.png"><img src="assets/screenshots/modification_history_cn.png" width="100%" alt="数据统计面板的修改历史标签页，范围是一周：按日从新到旧列出每件事发生的时间，每一行旁边都有打开文件恢复按钮。" /></a></p>
 
@@ -1119,6 +1137,14 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 **勾选你要的内容。** 每一组可以整组选取，也可以展开只挑几篇笔记，搜索框会缩小范围。正文默认不选，锚在正文里的修订只随它的章节一起过来。链接到你没有勾选的笔记时，只有这里已经有同名笔记，链接才会保留，所以页脚会数出这些链接，点一下**选择它们**就能把那些笔记勾上。名字已被占用的笔记会跳过，你也可以选择替换。导入前会先确认，因为它无法撤销，选中其他语言的项目时也会先提醒。导入后的报告会列出跳过、丢弃和失败的内容。
 
 **同一系列的书共用一套设计。** 创建表单和项目管理器都可以把项目放进一个系列并编上册次，项目菜单会把同系列的书归在一起。项目管理器也按系列列出各册，每个系列都能像归档区一样折叠，归档区同样按系列归组。新的一册可以从另一册的设计起步。每个副本都记得自己来自哪里，所以之后用**从系列更新**，两个方向都行：导入的一册把姊妹卷后来的改动带进自己没改过的副本，被导入的一册则把姊妹卷在副本里的改动收回来。两边都改过的笔记会单独列出，不勾选就不会动。章节、图片和工具记录只导入一次，不会更新。
+
+### 本地接口
+
+**本地接口** 让本机上的程序读写你的雪花写作项目。在插件设置的**本地接口**一节里开启之前，它一直是关闭的，而且只在桌面端运行。它只在本机应答，调用它的程序必须带上在你设备上生成的访问令牌。调用方能做到哪一步由你决定：**只读**、**读写**，或**读写和删除**。打开**命令行桥接**后，同样的调用也可以通过 Obsidian 的命令行发出，这时不需要令牌。这还需要开启 Obsidian 自己的**命令行界面**，它在 Obsidian 设置的“关于”里，没开时插件的设置会提醒你。
+
+**调用方能做什么。** 它操作的是插件自己的内容：项目、步骤、角色、场景、世界观、正文、任务、伏笔、修订、便签、时间线、节拍表和自由画布。它可以在项目里搜索，在正文里查找替换，从另一个项目导入内容。它可以导出正文，把一个视图存成 Obsidian 白板，也可以开始和结束写作时段。它还能调整关系图的显示方式、正文页面的样子、你的字数统计规则和每日目标。如果只想提出建议而不直接修改，调用方可以提一条修订，由你决定是否采纳。完整的接口约定见 [`api/openapi.yaml`](api/openapi.yaml)，使用说明见 [`api/README.md`](api/README.md)。
+
+**你的文字优先。** 调用方写下的文字不会算作你的输入，修改历史也会把这些改动记在插件名下。如果改动到来时你正在写那一章，你还没保存的文字会先保存。只有基于这份最新文字做出的改动才会生效。如果你的文字存不下来，比如硬盘已满，改动也会被拒绝。无论哪种情况，你的编辑器都会保持打开。通过本地接口重命名，需要在 Obsidian 设置的“文件与链接”里开启**始终更新内部链接**。
 
 ## 安装
 
@@ -1223,6 +1249,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 开始屏幕录制 | 按你选好的工具和设置开始录制屏幕。 |
 | 停止屏幕录制 | 停止录制，把视频保存到你选的文件夹。 |
 | 打开屏幕录制设置 | 打开插件设置里的屏幕录制一节。 |
+| 打开本地接口设置 | 打开插件设置里的本地接口一节。 |
 | 切换写作时段外的字数记录 | 开启或关闭写作时段以外的字数记录。 |
 | 统计项目字数 | 报告当前项目的字数，整个项目和仅正文各给出一份。 |
 | 将专注模式设为关／开／深度／仅正文 | 每一档各有一条命令，直接切到那一档专注深度。 |
@@ -1337,6 +1364,11 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 端口 | 4455 | OBS 的 WebSocket 服务器端口。 |
 | 密码 | 无 | 保存 OBS 服务器密码的密钥。 |
 | 视频质量 | 1080p | 使用 OBS 时，可选原生、2K、1080p 或 720p，或者沿用 OBS 自己的尺寸。 |
+| 启用本地接口 | 关闭 | 让本机上的程序在下方端口调用本地接口。 |
+| 端口 | 27125 | 本地接口应答所用的端口。 |
+| 访问权限 | 只读 | 调用方可以做到哪一步：只读、读写，或读写和删除。 |
+| 访问令牌 | 无 | 调用方出示的令牌。可以复制，也可以生成新的。 |
+| 命令行桥接 | 关闭 | 通过 Obsidian 自带的命令行应答同样的调用。 |
 
 ## 隐私
 
@@ -1344,7 +1376,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 - 不需要注册账号、订阅，也不需要连接外部服务。
 - 插件不会向互联网发起任何请求，也不包含 AI 服务、遥测或数据分析。自由画布上的网页链接只显示网址，不会抓取任何内容。
-- 只有屏幕录制会用到 Obsidian 以外的程序。它会启动 macOS 自带的录屏工具，或者打开本机的 OBS Studio 并与它通信。视频保存在你选定的文件夹里，不会发送到任何地方。
+- 屏幕录制会启动 macOS 自带的录屏工具，或者打开本机的 OBS Studio 并与它通信。视频保存在你选定的文件夹里，不会发送到任何地方。
+- 本地接口在你开启之前一直关闭，开启后也只应答本机上的程序。插件不会通过它发送任何内容，但获准的程序可以把读到的内容转发出去。只把访问权限交给你信任的程序。
 - **显示移动端诊断**只把设备报告的信息显示出来。只有你自己复制并分享时，这份报告才会离开设备。
 - 项目用的都是 Obsidian 兼容的文件。停用插件后，内容照样可以正常阅读和编辑。
 
@@ -1505,6 +1538,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 正文流的目录滚轮 (0.32.0)
 - [x] 新增六种语言 (0.33.0)
 - [x] 屏幕录制 (0.33.0)
+- [x] 本地接口 (0.34.0)
 
 ## 开发
 
