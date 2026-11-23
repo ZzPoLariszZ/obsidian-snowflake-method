@@ -173,19 +173,37 @@ export class FreeformService {
 	 * the file as it is, all of it or none. Where the leaf stands looking
 	 * rides along with a change that landed, and is never written for itself
 	 * here: a pan is not a change.
+	 *
+	 * `proven` is for a caller that holds the steps to more than a gesture
+	 * is held to: it is handed the view the steps are about to be taken on,
+	 * the file as it is and not as the caller last read it, and what it
+	 * throws stops the change with nothing written and is thrown on.
 	 */
 	async transact(
 		project: ProjectRef,
 		viewId: string,
 		steps: readonly FreeformStep[],
 		viewport: FreeformViewport | null = null,
+		proven?: (held: FreeformView) => void,
 	): Promise<FreeformTransacted> {
 		let asked = false;
 		let taken: FreeformTransaction | null = null;
+		let objected = false;
+		let objection: unknown = null;
 		await this.store.updateView(project, viewId, (held) => {
 			asked = true;
 			taken = null;
+			objected = false;
 			if (held === null) return null;
+			if (proven !== undefined) {
+				try {
+					proven(held);
+				} catch (error) {
+					objected = true;
+					objection = error;
+					return null;
+				}
+			}
 			const outcome = applyFreeformSteps(held, steps, this.now(), this.held);
 			taken = outcome;
 			if (outcome.came !== "written" || !outcome.changed) return null;
@@ -193,6 +211,7 @@ export class FreeformService {
 				? outcome.view
 				: { ...outcome.view, viewport: readFreeformViewport(viewport) };
 		});
+		if (objected) throw objection;
 		if (!asked) return { came: "refused", inverse: [] };
 		const outcome = taken as FreeformTransaction | null;
 		if (outcome === null) return { came: "absent", inverse: [] };

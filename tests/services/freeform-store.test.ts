@@ -438,6 +438,27 @@ describe("FreeformService", () => {
 		expect((await views.read(project)).views[0]?.edges).toHaveLength(1);
 	});
 
+	it("hands a caller the view the steps are about to be taken on, and writes nothing where the caller objects", async () => {
+		const id = (await views.createView(project, { name: "Draft" }))!;
+		await views.transact(project, id, [{ do: "add", placements: [text("p1"), text("p2")] }]);
+		const content = fakeVault.contents.get(fileOf(id));
+		const seen: string[][] = [];
+		const objection = new Error("One of them is gone.");
+		// The view as the file has it, read inside the write.
+		await expect(
+			views.transact(project, id, [{ do: "place", places: [{ id: "p1", x: 9, y: 9 }] }], null, (held) => {
+				seen.push(held.placements.map((placement) => placement.id));
+				throw objection;
+			}),
+		).rejects.toBe(objection);
+		expect(seen).toEqual([["p1", "p2"]]);
+		expect(fakeVault.contents.get(fileOf(id))).toBe(content);
+		// A caller with no objection changes the view as before.
+		const done = await views.transact(project, id, [{ do: "place", places: [{ id: "p1", x: 9, y: 9 }] }], null, () => undefined);
+		expect(done.came).toBe("written");
+		expect(fakeVault.contents.get(fileOf(id))).not.toBe(content);
+	});
+
 	it("answers written, absent, full or refused, and leaves the file as it was for all but the first", async () => {
 		const id = (await views.createView(project, { name: "Draft" }))!;
 		await views.transact(project, id, [{ do: "add", placements: [text("p1"), text("p2")] }]);

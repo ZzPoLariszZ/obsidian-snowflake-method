@@ -794,6 +794,28 @@ describe('a freeform view, made and changed', () => {
 		expect(golden.host.told).toEqual(['freeform']);
 	});
 
+	it('makes none of a list of steps where a card it names went from the view in the moment before', async () => {
+		const { golden, boards, P } = await ground();
+		const service = golden.host.projects.freeform;
+		const at = { ...P, freeformViewId: boards.canvas };
+		const places = async (): Promise<unknown[]> => ((await ok(golden, 'getFreeformView', at))['placements'] as Body[]).map((card) => [card['id'], card['x'], card['y']]);
+		expect(await places()).toEqual([['card-ada', 24, 64], ['card-text', 24, 64]]);
+		// The author takes a card off their own screen between the call's reading of the view and its write.
+		const transact = service.transact.bind(service);
+		const deleting = vi.spyOn(service, 'transact').mockImplementationOnce(async (project, viewId, list, viewport, proven) => {
+			await transact(project, viewId, [{ do: 'delete', nodes: ['card-text'], edges: [] }]);
+			return transact(project, viewId, list, viewport, proven);
+		});
+		const move = [{ do: 'place', places: [{ id: 'card-ada', x: 120, y: 240 }, { id: 'card-text', x: 300, y: 400 }] }];
+		const reply = await steps(golden, P, boards.canvas, move);
+		deleting.mockRestore();
+		expect([refusal(reply), pointerOf(reply), faults(reply)]).toEqual([[422, 'invalid-reference'], '/steps/0/places/1/id', []]);
+		// The card that is still there did not move by itself, and the author's own change stands.
+		expect(await places()).toEqual([['card-ada', 24, 64]]);
+		// The same call a moment later is told the same thing.
+		expect([refusal(await steps(golden, P, boards.canvas, move)), await places()]).toEqual([[422, 'invalid-reference'], [['card-ada', 24, 64]]]);
+	});
+
 	it('leaves a name the author gave a view in the moment before, where the call names none or the old one', async () => {
 		const { golden, boards, P } = await ground();
 		const service = golden.host.projects.freeform;

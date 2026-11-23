@@ -450,26 +450,30 @@ export const freeformWriteOperations: OperationGroup = {
 		const names = new Names((kind) => service.mint(kind), standing);
 		const steps = await stepsOf(list, names, resourcesOf(context, project, index));
 		// Taken one at a time over the view as it stands, so that a step the view will not take is told by its place in the call.
-		let tried = view;
-		steps.forEach((step, at) => {
-			const pointer = `/steps/${String(at)}`;
-			const lost = missingFrom(tried, step);
-			if (lost !== null) {
-				throw noSuch(`${pointer}${lost.at}`, `The view has no ${lost.what} with that id. getFreeformView gives what stands on it.`);
-			}
-			const outcome = applyFreeformSteps(tried, [step], context.host.now(), service.limits());
-			if (outcome.came === 'full') throw full();
-			if (outcome.came === 'absent') {
-				throw noSuch(pointer, 'The step names something the view does not have, or a card of another kind than the step changes. getFreeformView gives what stands on it.');
-			}
-			if (outcome.came === 'refused') {
-				throw misfit(pointer, 'The view cannot take that step: a line from a thing to itself, a place that is no number, or words longer than a card or a label holds.');
-			}
-			tried = outcome.view;
-		});
-		const done = await service.transact(project, view.id, steps);
+		// The view it is proven on is the one the change is then made on: the file as it is inside the one write, where a card
+		// the author took off their screen a moment ago is already gone, and not the reading this call began with.
+		const proven = (standing: FreeformView): void => {
+			let tried = standing;
+			steps.forEach((step, at) => {
+				const pointer = `/steps/${String(at)}`;
+				const lost = missingFrom(tried, step);
+				if (lost !== null) {
+					throw noSuch(`${pointer}${lost.at}`, `The view has no ${lost.what} with that id. getFreeformView gives what stands on it.`);
+				}
+				const outcome = applyFreeformSteps(tried, [step], context.host.now(), service.limits());
+				if (outcome.came === 'full') throw full();
+				if (outcome.came === 'absent') {
+					throw noSuch(pointer, 'The step names something the view does not have, or a card of another kind than the step changes. getFreeformView gives what stands on it.');
+				}
+				if (outcome.came === 'refused') {
+					throw misfit(pointer, 'The view cannot take that step: a line from a thing to itself, a place that is no number, or words longer than a card or a label holds.');
+				}
+				tried = outcome.view;
+			});
+		};
+		const done = await service.transact(project, view.id, steps, null, proven);
 		if (done.came === 'full') throw full();
-		// The steps were taken against the view a moment ago. A refusal now is the file's own.
+		// The steps were proven on the view inside the write. A refusal now is the file's own.
 		if (done.came === 'refused') throw foreign(FILE);
 		if (done.came === 'absent') throw noView();
 		context.host.recordsChanged('freeform');
