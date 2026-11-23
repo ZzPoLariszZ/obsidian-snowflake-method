@@ -714,22 +714,58 @@ export class WritingSessionService {
 		return this.enqueue(() => Promise.resolve());
 	}
 
+	/**
+	 * Freezes the clock. Asked of a session whose clock is frozen already,
+	 * by the author or by a break, it does nothing. The untimed day has been
+	 * measuring the project since that freeze, and freezing again would lay
+	 * the session's old counts over the ones the day has kept since: the
+	 * next word typed would be credited with every word typed before it.
+	 */
 	pause(): void {
 		const live = this.liveState;
 		if (live?.tracker == null || live.stopping) return;
-		this.applyEffects(live, live.tracker.pause(this.now()));
+		const t = this.now();
+		if (this.clockAt(live, t) !== "running") return;
+		this.applyEffects(live, live.tracker.pause(t));
 		const credited = this.freezeSession(live);
 		this.snapshot(live);
 		this.emit({ kind: "changed", counted: credited });
 	}
 
+	/**
+	 * Lets the clock run again. Asked of a session whose clock is running,
+	 * or of one in a break, which ends on its own clock, it does nothing:
+	 * there is no freeze to thaw, and taking the project back from the
+	 * untimed day would leave whatever is typed through the rest of a break
+	 * measured against nothing.
+	 */
 	resume(): void {
 		const live = this.liveState;
 		if (live?.tracker == null || live.stopping) return;
-		this.applyEffects(live, live.tracker.resume(this.now()));
+		const t = this.now();
+		if (this.clockAt(live, t) !== "paused") return;
+		this.applyEffects(live, live.tracker.resume(t));
 		const credited = this.reclaimFromUntimed(live);
 		this.snapshot(live);
 		this.emit({ kind: "changed", counted: credited });
+	}
+
+	/**
+	 * How a session's clock stands at a moment: running, frozen by the
+	 * author, frozen by a break, or over. The clock's own boundaries are
+	 * crossed first, so a break that began or ended since the last look, and
+	 * a countdown that ran out, are already taken when the answer is read.
+	 */
+	private clockAt(
+		live: LiveState,
+		t: number,
+	): "running" | "paused" | "break" | "over" {
+		const tracker = live.tracker;
+		if (tracker === null) return "over";
+		this.applyEffects(live, tracker.tick(t));
+		if (live.stopping) return "over";
+		if (tracker.currentPhase() !== "paused") return "running";
+		return tracker.currentPomodoro()?.phase === "break" ? "break" : "paused";
 	}
 
 	setWritingMode(mode: WritingMode): void {

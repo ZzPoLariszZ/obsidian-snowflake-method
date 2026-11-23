@@ -2406,6 +2406,80 @@ describe("WritingSessionService", () => {
 		expect(day.timedNet).toBe(0);
 	});
 
+	it("counts what is typed through a pause once, however often the pause is asked", async () => {
+		await startSession();
+		sessions.pause();
+		sessions.noteChanged(NOTES, written("one two three plus paused words"));
+		await timers.flush();
+		expect((await sessions.todaySummary(project)).added).toBe(3);
+		// Asked again of a clock already frozen, as a caller that cannot see
+		// the screen may ask it. The day keeps the counts it has taken since
+		// the freeze, and the next word is measured against those.
+		const told = events.length;
+		sessions.pause();
+		expect(events.length).toBe(told);
+		sessions.noteChanged(
+			NOTES,
+			written("one two three plus paused words typed"),
+		);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(4);
+		expect(day.trackedNet).toBe(4);
+		expect(day.timedNet).toBe(0);
+		expect(sessions.live()?.state).toBe("paused");
+	});
+
+	it("takes nothing back from the day when a pause or a resume is asked during a break", async () => {
+		await sessions.start(
+			project,
+			options({
+				type: "pomodoro",
+				timing: {
+					idleThresholdSeconds: 6_000,
+					workDurationSeconds: 60,
+					breakDurationSeconds: 30,
+					autoRepeat: true,
+				},
+			}),
+		);
+		clock += 20_000;
+		sessions.surfaceActivity(NOTES);
+		clock += 45_000;
+		await timers.flush();
+		sessions.noteChanged(NOTES, written("one two three plus break words"));
+		await timers.flush();
+		// The break is the clock's own freeze: a pause asked now freezes
+		// nothing again, and a resume lifts nothing.
+		const told = events.length;
+		sessions.pause();
+		sessions.resume();
+		expect(events.length).toBe(told);
+		sessions.noteChanged(
+			NOTES,
+			written("one two three plus break words more"),
+		);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(4);
+		expect(day.timedNet).toBe(0);
+		expect(sessions.live()).toMatchObject({
+			state: "paused",
+			pomodoro: { phase: "break" },
+		});
+	});
+
+	it("leaves a running clock as it is when it is asked to run", async () => {
+		await startSession();
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		const told = events.length;
+		sessions.resume();
+		expect(events.length).toBe(told);
+		expect(sessions.live()?.state).not.toBe("paused");
+		expect(sessions.live()?.added).toBe(1);
+	});
+
 	it("does not double-credit a deletion the session already settled", async () => {
 		sessions.noteChanged(NOTES, written("one two three four five"));
 		await timers.flush();
