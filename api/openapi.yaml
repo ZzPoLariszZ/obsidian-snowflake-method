@@ -9129,7 +9129,7 @@ components:
             $ref: "#/components/schemas/RecordLineInput"
         customFields:
           type: array
-          description: The fields the author added, in order. No two may share a title.
+          description: The fields the note begins with, in order. No two may share a title. Left out, it begins with the fields of its kind's default field template. An empty list makes it with none.
           items:
             $ref: "#/components/schemas/CustomField"
         createMissingVocabulary:
@@ -9267,7 +9267,7 @@ components:
             $ref: "#/components/schemas/RecordLineInput"
         customFields:
           type: array
-          description: The fields the author added, in order. No two may share a title.
+          description: The fields the note begins with, in order. No two may share a title. Left out, it begins with the fields of its kind's default field template. An empty list makes it with none.
           items:
             $ref: "#/components/schemas/CustomField"
         createMissingVocabulary:
@@ -9397,7 +9397,7 @@ components:
             $ref: "#/components/schemas/RecordLineInput"
         customFields:
           type: array
-          description: The fields the author added, in order. No two may share a title.
+          description: The fields the note begins with, in order. No two may share a title. Left out, it begins with the fields of its kind's default field template. An empty list makes it with none.
           items:
             $ref: "#/components/schemas/CustomField"
         createMissingVocabulary:

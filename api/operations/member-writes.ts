@@ -38,6 +38,18 @@ async function draftFor(context: ApiContext, project: ProjectSnapshot, kind: str
 	);
 }
 
+/**
+ * What a new note is made from. A call that names no fields of the author's
+ * own begins the note with those of its kind's default field template, as
+ * the plugin's own form opens on them. One that names them, an empty list
+ * among them, is taken at its word.
+ */
+async function starting(context: ApiContext, project: ProjectSnapshot, kind: string, body: Sent): Promise<Sent> {
+	if ('customFields' in body) return body;
+	const fields = await context.host.projects.kindTemplateFields(project, kind);
+	return fields.length === 0 ? body : { ...body, customFields: fields.map((field) => ({ title: field.title, content: field.content })) };
+}
+
 /** A worldbuilding note found by its id among every kind's notes, with its place in its kind. */
 function findEntity(project: ProjectSnapshot, id: string): { entity: WorldbuildingRecord; place: number } | null {
 	for (const kind of project.worldbuildingKinds) {
@@ -172,7 +184,7 @@ export const memberWriteOperations: OperationGroup = {
 	createCharacter: async (call, context) => {
 		const projectId = textParam(call, 'projectId');
 		const project = await context.writableProject(projectId);
-		const body = bodyOf(call);
+		const body = await starting(context, project, 'character', bodyOf(call));
 		const changes = characterChanges(await draftFor(context, project, 'character', body), body, { customFields: '' });
 		const made = await context.host.projects.createCharacterIn(project, { ...changes, name: String(body['name']).trim() }, NOT_THE_AUTHOR);
 		return answer(context, projectId, made.path, tellCharacter(context, made.characterId), 'characters');
@@ -216,7 +228,7 @@ export const memberWriteOperations: OperationGroup = {
 	createScene: async (call, context) => {
 		const projectId = textParam(call, 'projectId');
 		const project = await context.writableProject(projectId);
-		const body = bodyOf(call);
+		const body = await starting(context, project, 'scene', bodyOf(call));
 		const draft = await draftFor(context, project, 'scene', body);
 		const changes = sceneChanges(draft, body, { customFields: '' }, await manuscriptLinks(context, project, body));
 		const made = await context.host.projects.createSceneIn(project, { ...changes, title: String(body['title']).trim() }, NOT_THE_AUTHOR);
@@ -269,8 +281,9 @@ export const memberWriteOperations: OperationGroup = {
 				errors: [{ pointer: '/kind', detail: `The project has no worldbuilding kind ${kind}. listKinds gives the kinds there are.` }],
 			});
 		}
-		const draft = await draftFor(context, project, kind, body);
-		const changes = entityChanges(draft, body, { customFields: '', timeKind: null, timeStart: '', timeEnd: '' }, hasTimeFields(kind));
+		const sent = await starting(context, project, kind, body);
+		const draft = await draftFor(context, project, kind, sent);
+		const changes = entityChanges(draft, sent, { customFields: '', timeKind: null, timeStart: '', timeEnd: '' }, hasTimeFields(kind));
 		const made = await context.host.projects.createEntityIn(project, { ...changes, kind, name: String(body['name']).trim() }, NOT_THE_AUTHOR);
 		return answer(context, projectId, made.path, tellEntity(context, made.entityId), 'entities');
 	},

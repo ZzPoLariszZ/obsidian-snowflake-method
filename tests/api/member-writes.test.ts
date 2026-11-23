@@ -36,7 +36,11 @@ describe('a character, made', () => {
 			color: null,
 			worldStatus: [],
 			relationships: [],
-			customFields: [],
+			// The fields a character begins with in this project: those of the kind's default template.
+			customFields: [
+				{ title: 'Voice', content: '' },
+				{ title: 'Catchphrase', content: 'None yet.' },
+			],
 		});
 		expect(reply.location).toBe(`/projects/${golden.project.id}/characters/${String(made['id'])}`);
 		expect(reply.etag).toBe(made['etag']);
@@ -44,6 +48,31 @@ describe('a character, made', () => {
 		const read = await golden.call('getCharacter', { ...P, characterId: made['id'] });
 		expect(bodyOf(read.body)).toEqual(made);
 		expect(golden.host.origins.length).toBeGreaterThan(0);
+		expect(golden.host.origins.every((userInput) => !userInput)).toBe(true);
+	});
+
+	it('begins with the fields of its kind’s default template unless the call names its own, as every kind of note does', async () => {
+		const golden = await fresh();
+		const P = { projectId: golden.project.id };
+		const fieldsOf = (reply: { body: unknown }): unknown => bodyOf(reply.body)['customFields'];
+		// A list sent is the list kept, an empty one among them.
+		const bare = await golden.call('createCharacter', P, { body: { name: 'Dee', customFields: [] } });
+		expect([bare.status, fieldsOf(bare)]).toEqual([201, []]);
+		const own = await golden.call('createCharacter', P, { body: { name: 'Eve', customFields: [{ title: 'Gait', content: 'Quick.' }] } });
+		expect(fieldsOf(own)).toEqual([{ title: 'Gait', content: 'Quick.' }]);
+		// A scene has a template and begins with none, until the author makes it the one new scenes begin with.
+		const before = await golden.call('createScene', P, { body: { title: 'Noon' } });
+		expect([before.status, fieldsOf(before)]).toEqual([201, []]);
+		await golden.call('updateKind', { ...P, kindId: 'scene' }, { body: { defaultFieldTemplate: 'Beats' } });
+		const after = await golden.call('createScene', P, { body: { title: 'Dusk' } });
+		expect([after.status, fieldsOf(after)]).toEqual([201, [{ title: 'Turn', content: '' }]]);
+		// And a worldbuilding note of a kind the author gave a template to.
+		await golden.call('createFieldTemplate', P, { body: { kind: 'location', name: 'Place details', default: true, fields: [{ title: 'Smell', content: 'Oil and brass.' }] } });
+		const place = await golden.call('createEntity', P, { body: { kind: 'location', name: 'Workshop' } });
+		expect([place.status, fieldsOf(place)]).toEqual([201, [{ title: 'Smell', content: 'Oil and brass.' }]]);
+		const plain = await golden.call('createEntity', P, { body: { kind: 'time', name: 'Dawn' } });
+		expect(fieldsOf(plain)).toEqual([]);
+		// Nothing of it is told as the author's typing.
 		expect(golden.host.origins.every((userInput) => !userInput)).toBe(true);
 	});
 
