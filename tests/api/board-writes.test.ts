@@ -456,6 +456,9 @@ describe('the relationship graph, set as its own panel sets it', () => {
 		expect(refusal(await sent({ timeline: { rule: 'never' } }))).toEqual([400, 'invalid-request']);
 		expect(refusal(await sent({ groups: [{ query: 'Ada', color: 'red' }] }))).toEqual([400, 'invalid-request']);
 		expect(refusal(await sent({ viewport: { x: 0, y: 0, zoom: 0 } }))).toEqual([400, 'invalid-request']);
+		// A number written past what a number holds is no place. It was answered once, and then not kept.
+		const past = await sent(JSON.parse('{"viewport":{"x":1e999,"y":0,"zoom":1}}') as Body);
+		expect([refusal(past), JSON.stringify(past.body).includes('/viewport/x')]).toEqual([[400, 'invalid-request'], true]);
 		// What the author is searching for is the open tab's own, and no part of this.
 		expect(refusal(await sent({ query: 'Ada' }))).toEqual([400, 'invalid-request']);
 		expect(vaultState(golden.host)).toEqual(before);
@@ -507,6 +510,9 @@ describe('a freeform view, made and changed', () => {
 		expect([placed['name'], placed['viewport']]).toEqual(['Cast board', { x: -120, y: 40, zoom: 0.5 }]);
 		expect(refusal(await golden.call('updateFreeformView', at, { body: { viewport: { x: 0, y: 0, zoom: 9 } } }))).toEqual([400, 'invalid-request']);
 		expect(refusal(await golden.call('updateFreeformView', at, { body: { viewport: { x: 0, y: 0 } } }))).toEqual([400, 'invalid-request']);
+		const past = await golden.call('updateFreeformView', at, { body: JSON.parse('{"viewport":{"x":0,"y":-1e999,"zoom":1}}') as Body });
+		expect([refusal(past), JSON.stringify(past.body).includes('/viewport/y')]).toEqual([[400, 'invalid-request'], true]);
+		expect((await ok(golden, 'getFreeformView', at))['viewport']).toEqual({ x: -120, y: 40, zoom: 0.5 });
 
 		expect((await golden.call('deleteFreeformView', { ...P, freeformViewId: boards.spareCanvas })).status).toBe(204);
 		expect(idsOf((await ok(golden, 'listFreeformViews', P))['items'])).toEqual([boards.canvas, made['id']]);

@@ -96,6 +96,12 @@ class Checker {
 
 	visit(schema: JsonObject, value: unknown, pointer: string): void {
 		if (this.issues.length >= MOST_ISSUES) return;
+		// A number written past what a number holds is read as infinity, which no file keeps: written down
+		// it comes back as nothing at all. It is no number a caller meant, whatever the schema asks for.
+		if (typeof value === 'number' && !Number.isFinite(value)) {
+			this.report(pointer, 'Must be a number, and this one is past what a number can hold.');
+			return;
+		}
 		const ref = schema['$ref'];
 		if (typeof ref === 'string') {
 			this.visit(resolveRef(this.document, ref), value, pointer);

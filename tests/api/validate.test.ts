@@ -109,6 +109,20 @@ describe('a value held against a schema', () => {
 		expect(check(sample, { type: 'array', minItems: 1 }, [])).toEqual([{ pointer: '', detail: 'Must hold at least 1 items.' }]);
 	});
 
+	it('refuses a number written past what a number holds, wherever it stands', () => {
+		const past = 'Must be a number, and this one is past what a number can hold.';
+		// What a body's text reads as when it says 1e999.
+		const sent = JSON.parse('{"size":1e999}') as unknown;
+		expect(sent).toEqual({ size: Number.POSITIVE_INFINITY });
+		expect(faults(sent)).toEqual([`/size ${past}`]);
+		expect(faults({ size: Number.NEGATIVE_INFINITY })).toEqual([`/size ${past}`]);
+		// No bound is needed to catch it, and no type: said once, where a reference and what stands beside it both look.
+		expect(check(sample, { type: 'number' }, Number.POSITIVE_INFINITY)).toEqual([{ pointer: '', detail: past }]);
+		expect(check(sample, {}, Number.NaN)).toEqual([{ pointer: '', detail: past }]);
+		expect(check(sample, { $ref: '#/components/schemas/Thing', required: ['id'] }, Number.POSITIVE_INFINITY)).toEqual([{ pointer: '', detail: past }]);
+		expect(check(sample, { type: 'array', items: { type: 'number' } }, [1, Number.POSITIVE_INFINITY])).toEqual([{ pointer: '/1', detail: past }]);
+	});
+
 	it('holds a value to the ones listed', () => {
 		expect(faults({ color: 'red' })).toEqual(['/color Expected one of "pink", "mint", null.']);
 		expect(check(sample, { const: true }, false)).toEqual([{ pointer: '', detail: 'Expected true.' }]);
@@ -238,6 +252,11 @@ describe('a call held against its operation', () => {
 			{ pointer: 'params/include/1', detail: 'Expected one of "counts", "usage".' },
 			{ pointer: 'params/page', detail: 'The parameter page is not known here.' },
 		]);
+	});
+
+	it('refuses a parameter whose digits run past what a number holds', () => {
+		const checked = checkCall(sample, patch, { params: { thingId: 'thing-1', limit: '9'.repeat(400) }, body: {} });
+		expect(checked.issues).toEqual([{ pointer: 'params/limit', detail: 'Must be a number, and this one is past what a number can hold.' }]);
 	});
 
 	it('takes a parameter by a name of its own, as the command line’s JSON carries one', () => {
