@@ -185,8 +185,13 @@ export const memberWriteOperations: OperationGroup = {
 		const projectId = textParam(call, 'projectId');
 		const project = await context.writableProject(projectId);
 		const body = await starting(context, project, 'character', bodyOf(call));
-		const changes = characterChanges(await draftFor(context, project, 'character', body), body, { customFields: '' });
-		const made = await context.host.projects.createCharacterIn(project, { ...changes, name: String(body['name']).trim() }, NOT_THE_AUTHOR);
+		// A role is one of the three or left out here: only a change may say null, to take one off.
+		const { type, ...changes } = characterChanges(await draftFor(context, project, 'character', body), body, { customFields: '' });
+		const made = await context.host.projects.createCharacterIn(
+			project,
+			{ ...changes, ...(type === undefined || type === null ? {} : { type }), name: String(body['name']).trim() },
+			NOT_THE_AUTHOR,
+		);
 		return answer(context, projectId, made.path, tellCharacter(context, made.characterId), 'characters');
 	},
 

@@ -190,10 +190,15 @@ const CHARACTER_TEXTS = [
 	'characterProfile',
 ] as const;
 
-export function characterChanges(draft: MemberDraft, body: Sent, standing: { customFields: string }): Omit<CharacterInput, 'name'> & { name?: string } {
+export function characterChanges(
+	draft: MemberDraft,
+	body: Sent,
+	standing: { customFields: string },
+): Omit<CharacterInput, 'name' | 'type'> & { name?: string; type?: NonNullable<CharacterInput['type']> | null } {
 	return {
 		...(typeof body['name'] === 'string' ? { name: body['name'].trim() } : {}),
-		...(typeof body['role'] === 'string' ? { type: body['role'] as NonNullable<CharacterInput['type']> } : {}),
+		// Null is a role taken off, which a new character never has to be told.
+		...(typeof body['role'] === 'string' ? { type: body['role'] as NonNullable<CharacterInput['type']> } : body['role'] === null ? { type: null } : {}),
 		...draft.shared(body, standing),
 		...texts(body, CHARACTER_TEXTS),
 	};

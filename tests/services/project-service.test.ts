@@ -4762,6 +4762,56 @@ describe("SnowflakeProjectService", () => {
     ]);
   });
 
+  it("takes a character's role off, from its categories or from the key that kept it before roles were categories", async () => {
+    const project = await service.createProject({ name: "Role off" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      categoryPaths: ["Gender/Female"],
+    });
+    expect(ada.type).toBe("major");
+
+    const plain = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: ada.revision,
+      type: null,
+    });
+    expect(plain.type).toBeNull();
+    expect(plain.categories).toEqual([expect.stringContaining("|Gender/Female]]")]);
+    // The overview the note carries of itself says so too.
+    expect(
+      readMarkedSection(fakeVault.contents.get(ada.path) ?? "", "character-fields"),
+    ).not.toContain("|Major]]");
+    // Asked of a character that has none, it changes nothing.
+    const again = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: plain.revision,
+      type: null,
+    });
+    expect([again.type, again.categories]).toEqual([null, plain.categories]);
+
+    // A note the migration has not reached keeps its role under a key of its own.
+    const ben = await service.createCharacter(project, { name: "Ben" });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(ben.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.characterType] = "minor";
+      },
+    );
+    const legacy = (await service.loadProject(project.projectFile)).characters.find(
+      (candidate) => candidate.characterId === ben.characterId,
+    )!;
+    expect(legacy.type).toBe("minor");
+    const cleared = await service.updateCharacter(project, ben.characterId, {
+      expectedRevision: legacy.revision,
+      type: null,
+    });
+    expect(cleared.type).toBeNull();
+    expect(
+      parseMarkdownFrontmatter(fakeVault.contents.get(ben.path) ?? "").frontmatter[
+        FRONTMATTER_KEYS.characterType
+      ],
+    ).toBeUndefined();
+  });
+
   it("gives a character only the categories it was handed", async () => {
     const project = await service.createProject({ name: "No role" });
 

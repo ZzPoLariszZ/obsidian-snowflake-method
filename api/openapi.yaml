@@ -9148,7 +9148,10 @@ components:
           pattern: "\\S"
           maxLength: 200
         role:
-          $ref: "#/components/schemas/CharacterRole"
+          description: How large a part the character plays. Null takes the role off.
+          oneOf:
+            - $ref: "#/components/schemas/CharacterRole"
+            - type: "null"
         aliases:
           type: array
           description: Other names the note goes by.

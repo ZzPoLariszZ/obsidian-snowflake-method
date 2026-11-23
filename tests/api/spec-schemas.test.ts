@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { isJsonObject } from '../../api/json';
+import { isJsonObject, type JsonValue } from '../../api/json';
 import { ANNOTATION_KEYWORDS, CHECKED_KEYWORDS, ECHO_KEYWORD } from '../../api/schema/keywords';
+import { check } from '../../api/schema/validate';
 import { resolveRef } from '../../api/spec/document';
 import { document, operations, writtenSchemas } from './helpers/spec';
 
@@ -73,6 +74,28 @@ describe('every schema of the contract', () => {
 			expect(schema['additionalProperties'], pointer).toBe(false);
 			if (typeof echo === 'string') expect(() => resolveRef(document, echo), pointer).not.toThrow();
 		}
+	});
+});
+
+describe('what was read, sent back whole', () => {
+	/** The schema a property is held to, with what it points at looked up. */
+	const takesNull = (schema: JsonValue | undefined): boolean => isJsonObject(schema) && check(document, schema, null).length === 0;
+
+	it('is taken where a property stands empty: what may be read as null may be sent as null', () => {
+		const refused: string[] = [];
+		for (const { pointer, schema } of writtenSchemas()) {
+			const echo = schema[ECHO_KEYWORD];
+			if (typeof echo !== 'string') continue;
+			const read = resolveRef(document, echo)['properties'];
+			const sent = schema['properties'];
+			if (!isJsonObject(read) || !isJsonObject(sent)) continue;
+			for (const [name, taken] of Object.entries(sent)) {
+				// A property only the patch has is nothing a read could have handed back.
+				if (!(name in read)) continue;
+				if (takesNull(read[name]) && !takesNull(taken)) refused.push(`${pointer}/properties/${name}`);
+			}
+		}
+		expect(refused).toEqual([]);
 	});
 });
 

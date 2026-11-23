@@ -2625,7 +2625,7 @@ export class SnowflakeProjectService {
       "character",
       [
         ...(patch.categoryPaths ?? []),
-        ...(patch.type === undefined
+        ...(patch.type === undefined || patch.type === null
           ? []
           : [characterRoleName(project.locale, patch.type)]),
       ],
@@ -2640,6 +2640,12 @@ export class SnowflakeProjectService {
     // reached. Writing the legacy key back onto a migrated note would flip it
     // to unmigrated again. The category picker owns the whole list, so what it
     // sends is what the note gets, role category included or left out.
+    //
+    // A role taken off goes from wherever it is kept: its link out of the
+    // categories, picked or standing, and the legacy key off a note that
+    // still keeps it there.
+    const withoutRole = (links: readonly string[]): string[] =>
+      links.filter((raw) => roleTypeOfValue(raw) === null);
     let nextCategories = character.categories;
     if (patch.categoryPaths !== undefined) {
       const picked = categoryLinksFromPaths(
@@ -2650,13 +2656,20 @@ export class SnowflakeProjectService {
       nextCategories =
         patch.type === undefined
           ? picked
-          : replacedRoleCategories(
-              project.locale,
-              picked,
-              patch.type,
-              categoryDefinitionPath(project, "character"),
-            );
+          : patch.type === null
+            ? withoutRole(picked)
+            : replacedRoleCategories(
+                project.locale,
+                picked,
+                patch.type,
+                categoryDefinitionPath(project, "character"),
+              );
       frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
+    } else if (patch.type === null) {
+      if (characterRoleFromCategories(character.categories) !== null) {
+        nextCategories = withoutRole(character.categories);
+        frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
+      }
     } else if (patch.type !== undefined) {
       if (character.categories.length > 0) {
         nextCategories = replacedRoleCategories(
@@ -2669,6 +2682,11 @@ export class SnowflakeProjectService {
       } else {
         frontmatterPatch[FRONTMATTER_KEYS.characterType] = patch.type;
       }
+    }
+    const roleOff =
+      patch.type === null && characterRoleFromCategories(nextCategories) === null;
+    if (roleOff && character.type !== null && characterRoleFromCategories(character.categories) === null) {
+      frontmatterPatch[FRONTMATTER_KEYS.characterType] = undefined;
     }
     const nextAliases =
       patch.aliases === undefined
@@ -2718,7 +2736,7 @@ export class SnowflakeProjectService {
         project.locale,
         characterFieldsView(project.locale, {
           ...character,
-          type: characterRoleFromCategories(nextCategories) ?? character.type,
+          type: characterRoleFromCategories(nextCategories) ?? (roleOff ? null : character.type),
           progressStatus: nextProgressStatus,
           aliases: nextAliases,
           categories: nextCategories,

@@ -818,7 +818,8 @@ export interface CharacterPatch {
   /** The card's tint, null to take it off. Absent leaves the note as it is. */
   color?: MacaronColor | null;
   name?: string;
-  type?: CharacterType;
+  /** The part the character plays, null to take it off. Absent leaves it as it is. */
+  type?: CharacterType | null;
   aliases?: string[];
   categoryPaths?: string[];
   progressStatus?: ProgressStatus | null;

@@ -219,6 +219,37 @@ describe('a character, made', () => {
 });
 
 describe('a character, changed', () => {
+	it('is read, changed and sent back whole where it has no role, and has its role taken off by null', async () => {
+		const golden = await fresh();
+		const P = { projectId: golden.project.id };
+		const made = bodyOf((await golden.call('createCharacter', P, { body: { name: 'Roleless' } })).body);
+		const params = { ...P, characterId: made['id'] };
+		const read = await golden.call('getCharacter', params);
+		expect(bodyOf(read.body)['role']).toBeNull();
+		// The whole of what was read, one thing changed: a role that stands empty is sent back as it was read.
+		const whole = await golden.call('updateCharacter', params, { body: { ...structuredClone(bodyOf(read.body)), motivation: 'Explore' }, ifMatch: String(read.etag) });
+		expect([whole.status, faults(whole)]).toEqual([200, []]);
+		expect(bodyOf(whole.body)).toMatchObject({ motivation: 'Explore', role: null, categories: [] });
+
+		// Null on a character that has a role takes it off, and leaves the other categories.
+		const ada = { ...P, characterId: golden.members.ada.characterId };
+		const before = bodyOf((await golden.call('getCharacter', ada)).body);
+		expect([before['role'], before['categories']]).toEqual(['major', ['Major', 'Guild/Clockmakers']]);
+		const off = await golden.call('updateCharacter', ada, { body: { role: null }, ifMatch: String(before['etag']) });
+		expect([off.status, faults(off)]).toEqual([200, []]);
+		expect(bodyOf(off.body)).toMatchObject({ role: null, categories: ['Guild/Clockmakers'], goal: before['goal'] });
+		expect(bodyOf((await golden.call('getCharacter', ada)).body)).toEqual(bodyOf(off.body));
+		// Sent with the categories as they were read, the role's word among them, null still says none.
+		const ben = { ...P, characterId: golden.members.ben.characterId };
+		const seen = bodyOf((await golden.call('getCharacter', ben)).body);
+		expect(seen['role']).toBe('supporting');
+		const both = await golden.call('updateCharacter', ben, { body: { role: null, categories: seen['categories'] }, ifMatch: String(seen['etag']) });
+		expect(bodyOf(both.body)).toMatchObject({ role: null });
+		expect(bodyOf(both.body)['categories']).not.toContain('Supporting');
+		// A character is not made with null for a role: left out is how it has none.
+		expect((await golden.call('createCharacter', P, { body: { name: 'Fay', role: null } })).status).toBe(400);
+	});
+
 	it('has what is sent changed and the rest left as it was, against the version it was read at', async () => {
 		const golden = await fresh();
 		const { ada } = golden.members;
