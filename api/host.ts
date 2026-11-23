@@ -251,6 +251,11 @@ export interface ApiHost {
 	 * sticky note. Asked once a change is sure to be made: an editor left
 	 * standing would write its own text back over the change the next time
 	 * the author typed.
+	 *
+	 * Each editor writes what it holds on its way down. Where one cannot,
+	 * it is left open, since it then holds the only copy of the author's
+	 * words, and this rejects with an `EditorUnsavedError` naming the note.
+	 * The change is not to be made.
 	 */
 	releaseNotes(paths: readonly string[]): Promise<void>;
 	/** The author's chapter numbering rule, or null while none is switched on. */

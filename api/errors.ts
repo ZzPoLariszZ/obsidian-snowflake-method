@@ -53,6 +53,26 @@ export const linkUpdatesAsk = (path: string): ApiError =>
 		{ path },
 	);
 
+/**
+ * What a host raises from `releaseNotes` where an editor of the author's
+ * would not write what it held. That editor is left open, since it holds
+ * the only copy of those words, and the change asked for is not made.
+ */
+export class EditorUnsavedError extends Error {
+	constructor(readonly path: string) {
+		super('An editor could not save what it held.');
+		this.name = 'EditorUnsavedError';
+	}
+}
+
+/** The refusal of a change to a note whose editor could not save the author's words. */
+export const editorUnsaved = (path: string): ApiError =>
+	new ApiError(
+		'editor-unsaved',
+		'The author is writing in the note, and what they typed could not be saved to its file. Their editor was left open and nothing was changed. Ask again once the note can be saved.',
+		{ path },
+	);
+
 export interface ProblemEntry {
 	readonly status: number;
 	readonly title: string;
@@ -114,6 +134,7 @@ export function mapError(error: unknown): ApiError {
 	if (error instanceof ConcurrentChangeError) return changedSince(error.actualRevision);
 	if (error instanceof ManagedFileNotFoundError) return new ApiError('not-found', 'It is not there, or no longer there.');
 	if (error instanceof LinkUpdatePromptError) return linkUpdatesAsk(error.path);
+	if (error instanceof EditorUnsavedError) return editorUnsaved(error.path);
 	if (error instanceof PathConflictError) {
 		return new ApiError('path-conflict', 'A file or folder already stands where this would go.', { path: error.path });
 	}

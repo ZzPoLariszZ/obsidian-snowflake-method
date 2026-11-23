@@ -98,7 +98,7 @@ describe('releasing a note from the stream', () => {
 		const { view, saves, unmounted, order, one, drawn } = stream();
 		one.pending = 'one, and more';
 		const released = await view.releaseSegment(one.path);
-		expect(released).toBe(true);
+		expect(released).toBe('released');
 		// The author's words are in the file, on the revision the stream held.
 		expect(saves).toEqual([{ path: one.path, body: 'one, and more', revision: 'r1' }]);
 		expect(one.pending).toBeNull();
@@ -116,8 +116,8 @@ describe('releasing a note from the stream', () => {
 	it('leaves alone a note that is not the one being written in', async () => {
 		const { view, saves, unmounted, one, two } = stream();
 		one.pending = 'still typing';
-		expect(await view.releaseSegment(two.path)).toBe(false);
-		expect(await view.releaseSegment('Novel/50_Manuscript/Elsewhere.md')).toBe(false);
+		expect(await view.releaseSegment(two.path)).toBe('absent');
+		expect(await view.releaseSegment('Novel/50_Manuscript/Elsewhere.md')).toBe('absent');
 		expect(view.isEditing()).toBe(true);
 		expect(saves).toEqual([]);
 		expect(unmounted).toEqual([]);
@@ -129,8 +129,48 @@ describe('releasing a note from the stream', () => {
 		drawn();
 		await view.stopEditing();
 		expect(unmounted).toEqual([one.path]);
-		expect(await view.releaseSegment(one.path)).toBe(false);
+		expect(await view.releaseSegment(one.path)).toBe('absent');
 		expect(unmounted).toEqual([one.path]);
+	});
+
+	it('keeps the note and its editor where what was typed would not go to the file', async () => {
+		const { view, host, unmounted, one } = stream();
+		const shown: string[] = [];
+		Object.assign(view, {
+			showError: (error: unknown): void => {
+				shown.push(error instanceof Error ? error.message : String(error));
+			},
+		});
+		host.saveManuscriptSegment.mockRejectedValue(new Error('disk full'));
+		one.pending = 'one, and more';
+		expect(await view.releaseSegment(one.path)).toBe('unsaved');
+		await microtasks();
+		// The author is told once, and goes on writing where they were: the words are still theirs to save.
+		expect(shown).toEqual(['disk full']);
+		expect(view.isEditing()).toBe(true);
+		expect(unmounted).toEqual([]);
+		expect(one.editor).not.toBeNull();
+		expect(one.pending).toBe('one, and more');
+		expect(one.text).toEqual({ body: 'one', revision: 'r1' });
+		// Once the file takes them, the note is given up as any other.
+		host.saveManuscriptSegment.mockImplementation((_path: string, _body: string, revision: string) => Promise.resolve({ revision: `${revision}+` }));
+		expect(await view.releaseSegment(one.path)).toBe('released');
+		expect(one.pending).toBeNull();
+		expect(unmounted).toEqual([one.path]);
+	});
+
+	it('carries words typed while the save was on its way before it gives the note up', async () => {
+		const { view, host, saves, one } = stream();
+		one.pending = 'one, and more';
+		host.saveManuscriptSegment.mockImplementationOnce((path: string, body: string, revision: string) => {
+			saves.push({ path, body, revision });
+			// A key pressed while the file was being written.
+			one.pending = 'one, and more still';
+			return Promise.resolve({ revision: `${revision}+` });
+		});
+		expect(await view.releaseSegment(one.path)).toBe('released');
+		expect(saves.map((save) => save.body)).toEqual(['one, and more', 'one, and more still']);
+		expect(one.pending).toBeNull();
 	});
 
 	it('is the author’s own way out of a note up to the redraw, which that way waits for', async () => {

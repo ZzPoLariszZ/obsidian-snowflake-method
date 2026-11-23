@@ -27,6 +27,7 @@ import {
 import {
 	CLI_COMMAND,
 	CLI_FLAG_VALUES,
+	EditorUnsavedError,
 	createLocalApi,
 	mintToken,
 	type ApiHost,
@@ -6315,12 +6316,18 @@ export default class SnowflakeMethodPlugin
 	 * The plugin's own editor on each of these notes closed, where one is
 	 * open: a stream's on a manuscript note, and whichever surface holds a
 	 * sticky note for editing. Each writes what it holds on its way down.
+	 *
+	 * A stream that cannot write what it holds keeps its editor, which is
+	 * then the only place the author's words are, and the writer is told by
+	 * a refusal that it is to change nothing.
 	 */
 	private async releaseNotesForWriter(paths: readonly string[]): Promise<void> {
 		for (const leaf of this.app.workspace.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)) {
 			const view = leaf.view;
 			if (!(view instanceof SnowflakeManuscriptView)) continue;
-			for (const path of paths) await view.releaseSegment(path);
+			for (const path of paths) {
+				if ((await view.releaseSegment(path)) === 'unsaved') throw new EditorUnsavedError(path);
+			}
 		}
 		for (const path of paths) {
 			if (!isStickyNotePath(path)) continue;

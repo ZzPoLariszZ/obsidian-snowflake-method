@@ -21,6 +21,7 @@ vi.mock('obsidian', async (importOriginal) => {
 
 import { FileSystemAdapter } from 'obsidian';
 
+import { EditorUnsavedError } from '../../api/index';
 import SnowflakeMethodPlugin from '../../src/main';
 import { DEFAULT_SETTINGS, type SnowflakeSettings } from '../../src/settings';
 import { SnowflakeProjectService } from '../../src/services';
@@ -66,6 +67,7 @@ interface Host {
 	invalidateProjectHealth(path: string): void;
 	drawDashboardsOnShow(): Promise<void>;
 	streamsOnShowRead(): Promise<void>;
+	releaseNotesForWriter(paths: readonly string[]): Promise<void>;
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -1491,6 +1493,40 @@ describe('what the host hears of the page going out of sight, and of its going f
 		expect(saved).toHaveLength(1);
 		expect(saved[0]?.recentStep).toBe(3);
 		unhook();
+		stop();
+	});
+});
+
+describe('what a writer outside the plugin is told of the author’s editors', () => {
+	const CHAPTER = 'Novels/Novel/50_Manuscript/Chapter 1.md';
+	const stream = (answer: 'released' | 'unsaved' | 'absent') => {
+		const view = Object.create(SnowflakeManuscriptView.prototype) as SnowflakeManuscriptView;
+		const releaseSegment = vi.fn(() => Promise.resolve(answer));
+		Object.assign(view, { releaseSegment });
+		return { view, releaseSegment };
+	};
+
+	it('goes on where every stream has given the note up or was not writing in it', async () => {
+		const { plugin, leaves, stop } = await host();
+		const writing = stream('released');
+		const elsewhere = stream('absent');
+		leaves.set(MANUSCRIPT_VIEW_TYPE, [{ view: writing.view }, { view: elsewhere.view }, { view: {} }]);
+		await expect(plugin.releaseNotesForWriter([CHAPTER])).resolves.toBeUndefined();
+		expect(writing.releaseSegment).toHaveBeenCalledWith(CHAPTER);
+		expect(elsewhere.releaseSegment).toHaveBeenCalledWith(CHAPTER);
+		stop();
+	});
+
+	it('is refused where a stream could not save what it holds, with the note named', async () => {
+		const { plugin, leaves, stop } = await host();
+		const kept = stream('unsaved');
+		leaves.set(MANUSCRIPT_VIEW_TYPE, [{ view: kept.view }]);
+		const refused = await plugin.releaseNotesForWriter([CHAPTER]).then(
+			() => null,
+			(error: unknown) => error,
+		);
+		expect(refused).toBeInstanceOf(EditorUnsavedError);
+		expect((refused as EditorUnsavedError).path).toBe(CHAPTER);
 		stop();
 	});
 });

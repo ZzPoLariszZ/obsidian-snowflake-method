@@ -15,7 +15,7 @@ import { entitiesOf, type CharacterRecord, type ProjectSnapshot, type SceneRecor
 import { parseCustomFields } from '../../src/templates';
 import { relativePathOf } from '../dto/manuscript';
 import { isEditableStep, stepTextOf } from '../dto/project';
-import { ApiError } from '../errors';
+import { ApiError, EditorUnsavedError } from '../errors';
 import { isJsonObject, type JsonObject } from '../json';
 import { SEARCH_EXCERPT, SEARCH_HITS } from '../limits';
 import { pageOf } from '../paging';
@@ -289,13 +289,14 @@ export const searchOperations: OperationGroup = {
 			);
 			let etag = standing.revision;
 			if (!dryRun) {
-				// The author's editor on the note is closed only now that the note is sure to be written.
-				await context.host.releaseNotes([segment.path]);
 				try {
+					// The author's editor on the note is closed only now that the note is sure to be written.
+					await context.host.releaseNotes([segment.path]);
 					await manuscript.writeSegment(segment.path, applyReplacements(standing.body, changes), standing.revision, NOT_THE_AUTHOR);
 				} catch (error) {
-					// The author typed into the note in the moment between. Their words stand, and the rest go on.
-					if (!(error instanceof ConcurrentChangeError)) throw error;
+					// The author typed into the note in the moment between, or their editor could not save what
+					// it held and was left open. Their words stand, and the rest go on.
+					if (!(error instanceof ConcurrentChangeError) && !(error instanceof EditorUnsavedError)) throw error;
 					skipped.push({ relativePath, reason: 'changed' });
 					continue;
 				}

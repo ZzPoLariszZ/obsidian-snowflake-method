@@ -73,7 +73,7 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 ## What to know before writing
 
-**The author may be typing.** A manuscript note or a sticky note may be open in the plugin with words not yet saved. Those words are saved first. A change is then made only against that latest text, which is what `If-Match` is for. Once the change is sure to be made, the plugin's editor on that note closes. A call that is refused leaves the author writing where they were.
+**The author may be typing.** A manuscript note or a sticky note may be open in the plugin with words not yet saved. Those words are saved first. A change is then made only against that latest text, which is what `If-Match` is for. Once the change is sure to be made, the plugin's editor on that note closes. A call that is refused leaves the author writing where they were. So does one that meets words the plugin cannot save, on a full disk for one: it answers `409 editor-unsaved` and changes nothing.
 
 **Word counts.** Text written through the API is not counted as the author's own typing, and the modification history files it as the plugin's. A note deleted through the API counts as words the project lost, as any deleted note does.
 

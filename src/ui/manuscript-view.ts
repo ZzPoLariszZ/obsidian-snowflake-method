@@ -6064,17 +6064,44 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	 * text. The prose is drawn where the editor stood in its own time, and
 	 * is not waited for. Drawing waits on the screen, and a window out of
 	 * sight is given its turns late, which is exactly where such a caller
-	 * finds the app. False where the note was not being written in.
+	 * finds the app.
+	 *
+	 * Answers `absent` where the note was not being written in, and `unsaved`
+	 * where what was typed would not go to the file. The note is then kept:
+	 * its editor holds the only copy of those words, and the writer is told
+	 * so that it changes nothing.
 	 */
-	async releaseSegment(path: string): Promise<boolean> {
-		if (this.editingPath !== path) return false;
+	async releaseSegment(path: string): Promise<'released' | 'unsaved' | 'absent'> {
+		if (this.editingPath !== path) return 'absent';
+		if (!(await this.writtenOut(path))) return 'unsaved';
+		// The author may have left the note by their own way while it was saved.
+		if (this.editingPath !== path) return 'absent';
 		const left = await this.letGoOfWriting();
-		if (left === null) return false;
+		if (left === null) return 'absent';
 		// The editor is taken down before the redraw first waits on anything.
 		void this.putProseBack(left).catch((error: unknown) => {
 			this.showError(error);
 		});
-		return true;
+		return 'released';
+	}
+
+	/**
+	 * What was typed into one note written to its file, for a writer about
+	 * to change the note from outside. False where a write did not land: a
+	 * disk that is full, a file the system will not open. Words typed while
+	 * a save is on its way are carried by the next, so it is asked a few
+	 * times over, and a note still owed after that is one that will not
+	 * hold still.
+	 */
+	private async writtenOut(path: string): Promise<boolean> {
+		for (let go = 0; go < 4; go += 1) {
+			const unwritten = new Set<string>();
+			await this.flushPendingSave(unwritten);
+			if (unwritten.has(path)) return false;
+			const entry = this.mounted.get(path);
+			if (entry === undefined || entry.pending === null || entry.pending === entry.text.body) return true;
+		}
+		return false;
 	}
 
 	/**
@@ -6877,10 +6904,10 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	 * already there and reported the note as changed under it. Queued, the
 	 * second finds nothing left to write.
 	 */
-	private flushPendingSave(): Promise<void> {
+	private flushPendingSave(unwritten?: Set<string>): Promise<void> {
 		this.flushesUnderWay += 1;
 		const run = this.saving
-			.then(() => this.flushNow())
+			.then(() => this.flushNow(unwritten))
 			.finally(() => {
 				this.flushesUnderWay -= 1;
 			});
@@ -6913,14 +6940,19 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 		return owed ? this.flushPendingSave() : null;
 	}
 
-	private async flushNow(): Promise<void> {
+	/**
+	 * Every note's unwritten typing sent to its file. A note whose write did
+	 * not land is named in `unwritten`, for the one caller that must know
+	 * before it goes on: its words are still held here and nowhere else.
+	 */
+	private async flushNow(unwritten?: Set<string>): Promise<void> {
 		this.clearSaveTimer();
 		for (const entry of this.mounted.values()) {
 			const pending = entry.pending;
 			if (pending === null || pending === entry.text.body) continue;
-			if ((await this.writePending(entry, pending)) === 'changed') {
-				await this.takeChangedNote(entry, pending);
-			}
+			let outcome = await this.writePending(entry, pending);
+			if (outcome === 'changed') outcome = await this.takeChangedNote(entry, pending);
+			if (outcome !== 'written') unwritten?.add(entry.path);
 		}
 	}
 
@@ -6963,22 +6995,25 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 	 * to drop what they typed, or to leave the editor unable to save again,
 	 * which is what refusing and stopping there came to: the revision the
 	 * stream held never moved on, so every save after the first was refused.
+	 *
+	 * Says whether the author's text is in the file at the end of it, as
+	 * `writePending` does.
 	 */
 	private async takeChangedNote(
 		entry: MountedSegment,
 		pending: string,
-	): Promise<void> {
+	): Promise<'written' | 'changed' | 'failed'> {
 		let fresh: ManuscriptSegmentText;
 		try {
 			fresh = await this.host.readManuscriptSegment(entry.path);
 		} catch (error) {
 			this.showError(error);
-			return;
+			return 'failed';
 		}
 		entry.text = fresh;
 		if (fresh.body === pending) {
 			if (entry.pending === pending) entry.pending = null;
-			return;
+			return 'written';
 		}
 		new Notice(this.t('manuscript.changedElsewhere'));
 		// Written here rather than left to the timer the notice used to arm.
@@ -6990,12 +7025,14 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 		// it out of the loaded window, and closing the view clears the timer
 		// outright -- each of them dropping the entry that held the only copy
 		// of what the author had typed.
-		if ((await this.writePending(entry, pending)) === 'changed') {
+		const outcome = await this.writePending(entry, pending);
+		if (outcome === 'changed') {
 			// Changed again between the reading above and this write, which
 			// takes two writers in the same instant. Left pending for the
 			// timer, which is where this stood before.
 			this.scheduleSave();
 		}
+		return outcome;
 	}
 
 	private async createSegment(

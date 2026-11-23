@@ -13,6 +13,7 @@ import { contract } from './spec/document';
 import { readOperations } from './spec/operations';
 
 export { CLI_COMMAND, CLI_FLAGS, CLI_FLAG_VALUES, type CliFlagName } from './cli/door';
+export { EditorUnsavedError } from './errors';
 export type { ApiHost, AuthorSettings, AuthorSettingsChange, ChangedRecords, SessionStart } from './host';
 export type { ServerStatus } from './http/server';
 export { mintToken } from './http/token';

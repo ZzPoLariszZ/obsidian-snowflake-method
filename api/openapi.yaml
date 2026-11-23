@@ -130,7 +130,9 @@ tags:
       to it arrives. What they typed and had not saved is saved first. The
       change is then made only against that latest text, which is what the
       `etag` in `If-Match` is for, and the plugin's editor on the note is
-      closed so that nothing typed afterwards can undo the change.
+      closed so that nothing typed afterwards can undo the change. Where
+      their words cannot be saved, a full disk for one, the answer is
+      `409 editor-unsaved`: the editor stays open and nothing is changed.
 
       Where the author has a chapter numbering rule switched on, a note made
       among numbered ones, or taken from among them, renames the numbered
@@ -1579,7 +1581,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-name, path-conflict, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-name, path-conflict, link-updates-ask, editor-unsaved]
       requestBody:
         required: true
         content:
@@ -1641,7 +1643,7 @@ paths:
       x-snowflake-access: delete
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, path-conflict, link-updates-ask, editor-unsaved]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
         - name: renumber
@@ -2177,7 +2179,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, editor-unsaved]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -2208,7 +2210,7 @@ paths:
       x-snowflake-access: delete
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, editor-unsaved]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       responses:
@@ -3421,7 +3423,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, editor-unsaved]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -3459,7 +3461,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-name, path-conflict, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, invalid-name, path-conflict, link-updates-ask, editor-unsaved]
       requestBody:
         required: true
         content:
@@ -3496,7 +3498,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, invalid-name, path-conflict, passage-not-found, ambiguous-passage, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, precondition-required, concurrent-change, invalid-name, path-conflict, passage-not-found, ambiguous-passage, link-updates-ask, editor-unsaved]
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
@@ -3536,7 +3538,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 1 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, nothing-to-merge, path-conflict, link-updates-ask]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, nothing-to-merge, path-conflict, link-updates-ask, editor-unsaved]
       requestBody:
         required: false
         content:
@@ -3772,7 +3774,8 @@ paths:
         saved is saved first, the words are found in that, and the author's
         editor on the note is closed. A note the author typed into in that very
         moment is left as it is and told under `skipped`, and the rest go on. So
-        is a note a newer version of the plugin wrote.
+        is a note whose editor could not save what it held, and a note a newer
+        version of the plugin wrote.
 
         A revision or an appearance of a thread whose passage is changed loses
         its place. `marksLost` says how many would, so a dry run shows it before
@@ -3816,7 +3819,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: advanced
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, passage-not-found, concurrent-change]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, passage-not-found, concurrent-change, editor-unsaved]
       responses:
         "200":
           description: The note as it now stands.
@@ -3849,7 +3852,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: extended
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, editor-unsaved]
       requestBody:
         required: true
         content:
@@ -3885,7 +3888,7 @@ paths:
       x-snowflake-access: write
       x-snowflake-availability: { status: available, round: 2 }
       x-snowflake-tier: core
-      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, concurrent-change]
+      x-snowflake-errors: [not-found, ambiguous-project, invalid-managed-document, read-only, project-archived, concurrent-change, editor-unsaved]
       requestBody:
         required: true
         content:
@@ -10282,7 +10285,7 @@ components:
               reason:
                 type: string
                 enum: [read-only, changed]
-                description: "`read-only` for a note a newer version of the plugin wrote. `changed` for one the author typed into while the call ran."
+                description: "`read-only` for a note a newer version of the plugin wrote. `changed` for one the author typed into while the call ran, or whose editor could not save what it held."
 
     ManuscriptNoteMove:
       type: object
@@ -11849,6 +11852,9 @@ x-snowflake-problems:
   link-updates-ask:
     status: 409
     title: Obsidian is set to ask before it updates links, so nothing is renamed here.
+  editor-unsaved:
+    status: 409
+    title: The author's editor on the note could not save what it holds, so the note was left alone.
   concurrent-change:
     status: 412
     title: The note has changed since it was read.
