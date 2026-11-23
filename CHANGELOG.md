@@ -8,6 +8,27 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0]
+
+### Added
+
+- **Local API.** Programs on your computer can now read and write your Snowflake projects. The plugin answers them itself. It's off until you switch it on in the plugin's settings, under **Local API**, and it runs on the desktop only. It answers on this computer and nowhere else, and a program that calls it must send an access token made on your device. You choose how far a caller may go: **Read only**, **Read and write**, or **Read, write and delete**. A caller can read everything in a project. It can change the steps, characters, scenes, worldbuilding, manuscript, tasks, foreshadowing, revisions, sticky notes, timelines, beat sheets and freeform views. It can search a project, find and replace in the manuscript, and bring parts in from another project. It can export the manuscript, save a view as an Obsidian Canvas, and start or stop a writing session. It can also set how the relationship graph is drawn, how the manuscript's page looks, your word count rule and your daily goals. What it writes never counts as your typing, and the modification history files it as the plugin's. If you're writing in a chapter when a change to it arrives, your unsaved words are saved first. The change goes through only if it was made from that latest text and your words were saved. Otherwise it's refused, and your editor stays open. Renaming through the API needs **Automatically update internal links** on in Obsidian's settings. With the **Command line bridge** on, the same calls also work through Obsidian's command line, with no token. That needs Obsidian's own **Command line interface** on as well, and the plugin's settings warn you when it's off. The contract is an OpenAPI document, `api/openapi.yaml`, with a guide beside it.
+- **Edit entity from a mention.** A mention's menu now offers **Edit entity** right after **Open entity**. It opens the entity's own form over the page, so you can change a character, a scene or a worldbuilding note without leaving the chapter. Click a plain name while reading the manuscript stream, or right-click a name while writing. Notes in your projects that use the typography offer it too.
+
+### Changed
+
+- Entity tracking, prose analysis and an import no longer slow down while Obsidian's window is minimized. Obsidian slows the timers of a hidden window, and the plugin used to wait on one between notes.
+
+### Fixed
+
+- Renaming, archiving or restoring a project no longer leaves a folder under its old name. The modification history took the move for every note leaving the project, wrote each down as deleted, and filed that where the project used to stand.
+- A project that was moved, archived or deleted while Obsidian was closed no longer comes back as a folder under its old name. The plugin used to file what it still held for the project there. That could be the words you wrote that day outside a session, or a session that was cut short. Stopping a session after its project was trashed did the same. Such a record is now let go with its project.
+- On a phone, the **Archive** in the project manager now has room to show its projects. Before, an opened archive had almost no height, so there was next to nothing to scroll. The two lists now take up to half the dialog, and a narrow window on the desktop gets the same.
+- Renaming a character, a scene or a worldbuilding note to a name made only of dots, such as `...`, no longer leaves the note half renamed. The name was saved before the file's rename failed. It's now refused before anything is saved. The field template dialog says so too, where it used to do nothing.
+- In the health check, **Repair** on a row now mends that row's own problem. Where one note had two problems, such as a category that's missing and one shown under an old name, either button mended the first.
+- Words the plugin writes into a note you have open in an editor are no longer counted as yours. A note's overview is rewritten a moment after its properties change, and those words were added to your count at the next key you pressed.
+- Merging two manuscript notes and starting a writing session right after no longer takes words off the day's count. The words that moved into the first note were still waiting to be counted, and starting the session dropped them.
+
 ## [0.33.1]
 
 ### Changed
@@ -822,6 +843,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.34.0]
+
+### 新增
+
+- **本地接口。** 本机上的程序现在可以读写你的雪花写作项目，应答它们的是插件自己。在插件设置的**本地接口**一节里开启之前，它一直是关闭的，而且只在桌面端运行。它只在本机应答，调用它的程序必须带上在你设备上生成的访问令牌。调用方能做到哪一步由你决定：**只读**、**读写**，或**读写和删除**。调用方可以读取项目里的全部内容，也可以修改步骤、角色、场景、世界观、正文、任务、伏笔、修订、便签、时间线、节拍表和自由画布。它可以在项目里搜索，在正文里查找替换，从另一个项目导入内容。它可以导出正文，把一个视图存成 Obsidian 白板，也可以开始和结束写作时段。它还能调整关系图的显示方式、正文页面的样子、你的字数统计规则和每日目标。它写下的文字不会算作你的输入，修改历史也会把这些改动记在插件名下。如果改动到来时你正在写那一章，你还没保存的文字会先保存。只有当改动基于这份最新的文字，而且你的文字已经存好，改动才会生效。否则改动会被拒绝，你的编辑器也保持打开。通过本地接口重命名，需要在 Obsidian 的设置里开启**始终更新内部链接**。打开**命令行桥接**后，同样的调用也可以通过 Obsidian 的命令行发出，而且不需要令牌。这还需要开启 Obsidian 自己的**命令行界面**，没开时插件的设置会提醒你。接口约定是一份 OpenAPI 文档 `api/openapi.yaml`，旁边附有使用说明。
+- **从提及处编辑实体。** 提及的菜单里，**打开实体**后面多了一项**编辑实体**。它会在当前页面上打开这个实体自己的表单，不用离开章节就能修改角色、场景或世界观笔记。在正文流里阅读时点击未链接的名字，或在写作时右键点击名字，都能看到这一项。用上排版的项目笔记也一样。
+
+### 变更
+
+- Obsidian 窗口最小化时，实体追踪、正文分析和导入不再变慢。Obsidian 会放慢隐藏窗口里的定时器，而插件以前每处理几篇笔记都要等一次定时器。
+
+### 修复
+
+- 重命名、归档或恢复项目后，不会再留下一个旧名字的文件夹。修改历史以前把这次移动当成项目里的每篇笔记都离开了项目，把它们逐一记为已删除，还把记录写到了项目原来的位置。
+- 在 Obsidian 关闭期间被移动、归档或删除的项目，不会再以一个旧名字的文件夹回来。插件以前会把手里还没存下的记录写到项目原来的位置：当天没开写作时段时写下的字数，或者一个被中断的写作时段。项目被移进回收站之后再停止时段，也会这样。现在这样的记录会随项目一起放弃。
+- 在手机上，项目管理器里的**归档**现在有地方显示归档的项目了。以前展开归档后几乎没有高度，里面的项目几乎滚动不出来。现在两个列表最多占对话框的一半，桌面端的窄窗口也是如此。
+- 把角色、场景或世界观笔记改名为只有句点的名字（比如 `...`）时，不会再只改了一半。以前名字会先存进笔记，随后文件改名失败。现在会在保存任何内容之前拒绝。自定义字段模板的对话框也会给出提示，以前它毫无反应。
+- 健康检查里，每一行的**修复**现在只修这一行的问题。以前一篇笔记同时有两个问题时（一个分类不存在，另一个分类还显示着旧名字），点哪一行的按钮修的都是第一个。
+- 插件自己写进笔记的字，在笔记开着编辑器时不会再算成你写的。笔记的属性改动后，它的概览会稍后重写一次，以前这些字会在你按下一个键时计入你的字数。
+- 合并两篇正文笔记后马上开始写作时段，当天的字数不会再被扣掉。并入前一篇的字当时还在等待计数，时段一开始就把它们丢掉了。
 
 ## [0.33.1]
 
