@@ -63,12 +63,22 @@ function writable(segment: ManuscriptSegmentRecord): ManuscriptSegmentRecord {
  * against any later version would go over those last words.
  */
 export async function ready(context: ApiContext, call: OperationCall, first: string, rest: readonly string[] = []): Promise<string> {
-	const paths = [first, ...rest];
-	await context.host.settleNotes(paths);
+	const standing = await held(context, call, first, rest);
+	await context.host.releaseNotes([first, ...rest]);
+	return standing.revision;
+}
+
+/**
+ * The first half of `ready`, for a change that has something left to
+ * settle before it is sure to be made. What the author typed is saved and
+ * the version a caller names is held against the note, with every editor
+ * left open. Answers the note as it then stands.
+ */
+async function held(context: ApiContext, call: OperationCall, first: string, rest: readonly string[] = []): Promise<{ revision: string; body: string }> {
+	await context.host.settleNotes([first, ...rest]);
 	const standing = await context.host.projects.manuscript.readSegment(first);
 	if (call.ifMatch !== null && call.ifMatch !== '*' && standing.revision !== call.ifMatch) throw changedSince(standing.revision);
-	await context.host.releaseNotes(paths);
-	return standing.revision;
+	return standing;
 }
 
 /**
@@ -252,17 +262,16 @@ export const manuscriptWriteOperations: OperationGroup = {
 		const title = titleOf(body, plan.head);
 		const renames = renumbers(body) ? plan.renames : [];
 		renamable(context, renames[0]?.path);
-		const revision = await ready(
-			context,
-			call,
-			segment.path,
-			renames.map((rename) => rename.path),
-		);
+		const others = renames.map((rename) => rename.path);
+		// The place is found in the text as it stands once the author's last words are in it, and before any
+		// editor is closed: words the note does not say are refused with the author writing where they were.
+		const standing = await held(context, call, segment.path, others);
+		const offset = cutOf(standing.body, body['at']);
+		await context.host.releaseNotes([segment.path, ...others]);
 		const manuscript = context.host.projects.manuscript;
-		// Found in the text as it stands once the author's last words are in it, and cut in that text or not at all:
-		// the service is told which version the place was found in, and refuses a note that has moved on from it.
-		const offset = cutOf(await textAt(context, segment.path, revision), body['at']);
-		const cut = await manuscript.splitSegmentAt(project, segment.path, offset, title, renames, { ...NOT_THE_AUTHOR, expectedRevision: revision });
+		// Cut in that text or not at all: the service is told which version the place was found in, and
+		// refuses a note that has moved on from it, by the words an editor wrote as it closed among others.
+		const cut = await manuscript.splitSegmentAt(project, segment.path, offset, title, renames, { ...NOT_THE_AUTHOR, expectedRevision: standing.revision });
 		const { project: after } = await context.loadProject(projectId);
 		const told = await tellManuscriptNote(context, after, cut.path);
 		const head = await manuscript.readSegment(segment.path);

@@ -273,14 +273,36 @@ describe('a manuscript note, split', () => {
 		const written = await golden.call('writeManuscriptNoteBody', params, { body: { body: 'He waited. Then he left.\n\nShe waited. Then she left.\n' }, ifMatch: '*' });
 		const etag = String(bodyOf(written.body)['etag']);
 		const before = vaultState(golden.host);
+		golden.host.editors.length = 0;
 		const absent = await golden.call('splitManuscriptNote', params, { body: { at: { exact: 'Nobody asked why.' } }, ifMatch: etag });
 		expect(refusal(absent)).toEqual([422, 'passage-not-found']);
 		const twice = await golden.call('splitManuscriptNote', params, { body: { at: { exact: 'waited. Then' } }, ifMatch: etag });
 		expect(refusal(twice)).toEqual([422, 'ambiguous-passage']);
 		expect(faults(twice)).toEqual([]);
 		expect(vaultState(golden.host)).toEqual(before);
+		// The words were looked for in what the author had typed, and no editor was closed for a split that was not made.
+		expect(golden.host.editors).toEqual([`settle ${golden.manuscript.second}`, `settle ${golden.manuscript.second}`]);
 		const told = await golden.call('splitManuscriptNote', params, { body: { at: { exact: 'waited. Then', prefix: 'She ' }, title: 'After' }, ifMatch: etag });
 		expect([told.status, noteOf(told)['body']]).toEqual([201, 'waited. Then she left.\n']);
+	});
+
+	it('looks for the place before it closes the editors of the notes it would renumber', async () => {
+		const golden = await fresh();
+		const params = { projectId: golden.project.id, notePath: FIRST };
+		const seen = await read(golden, FIRST);
+		golden.host.editors.length = 0;
+		// Chapter 2 would move up by one, so it is settled with the note being cut, and left open with it.
+		const absent = await golden.call('splitManuscriptNote', params, { body: { at: { exact: 'absent passage' } }, ifMatch: String(seen['etag']) });
+		expect([refusal(absent), faults(absent)]).toEqual([[422, 'passage-not-found'], []]);
+		expect(golden.host.editors).toEqual([`settle ${golden.manuscript.first}, ${golden.manuscript.second}`]);
+		// A split that is made closes both, once the place is found and before the first write.
+		const made = await golden.call('splitManuscriptNote', params, { body: { at: { exact: 'The clock' } }, ifMatch: String(seen['etag']) });
+		expect(made.status).toBe(201);
+		expect(golden.host.editors.slice(0, 3)).toEqual([
+			`settle ${golden.manuscript.first}, ${golden.manuscript.second}`,
+			`settle ${golden.manuscript.first}, ${golden.manuscript.second}`,
+			`release ${golden.manuscript.first}, ${golden.manuscript.second}`,
+		]);
 	});
 
 	it('is not cut at a place found in words the note no longer says', async () => {
