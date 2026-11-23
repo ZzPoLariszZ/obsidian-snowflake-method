@@ -592,7 +592,7 @@ describe('a freeform view, made and changed', () => {
 			{ do: 'text', id: 'card-text', text: 'Changed.' },
 			{ do: 'place', places: [{ id: 'card-gone', x: 0, y: 0 }] },
 		]);
-		expect([refusal(missing), pointerOf(missing), faults(missing)]).toEqual([[422, 'invalid-reference'], '/steps/1', []]);
+		expect([refusal(missing), pointerOf(missing), faults(missing)]).toEqual([[422, 'invalid-reference'], '/steps/1/places/0/id', []]);
 		const self = await steps(golden, P, boards.canvas, [{ do: 'connect', edges: [{ source: 'card-ada', target: 'card-ada' }] }]);
 		expect([refusal(self), JSON.stringify(self.body).includes('/steps/0')]).toEqual([[400, 'invalid-request'], true]);
 		// A name is one thing's, for the length of the call, and never the id of something already there.
@@ -712,6 +712,20 @@ describe('a freeform view, made and changed', () => {
 		expect(refusal(await one({ do: 'restack', ids: ['card-gone'], to: 'front' }))).toEqual([422, 'invalid-reference']);
 		expect(refusal(await one({ do: 'reconnect', id: 'line-gone', target: 'card-ada' }))).toEqual([422, 'invalid-reference']);
 		expect(refusal(await one({ do: 'reconnect', id: 'line-asks', target: 'card-gone' }))).toEqual([422, 'invalid-reference']);
+		// One id that names nothing is told where it is named, though the others of the step stand: nothing of the step is made.
+		const named = async (step: Body): Promise<unknown[]> => {
+			const reply = await one(step);
+			return [refusal(reply), pointerOf(reply), faults(reply)];
+		};
+		const lost = (pointer: string): unknown[] => [[422, 'invalid-reference'], pointer, []];
+		expect(await named({ do: 'display', modes: [{ id: 'card-ada', mode: 'compact' }, { id: 'card-gone', mode: 'compact' }] })).toEqual(lost('/steps/0/modes/1/id'));
+		// A frame has no face to show another way.
+		expect(await named({ do: 'display', modes: [{ id: 'card-ada', mode: 'compact' }, { id: 'frame-cast', mode: 'compact' }] })).toEqual(lost('/steps/0/modes/1/id'));
+		expect(await named({ do: 'restack', ids: ['card-ada', 'frame-cast', 'card-gone'], to: 'front' })).toEqual(lost('/steps/0/ids/2'));
+		expect(await named({ do: 'place', places: [{ id: 'card-ada', x: 5, y: 5 }, { id: 'card-gone', x: 5, y: 5 }] })).toEqual(lost('/steps/0/places/1/id'));
+		expect(await named({ do: 'place', places: [{ id: 'card-text', x: 5, y: 5, frameId: 'frame-gone' }] })).toEqual(lost('/steps/0/places/0/frameId'));
+		expect(await named({ do: 'edit-edges', edits: [{ id: 'line-asks', label: 'tells' }, { id: 'line-gone', label: 'tells' }] })).toEqual(lost('/steps/0/edits/1/id'));
+		expect(await named({ do: 'add', placements: [{ resource: { type: 'text', text: 'Loose.' }, x: 0, y: 0, frameId: 'frame-gone' }] })).toEqual(lost('/steps/0/placements/0/frameId'));
 		// A line from a thing to itself, and an address that is no web address.
 		expect(refusal(await one({ do: 'reconnect', id: 'line-asks', target: 'card-ada' }))).toEqual([400, 'invalid-request']);
 		const second = await steps(golden, P, boards.canvas, [

@@ -312,6 +312,74 @@ async function stepsOf(
 }
 
 /**
+ * The first thing a step names that does not stand on the view: where in
+ * the step it is named and what was looked for, or null where all of it
+ * stands. The view's own steps pass over a card that has gone since its
+ * screen was painted, which is right for a gesture and wrong for a caller
+ * that named the wrong thing. One id that answers to nothing would be left
+ * out of a change that says it was made. A `delete` step is left to pass
+ * over what has gone already, since that is what it was asked for.
+ */
+function missingFrom(view: FreeformView, step: FreeformStep): { at: string; what: string } | null {
+	const cards = new Set(view.placements.map((placement) => placement.id));
+	const frames = new Set(view.frames.map((frame) => frame.id));
+	const node = (id: string): boolean => cards.has(id) || frames.has(id);
+	const first = (
+		named: readonly (string | null | undefined)[],
+		stands: (id: string) => boolean,
+		at: (index: number) => string,
+		what: string,
+	): { at: string; what: string } | null => {
+		const index = named.findIndex((id) => typeof id === 'string' && !stands(id));
+		return index === -1 ? null : { at: at(index), what };
+	};
+	switch (step.do) {
+		case 'add':
+			return first(
+				step.placements.map((draft) => draft.frameId),
+				(id) => frames.has(id),
+				(index) => `/placements/${String(index)}/frameId`,
+				'frame',
+			);
+		case 'place':
+			return (
+				first(
+					step.places.map((place) => place.id),
+					node,
+					(index) => `/places/${String(index)}/id`,
+					'card or frame',
+				) ??
+				first(
+					step.places.map((place) => place.frameId),
+					(id) => frames.has(id),
+					(index) => `/places/${String(index)}/frameId`,
+					'frame',
+				)
+			);
+		case 'display':
+			return first(
+				step.modes.map((entry) => entry.id),
+				(id) => cards.has(id),
+				(index) => `/modes/${String(index)}/id`,
+				'card',
+			);
+		case 'restack':
+			return first(step.ids, node, (index) => `/ids/${String(index)}`, 'card or frame');
+		case 'edit-edges': {
+			const lines = new Set(view.edges.map((edge) => edge.id));
+			return first(
+				step.edits.map((edit) => edit.id),
+				(id) => lines.has(id),
+				(index) => `/edits/${String(index)}/id`,
+				'line',
+			);
+		}
+		default:
+			return null;
+	}
+}
+
+/**
  * The freeform views, changed. A view is named, renamed and deleted as its
  * own screen does it. What stands on a view is changed by a list of steps
  * taken together or not at all, which is how the plugin's own view takes
@@ -385,8 +453,12 @@ export const freeformWriteOperations: OperationGroup = {
 		// Taken one at a time over the view as it stands, so that a step the view will not take is told by its place in the call.
 		let tried = view;
 		steps.forEach((step, at) => {
-			const outcome = applyFreeformSteps(tried, [step], context.host.now(), service.limits());
 			const pointer = `/steps/${String(at)}`;
+			const lost = missingFrom(tried, step);
+			if (lost !== null) {
+				throw noSuch(`${pointer}${lost.at}`, `The view has no ${lost.what} with that id. getFreeformView gives what stands on it.`);
+			}
+			const outcome = applyFreeformSteps(tried, [step], context.host.now(), service.limits());
 			if (outcome.came === 'full') throw full();
 			if (outcome.came === 'absent') {
 				throw noSuch(pointer, 'The step names something the view does not have, or a card of another kind than the step changes. getFreeformView gives what stands on it.');

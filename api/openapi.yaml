@@ -4654,8 +4654,11 @@ paths:
         each card that name as its `frameId`.
 
         A step the view will not take is told by its place in the call, and
-        nothing is written. A card of a note or a record names one the project
-        has.
+        nothing is written. Everything a step names must stand on the view as
+        the step finds it. An id that names nothing is refused where it is
+        named, though the others of the step stand. A `delete` step alone
+        passes over what has gone already, while something it names is still
+        there. A card of a note or a record names one the project has.
 
         A `delete` step takes things off the view, and needs the delete level
         as taking a scene off any other board does. Below that level the whole
