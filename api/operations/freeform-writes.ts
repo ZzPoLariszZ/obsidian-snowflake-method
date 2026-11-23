@@ -411,13 +411,10 @@ export const freeformWriteOperations: OperationGroup = {
 		const name = typeof body['name'] === 'string' ? body['name'].trim() : view.name;
 		const others = held.views.filter((entry) => entry.id !== view.id).map((entry) => entry.name);
 		if (!free(others, name, view.name)) throw taken('freeform view', name);
-		landed(await context.host.projects.freeform.renameView(project, view.id, name), noView(), FILE);
-		if (isSent(body['viewport'])) {
-			const sent = body['viewport'];
-			const viewport = { x: Number(sent['x']), y: Number(sent['y']), zoom: Number(sent['zoom']) };
-			// Where the view is to open is meant as a change here, so the view a project starts with is written for it.
-			landed(await context.host.projects.freeform.leaveView(project, view.id, { viewport }, true), noView(), FILE);
-		}
+		const sent = isSent(body['viewport']) ? body['viewport'] : null;
+		const place = sent === null ? {} : { viewport: { x: Number(sent['x']), y: Number(sent['y']), zoom: Number(sent['zoom']) } };
+		// The name and the place are one change and one write, so neither lands without the other.
+		landed(await context.host.projects.freeform.setView(project, view.id, { name, ...place }), noView(), FILE);
 		context.host.recordsChanged('freeform');
 		return { status: 200, body: await tellView(context, project, view.id) };
 	},

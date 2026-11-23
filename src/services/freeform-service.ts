@@ -135,20 +135,37 @@ export class FreeformService {
 	}
 
 	/**
+	 * A view's name and where it opens, set by whoever means both as one
+	 * change: one write, so neither lands without the other, and what is
+	 * left out stays. Where a view is to open is meant as a change here,
+	 * unlike a leaf's own leave, so the view a project starts with is
+	 * written for it as it is for any other change.
+	 */
+	setView(
+		project: ProjectRef,
+		viewId: string,
+		change: { name?: string; viewport?: FreeformViewport },
+	): Promise<FreeformViewWrite> {
+		return this.revise(project, viewId, (held) => {
+			const named = change.name === undefined ? null : renameFreeformView(held, change.name, this.now());
+			const placed =
+				change.viewport === undefined ? null : leaveFreeformView(named ?? held, { viewport: change.viewport });
+			return placed ?? named;
+		});
+	}
+
+	/**
 	 * What a leaf leaves behind as it goes from a view: where it stood
 	 * looking, and what its resources are called now. The one write a view
-	 * takes that changes nothing on it. `meant` is for whoever sets where a
-	 * view is to open and means that as a change: the view a project starts
-	 * with is then written for it, as it is for any other change.
+	 * takes that changes nothing on it.
 	 */
 	leaveView(
 		project: ProjectRef,
 		viewId: string,
 		left: { viewport?: FreeformViewport; labels?: FreeformLabels },
-		meant = false,
 	): Promise<FreeformViewWrite> {
-		// A leaf's own leave is no change, so the view a project starts with is not written for it.
-		return this.revise(project, viewId, (held) => leaveFreeformView(held, left), meant);
+		// No change, so the view a project starts with is not written for it.
+		return this.revise(project, viewId, (held) => leaveFreeformView(held, left), false);
 	}
 
 	/**

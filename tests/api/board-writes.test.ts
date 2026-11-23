@@ -756,6 +756,19 @@ describe('a freeform view, made and changed', () => {
 		expect(((await ok(golden, 'getFreeformView', { ...P, freeformViewId: 'freeform-view-main' }))['placements'] as Body[]).length).toBe(1);
 	});
 
+	it('renames a view and sets where it opens in one write', async () => {
+		const { golden, boards, P } = await ground();
+		const at = { ...P, freeformViewId: boards.canvas };
+		const file = golden.host.projects.freeform.viewPath(golden.project, boards.canvas);
+		const writes = (): number => golden.host.environment.fakeVault.processCalls.filter((path) => path === file).length;
+		const before = writes();
+		const changed = await ok(golden, 'updateFreeformView', at, { name: 'Cast and crew', viewport: { x: 12, y: -8, zoom: 1.5 } });
+		expect([changed['name'], changed['viewport']]).toEqual(['Cast and crew', { x: 12, y: -8, zoom: 1.5 }]);
+		// One change, so one write: a name never lands without its place, nor a place without its name.
+		expect(writes() - before).toBe(1);
+		expect(golden.host.told).toEqual(['freeform']);
+	});
+
 	it('writes the view a project starts with when a caller sets where it opens', async () => {
 		const golden = await createGolden();
 		const at = { projectId: golden.project.id, freeformViewId: 'freeform-view-main' };
