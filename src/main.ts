@@ -1093,8 +1093,14 @@ export default class SnowflakeMethodPlugin
 	/** Member notes waiting for the fields-block reconcile pass. */
 	private readonly pendingFieldsReconciles = new Set<string>();
 	private fieldsReconcileTimer: number | null = null;
-	/** Held while the migration writes, which leaves every block right anyway. */
-	private fieldsReconcilePaused = false;
+	/**
+	 * How many batches hold the reconcile pass off: a migration, an import,
+	 * a caller of the local API rewriting many notes, each of which leaves
+	 * every block right anyway. A count and not a switch, since the author's
+	 * own batch and a caller's can run at once, and the first to end must
+	 * not let the pass loose on the other.
+	 */
+	private fieldsReconcileHolds = 0;
 	/** Project health flags by project root path; see projectHealthFlags(). */
 	private readonly projectHealth = new Map<
 		string,
@@ -4412,12 +4418,14 @@ export default class SnowflakeMethodPlugin
 	 * every note touched.
 	 */
 	private async withoutFieldsReconcile<T>(run: () => Promise<T>): Promise<T> {
-		this.fieldsReconcilePaused = true;
+		this.fieldsReconcileHolds += 1;
 		try {
 			return await run();
 		} finally {
-			this.fieldsReconcilePaused = false;
-			this.pendingFieldsReconciles.clear();
+			this.fieldsReconcileHolds -= 1;
+			// Only once the last of them has ended: one that ends while
+			// another still writes leaves the pass held for it.
+			if (this.fieldsReconcileHolds === 0) this.pendingFieldsReconciles.clear();
 		}
 	}
 
@@ -13525,7 +13533,7 @@ export default class SnowflakeMethodPlugin
 	 * block already right and writes nothing.
 	 */
 	private scheduleFieldsBlockReconcile(path: string): void {
-		if (this.fieldsReconcilePaused || !path.endsWith('.md')) return;
+		if (this.fieldsReconcileHolds > 0 || !path.endsWith('.md')) return;
 		this.pendingFieldsReconciles.add(path);
 		// Deliberately the main window's clock: this debounce outlives any one
 		// view, and a timer scoped to a popout would die with it and drop the

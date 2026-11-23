@@ -136,7 +136,7 @@ async function host() {
 		invalidateProjectDiscovery: vi.fn(),
 		holdsProjectMetadata: () => false,
 		detachProjectViews: vi.fn(),
-		fieldsReconcilePaused: false,
+		fieldsReconcileHolds: 0,
 		renameCarry: Promise.resolve(),
 		projects: service,
 		settings: { ...DEFAULT_SETTINGS, projectRoot: 'Novels' },

@@ -362,6 +362,82 @@ describe("HistoryLedger", () => {
 		]);
 	});
 
+	it("keeps two imports that run at once apart, each project's doings under its own source", async () => {
+		// The second project is made before the ledger listens, so nothing of its making is in the book.
+		projects.repository.onManagedFileCreated = null;
+		const sequel = await projects.createProject({ title: "Sequel", locale: "en" });
+		projectRefs = [project, sequel];
+		wire();
+		const filedIn = (root: string): [string, string, unknown][] => {
+			const content = fakeVault.contents.get(`${root}/${HISTORY_DIR}/${EVENT_FILE}`);
+			const file = content === undefined ? null : parseHistoryEventMonthFile(JSON.parse(content));
+			return (file?.events ?? []).map((event) => [event.event, event.origin, event.importedFrom]);
+		};
+		const one = { projectId: "book-1", title: "Book One" };
+		const two = { projectId: "book-2", title: "Book Two" };
+
+		// The author's own import into the first project, and a caller's into the second while it runs.
+		ledger.beginImport();
+		const ada = await projects.createCharacter(project, { name: "Ada" });
+		ledger.beginImport();
+		const ben = await projects.createCharacter(sequel, { name: "Ben" });
+		ledger.endImport({
+			source: { id: one.projectId, title: one.title },
+			target: { projectFile: project.projectFile },
+			created: [{ targetPath: ada.path }],
+			replaced: [],
+		});
+		await ledger.flushNow();
+		// The first has ended: its own project's line is filed under its source, and the other's is still held.
+		expect(filedIn(project.rootPath)).toEqual([["created", "import", one]]);
+		expect(filedIn(sequel.rootPath)).toEqual([]);
+		// What the second goes on to do is still an import's, and still held.
+		const cy = await projects.createCharacter(sequel, { name: "Cy" });
+		await ledger.flushNow();
+		expect(filedIn(sequel.rootPath)).toEqual([]);
+		ledger.endImport({
+			source: { id: two.projectId, title: two.title },
+			target: { projectFile: sequel.projectFile },
+			created: [{ targetPath: ben.path }, { targetPath: cy.path }],
+			replaced: [],
+		});
+		await ledger.flushNow();
+		// Each note once, under the import that made it.
+		expect(filedIn(project.rootPath)).toEqual([["created", "import", one]]);
+		expect(filedIn(sequel.rootPath)).toEqual([
+			["created", "import", two],
+			["created", "import", two],
+		]);
+		// With both ended, what the author does next is the author's again.
+		await projects.createCharacter(project, { name: "Dee" });
+		await ledger.flushNow();
+		expect(filedIn(project.rootPath)[1]).toEqual(["created", "user", undefined]);
+	});
+
+	it("holds what a failed import did until the one still running has ended", async () => {
+		projects.repository.onManagedFileCreated = null;
+		const sequel = await projects.createProject({ title: "Sequel", locale: "en" });
+		projectRefs = [project, sequel];
+		wire();
+		ledger.beginImport();
+		await projects.createCharacter(project, { name: "Ada" });
+		ledger.beginImport();
+		// The first fails with no report, which names no project: nothing can be filed as its own yet.
+		ledger.endImport(null);
+		await ledger.flushNow();
+		expect(filed()).toBeNull();
+		const ben = await projects.createCharacter(sequel, { name: "Ben" });
+		ledger.endImport({
+			source: { id: "book-2", title: "Book Two" },
+			target: { projectFile: sequel.projectFile },
+			created: [{ targetPath: ben.path }],
+			replaced: [],
+		});
+		await ledger.flushNow();
+		// The last to end files all that is left, as the only one does.
+		expect(filed()?.map((event) => [event.event, event.origin])).toEqual([["created", "import"]]);
+	});
+
 	it("tells a rename within the project from a move out of it, and lets a moved project be", async () => {
 		const scene = await projects.createScene(project, { title: "Arrival" });
 		await ledger.flushNow();

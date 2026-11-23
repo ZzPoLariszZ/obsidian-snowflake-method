@@ -133,8 +133,10 @@ const parseEventJson = (content: string | null): HistoryEventMonthFile | null =>
 export class HistoryLedger {
 	/** Events waiting for the flush, in the order they happened. */
 	private queue: PendingHistoryEvent[] = [];
-	/** Events of the import under way, held until it ends and says where it came from. */
+	/** Events of the imports under way, held until each ends and says where it came from. */
 	private held: PendingHistoryEvent[] | null = null;
+	/** How many imports are under way: the author's own and a caller's of the local API can run at once. */
+	private importDepth = 0;
 	/** How many pieces of the plugin's own work are under way: see `asPlugin`. */
 	private pluginDepth = 0;
 	/** Events the flush under way is filing: still the store's, and still followed, until it ends. */
@@ -307,27 +309,46 @@ export class HistoryLedger {
 		}
 	}
 
-	/** From here until `endImport`, what happens is the import's doing. */
+	/** From here until its `endImport`, what happens is an import's doing. */
 	beginImport(): void {
+		this.importDepth += 1;
 		this.held ??= [];
 	}
 
 	/**
-	 * The import ended: what it did is stamped with where it came from and
+	 * An import ended: what it did is stamped with where it came from and
 	 * filed, and the notes it wrote over, which no creation reported, are
 	 * recorded as imported. Without a report the run failed partway, and
 	 * what it did stands as the import's all the same.
+	 *
+	 * Two imports can run at once. What is held says which project it
+	 * happened in and not which import did it, so one that ends while
+	 * another still runs files what was held of its own project and leaves
+	 * the rest held. A run with no report names no project, and files
+	 * nothing until the last has ended. The last to end files all that is
+	 * left, as the only one does.
 	 */
 	endImport(report: ImportLedgerReport | null): void {
-		const held = this.held ?? [];
-		this.held = null;
+		this.importDepth = Math.max(0, this.importDepth - 1);
+		const last = this.importDepth === 0;
+		const all = this.held ?? [];
 		const from =
 			report === null ? null : { projectId: report.source.id, title: report.source.title };
+		const target = report === null ? null : this.deps.projectAtPath(report.target.projectFile);
+		const held = last
+			? all
+			: target === null
+				? []
+				: all.filter((entry) => isPathAtOrBelow(entry.path, target.rootPath));
+		const filed = new Set(held);
+		const left = last ? null : all.filter((entry) => !filed.has(entry));
+		// Nothing is held while this import's own lines are written below:
+		// they are filed with it, and not kept for another to name.
+		this.held = null;
 		for (const entry of held) {
 			if (from !== null) entry.record.importedFrom = from;
 		}
 		this.queue.push(...held);
-		const target = report === null ? null : this.deps.projectAtPath(report.target.projectFile);
 		if (report !== null && target !== null && from !== null) {
 			const made = new Set(
 				held
@@ -344,6 +365,7 @@ export class HistoryLedger {
 				this.noteImported(target, item.targetPath, "imported", ts, from, made);
 			}
 		}
+		this.held = left;
 		this.savePending();
 		this.arm();
 	}

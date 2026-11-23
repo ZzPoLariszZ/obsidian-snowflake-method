@@ -137,7 +137,7 @@ function pluginWith(active: Ref[], archived: Ref[] = [], imported: Record<string
 		projectDiscoveryPromise: Promise.resolve(active),
 		updatableSiblingsByProject: new Map(),
 		pendingFieldsReconciles,
-		fieldsReconcilePaused: false,
+		fieldsReconcileHolds: 0,
 		// The history hears the run begin and end; what it records is its own suite's.
 		history,
 		refreshDashboards,
@@ -156,6 +156,34 @@ const lastDialog = () => {
 	if (dialog === undefined) throw new Error('no dialog opened');
 	return dialog;
 };
+
+describe('the hold on the reconcile pass', () => {
+	it('lasts until the last batch has ended, however many run at once', async () => {
+		const { plugin, pendingFieldsReconciles } = pluginWith([ref('Book 1'), ref('Book 2')]);
+		const host = plugin as unknown as {
+			fieldsReconcileHolds: number;
+			withoutFieldsReconcile(run: () => Promise<void>): Promise<void>;
+			scheduleFieldsBlockReconcile(path: string): void;
+		};
+		let endFirst = (): void => {};
+		let endSecond = (): void => {};
+		// The author's own migration, say, and a caller's import while it runs.
+		const first = host.withoutFieldsReconcile(() => new Promise<void>((resolve) => { endFirst = resolve; }));
+		const second = host.withoutFieldsReconcile(() => new Promise<void>((resolve) => { endSecond = resolve; }));
+		expect(host.fieldsReconcileHolds).toBe(2);
+		endFirst();
+		await first;
+		// One has ended and the other still writes: the pass stays held, and a note written now is not queued for it.
+		expect(host.fieldsReconcileHolds).toBe(1);
+		host.scheduleFieldsBlockReconcile('Root/Book 2/Characters/Bob.md');
+		expect([...pendingFieldsReconciles]).toEqual(['Root/Book 2/Characters/Alice.md']);
+		endSecond();
+		await second;
+		// The last has ended. What waited from before the first began is let go, as it is after any one batch.
+		expect(host.fieldsReconcileHolds).toBe(0);
+		expect(pendingFieldsReconciles.size).toBe(0);
+	});
+});
 
 describe('importSources', () => {
 	it('offers the writable projects without the target, then the archived ones, and never one written by a newer release', async () => {
@@ -287,9 +315,9 @@ describe('runImport', () => {
 	it('pauses the reconcile pass for the run, counts it in one notice, then tells the caches and the dashboards', async () => {
 		const target = ref('Book 2');
 		const { plugin, importer, refreshDashboards, projectHealth, pendingFieldsReconciles, history } = pluginWith([ref('Book 1'), target]);
-		let pausedDuringRun = false;
+		let heldDuringRun = 0;
 		importer.runImport.mockImplementationOnce(async (_source: string, _target: string, _selection: unknown, options?: { onProgress?: (p: unknown) => void }) => {
-			pausedDuringRun = (plugin as unknown as { fieldsReconcilePaused: boolean }).fieldsReconcilePaused;
+			heldDuringRun = (plugin as unknown as { fieldsReconcileHolds: number }).fieldsReconcileHolds;
 			options?.onProgress?.({ phase: 'members', done: 3, total: 9 });
 			expect(notices[notices.length - 1]?.message).toBe('zh-CN:modal.import.progress{"done":3,"total":9}');
 			await Promise.resolve();
@@ -307,8 +335,8 @@ describe('runImport', () => {
 			'Root/Book 2/Project.md',
 			choice.selection,
 		]);
-		expect(pausedDuringRun).toBe(true);
-		expect((plugin as unknown as { fieldsReconcilePaused: boolean }).fieldsReconcilePaused).toBe(false);
+		expect(heldDuringRun).toBe(1);
+		expect((plugin as unknown as { fieldsReconcileHolds: number }).fieldsReconcileHolds).toBe(0);
 		expect(pendingFieldsReconciles.size).toBe(0);
 		// The history held the run's events and names the source once the report is in.
 		expect(history.beginImport).toHaveBeenCalledOnce();
@@ -388,7 +416,7 @@ describe('runImport', () => {
 		await plugin.openImportDialog('Root/Book 2/Project.md');
 		await lastDialog().onSubmit(choice);
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect((plugin as unknown as { fieldsReconcilePaused: boolean }).fieldsReconcilePaused).toBe(false);
+		expect((plugin as unknown as { fieldsReconcileHolds: number }).fieldsReconcileHolds).toBe(0);
 		expect(notices.find((notice) => notice.duration === 0)?.hidden).toBe(true);
 		expect(notices[notices.length - 1]?.message).toBe('errors.importKindRefused{"name":"势力"}');
 		// A run that brought nothing still ends: the held events file as their own.
