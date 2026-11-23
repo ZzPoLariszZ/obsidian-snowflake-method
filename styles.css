@@ -4488,15 +4488,25 @@ textarea.snowflake-method-corkboard-recovered-text {
 }
 
 @media (max-width: 48rem) {
+	/* Stacked, the lists stand over the settings and take what they hold, up
+		to half the dialog. Held to twelve rems they showed a project and a
+		half, and an opened archive showed none of its own: two fifths of
+		that room is less than the archive's heading on a touch screen. */
 	.snowflake-method-project-manager-layout {
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(7rem, auto) minmax(0, 1fr);
+		grid-template-rows: fit-content(50%) minmax(0, 1fr);
 	}
 
 	.snowflake-method-project-manager-sidebar {
-		max-height: 12rem;
+		min-height: 7rem;
 		border-inline-end: 0;
 		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	/* Opened here, the archive is what is being read: it takes up to two
+		thirds of the lists' room, and the working projects keep the rest. */
+	.snowflake-method-project-manager-archived {
+		max-height: 66%;
 	}
 
 	/* Set through the variable, so the room kept for the scrollbar survives. */
