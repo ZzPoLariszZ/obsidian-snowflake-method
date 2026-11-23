@@ -2119,6 +2119,55 @@ describe("WritingSessionService", () => {
 		expect(underOldRoot()).toEqual([]);
 	});
 
+	it("takes a finished day that still waits to be filed along to the project's new name", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		clock += 26 * 3_600_000;
+		sessions = buildService();
+		// The day comes home finished, and the vault refuses its record once.
+		fakeVault.failNextCreatePath = UNTIMED_FILE;
+		await sessions.recoverAtStartup();
+		await settle();
+		expect(fakeVault.contents.get(UNTIMED_FILE)).toBeUndefined();
+		// Renamed in front of the plugin while the record still waits.
+		fakeVault.rename(ROOT, MOVED);
+		sessions.notePathRenamed(ROOT, MOVED);
+		// The store names the new root at once, for a launch that comes
+		// before the next try.
+		expect(JSON.stringify(untimedStore.value)).toContain(`"${MOVED}"`);
+		expect(JSON.stringify(untimedStore.value)).not.toContain(`"${ROOT}"`);
+		// The next try files it where the project now stands.
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		const filed = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE.replace(ROOT, MOVED)) ?? "{}",
+		) as { days: { words: { project: { net: number } } }[] };
+		expect(filed.days).toHaveLength(1);
+		expect(filed.days[0]?.words.project.net).toBe(2);
+		expect(underOldRoot()).toEqual([]);
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("files yesterday's words under the new name when the rename is the first thing heard after midnight", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// Midnight passes with the day's words not yet in their file, and the
+		// first thing heard of the project is its rename: the day is closed
+		// on the way, under the root it still had.
+		clock += 26 * 3_600_000;
+		fakeVault.rename(ROOT, MOVED);
+		sessions.notePathRenamed(ROOT, MOVED);
+		await settle();
+		const filed = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE.replace(ROOT, MOVED)) ?? "{}",
+		) as { days: { words: { project: { net: number } } }[] };
+		expect(filed.days).toHaveLength(1);
+		expect(filed.days[0]?.words.project.net).toBe(2);
+		expect(underOldRoot()).toEqual([]);
+		expect(untimedStore.value).toBeNull();
+	});
+
 	it("reads untimed words into words and goals but never into time or pace", async () => {
 		const foreign =
 			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-b_untimed_writing.json";

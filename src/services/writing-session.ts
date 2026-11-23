@@ -1121,6 +1121,21 @@ export class WritingSessionService {
 		for (const state of this.untimedStates.values()) {
 			this.untimedRenamed(state, oldPath, newPath);
 		}
+		// A finished day still waiting to be filed follows its project too,
+		// one the loop above has only just closed among them. Left under the
+		// old root it has nowhere to file, and is let go as a deleted
+		// project's is. The store names the root each record comes home to,
+		// so it is told at once.
+		let rerooted = false;
+		for (const flush of this.unflushed.values()) {
+			if (!isPathAtOrBelow(flush.rootPath, oldPath)) continue;
+			flush.rootPath =
+				flush.rootPath === oldPath
+					? newPath
+					: `${newPath}${flush.rootPath.slice(oldPath.length)}`;
+			rerooted = true;
+		}
+		if (rerooted) this.snapshotUntimed();
 	}
 
 	private liveRenamed(
