@@ -83,6 +83,9 @@ export class StickyNoteEditSession {
 	/** A conflict met during the closing flush asks it to go once more. */
 	private retryWanted = false;
 
+	/** The last flush met trouble it could only report: what it carried is still held here alone. */
+	private troubled = false;
+
 	private disposed = false;
 
 	constructor(
@@ -169,6 +172,23 @@ export class StickyNoteEditSession {
 	}
 
 	/**
+	 * Writes what is held for a writer about to change the note from outside
+	 * the plugin, and says whether it is in the file. False where a write
+	 * did not land: the disk is full, the file will not open, the note is
+	 * gone. The editor is then the only place those words are, and is not
+	 * to be closed. Words typed while a write is on its way are carried by
+	 * the next, so it is asked a few times over.
+	 */
+	async writtenOut(): Promise<boolean> {
+		for (let attempt = 0; attempt < 3 && this.pendingBody !== null; attempt += 1) {
+			this.troubled = false;
+			await this.flush();
+			if (this.troubled || this.goneFlag) return false;
+		}
+		return this.pendingBody === null;
+	}
+
+	/**
 	 * Clears the timer and flushes what is pending. A file that keeps moving
 	 * under the closing flush is met a bounded number of times, here, rather
 	 * than by a timer that would fire after the editor has gone; then nothing
@@ -233,6 +253,7 @@ export class StickyNoteEditSession {
 				return;
 			}
 			if (!(error instanceof StickyNoteSaveConflict)) {
+				this.troubled = true;
 				this.io.onError(error);
 				return;
 			}
@@ -264,6 +285,7 @@ export class StickyNoteEditSession {
 		try {
 			fresh = await this.io.read(this.held.path);
 		} catch (error) {
+			this.troubled = true;
 			this.io.onError(error);
 			return;
 		}
@@ -297,6 +319,7 @@ export class StickyNoteEditSession {
 				else this.arm();
 				return;
 			}
+			this.troubled = true;
 			this.io.onError(error);
 		}
 	}

@@ -24,6 +24,13 @@ export interface StickyNoteEditOwner {
 	 * where the editor's own quiet timer may never fire.
 	 */
 	settle?(): Promise<void> | null;
+	/**
+	 * Writes what the owner holds and says whether it is in the file, the
+	 * editor left as it stands. Asked before the note is taken for a writer
+	 * outside the plugin: false means the editor holds the only copy of
+	 * what was typed, and must be kept.
+	 */
+	writtenOut?(): Promise<boolean>;
 }
 
 export class StickyNoteClaims {
@@ -55,6 +62,23 @@ export class StickyNoteClaims {
 			if (owner === undefined) return;
 			await this.letGo(owner);
 			if (this.owners.get(noteId) === owner) this.owners.delete(noteId);
+		});
+	}
+
+	/**
+	 * Takes the note for a writer outside the plugin, who is about to change
+	 * its file: as `evict` does, but only once what the owner holds is in the
+	 * file. An owner whose words would not be written keeps the note and its
+	 * editor, and the answer is false, so the writer changes nothing.
+	 */
+	yieldTo(noteId: string): Promise<boolean> {
+		return this.serialize(noteId, async () => {
+			const owner = this.owners.get(noteId);
+			if (owner === undefined) return true;
+			if (owner.writtenOut !== undefined && !(await owner.writtenOut())) return false;
+			await this.letGo(owner);
+			if (this.owners.get(noteId) === owner) this.owners.delete(noteId);
+			return true;
 		});
 	}
 

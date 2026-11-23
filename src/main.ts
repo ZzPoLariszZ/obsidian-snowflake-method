@@ -6320,9 +6320,9 @@ export default class SnowflakeMethodPlugin
 	 * open: a stream's on a manuscript note, and whichever surface holds a
 	 * sticky note for editing. Each writes what it holds on its way down.
 	 *
-	 * A stream that cannot write what it holds keeps its editor, which is
-	 * then the only place the author's words are, and the writer is told by
-	 * a refusal that it is to change nothing.
+	 * A stream or a sticky note that cannot write what it holds keeps its
+	 * editor, which is then the only place the author's words are, and the
+	 * writer is told by a refusal that it is to change nothing.
 	 */
 	private async releaseNotesForWriter(paths: readonly string[]): Promise<void> {
 		for (const leaf of this.app.workspace.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)) {
@@ -6336,7 +6336,9 @@ export default class SnowflakeMethodPlugin
 			if (!isStickyNotePath(path)) continue;
 			// A sticky note's editor is held by the note's id, which its file says.
 			const note = await this.projects.stickyNotes.read(path);
-			if (note !== null) await this.stickyNoteHub.claims.evict(note.id);
+			if (note !== null && !(await this.stickyNoteHub.claims.yieldTo(note.id))) {
+				throw new EditorUnsavedError(path);
+			}
 		}
 	}
 

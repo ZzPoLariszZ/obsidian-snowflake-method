@@ -232,6 +232,8 @@ class StickyNoteCard implements StickyNoteCardHandle {
 				this.session === null || this.session.pending === null
 					? null
 					: this.session.flush(),
+			writtenOut: () =>
+				this.session === null ? Promise.resolve(true) : this.session.writtenOut(),
 		};
 		this.el = host.createDiv({
 			cls: 'snowflake-method-sticky-card snowflake-method-sticky-tint is-viewing',

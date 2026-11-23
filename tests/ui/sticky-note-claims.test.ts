@@ -142,6 +142,35 @@ describe('StickyNoteClaims', () => {
 		await claims.evict('unowned');
 	});
 
+	it('yields a note to a writer outside the plugin only once its holder has written what it holds', async () => {
+		const claims = new StickyNoteClaims();
+		const log: string[] = [];
+		let saves = false;
+		const holder: StickyNoteEditOwner = {
+			...ownerOf('A', log),
+			writtenOut: () => {
+				log.push('A asked to write');
+				return Promise.resolve(saves);
+			},
+		};
+		await claims.claim('n', holder);
+
+		// The disk will not take the words: the holder keeps the note and its editor.
+		expect(await claims.yieldTo('n')).toBe(false);
+		expect(claims.owner('n')).toBe('A');
+		expect(log).toEqual(['A asked to write']);
+
+		saves = true;
+		expect(await claims.yieldTo('n')).toBe(true);
+		expect(claims.owner('n')).toBeNull();
+		expect(log).toEqual(['A asked to write', 'A asked to write', 'A releasing', 'A released']);
+		// A note nobody holds, and a holder that has no words of its own to answer for, are yielded as an eviction takes them.
+		expect(await claims.yieldTo('n')).toBe(true);
+		await claims.claim('n', ownerOf('B', log));
+		expect(await claims.yieldTo('n')).toBe(true);
+		expect(claims.owner('n')).toBeNull();
+	});
+
 	it('lets every note go at once', async () => {
 		const claims = new StickyNoteClaims();
 		const log: string[] = [];

@@ -1529,4 +1529,27 @@ describe('what a writer outside the plugin is told of the author’s editors', (
 		expect((refused as EditorUnsavedError).path).toBe(CHAPTER);
 		stop();
 	});
+
+	it('is refused where a sticky note’s editor could not save what it holds, and goes on where it could', async () => {
+		const { plugin, service, stop } = await host();
+		const STICKY = 'Novels/Novel/70_Tool/72_Task_Management/724_Sticky_Note/note.md';
+		const reading = vi.spyOn(service.stickyNotes, 'read').mockResolvedValue({ id: 'sticky-note-1' } as never);
+		const yieldTo = vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(true));
+		Object.assign((plugin as unknown as { stickyNoteHub: { claims: object } }).stickyNoteHub.claims, { yieldTo });
+		await expect(plugin.releaseNotesForWriter([STICKY])).resolves.toBeUndefined();
+		expect(yieldTo).toHaveBeenCalledWith('sticky-note-1');
+		// A manuscript note is no sticky note's editor's to answer for.
+		await plugin.releaseNotesForWriter([CHAPTER]);
+		expect(yieldTo).toHaveBeenCalledTimes(1);
+
+		yieldTo.mockResolvedValue(false);
+		const refused = await plugin.releaseNotesForWriter([STICKY]).then(
+			() => null,
+			(error: unknown) => error,
+		);
+		expect(refused).toBeInstanceOf(EditorUnsavedError);
+		expect((refused as EditorUnsavedError).path).toBe(STICKY);
+		reading.mockRestore();
+		stop();
+	});
 });

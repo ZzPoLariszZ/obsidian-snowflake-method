@@ -328,4 +328,46 @@ describe('StickyNoteEditSession', () => {
 		expect(h.session.pending).toBeNull();
 		expect(h.armed()).toBe(0);
 	});
+
+	it('says whether what it holds is in the file, for a writer about to change the note from outside', async () => {
+		const h = harness();
+		// Nothing typed, nothing owed.
+		expect(await h.session.writtenOut()).toBe(true);
+		expect(h.writes).toEqual([]);
+
+		h.session.changed('Hello Alice');
+		h.disk.failing = true;
+		expect(await h.session.writtenOut()).toBe(false);
+		// The author is told once, and the words are still the editor's to save.
+		expect(h.events).toEqual(['error Error: failing']);
+		expect(h.session.pending).toBe('Hello Alice');
+		expect(h.disk.record.body).toBe('Hello');
+
+		h.disk.failing = false;
+		expect(await h.session.writtenOut()).toBe(true);
+		expect(h.disk.record.body).toBe('Hello Alice');
+		expect(h.session.pending).toBeNull();
+	});
+
+	it('carries words typed while the write was on its way before it answers', async () => {
+		const h = harness();
+		h.session.changed('Hello Alice');
+		let typed = false;
+		h.disk.onWrite = () => {
+			if (typed) return;
+			typed = true;
+			h.session.changed('Hello Alice and Bob');
+		};
+		expect(await h.session.writtenOut()).toBe(true);
+		expect(h.writes).toEqual(['Hello Alice', 'Hello Alice and Bob']);
+		expect(h.disk.record.body).toBe('Hello Alice and Bob');
+	});
+
+	it('does not answer for a note whose file is gone', async () => {
+		const h = harness();
+		h.session.changed('Hello Alice');
+		h.disk.gone = true;
+		expect(await h.session.writtenOut()).toBe(false);
+		expect(h.session.pending).toBe('Hello Alice');
+	});
 });
