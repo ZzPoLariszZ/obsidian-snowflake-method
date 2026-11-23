@@ -408,13 +408,15 @@ export const freeformWriteOperations: OperationGroup = {
 		const { project, held } = await standingOf(call, context);
 		const view = viewIn(held, call);
 		const body = bodyOf(call);
-		const name = typeof body['name'] === 'string' ? body['name'].trim() : view.name;
+		// A name is a change only where it is another name than the view has. One left out, and one sent back
+		// as it was read, ask for nothing, and are not written: the author may have renamed the view since.
+		const name = typeof body['name'] === 'string' && body['name'].trim() !== view.name ? body['name'].trim() : null;
 		const others = held.views.filter((entry) => entry.id !== view.id).map((entry) => entry.name);
-		if (!free(others, name, view.name)) throw taken('freeform view', name);
+		if (name !== null && !free(others, name, view.name)) throw taken('freeform view', name);
 		const sent = isSent(body['viewport']) ? body['viewport'] : null;
 		const place = sent === null ? {} : { viewport: { x: Number(sent['x']), y: Number(sent['y']), zoom: Number(sent['zoom']) } };
 		// The name and the place are one change and one write, so neither lands without the other.
-		landed(await context.host.projects.freeform.setView(project, view.id, { name, ...place }), noView(), FILE);
+		landed(await context.host.projects.freeform.setView(project, view.id, { ...(name === null ? {} : { name }), ...place }), noView(), FILE);
 		context.host.recordsChanged('freeform');
 		return { status: 200, body: await tellView(context, project, view.id) };
 	},

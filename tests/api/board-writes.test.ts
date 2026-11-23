@@ -794,6 +794,26 @@ describe('a freeform view, made and changed', () => {
 		expect(golden.host.told).toEqual(['freeform']);
 	});
 
+	it('leaves a name the author gave a view in the moment before, where the call names none or the old one', async () => {
+		const { golden, boards, P } = await ground();
+		const service = golden.host.projects.freeform;
+		const at = { ...P, freeformViewId: boards.canvas };
+		const read = await ok(golden, 'getFreeformView', at);
+		// The author renames the view on their own screen between the call's reading of it and its write.
+		const setView = service.setView.bind(service);
+		const renaming = vi.spyOn(service, 'setView').mockImplementation(async (project, viewId, change) => {
+			await service.renameView(project, viewId, 'Renamed on screen');
+			return setView(project, viewId, change);
+		});
+		const placed = await ok(golden, 'updateFreeformView', at, { viewport: { x: 30, y: 60, zoom: 2 } });
+		expect([placed['name'], placed['viewport']]).toEqual(['Renamed on screen', { x: 30, y: 60, zoom: 2 }]);
+		// And the whole view sent back as it was read, under the name it had then, with another place.
+		await service.renameView(golden.project, boards.canvas, String(read['name']));
+		const echoed = await ok(golden, 'updateFreeformView', at, { ...structuredClone(read), viewport: { x: 5, y: 5, zoom: 1 } });
+		renaming.mockRestore();
+		expect([echoed['name'], echoed['viewport']]).toEqual(['Renamed on screen', { x: 5, y: 5, zoom: 1 }]);
+	});
+
 	it('writes the view a project starts with when a caller sets where it opens', async () => {
 		const golden = await createGolden();
 		const at = { projectId: golden.project.id, freeformViewId: 'freeform-view-main' };
