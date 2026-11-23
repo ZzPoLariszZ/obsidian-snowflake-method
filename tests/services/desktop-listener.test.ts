@@ -8,6 +8,7 @@ import {
 	type LoopbackListener,
 	type LoopbackListenerFactory,
 } from '../../src/services/desktop-listener';
+import { desktopListenerModule } from '../../src/services/desktop-process';
 
 describe('answering on a port', () => {
 	const desktop = Platform.isDesktop;
@@ -53,10 +54,45 @@ describe('a listener started for real', () => {
 		await Promise.all(open.splice(0).map((listener) => listener.close()));
 	});
 
-	/** Starts one on any free port, or null where this machine lets a test have none. */
+	/**
+	 * Whether this machine lets a test open a port at all, asked of Node
+	 * itself and not of the listener under test: a sandbox that forbids it
+	 * forbids Node too.
+	 */
+	async function portsAllowed(): Promise<boolean> {
+		// What Node's own server is taken to hold, as the plugin spells out what it uses of it.
+		interface Probe {
+			once(event: 'error', heard: () => void): void;
+			listen(port: number, host: string, ready: () => void): void;
+			close(done: () => void): void;
+		}
+		const node = (await desktopListenerModule()) as { createServer(): Probe } | null;
+		if (node === null) return false;
+		return new Promise((resolve) => {
+			const probe = node.createServer();
+			probe.once('error', () => {
+				resolve(false);
+			});
+			probe.listen(0, LOOPBACK_ADDRESS, () => {
+				probe.close(() => {
+					resolve(true);
+				});
+			});
+		});
+	}
+
+	/**
+	 * Starts one on any free port. Null only where this machine lets a test
+	 * have none, which is no fault of the listener and is skipped. A
+	 * listener that will not start where a port can be had is a broken
+	 * listener, and fails the test that asked for it.
+	 */
 	async function listen(handle: CallHandler): Promise<LoopbackListener | null> {
 		const outcome = await (await factory()).listen(0, handle);
-		if (!outcome.ok) return null;
+		if (!outcome.ok) {
+			if (await portsAllowed()) throw new Error(`The listener did not start on a machine that has ports to give: ${outcome.reason}.`);
+			return null;
+		}
 		open.push(outcome.listener);
 		return outcome.listener;
 	}
