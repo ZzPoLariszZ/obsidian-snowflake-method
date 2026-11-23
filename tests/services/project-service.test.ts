@@ -3087,6 +3087,55 @@ describe("SnowflakeProjectService", () => {
     expect(fakeVault.contents.get(departure.path)).toBe(before);
   });
 
+  it("refuses a rename to a name no file can carry without saving anything", async () => {
+    const project = await service.createProject({ name: "Unnameable" });
+    const character = await service.createCharacter(project, { name: "Bob", goal: "Original goal" });
+    const scene = await service.createScene(project, { title: "Departure", conflict: "Original conflict" });
+    const place = await service.createEntity(project, { kind: "location", name: "Harbour", description: "Original" });
+    const before = new Map(fakeVault.contents);
+
+    // A note is filed under its name, and of dots alone nothing is left to
+    // file it under. The rename is each change's last step, so the refusal
+    // has to come before the first.
+    await expect(
+      service.updateCharacter(project, character.characterId, {
+        expectedRevision: character.revision,
+        name: "...",
+        goal: "A goal that must not be saved on its own",
+      }),
+    ).rejects.toThrow("safe file name");
+    await expect(
+      service.updateScene(project, scene.sceneId, {
+        expectedRevision: scene.revision,
+        title: "..",
+        conflict: "A conflict that must not be saved on its own",
+      }),
+    ).rejects.toThrow("safe file name");
+    await expect(
+      service.updateEntity(project, place.entityId, {
+        expectedRevision: place.revision,
+        name: ". .",
+        description: "A description that must not be saved on its own",
+      }),
+    ).rejects.toThrow("safe file name");
+
+    expect(new Map(fakeVault.contents)).toEqual(before);
+  });
+
+  it("adds no vocabulary word for a worldbuilding note whose name no file can carry", async () => {
+    const project = await service.createProject({ name: "Unnameable place" });
+    const before = [...fakeVault.contents.keys()].sort();
+
+    await expect(
+      service.createEntity(project, { kind: "location", name: "...", categoryPaths: ["Ports"] }),
+    ).rejects.toThrow("safe file name");
+
+    expect([...fakeVault.contents.keys()].sort()).toEqual(before);
+    // A name that can be filed adds the word with the note, as ever.
+    await service.createEntity(project, { kind: "location", name: "Harbour", categoryPaths: ["Ports"] });
+    expect([...fakeVault.contents.keys()].some((path) => path.includes("/Ports/"))).toBe(true);
+  });
+
   it("reports a file name that drifted from the stored name and repairs it", async () => {
     const project = await service.createProject({ name: "Drift" });
     const character = await service.createCharacter(project, "Bob");

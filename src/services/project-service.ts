@@ -2606,8 +2606,10 @@ export class SnowflakeProjectService {
       );
     }
     // The note takes the new name as this change's last step. Where that
-    // step would be left waiting on a dialog, nothing before it is written.
+    // step would be refused, for a name no file can carry or a rename left
+    // waiting on a dialog, nothing before it is written.
     if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
+      this.assertNameCanBeFiled(nextName);
       this.repository.assertRenameCanFinish(character.path);
     }
     await this.ensureReferencedDefinitions(
@@ -3643,8 +3645,10 @@ export class SnowflakeProjectService {
       frontmatterPatch[ALIASES_KEY] = nextAliases.length > 0 ? nextAliases : undefined;
     }
     // The note takes the new name as this change's last step. Where that
-    // step would be left waiting on a dialog, nothing before it is written.
+    // step would be refused, for a name no file can carry or a rename left
+    // waiting on a dialog, nothing before it is written.
     if (nextTitle !== undefined && nextTitle.length > 0 && nextTitle !== scene.title) {
+      this.assertNameCanBeFiled(nextTitle);
       this.repository.assertRenameCanFinish(scene.path);
     }
     await this.ensureReferencedDefinitions(
@@ -5717,6 +5721,10 @@ export class SnowflakeProjectService {
         : siblings[siblings.length - 1]!.rank + RANK_GAP);
     if (!Number.isSafeInteger(rank)) throw new RangeError("Cannot assign a safe entity rank.");
     const folder = normalizePath(worldbuildingKindFolder(project, kind));
+    // Worked out before the first write, as a character's and a scene's are:
+    // a name no file can carry is refused with no vocabulary word added for
+    // a note that was never made.
+    const requested = normalizePath(`${folder}/${safeFileName(name)}.md`);
     const aliases = (input.aliases ?? [])
       .map((alias) => alias.trim())
       .filter((alias) => alias.length > 0);
@@ -5742,7 +5750,7 @@ export class SnowflakeProjectService {
       timeEnd,
     });
     const created = await this.repository.createManagedFile({
-      path: normalizePath(`${folder}/${safeFileName(name)}.md`),
+      path: requested,
       uniqueOnConflict: true,
       userInput,
       template: entityTemplate(name, kind, project.locale, {
@@ -5848,8 +5856,10 @@ export class SnowflakeProjectService {
       );
     }
     // The note takes the new name as this change's last step. Where that
-    // step would be left waiting on a dialog, nothing before it is written.
+    // step would be refused, for a name no file can carry or a rename left
+    // waiting on a dialog, nothing before it is written.
     if (nextName !== undefined && nextName.length > 0 && nextName !== entity.name) {
+      this.assertNameCanBeFiled(nextName);
       this.repository.assertRenameCanFinish(entity.path);
     }
     await this.ensureReferencedDefinitions(
@@ -9002,6 +9012,17 @@ export class SnowflakeProjectService {
   ): void {
     if (!isNameTaken(taken, name)) return;
     throw new DuplicateNameError(kind, name);
+  }
+
+  /**
+   * Refuses a name no file could be called by, before anything is written
+   * under it. A note is filed under its name, and of a name of dots alone
+   * nothing is left to file it under. A change that takes its new name as
+   * its last step asks here first, as it asks of a name already taken: the
+   * rename would refuse it all the same, with every other field saved.
+   */
+  private assertNameCanBeFiled(name: string): void {
+    safeFileName(name);
   }
 }
 
