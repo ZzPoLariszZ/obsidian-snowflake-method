@@ -220,6 +220,41 @@ describe('a call waiting for its turn', () => {
 		expect(second).not.toHaveBeenCalled();
 	});
 
+	it('is held to the level the author has set by the time its turn comes', async () => {
+		// Let in while writing was allowed, and still waiting for the vault when the author took that back.
+		const made = vi.fn(done);
+		const { host, dispatcher } = setUp({ makeThing: made, listThings: done }, { ready: false, access: 'write' });
+		const waiting = dispatcher.dispatch(call('makeThing', { body: { name: 'a' } }));
+		const reading = dispatcher.dispatch(call('listThings'));
+		await turn();
+		host.state.access = 'read';
+		host.becomeReady();
+		const reply = await waiting;
+		expect([reply.status, reply.body]).toMatchObject([403, { code: 'access-denied', needs: 'write', level: 'read' }]);
+		expect(made).not.toHaveBeenCalled();
+		// What the new level still allows goes on.
+		expect((await reading).status).toBe(200);
+
+		// And one waiting behind another call, with the level lowered meanwhile.
+		let release: () => void = () => {};
+		const slow: OperationHandler = () =>
+			new Promise((resolve) => {
+				release = () => {
+					resolve({ status: 200 });
+				};
+			});
+		const removed = vi.fn(done);
+		const lined = setUp({ listThings: slow, deleteThing: removed });
+		const first = lined.dispatcher.dispatch(call('listThings'));
+		const next = lined.dispatcher.dispatch(call('deleteThing', { params: { thingId: 'a' } }));
+		await turn();
+		lined.host.state.access = 'write';
+		release();
+		expect((await first).status).toBe(200);
+		expect((await next).body).toMatchObject({ code: 'access-denied', needs: 'delete', level: 'write' });
+		expect(removed).not.toHaveBeenCalled();
+	});
+
 	it('is taken one at a time, and told when the line is too long', async () => {
 		let release: () => void = () => {};
 		const slow: OperationHandler = () =>

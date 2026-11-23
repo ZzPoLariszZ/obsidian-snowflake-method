@@ -69,7 +69,7 @@ A value that begins with `%` is read back out of percent-encoding first, which s
 
 **Errors.** Every error is a problem document (RFC 9457) with a stable `code`. Branch on the code. The contract lists every code under `x-snowflake-problems`.
 
-**Access.** Each operation needs one of the three levels, said in `x-snowflake-access`. A call above the author's level answers `403 access-denied` with what it needs.
+**Access.** Each operation needs one of the three levels, said in `x-snowflake-access`. A call above the author's level answers `403 access-denied` with what it needs. The level is asked again when a call's turn comes, so one that was waiting while the author lowered it is held to the new level.
 
 ## What to know before writing
 

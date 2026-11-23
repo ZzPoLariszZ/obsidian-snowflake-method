@@ -47,7 +47,9 @@ const framesOf = (error: unknown): string =>
  * the contract describes. Only then does a handler see it.
  *
  * Everything but the three operations the API answers about itself then
- * waits until projects can be listed and takes its turn in the queue. A
+ * waits until projects can be listed and takes its turn in the queue. At
+ * its turn it is asked once more whether the caller may ask it, since the
+ * author may have set another level while it waited. A
  * change is noted as a write on its way for as long as its handler runs,
  * which is what makes a closing window wait for it, and runs as the
  * plugin's own work, so none of it is put down to the author's hand.
@@ -118,14 +120,17 @@ export class Dispatcher {
 			throw new ApiError('unauthorized', "Send the access token from the plugin's settings as a bearer token.");
 		}
 		const host = this.context.host;
-		const level = host.access();
-		if (!allows(level, operation.access)) {
+		// How far a caller may go, as the author has it set at the moment it is asked.
+		const permit = (): void => {
+			const level = host.access();
+			if (allows(level, operation.access)) return;
 			throw new ApiError(
 				'access-denied',
 				`${operation.id} needs the ${operation.access} level, and the author has set ${level}.`,
 				{ needs: operation.access, level },
 			);
-		}
+		};
+		permit();
 		const checked = checkCall(this.context.document, operation, { params: call.params, body: call.body });
 		if (checked.issues.length > 0) {
 			throw new ApiError('invalid-request', 'The call does not match what the operation takes.', {
@@ -155,8 +160,10 @@ export class Dispatcher {
 		if (host.leaving()) throw leaving();
 		await host.ready();
 		return this.queue.run(() => {
-			// Asked again at its turn: the window may have begun to go while it waited.
+			// Asked again at its turn: the window may have begun to go while it waited,
+			// and the author may have lowered the level, which is then the level that holds.
 			if (host.leaving()) throw leaving();
+			permit();
 			if (operation.access === 'read') return handle();
 			// Noted before the handler takes its first step, not once it has
 			// taken it: the step is put off by one turn so the note comes first.
