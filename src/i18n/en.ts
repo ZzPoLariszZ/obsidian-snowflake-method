@@ -2638,6 +2638,8 @@ export const en = {
 	'manuscript.mention.convertTo': 'Link to {name}',
 	'manuscript.mention.open': 'Open entity',
 	'manuscript.mention.openOf': 'Open {name}',
+	'manuscript.mention.edit': 'Edit entity',
+	'manuscript.mention.editOf': 'Edit {name}',
 	'manuscript.mention.ignoreOccurrence': 'Ignore this occurrence',
 	'manuscript.mention.ignoreNote': 'Ignore in this note',
 	'manuscript.mention.ignoreManuscript': 'Ignore in whole manuscript',
@@ -2645,6 +2647,7 @@ export const en = {
 	'manuscript.mention.ignoreCandidateManuscript':
 		'Ignore {name} in whole manuscript',
 	'manuscript.mention.stale': 'The note changed, so nothing was converted.',
+	'manuscript.mention.editRefused': 'This entity cannot be edited right now.',
 	'mention.notice.ignoresPreserved':
 		'The ignore rules would not read and were set aside as {path}.',
 	'settings.mentionHighlight.saveFailed':

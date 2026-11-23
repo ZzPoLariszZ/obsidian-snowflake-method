@@ -4837,6 +4837,9 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 								},
 							);
 						},
+						onEdit: (candidate: MentionCandidate) => {
+							this.editMentioned(candidate);
+						},
 					}),
 			onOpen: (candidate) => {
 				void this.host.openManagedFile(candidate.memberPath).catch(
@@ -4854,6 +4857,15 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 			},
 			event,
 		});
+	}
+
+	/** The form of the note a mention names, asked of the host: the stream stays in front. */
+	private editMentioned(candidate: MentionCandidate): void {
+		void this.host
+			.editMentionedEntity(this.model?.projectPath ?? this.projectPath, candidate.memberPath)
+			.catch((error: unknown) => {
+				this.showError(error);
+			});
 	}
 
 	/**
@@ -6329,6 +6341,9 @@ export class SnowflakeManuscriptView extends ItemView implements RelabelsHeader 
 										this.showError(error);
 									},
 								);
+							},
+							onEdit: (candidate: MentionCandidate) => {
+								this.editMentioned(candidate);
 							},
 						}),
 				onOpen: (candidate) => {

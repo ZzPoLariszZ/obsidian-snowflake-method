@@ -237,6 +237,10 @@ describe('NoteMentions', () => {
 				calls.push(`open:${memberPath}`);
 				return Promise.resolve();
 			},
+			editMember: (projectPath, memberPath) => {
+				calls.push(`edit:${projectPath}:${memberPath}`);
+				return Promise.resolve();
+			},
 			addIgnore: (projectPath, rule) => {
 				calls.push(`ignore:${projectPath}:${rule.scope}:${rule.matchedText}`);
 				return Promise.resolve();
@@ -381,6 +385,7 @@ describe('NoteMentions', () => {
 		expect(items.map((item) => item.title)).toEqual([
 			'manuscript.mention.convert',
 			'manuscript.mention.open',
+			'manuscript.mention.edit',
 			'manuscript.mention.ignoreOccurrence',
 			'manuscript.mention.ignoreNote',
 			'manuscript.mention.ignoreManuscript',
@@ -391,9 +396,12 @@ describe('NoteMentions', () => {
 		const from = FRONTMATTER.length;
 		expect(calls).toContain(`replace:${CHAPTER}:${String(from)}-${String(from + 5)}:Alice>[[Novel/20_Character/Alice|Alice]]`);
 		items[1]?.click?.();
-		items[3]?.click?.();
+		items[2]?.click?.();
+		items[4]?.click?.();
 		await settle();
 		expect(calls).toContain(`open:${ALICE}`);
+		// The form is asked of the note's own project.
+		expect(calls).toContain(`edit:Novel:${ALICE}`);
 		expect(calls).toContain('ignore:Novel:note:Alice');
 		// A right-click asks the same.
 		spans[1]?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -426,7 +434,7 @@ describe('NoteMentions', () => {
 		expect(shown.notices).toEqual(['manuscript.mention.stale']);
 	});
 
-	it('offers no conversion in a project that cannot be written', async () => {
+	it('offers neither a conversion nor the form in a project that cannot be written', async () => {
 		const chapter = note(CHAPTER);
 		const { mentions } = harness([chapter], () => feedOf({ readOnly: true }));
 		mentions.apply();
@@ -434,7 +442,10 @@ describe('NoteMentions', () => {
 		const { el, ctx } = section(chapter, chapter.body, 0);
 		mentions.dressSection(el, ctx);
 		el.querySelector<HTMLElement>('.snowflake-method-mention')?.click();
-		expect(shown.menus[0]?.map((item) => item.title)).not.toContain('manuscript.mention.convert');
+		const titles = shown.menus[0]?.map((item) => item.title) ?? [];
+		expect(titles).not.toContain('manuscript.mention.convert');
+		expect(titles).not.toContain('manuscript.mention.edit');
+		expect(titles).toContain('manuscript.mention.open');
 	});
 
 	it('draws a section of a view drawn again whole from the view’s own text', async () => {
@@ -469,7 +480,7 @@ describe('NoteMentions', () => {
 
 	it('leads the editor’s menu with the mention under the right-click', async () => {
 		const chapter = note(CHAPTER);
-		const { mentions } = harness([chapter]);
+		const { mentions, calls } = harness([chapter]);
 		chapter.view = new EditorView({
 			state: EditorState.create({ doc: chapter.body }),
 			parent: chapter.containerEl,
@@ -488,7 +499,15 @@ describe('NoteMentions', () => {
 		expect(headed).toEqual(['head']);
 		const items = (menu as unknown as { items: ShownItem[] }).items;
 		expect(items.map((item) => item.section)).toEqual(items.map(() => 'snowflake-method'));
-		expect(items[0]?.title).toBe('manuscript.mention.convert');
+		expect(items.slice(0, 3).map((item) => item.title)).toEqual([
+			'manuscript.mention.convert',
+			'manuscript.mention.open',
+			'manuscript.mention.edit',
+		]);
+		// The form is asked for the note the words name, in the note's project.
+		items[2]?.click?.();
+		await settle();
+		expect(calls).toContain(`edit:Novel:${ALICE}`);
 		// Converted in the editor as the author's own edit.
 		items[0]?.click?.();
 		expect(view.state.doc.toString()).toBe('[[Novel/20_Character/Alice|Alice]] met Bob.\n');

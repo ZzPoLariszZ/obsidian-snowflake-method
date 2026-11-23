@@ -73,7 +73,7 @@ export interface NoteMentionFeed {
 		styles: readonly DialogueStyle[];
 		presentation: DialoguePresentation;
 	};
-	/** A project that cannot be written offers to open a mention, never to convert it. */
+	/** A project that cannot be written offers to open a mention, never to convert it or edit its note. */
 	readOnly: boolean;
 }
 
@@ -202,6 +202,8 @@ export interface NoteMentionsDeps {
 	/** The words for a note's menus, in the tongue of its project. */
 	t(path: string): (key: string, vars?: Record<string, string | number>) => string;
 	openMember(memberPath: string): Promise<void>;
+	/** The form of the note a mention names, opened over the page; said by the host where it cannot be. */
+	editMember(projectPath: string, memberPath: string): Promise<void>;
 	addIgnore(projectPath: string, rule: MentionIgnore): Promise<void>;
 	/**
 	 * One stretch of a note's file replaced, failing closed: false, and
@@ -429,6 +431,9 @@ export class NoteMentions {
 								scrollIntoView: true,
 							});
 						},
+						onEdit: (candidate: MentionCandidate) => {
+							this.guard(this.deps.editMember(project, candidate.memberPath));
+						},
 					}),
 			onOpen: (candidate) => {
 				this.guard(this.deps.openMember(candidate.memberPath));
@@ -477,6 +482,9 @@ export class NoteMentions {
 										if (!done) new Notice(t('manuscript.mention.stale'));
 									}),
 							);
+						},
+						onEdit: (candidate: MentionCandidate) => {
+							this.guard(this.deps.editMember(project, candidate.memberPath));
 						},
 					}),
 			onOpen: (candidate) => {

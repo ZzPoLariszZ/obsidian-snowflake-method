@@ -48,9 +48,10 @@ const entity = (fields: Partial<WorldbuildingEntityViewModel> = {}): Worldbuildi
 	...fields,
 });
 
-/** A member as the opener by group reads it: found by id, and written unless it says otherwise. */
+/** A member as the opener by group reads it: found by id or by its note, and written unless it says otherwise. */
 interface MemberStub {
 	id: string;
+	path?: string;
 	readOnly?: boolean;
 	healthIssues?: { blocking: boolean }[];
 }
@@ -229,6 +230,96 @@ describe('a relationship card opened for the graph', () => {
 		const readOnly = dashboard([entity()], { readOnly: true });
 		expect(await readOnly.view.openRelationship({ group: 'worldbuilding', id: 'entity-1' }, 0)).toBe(false);
 		expect(readOnly.opened).toHaveLength(0);
+	});
+});
+
+describe("a member's form opened by its note, for the menu over a mention", () => {
+	const DAWN = 'Novel/60_Worldbuilding/61_Time/Dawn.md';
+	const ADA = 'Novel/20_Character/Ada.md';
+	const ARRIVAL = 'Novel/40_Scene/Arrival.md';
+
+	it("opens a worldbuilding note's own form, as the dashboard's Edit does, and reports once it has closed", async () => {
+		const { view, opened, revealed, revealedRelationships, updateEntity, refresh } = dashboard([entity()]);
+		const closing = view.openMemberFormAtPath(DAWN);
+		await vi.waitFor(() => expect(opened).toHaveLength(1));
+		const form = opened[0]!;
+		// The whole form, opened on no row and no card of it.
+		expect(revealed).not.toHaveBeenCalled();
+		expect(revealedRelationships).not.toHaveBeenCalled();
+		await submit(form, { kind: 'time', name: 'Daybreak', description: 'First light' });
+		expect(updateEntity).toHaveBeenCalledExactlyOnceWith(
+			'entity-1',
+			{ kind: 'time', name: 'Daybreak', description: 'First light' },
+			'Novel/Novel.md',
+		);
+		// The page that asked stays in front: the dashboard behind it draws again when it is next shown.
+		expect(refresh).not.toHaveBeenCalled();
+		expect(view).toMatchObject({ refreshQueuedWhileHidden: true });
+		form.onClose();
+		expect(await closing).toBe(true);
+	});
+
+	it('finds a character and a scene by their notes, each to its own form', async () => {
+		const { view } = dashboard([entity()], {
+			characters: [{ id: 'character-1', path: ADA }],
+			scenes: [{ id: 'scene-1', path: ARRIVAL }],
+		});
+		const character = memberForm();
+		const scene = memberForm();
+		const openCharacterEditor = vi.fn(() => Promise.resolve(character));
+		const openSceneEditor = vi.fn(() => Promise.resolve(scene));
+		Object.assign(view, { openCharacterEditor, openSceneEditor });
+
+		const closingCharacter = view.openMemberFormAtPath(ADA);
+		await vi.waitFor(() => expect(openCharacterEditor).toHaveBeenCalledOnce());
+		expect(openCharacterEditor).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'Novel/Novel.md' }),
+			expect.objectContaining({ id: 'character-1' }),
+			expect.any(Function),
+		);
+		expect(character.revealRelationships).not.toHaveBeenCalled();
+		character.onClose();
+		expect(await closingCharacter).toBe(true);
+
+		const closingScene = view.openMemberFormAtPath(ARRIVAL);
+		await vi.waitFor(() => expect(openSceneEditor).toHaveBeenCalledOnce());
+		expect(openSceneEditor).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'Novel/Novel.md' }),
+			expect.objectContaining({ id: 'scene-1' }),
+			undefined,
+			expect.any(Function),
+		);
+		scene.onClose();
+		expect(await closingScene).toBe(true);
+	});
+
+	it('says no for a note that is no member, a member not to be written, and a project that cannot be', async () => {
+		const blocked = dashboard([entity({ readOnly: true })], {
+			characters: [{ id: 'character-1', path: ADA, healthIssues: [{ blocking: true }] }],
+		});
+		const openCharacterEditor = vi.fn();
+		Object.assign(blocked.view, { openCharacterEditor });
+		expect(await blocked.view.openMemberFormAtPath(DAWN)).toBe(false);
+		expect(await blocked.view.openMemberFormAtPath(ADA)).toBe(false);
+		// A chapter, and a note the project no longer holds, are nobody's form.
+		expect(await blocked.view.openMemberFormAtPath('Novel/50_Manuscript/Chapter 1.md')).toBe(false);
+		expect(await blocked.view.openMemberFormAtPath('Novel/20_Character/Gone.md')).toBe(false);
+		expect(openCharacterEditor).not.toHaveBeenCalled();
+		expect(blocked.opened).toHaveLength(0);
+
+		const readOnly = dashboard([entity()], { readOnly: true });
+		expect(await readOnly.view.openMemberFormAtPath(DAWN)).toBe(false);
+		expect(readOnly.opened).toHaveLength(0);
+	});
+
+	it('opens nothing once the dashboard has moved on to another project', async () => {
+		const { view, opened, loadDashboardModel } = dashboard([entity()]);
+		loadDashboardModel.mockImplementationOnce(async () => {
+			Object.assign(view, { projectPath: 'Other/Other.md' });
+			return { path: 'Novel/Novel.md', scenes: [], characters: [], worldbuilding: { time: [entity()] }, readOnly: false } as never;
+		});
+		expect(await view.openMemberFormAtPath(DAWN)).toBe(false);
+		expect(opened).toHaveLength(0);
 	});
 });
 

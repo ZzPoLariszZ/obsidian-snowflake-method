@@ -1,11 +1,14 @@
 /**
  * The one menu a mention answers with, whichever half of the stream it was
  * asked in. What it offers follows the resolution: a settled mention
- * converts and opens; an ambiguous one offers every candidate by name, and
- * ignoring one candidate is a different act from silencing the spot -- the
- * first can resolve what remains, the second says this stretch is not a
- * mention at all. A linked mention only opens, and a foreign link gets no
- * menu: the author already said whom they meant.
+ * converts, opens and edits; an ambiguous one offers every candidate by
+ * name, and ignoring one candidate is a different act from silencing the
+ * spot -- the first can resolve what remains, the second says this stretch
+ * is not a mention at all. A linked mention opens and edits, and a foreign
+ * link gets no menu: the author already said whom they meant.
+ *
+ * Opening goes to the entity's note. Editing opens the entity's own form
+ * over the page, as the dashboard's Edit does, and stands right after it.
  *
  * Nothing here modifies the manuscript. Every item hands the choice back
  * through a callback, and the callbacks are where the guards live.
@@ -28,6 +31,8 @@ export interface MentionMenuOptions {
 	/** Absent while the note cannot be written: nothing offers to convert. */
 	onConvert?: (candidate: MentionCandidate) => void;
 	onOpen: (candidate: MentionCandidate) => void;
+	/** Absent while the project cannot be written: nothing offers to edit. */
+	onEdit?: (candidate: MentionCandidate) => void;
 	onIgnore: (rule: MentionIgnore) => void;
 	/**
 	 * The menu section every item joins. A menu shared with other groups --
@@ -44,7 +49,7 @@ export function addMentionMenuItems(
 	menu: Menu,
 	options: Omit<MentionMenuOptions, 'event'>,
 ): boolean {
-	const { occurrence, noteOccurrences, t, onConvert, onOpen, onIgnore } =
+	const { occurrence, noteOccurrences, t, onConvert, onOpen, onEdit, onIgnore } =
 		options;
 	if (occurrence.resolution === 'foreign-link') return false;
 	const ambiguous = occurrence.resolution === 'ambiguous';
@@ -87,6 +92,23 @@ export function addMentionMenuItems(
 					onOpen(candidate);
 				}),
 		);
+	}
+	if (onEdit !== undefined) {
+		for (const candidate of occurrence.candidates) {
+			menu.addItem((item) =>
+				item
+					.setSection(actionSection)
+					.setTitle(
+						ambiguous
+							? t('manuscript.mention.editOf', { name: candidate.memberName })
+							: t('manuscript.mention.edit'),
+					)
+					.setIcon('pencil')
+					.onClick(() => {
+						onEdit(candidate);
+					}),
+			);
+		}
 	}
 	if (occurrence.resolution === 'wikilink') return true;
 

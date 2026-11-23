@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ViewState } from 'obsidian';
 import type { EntityFormIntent, SceneFormIntent } from '../../src/ui/view-model';
+
+/** Every notice told, kept where a test can read it. */
+const notices = vi.hoisted(() => [] as string[]);
 
 // The real plugin routes the request; only Obsidian's workspace and view
 // drawing are replaced, including the placeholder view restored after reload.
@@ -9,6 +12,11 @@ vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
 	return {
 		...runtime,
+		Notice: class {
+			constructor(message: unknown) {
+				notices.push(String(message));
+			}
+		},
 		Plugin: class {},
 		ItemView: class {},
 		FuzzySuggestModal: class extends runtime.Modal {},
@@ -41,6 +49,7 @@ function dashboardLeaf(
 	const revealTask = vi.fn((_id: string) => Promise.resolve(true));
 	const createMemberFromField = vi.fn((_group: string, _name: string) => Promise.resolve<{ id: string; name: string } | null>({ id: 'made-1', name: 'Ferryman' }));
 	const createMemberThroughForm = vi.fn((_kind: string, _name: string) => Promise.resolve(true));
+	const openMemberFormAtPath = vi.fn((_path: string) => Promise.resolve(true));
 	const queueRefreshWhenShown = vi.fn();
 	Object.assign(dashboard, {
 		getProjectPath: () => path,
@@ -51,6 +60,7 @@ function dashboardLeaf(
 		revealTask,
 		createMemberFromField,
 		createMemberThroughForm,
+		openMemberFormAtPath,
 		queueRefreshWhenShown,
 	});
 	let state: ViewState = {
@@ -70,7 +80,7 @@ function dashboardLeaf(
 			leaf.view = dashboard;
 		}),
 	};
-	return { leaf, openSceneForm, openCharacterForm, openCreateCharacterForm, openEntityForm, revealTask, createMemberFromField, createMemberThroughForm, queueRefreshWhenShown };
+	return { leaf, openSceneForm, openCharacterForm, openCreateCharacterForm, openEntityForm, revealTask, createMemberFromField, createMemberThroughForm, openMemberFormAtPath, queueRefreshWhenShown };
 }
 
 function pluginWith(
@@ -325,6 +335,73 @@ describe('a note made from words selected in the manuscript', () => {
 		await plugin.addEntityFromText(projectPath, 'Ash Tree');
 		expect(askEntityKind).not.toHaveBeenCalled();
 		expect(standing.createMemberThroughForm).not.toHaveBeenCalled();
+	});
+});
+
+describe("the form of the note a mention names", () => {
+	const ADA = 'Novel/20_Character/Ada.md';
+
+	beforeEach(() => {
+		notices.length = 0;
+	});
+
+	/** The plugin over the dashboards given, its project read as asked. */
+	function asked(leaves: ReturnType<typeof dashboardLeaf>['leaf'][], readOnly = false) {
+		const routed = pluginWith(leaves);
+		const resolveProject = vi.fn((_path: string | null) => Promise.resolve({
+			projectFile: projectPath, locale: 'en', readOnly,
+		}));
+		Object.assign(routed.plugin, {
+			resolveProject,
+			translateForProject: (_locale: unknown, key: string) => key,
+		});
+		return { ...routed, resolveProject };
+	}
+
+	it("opens the note's form in its project's dashboard, and leaves the asking page in front", async () => {
+		const standing = dashboardLeaf();
+		const { plugin, workspace, from, activeLeaf, resolveProject } = asked([standing.leaf]);
+		// Asked by the project's folder, as a note asks, or by its metadata note, as the stream does.
+		await plugin.editMentionedEntity('Novel', ADA);
+		expect(resolveProject).toHaveBeenCalledExactlyOnceWith('Novel');
+		expect(standing.openMemberFormAtPath).toHaveBeenCalledExactlyOnceWith(ADA);
+		expect(workspace.getLeaf).not.toHaveBeenCalled();
+		expect(activeLeaf()).toBe(from);
+		expect(notices).toEqual([]);
+	});
+
+	it('makes a dashboard in the background where none stands for the project', async () => {
+		const { plugin, workspace, from, created, activeLeaf } = asked([]);
+		await plugin.editMentionedEntity(projectPath, ADA);
+		expect(workspace.getLeaf).toHaveBeenCalledExactlyOnceWith('tab');
+		expect(created.openMemberFormAtPath).toHaveBeenCalledExactlyOnceWith(ADA);
+		expect(created.queueRefreshWhenShown).toHaveBeenCalledOnce();
+		expect(activeLeaf()).toBe(from);
+	});
+
+	it('says so where the note cannot be edited', async () => {
+		const standing = dashboardLeaf();
+		standing.openMemberFormAtPath.mockResolvedValueOnce(false);
+		const { plugin } = asked([standing.leaf]);
+		await plugin.editMentionedEntity(projectPath, ADA);
+		expect(notices).toEqual(['manuscript.mention.editRefused']);
+	});
+
+	it('asks nothing of the dashboard in a project that cannot be written', async () => {
+		const standing = dashboardLeaf();
+		const { plugin } = asked([standing.leaf], true);
+		await plugin.editMentionedEntity(projectPath, ADA);
+		expect(standing.openMemberFormAtPath).not.toHaveBeenCalled();
+		expect(notices).toEqual(['errors.readOnly']);
+	});
+
+	it('does nothing for a project that is gone', async () => {
+		const standing = dashboardLeaf();
+		const { plugin } = asked([standing.leaf]);
+		Object.assign(plugin, { resolveProject: vi.fn(() => Promise.resolve(null)) });
+		await plugin.editMentionedEntity(projectPath, ADA);
+		expect(standing.openMemberFormAtPath).not.toHaveBeenCalled();
+		expect(notices).toEqual([]);
 	});
 });
 

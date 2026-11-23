@@ -1285,6 +1285,8 @@ export default class SnowflakeMethodPlugin
 			t: (path) => (key, vars) =>
 				this.translateForProject(this.noteStanding(path).locale, key, vars),
 			openMember: (memberPath) => this.openManagedFile(memberPath),
+			editMember: (projectPath, memberPath) =>
+				this.editMentionedEntity(projectPath, memberPath),
 			addIgnore: (projectPath, rule) => this.addMentionIgnore(projectPath, rule),
 			replaceInFile: (path, from, to, expected, insert) =>
 				this.replaceInNote(path, from, to, expected, insert),
@@ -14998,6 +15000,30 @@ export default class SnowflakeMethodPlugin
 			false,
 			project.projectFile,
 		);
+	}
+
+	/**
+	 * The form of the note a mention names, asked for from the manuscript's
+	 * menu or a note's: the dashboard's own form for that note, so it is the
+	 * whole form its Edit opens, and the page the author was on stays in
+	 * front. A note that cannot be edited is said so: one gone since the page
+	 * was marked, or one the plugin may not write.
+	 */
+	async editMentionedEntity(projectPath: string | null, memberPath: string): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		if (project.readOnly) {
+			new Notice(t('errors.readOnly'));
+			return;
+		}
+		const opened = await this.withDashboardForm(
+			(view) => view.openMemberFormAtPath(memberPath),
+			false,
+			project.projectFile,
+		);
+		if (!opened) new Notice(t('manuscript.mention.editRefused'));
 	}
 
 	/**

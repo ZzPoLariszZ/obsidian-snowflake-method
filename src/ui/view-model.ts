@@ -653,6 +653,12 @@ export interface ManuscriptHost {
 	addEntityFromText(projectPath: string | null, name: string): Promise<void>;
 	/** The words added to a note the project already has, as one of its aliases. */
 	addAliasFromText(projectPath: string | null, name: string): Promise<void>;
+	/**
+	 * Opens the form of the note a mention names, the one the dashboard's Edit
+	 * opens for it, while the stream stays in front. Says so where the note
+	 * cannot be edited.
+	 */
+	editMentionedEntity(projectPath: string | null, memberPath: string): Promise<void>;
 	/** A sticky note holding the words given, floated as a new one is. */
 	addStickyNoteFromText(projectPath: string | null, text: string): Promise<void>;
 	/** One note's plain text under the export settings, for the clipboard. */

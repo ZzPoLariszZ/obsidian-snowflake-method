@@ -5956,6 +5956,29 @@ export class SnowflakeDashboardView extends ItemView implements RelabelsHeader {
 		return true;
 	}
 
+	/**
+	 * One member's form for a surface that knows the member by its note
+	 * alone: the menu over a mention, in the manuscript and in a note. The
+	 * member is found afresh, since the page that named it may be older than
+	 * the notes. False where the note is no member's any more, or a member
+	 * not to be written, so the asker can say so.
+	 */
+	async openMemberFormAtPath(path: string): Promise<boolean> {
+		const requestedProject = this.projectPath;
+		if (requestedProject === null) return false;
+		const model = await this.host.loadDashboardModel(requestedProject);
+		if (this.projectPath !== requestedProject) return false;
+		if (model === null || model.readOnly) return false;
+		const source = memberAtPath(model, path);
+		if (source === null) return false;
+		const form = await this.openMemberEditor(model, source, async () => {
+			this.queueRefreshWhenShown();
+		});
+		if (form === null) return false;
+		await whenClosed(form);
+		return true;
+	}
+
 	/** A member's own editor by its group, as the dashboard opens it; null for one gone or not to be written. */
 	private openMemberEditor(
 		model: ProjectDashboardModel,
@@ -8640,4 +8663,23 @@ function whenClosed(form: Modal): Promise<void> {
 			resolve();
 		};
 	});
+}
+
+/**
+ * Which member a note is, as the opener by group asks for one: a character,
+ * a scene or a worldbuilding note, by the path the note stands at. Null for
+ * a note that is no member's.
+ */
+function memberAtPath(
+	model: ProjectDashboardModel,
+	path: string,
+): { group: GraphMemberGroup; id: string } | null {
+	const at = (members: readonly { id: string; path: string }[]): string | undefined =>
+		members.find((candidate) => candidate.path === path)?.id;
+	const character = at(model.characters);
+	if (character !== undefined) return { group: 'character', id: character };
+	const scene = at(model.scenes);
+	if (scene !== undefined) return { group: 'scene', id: scene };
+	const entity = at(Object.values(model.worldbuilding).flat());
+	return entity === undefined ? null : { group: 'worldbuilding', id: entity };
 }
