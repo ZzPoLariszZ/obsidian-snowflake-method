@@ -133,7 +133,14 @@ import {
 } from './project-root';
 import { isExplorerScope, type ExplorerScope } from './services';
 import { isMobileDevice } from './ui/device';
-import { LOCAL_API_NOTES, renderLocalApiNotes, renderLocalApiStatus, renderLocalApiToken } from './ui/local-api-settings';
+import {
+	LOCAL_API_NOTES,
+	localApiCommandLineOff,
+	renderLocalApiCommandLineWarning,
+	renderLocalApiNotes,
+	renderLocalApiStatus,
+	renderLocalApiToken,
+} from './ui/local-api-settings';
 import type { RecordingSettingsBridge } from './ui/recording-bridge';
 import {
 	describeRecordingVaultFolder,
@@ -2673,6 +2680,15 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						name: this.t('localApi.bridge.name'),
 						desc: this.lines('localApi.bridge.desc'),
 						control: { type: 'toggle', key: `${LOCAL_API_CONTROL}cli`, defaultValue: defaults.cli },
+					},
+					{
+						// Said right under the switch it is about: the bridge is on, and Obsidian's own command line is not.
+						name: this.t('localApi.bridge.obsidian.open'),
+						desc: this.t('localApi.bridge.obsidian.off'),
+						visible: () => localApiCommandLineOff(bridge),
+						render: (setting) => {
+							renderLocalApiCommandLineWarning(setting, bridge, t);
+						},
 					},
 				],
 			},

@@ -92,6 +92,37 @@ export function renderLocalApiToken(
 }
 
 /**
+ * Whether the row on Obsidian's own command line has anything to say: the
+ * bridge is switched on here, and the app's own switch is off. The page asks
+ * this to show the row, and the row asks it before it draws anything.
+ */
+export function localApiCommandLineOff(bridge: LocalApiSettingsBridge): boolean {
+	return bridge.preferences().cli && bridge.obsidianCommandLine() === false;
+}
+
+/**
+ * The warning that the bridge is on and nothing can reach it: Obsidian
+ * turns a command away itself while its own command line interface is off.
+ * Said as the recording's warning of what macOS allows is said, with a way
+ * to the setting. The author switches it on in another tab of the same
+ * settings, and the page is drawn again when they come back to this one.
+ */
+export function renderLocalApiCommandLineWarning(setting: Setting, bridge: LocalApiSettingsBridge, t: Translate): void {
+	const row = bare(setting, 'snowflake-method-settings-local-api-command-line');
+	// The page draws a row it then keeps out of sight, and one with nothing to say stays empty.
+	if (!localApiCommandLineOff(bridge)) return;
+	const line = recordingNotice(row, 'warning', t('localApi.bridge.obsidian.off'));
+	const open = line.createEl('button', {
+		cls: 'snowflake-method-history-notice-button',
+		text: t('localApi.bridge.obsidian.open'),
+		attr: { type: 'button' },
+	});
+	open.addEventListener('click', () => {
+		bridge.openObsidianCommandLine();
+	});
+}
+
+/**
  * Where the listener stands: off, answering and on which port, or why it
  * could not be started, with a way to try again once the cause is seen to.
  * The line wears the colour of its standing: the theme's own success while

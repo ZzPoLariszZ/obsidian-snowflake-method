@@ -49,10 +49,20 @@ export interface DesktopShell {
 	trash(path: string): Promise<boolean>;
 	/** Opens the system's own page on what may record the screen. */
 	openScreenPrivacy(): void;
+	/**
+	 * Whether Obsidian's own command line interface is switched on, under
+	 * General in its settings. Null where this build of the app cannot be
+	 * asked. While it is off the app turns every command away itself, so
+	 * nothing sent to the plugin's own command arrives.
+	 */
+	commandLine(): boolean | null;
 }
 
 /** macOS's page on what may record the screen, by the address the system itself gives it. */
 const SCREEN_PRIVACY_PAGE = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
+
+/** The name the app asks its own command line switch under. */
+const COMMAND_LINE_SWITCH = 'cli';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === 'object' && value !== null;
@@ -186,6 +196,12 @@ export function desktopShell(win: Window): DesktopShell | null {
 		},
 		openScreenPrivacy: () => {
 			void Promise.resolve(ask(shell, 'openExternal', SCREEN_PRIVACY_PAGE)).catch(() => {});
+		},
+		commandLine: () => {
+			// Asked with nothing to set, which is how the app's own settings
+			// page reads the switch before it draws it.
+			const answered = ask(part(part(win, 'electron'), 'ipcRenderer'), 'sendSync', COMMAND_LINE_SWITCH, null);
+			return typeof answered === 'boolean' ? answered : null;
 		},
 	};
 }

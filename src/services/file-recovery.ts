@@ -239,6 +239,9 @@ export function openFileRecovery(app: App, path: string): "opened" | "off" | "un
 	return "opened";
 }
 
+/** The tab of Obsidian's settings its language files call General, by the id the app keeps it under. */
+export const GENERAL_SETTINGS_TAB = "about";
+
 /**
  * Opens the settings on the tab given, the core plugins' by default, where
  * File recovery is turned on. False where the app has no settings surface

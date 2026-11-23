@@ -41,7 +41,7 @@ curl -X POST -H "Authorization: Bearer $SNOWFLAKE_TOKEN" -H "Content-Type: appli
 
 ### Through Obsidian's command line
 
-One command reaches every operation by its name.
+One command reaches every operation by its name. Two switches have to be on for it: the **Command line bridge** in the plugin's settings, and **Command line interface** under **General** in Obsidian's own. While the second is off, Obsidian turns the command away itself, and the plugin's settings say so under the bridge.
 
 ```bash
 obsidian snowflake-method:api op=listProjects

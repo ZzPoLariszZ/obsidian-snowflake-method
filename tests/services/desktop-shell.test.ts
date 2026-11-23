@@ -88,3 +88,39 @@ describe('the desktop’s screens', () => {
 		expect(shellOf({ all: [MAIN, flat], primary: MAIN, on: MAIN }).displays()).toEqual([{ frame: MAIN.bounds, id: 1 }]);
 	});
 });
+
+describe('Obsidian’s own command line switch', () => {
+	/** A window whose app answers the switch as given, and keeps what it was asked. */
+	const windowOf = (answer: unknown, asked: unknown[][] = []): Window =>
+		({
+			electron: {
+				remote: {},
+				ipcRenderer: {
+					sendSync: (...sent: unknown[]) => {
+						asked.push(sent);
+						if (answer instanceof Error) throw answer;
+						return answer;
+					},
+				},
+			},
+		}) as unknown as Window;
+
+	it('is read as the app’s own settings page reads it, with nothing sent to set', () => {
+		const asked: unknown[][] = [];
+		expect(desktopShell(windowOf(true, asked))?.commandLine()).toBe(true);
+		expect(desktopShell(windowOf(false, asked))?.commandLine()).toBe(false);
+		// Null is what the app takes for a question. True or false would set the switch.
+		expect(asked).toEqual([
+			['cli', null],
+			['cli', null],
+		]);
+	});
+
+	it('is not known where the app gives no answer to go by', () => {
+		expect(desktopShell(windowOf(undefined))?.commandLine()).toBeNull();
+		expect(desktopShell(windowOf('yes'))?.commandLine()).toBeNull();
+		expect(desktopShell(windowOf(new Error('no such channel')))?.commandLine()).toBeNull();
+		// A build with no way to ask at all.
+		expect(desktopShell({ electron: { remote: {} } } as unknown as Window)?.commandLine()).toBeNull();
+	});
+});

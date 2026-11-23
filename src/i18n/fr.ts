@@ -962,6 +962,9 @@ export const fr = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.token.failed': 'Le trousseau d\'Obsidian n\'a pas pu garder le nouveau jeton.',
 	'localApi.bridge.name': 'Passerelle en ligne de commande',
 	'localApi.bridge.desc': 'Répond aux appels passés par la ligne de commande d\'Obsidian.',
+	'localApi.bridge.obsidian.off':
+		'L\'interface en ligne de commande d\'Obsidian est désactivée. Activez-la dans les réglages d\'Obsidian, sous Général.',
+	'localApi.bridge.obsidian.open': 'Ouvrir les réglages généraux',
 	'localApi.status.name': 'État',
 	'localApi.status.access': 'Accès : {level}',
 	'localApi.status.off': 'L\'API locale est désactivée.',

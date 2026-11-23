@@ -1480,7 +1480,12 @@ describe('the local API’s section of the settings', () => {
 		};
 	};
 
-	function localApiTab(start: Partial<LocalApiPreferences> = {}, standing: Promise<void> = Promise.resolve()) {
+	function localApiTab(
+		start: Partial<LocalApiPreferences> = {},
+		standing: Promise<void> = Promise.resolve(),
+		/** Whether Obsidian's own command line interface is on, as the app says it. */
+		commandLine: { on: boolean | null } = { on: true },
+	) {
 		const held: { preferences: LocalApiPreferences; patches: Partial<LocalApiPreferences>[] } = {
 			preferences: { ...DEFAULT_LOCAL_API_PREFERENCES, ...start },
 			patches: [],
@@ -1497,6 +1502,8 @@ describe('the local API’s section of the settings', () => {
 			token: () => null,
 			renewToken: () => Promise.resolve('declined'),
 			retry: () => Promise.resolve(),
+			obsidianCommandLine: () => commandLine.on,
+			openObsidianCommandLine: () => undefined,
 		};
 		const plugin = {
 			settings: { ...DEFAULT_SETTINGS, uiLocale: 'en' },
@@ -1534,7 +1541,29 @@ describe('the local API’s section of the settings', () => {
 				.rows()
 				.map((row) => row.name)
 				.filter((name) => name.length > 0),
-		).toEqual(['About', 'Status', 'Enable local API', 'Port', 'Access', 'Access token', 'Command line bridge']);
+		).toEqual(['About', 'Status', 'Enable local API', 'Port', 'Access', 'Access token', 'Command line bridge', 'Open general settings']);
+	});
+
+	it('warns right under the bridge’s switch while it is on and Obsidian’s own command line is not', async () => {
+		const app = { on: false as boolean | null };
+		const { tab, rows, row } = localApiTab({}, Promise.resolve(), app);
+		const warning = (): Row => row('Open general settings');
+		const shown = (): boolean => {
+			const visible = (warning() as unknown as { visible?: () => boolean }).visible;
+			return typeof visible === 'function' && visible();
+		};
+		// It is the row after the switch it is about, and the last of the section.
+		expect(rows().map((entry) => entry.name).slice(-2)).toEqual(['Command line bridge', 'Open general settings']);
+		// The bridge starts off, and an author who has not switched it on is told nothing.
+		expect(shown()).toBe(false);
+		await tab.setControlValue('localApi.cli', true);
+		expect(shown()).toBe(true);
+		// Switched on in Obsidian's own settings, the warning goes when the page is next drawn.
+		app.on = true;
+		expect(shown()).toBe(false);
+		app.on = false;
+		await tab.setControlValue('localApi.cli', false);
+		expect(shown()).toBe(false);
 	});
 
 	it('says each choice in one line', () => {

@@ -153,6 +153,7 @@ function rig(options: { system?: RecordingSystem | null; preferences?: Partial<R
 			return Promise.resolve(true);
 		},
 		openScreenPrivacy: () => {},
+		commandLine: () => null,
 	};
 	let minted = 0;
 	const service = new ScreenRecordingService({

@@ -957,6 +957,9 @@ export const es = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.token.failed': 'El llavero de Obsidian no ha podido guardar el token nuevo.',
 	'localApi.bridge.name': 'Puente de línea de comandos',
 	'localApi.bridge.desc': 'Responde a las llamadas hechas por la línea de comandos de Obsidian.',
+	'localApi.bridge.obsidian.off':
+		'La interfaz de línea de comandos de Obsidian está desactivada.\nActívala en los ajustes de Obsidian, en Acerca de.',
+	'localApi.bridge.obsidian.open': 'Abrir Acerca de',
 	'localApi.status.name': 'Estado',
 	'localApi.status.access': 'Acceso: {level}',
 	'localApi.status.off': 'La API local está desactivada.',

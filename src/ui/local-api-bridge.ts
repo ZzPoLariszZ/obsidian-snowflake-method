@@ -30,4 +30,13 @@ export interface LocalApiSettingsBridge {
 	renewToken(): Promise<'renewed' | 'declined' | 'failed'>;
 	/** Tries the listener again as it is chosen. Never rejects. */
 	retry(): Promise<void>;
+	/**
+	 * Whether Obsidian's own command line interface is switched on. While it
+	 * is off the app turns a command away before the plugin hears of it, so
+	 * the bridge answers nothing however it is set. Null where the app
+	 * cannot be asked.
+	 */
+	obsidianCommandLine(): boolean | null;
+	/** Opens Obsidian's settings on the tab that switch stands in. */
+	openObsidianCommandLine(): void;
 }

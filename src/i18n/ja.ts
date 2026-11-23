@@ -945,6 +945,9 @@ export const ja = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.token.failed': 'Obsidianのキーチェーンに新しいトークンを保存できませんでした。',
 	'localApi.bridge.name': 'コマンドラインブリッジ',
 	'localApi.bridge.desc': 'Obsidianのコマンドラインからの呼び出しに応答します。',
+	'localApi.bridge.obsidian.off':
+		'Obsidian自身のコマンドラインインターフェースがオフです。Obsidianの設定の「Obsidianについて」でオンにしてください。',
+	'localApi.bridge.obsidian.open': '「Obsidianについて」を開く',
 	'localApi.status.name': '状態',
 	'localApi.status.access': 'アクセス権：{level}',
 	'localApi.status.off': 'ローカルAPIはオフです。',

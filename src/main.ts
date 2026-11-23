@@ -290,6 +290,7 @@ import {
 	IdbSnapshotStoreReader,
 	isModificationHistoryPath,
 	openFileRecovery,
+	GENERAL_SETTINGS_TAB,
 	openSettingsTab,
 	ImportRefusedError,
 	type ImportReport,
@@ -6415,6 +6416,10 @@ export default class SnowflakeMethodPlugin
 				return this.renewLocalApiToken() ? 'renewed' : 'failed';
 			},
 			retry: () => this.applyLocalApiChoices(),
+			obsidianCommandLine: () => this.desktopParts()?.commandLine() ?? null,
+			openObsidianCommandLine: () => {
+				openSettingsTab(this.app, GENERAL_SETTINGS_TAB);
+			},
 		};
 	}
 

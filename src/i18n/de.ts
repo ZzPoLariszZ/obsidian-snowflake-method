@@ -958,6 +958,9 @@ export const de = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.token.failed': 'Obsidians Schlüsselbund konnte das neue Token nicht aufbewahren.',
 	'localApi.bridge.name': 'Kommandozeilen-Brücke',
 	'localApi.bridge.desc': 'Beantwortet Aufrufe über Obsidians Kommandozeile.',
+	'localApi.bridge.obsidian.off':
+		'Obsidians eigene Befehlszeilenschnittstelle ist aus. Schalte sie in Obsidians Einstellungen unter Allgemein ein.',
+	'localApi.bridge.obsidian.open': 'Allgemeine Einstellungen öffnen',
 	'localApi.status.name': 'Status',
 	'localApi.status.access': 'Zugriff: {level}',
 	'localApi.status.off': 'Die lokale API ist aus.',

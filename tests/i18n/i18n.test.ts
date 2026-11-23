@@ -1784,6 +1784,9 @@ describe('every interface language', () => {
 			'recording.obs.passwordHint',
 			'recording.guide.server',
 			'recording.guide.password',
+			// Two sentences beside a button: a line each where both fit, and
+			// run on where a language's words are too long for that.
+			'localApi.bridge.obsidian.off',
 		]);
 		for (const [locale, table] of Object.entries(locales)) {
 			if (locale === 'zh-CN') continue;
@@ -1937,6 +1940,26 @@ describe('the screen recording’s words', () => {
 			expect(table['recording.note.caution'].split('\n'), locale).toHaveLength(2);
 			expect(table['recording.note.purpose'], locale).not.toContain('\n');
 		}
+	});
+
+	it('gives the bridge’s warning a line a sentence where both fit beside its button, and runs them on where they do not', () => {
+		// Measured in the settings window as it opens, 900 wide: the button takes its
+		// own width off the line, and a language's words are as long as they are.
+		// A sentence that had to wrap before a forced break read as three ragged lines.
+		const broken = Object.entries(locales)
+			.filter(([, table]) => table['localApi.bridge.obsidian.off'].includes('\n'))
+			.map(([locale]) => locale);
+		expect(broken.sort()).toEqual(['en', 'es', 'ko', 'zh-CN', 'zh-TW']);
+		for (const [locale, table] of Object.entries(locales)) {
+			const lines = table['localApi.bridge.obsidian.off'].split('\n');
+			expect(lines.length, locale).toBeLessThanOrEqual(2);
+			// Nothing of it says more than what is off and where to switch it on.
+			expect(table['localApi.bridge.obsidian.off'].length, locale).toBeLessThan(120);
+		}
+		expect(en['localApi.bridge.obsidian.off']).toBe(
+			'Obsidian’s own command line interface is switched off.\nSwitch it on in Obsidian’s general settings.',
+		);
+		expect(zhCN['localApi.bridge.obsidian.off']).toBe('Obsidian 自己的命令行界面尚未开启。\n请在 Obsidian 设置的“关于”中开启它。');
 	});
 
 	it('writes the guide in Chinese as it was asked for', () => {

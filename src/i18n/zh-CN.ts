@@ -969,6 +969,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'localApi.token.failed': 'Obsidian 的钥匙串未能保存新令牌。',
 	'localApi.bridge.name': '命令行桥接',
 	'localApi.bridge.desc': '应答通过 Obsidian 命令行发起的调用。',
+	'localApi.bridge.obsidian.off':
+		'Obsidian 自己的命令行界面尚未开启。\n请在 Obsidian 设置的“关于”中开启它。',
+	'localApi.bridge.obsidian.open': '打开“关于”设置',
 	'localApi.status.name': '状态',
 	'localApi.status.access': '访问权限：{level}',
 	'localApi.status.off': '本地接口已关闭。',

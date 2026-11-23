@@ -1054,6 +1054,9 @@ export const en = {
 	'localApi.token.failed': 'Obsidian’s keychain could not keep a new token.',
 	'localApi.bridge.name': 'Command line bridge',
 	'localApi.bridge.desc': 'Answer calls from Obsidian’s command line.',
+	'localApi.bridge.obsidian.off':
+		'Obsidian’s own command line interface is switched off.\nSwitch it on in Obsidian’s general settings.',
+	'localApi.bridge.obsidian.open': 'Open general settings',
 	'localApi.status.name': 'Status',
 	'localApi.status.access': 'Access: {level}',
 	'localApi.status.off': 'The local API is off.',

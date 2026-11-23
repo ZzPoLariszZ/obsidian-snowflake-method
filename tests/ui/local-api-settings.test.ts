@@ -23,7 +23,9 @@ import { DEFAULT_LOCAL_API_PREFERENCES, type LocalApiAccess } from '../../src/do
 import { t as translate } from '../../src/i18n';
 import type { LocalApiSettingsBridge } from '../../src/ui/local-api-bridge';
 import {
+	localApiCommandLineOff,
 	localApiStatusText,
+	renderLocalApiCommandLineWarning,
 	renderLocalApiNotes,
 	renderLocalApiStatus,
 	renderLocalApiToken,
@@ -83,6 +85,9 @@ function rig(
 		status?: ServerStatus;
 		renewal?: 'renewed' | 'declined' | 'failed';
 		access?: LocalApiAccess;
+		/** Whether the bridge is switched on in the plugin, and whether Obsidian's own command line is. */
+		cli?: boolean;
+		commandLine?: boolean | null;
 	} = {},
 ) {
 	const held: { token: string | null; status: ServerStatus; renewal: 'renewed' | 'declined' | 'failed' } = {
@@ -93,7 +98,11 @@ function rig(
 	const calls: string[] = [];
 	const refreshed = { count: 0 };
 	const bridge: LocalApiSettingsBridge = {
-		preferences: () => ({ ...DEFAULT_LOCAL_API_PREFERENCES, access: start.access ?? DEFAULT_LOCAL_API_PREFERENCES.access }),
+		preferences: () => ({
+			...DEFAULT_LOCAL_API_PREFERENCES,
+			access: start.access ?? DEFAULT_LOCAL_API_PREFERENCES.access,
+			cli: start.cli ?? DEFAULT_LOCAL_API_PREFERENCES.cli,
+		}),
 		update: () => Promise.resolve(),
 		status: () => held.status,
 		token: () => held.token,
@@ -106,6 +115,10 @@ function rig(
 			calls.push('retry');
 			held.status = { state: 'listening', port: 27125 };
 			return Promise.resolve();
+		},
+		obsidianCommandLine: () => (start.commandLine === undefined ? true : start.commandLine),
+		openObsidianCommandLine: () => {
+			calls.push('open general');
 		},
 	};
 	const refresh = (): void => {
@@ -336,5 +349,43 @@ describe('the listener’s status row', () => {
 		await settle();
 		expect(calls).toEqual(['retry']);
 		expect(refreshed.count).toBe(1);
+	});
+});
+
+describe('the warning under the command line bridge', () => {
+	it('has something to say only while the bridge is on and Obsidian’s own command line is off', () => {
+		const shown = (cli: boolean, commandLine: boolean | null): boolean => localApiCommandLineOff(rig({ cli, commandLine }).bridge);
+		expect(shown(true, false)).toBe(true);
+		// Both on, and nothing is wrong.
+		expect(shown(true, true)).toBe(false);
+		// The bridge is off, so nobody is waiting on Obsidian's switch.
+		expect(shown(false, false)).toBe(false);
+		// An app that cannot be asked is not warned about.
+		expect(shown(true, null)).toBe(false);
+	});
+
+	it('says what is wrong and where to put it right, one sentence a line, with a way there', () => {
+		const { bridge, calls } = rig({ cli: true, commandLine: false });
+		const row = new Row();
+		renderLocalApiCommandLineWarning(row.setting, bridge, t);
+		const notice = row.settingEl.querySelector('.snowflake-method-history-notice');
+		expect((notice as HTMLElement | null)?.dataset.tone).toBe('warning');
+		expect([...(notice?.querySelector('.snowflake-method-history-notice-text')?.children ?? [])].map((line) => line.textContent)).toEqual([
+			'Obsidian’s own command line interface is switched off.',
+			'Switch it on in Obsidian’s general settings.',
+		]);
+		const open = notice?.querySelector('button');
+		expect(open?.textContent).toBe('Open general settings');
+		open?.click();
+		expect(calls).toEqual(['open general']);
+	});
+
+	it('draws nothing where there is nothing to warn of', () => {
+		for (const start of [{ cli: true, commandLine: true }, { cli: false, commandLine: false }, { cli: true, commandLine: null }]) {
+			const row = new Row();
+			renderLocalApiCommandLineWarning(row.setting, rig(start).bridge, t);
+			expect(row.settingEl.textContent).toBe('');
+			expect(row.settingEl.querySelector('button')).toBeNull();
+		}
 	});
 });

@@ -944,6 +944,9 @@ export const ko = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.token.failed': 'Obsidian의 키체인에 새 토큰을 저장하지 못했습니다.',
 	'localApi.bridge.name': '명령줄 브리지',
 	'localApi.bridge.desc': 'Obsidian의 명령줄로 들어온 호출에 응답합니다.',
+	'localApi.bridge.obsidian.off':
+		'Obsidian 자체의 명령줄 인터페이스가 꺼져 있습니다.\nObsidian 설정의 일반에서 켜세요.',
+	'localApi.bridge.obsidian.open': '일반 설정 열기',
 	'localApi.status.name': '상태',
 	'localApi.status.access': '접근 권한: {level}',
 	'localApi.status.off': '로컬 API가 꺼져 있습니다.',

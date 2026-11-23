@@ -943,6 +943,9 @@ export const zhTW = (): Readonly<Record<TranslationKey, string>> => ({
 	'localApi.token.failed': 'Obsidian 的鑰匙圈未能儲存新權杖。',
 	'localApi.bridge.name': '命令列橋接',
 	'localApi.bridge.desc': '回應透過 Obsidian 命令列發起的呼叫。',
+	'localApi.bridge.obsidian.off':
+		'Obsidian 自己的命令列介面尚未開啟。\n請在 Obsidian 設定的「關於」中開啟它。',
+	'localApi.bridge.obsidian.open': '開啟「關於」設定',
 	'localApi.status.name': '狀態',
 	'localApi.status.access': '存取權限：{level}',
 	'localApi.status.off': '本機 API 已關閉。',
