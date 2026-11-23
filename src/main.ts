@@ -927,9 +927,9 @@ export default class SnowflakeMethodPlugin
 	private recording: ScreenRecordingService | null = null;
 	/** The recording's choices as last read from the device. */
 	private recordingChoices: RecordingPreferences | null = null;
-	/** The local API, on the desktop alone: null on a phone or a tablet, where nothing listens and no command answers. */
 	/** The way a walk gives way while the window is out of sight, made the first time one does. */
 	private hiddenTurns: MessageTurns | null = null;
+	/** The local API, on the desktop alone: null on a phone or a tablet, where nothing listens and no command answers. */
 	private localApi: LocalApi | null = null;
 	/** The local API's choices as last read from the device. */
 	private localApiChoices: LocalApiPreferences | null = null;
